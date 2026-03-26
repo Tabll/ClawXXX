@@ -11,9 +11,11 @@ import {
   ExternalLink,
   Copy,
   FileText,
+  Leaf,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
+import { PageHeader, SectionHeader } from '@/components/ui/page-header';
 import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
@@ -452,40 +454,37 @@ export function Settings() {
       <div className="w-full max-w-5xl mx-auto flex flex-col h-full p-10 pt-16">
 
         {/* Header */}
-        <div className="flex flex-col md:flex-row md:items-start justify-between mb-12 shrink-0 gap-4">
-          <div>
-            <h1 className="text-5xl md:text-6xl font-serif text-foreground mb-3 font-normal tracking-tight" style={{ fontFamily: 'Georgia, Cambria, "Times New Roman", Times, serif' }}>
-              {t('title')}
-            </h1>
-            <p className="text-[17px] text-foreground/70 font-medium">
-              {t('subtitle')}
-            </p>
-          </div>
-        </div>
+        <PageHeader title={t('title')} subtitle={t('subtitle')} />
 
         {/* Content Area */}
-        <div className="flex-1 overflow-y-auto pr-2 pb-10 min-h-0 -mr-2 space-y-12">
+        <div className="flex-1 overflow-y-auto pr-2 pb-10 min-h-0 -mr-2 space-y-12 animate-content-in">
 
           {/* Appearance */}
           <div>
-            <h2 className="text-3xl font-serif text-foreground mb-6 font-normal tracking-tight" style={{ fontFamily: 'Georgia, Cambria, "Times New Roman", Times, serif' }}>
-              {t('appearance.title')}
-            </h2>
+            <SectionHeader title={t('appearance.title')} />
             <div className="space-y-6">
               <div className="space-y-3">
                 <Label className="text-[15px] font-medium text-foreground/80">{t('appearance.theme')}</Label>
                 <div className="flex flex-wrap gap-2">
                   <Button
                     variant={theme === 'light' ? 'secondary' : 'outline'}
-                    className={cn("rounded-full px-5 h-10 border-black/10 dark:border-white/10", theme === 'light' ? "bg-black/5 dark:bg-white/10 text-foreground" : "bg-transparent text-muted-foreground hover:bg-black/5 dark:hover:bg-white/5")}
+                    className={cn("rounded-full px-5 h-10 border-black/10 dark:border-white/10", theme === 'light' ? "bg-surface text-foreground" : "bg-transparent text-muted-foreground hover:bg-surface/60")}
                     onClick={() => setTheme('light')}
                   >
                     <Sun className="h-4 w-4 mr-2" />
                     {t('appearance.light')}
                   </Button>
                   <Button
+                    variant={theme === 'eye-care' ? 'secondary' : 'outline'}
+                    className={cn("rounded-full px-5 h-10 border-black/10 dark:border-white/10", theme === 'eye-care' ? "bg-surface text-foreground" : "bg-transparent text-muted-foreground hover:bg-surface/60")}
+                    onClick={() => setTheme('eye-care')}
+                  >
+                    <Leaf className="h-4 w-4 mr-2" />
+                    {t('appearance.eyeCare')}
+                  </Button>
+                  <Button
                     variant={theme === 'dark' ? 'secondary' : 'outline'}
-                    className={cn("rounded-full px-5 h-10 border-black/10 dark:border-white/10", theme === 'dark' ? "bg-black/5 dark:bg-white/10 text-foreground" : "bg-transparent text-muted-foreground hover:bg-black/5 dark:hover:bg-white/5")}
+                    className={cn("rounded-full px-5 h-10 border-black/10 dark:border-white/10", theme === 'dark' ? "bg-surface text-foreground" : "bg-transparent text-muted-foreground hover:bg-surface/60")}
                     onClick={() => setTheme('dark')}
                   >
                     <Moon className="h-4 w-4 mr-2" />
@@ -493,7 +492,7 @@ export function Settings() {
                   </Button>
                   <Button
                     variant={theme === 'system' ? 'secondary' : 'outline'}
-                    className={cn("rounded-full px-5 h-10 border-black/10 dark:border-white/10", theme === 'system' ? "bg-black/5 dark:bg-white/10 text-foreground" : "bg-transparent text-muted-foreground hover:bg-black/5 dark:hover:bg-white/5")}
+                    className={cn("rounded-full px-5 h-10 border-black/10 dark:border-white/10", theme === 'system' ? "bg-surface text-foreground" : "bg-transparent text-muted-foreground hover:bg-surface/60")}
                     onClick={() => setTheme('system')}
                   >
                     <Monitor className="h-4 w-4 mr-2" />
@@ -508,7 +507,7 @@ export function Settings() {
                     <Button
                       key={lang.code}
                       variant={language === lang.code ? 'secondary' : 'outline'}
-                      className={cn("rounded-full px-5 h-10 border-black/10 dark:border-white/10", language === lang.code ? "bg-black/5 dark:bg-white/10 text-foreground" : "bg-transparent text-muted-foreground hover:bg-black/5 dark:hover:bg-white/5")}
+                      className={cn("rounded-full px-5 h-10 border-black/10 dark:border-white/10", language === lang.code ? "bg-surface text-foreground" : "bg-transparent text-muted-foreground hover:bg-surface/60")}
                       onClick={() => setLanguage(lang.code)}
                     >
                       {lang.label}
@@ -531,13 +530,11 @@ export function Settings() {
             </div>
           </div>
 
-          <Separator className="bg-black/5 dark:bg-white/5" />
+          <Separator className="bg-surface" />
 
           {/* Gateway */}
           <div>
-            <h2 className="text-3xl font-serif text-foreground mb-6 font-normal tracking-tight" style={{ fontFamily: 'Georgia, Cambria, "Times New Roman", Times, serif' }}>
-              {t('gateway.title')}
-            </h2>
+            <SectionHeader title={t('gateway.title')} />
             <div className="space-y-6">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div>
@@ -551,7 +548,7 @@ export function Settings() {
                     "flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[13px] font-medium border",
                     gatewayStatus.state === 'running' ? "bg-green-500/10 text-green-600 dark:text-green-500 border-green-500/20" :
                       gatewayStatus.state === 'error' ? "bg-red-500/10 text-red-600 dark:text-red-500 border-red-500/20" :
-                        "bg-black/5 dark:bg-white/5 text-muted-foreground border-transparent"
+                        "bg-surface text-muted-foreground border-transparent"
                   )}>
                     <div className={cn("w-1.5 h-1.5 rounded-full",
                       gatewayStatus.state === 'running' ? "bg-green-500" :
@@ -559,11 +556,11 @@ export function Settings() {
                     )} />
                     {gatewayStatus.state}
                   </div>
-                  <Button variant="outline" size="sm" onClick={restartGateway} className="rounded-full h-8 px-4 border-black/10 dark:border-white/10 bg-transparent hover:bg-black/5 dark:hover:bg-white/5">
+                  <Button variant="outline" size="sm" onClick={restartGateway} className="rounded-full h-8 px-4 border-black/10 dark:border-white/10 bg-transparent hover:bg-surface">
                     <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
                     {t('common:actions.restart')}
                   </Button>
-                  <Button variant="outline" size="sm" onClick={handleShowLogs} className="rounded-full h-8 px-4 border-black/10 dark:border-white/10 bg-transparent hover:bg-black/5 dark:hover:bg-white/5">
+                  <Button variant="outline" size="sm" onClick={handleShowLogs} className="rounded-full h-8 px-4 border-black/10 dark:border-white/10 bg-transparent hover:bg-surface">
                     <FileText className="h-3.5 w-3.5 mr-1.5" />
                     {t('gateway.logs')}
                   </Button>
@@ -571,7 +568,7 @@ export function Settings() {
               </div>
 
               {showLogs && (
-                <div className="p-4 rounded-2xl bg-black/5 dark:bg-white/5 border border-black/5 dark:border-white/5">
+                <div className="p-4 rounded-2xl bg-surface border border-black/5 dark:border-white/5">
                   <div className="flex items-center justify-between mb-3">
                     <p className="font-medium text-[14px]">{t('gateway.appLogs')}</p>
                     <div className="flex gap-2">
@@ -637,11 +634,9 @@ export function Settings() {
           {/* Developer */}
           {devModeUnlocked && (
             <>
-              <Separator className="bg-black/5 dark:bg-white/5" />
+              <Separator className="bg-surface" />
               <div>
-                <h2 className="text-3xl font-serif text-foreground mb-6 font-normal tracking-tight" style={{ fontFamily: 'Georgia, Cambria, "Times New Roman", Times, serif' }}>
-                  {t('developer.title')}
-                </h2>
+                <SectionHeader title={t('developer.title')} />
                 <div className="space-y-8">
                   {/* Gateway Proxy */}
                   <div className="space-y-4">
@@ -668,7 +663,7 @@ export function Settings() {
                               value={proxyServerDraft}
                               onChange={(event) => setProxyServerDraft(event.target.value)}
                               placeholder="http://127.0.0.1:7890"
-                              className="h-10 rounded-xl bg-black/5 dark:bg-white/5 border-transparent font-mono text-[13px]"
+                              className="h-10 rounded-xl bg-surface border-transparent font-mono text-[13px]"
                             />
                             <p className="text-[11px] text-muted-foreground">
                               {t('gateway.proxyServerHelp')}
@@ -682,7 +677,7 @@ export function Settings() {
                               value={proxyHttpServerDraft}
                               onChange={(event) => setProxyHttpServerDraft(event.target.value)}
                               placeholder={proxyServerDraft || 'http://127.0.0.1:7890'}
-                              className="h-10 rounded-xl bg-black/5 dark:bg-white/5 border-transparent font-mono text-[13px]"
+                              className="h-10 rounded-xl bg-surface border-transparent font-mono text-[13px]"
                             />
                             <p className="text-[11px] text-muted-foreground">
                               {t('gateway.proxyHttpServerHelp')}
@@ -696,7 +691,7 @@ export function Settings() {
                               value={proxyHttpsServerDraft}
                               onChange={(event) => setProxyHttpsServerDraft(event.target.value)}
                               placeholder={proxyServerDraft || 'http://127.0.0.1:7890'}
-                              className="h-10 rounded-xl bg-black/5 dark:bg-white/5 border-transparent font-mono text-[13px]"
+                              className="h-10 rounded-xl bg-surface border-transparent font-mono text-[13px]"
                             />
                             <p className="text-[11px] text-muted-foreground">
                               {t('gateway.proxyHttpsServerHelp')}
@@ -710,7 +705,7 @@ export function Settings() {
                               value={proxyAllServerDraft}
                               onChange={(event) => setProxyAllServerDraft(event.target.value)}
                               placeholder={proxyServerDraft || 'socks5://127.0.0.1:7891'}
-                              className="h-10 rounded-xl bg-black/5 dark:bg-white/5 border-transparent font-mono text-[13px]"
+                              className="h-10 rounded-xl bg-surface border-transparent font-mono text-[13px]"
                             />
                             <p className="text-[11px] text-muted-foreground">
                               {t('gateway.proxyAllServerHelp')}
@@ -725,7 +720,7 @@ export function Settings() {
                             value={proxyBypassRulesDraft}
                             onChange={(event) => setProxyBypassRulesDraft(event.target.value)}
                             placeholder="<local>;localhost;127.0.0.1;::1"
-                            className="h-10 rounded-xl bg-black/5 dark:bg-white/5 border-transparent font-mono text-[13px]"
+                            className="h-10 rounded-xl bg-surface border-transparent font-mono text-[13px]"
                           />
                           <p className="text-[11px] text-muted-foreground">
                             {t('gateway.proxyBypassHelp')}
@@ -737,7 +732,7 @@ export function Settings() {
                             variant="outline"
                             onClick={handleSaveProxySettings}
                             disabled={savingProxy}
-                            className="rounded-xl h-10 px-5 bg-transparent border-black/10 dark:border-white/10 hover:bg-black/5 dark:hover:bg-white/5"
+                            className="rounded-xl h-10 px-5 bg-transparent border-black/10 dark:border-white/10 hover:bg-surface"
                           >
                             <RefreshCw className={`h-4 w-4 mr-2${savingProxy ? ' animate-spin' : ''}`} />
                             {savingProxy ? t('common:status.saving') : t('common:actions.save')}
@@ -766,7 +761,7 @@ export function Settings() {
                         variant="outline"
                         onClick={refreshControlUiInfo}
                         disabled={!devModeUnlocked}
-                        className="rounded-xl h-10 px-4 bg-transparent border-black/10 dark:border-white/10 hover:bg-black/5 dark:hover:bg-white/5"
+                        className="rounded-xl h-10 px-4 bg-transparent border-black/10 dark:border-white/10 hover:bg-surface"
                       >
                         <RefreshCw className="h-4 w-4 mr-2" />
                         {t('common:actions.load')}
@@ -776,7 +771,7 @@ export function Settings() {
                         variant="outline"
                         onClick={handleCopyGatewayToken}
                         disabled={!controlUiInfo?.token}
-                        className="rounded-xl h-10 px-4 bg-transparent border-black/10 dark:border-white/10 hover:bg-black/5 dark:hover:bg-white/5"
+                        className="rounded-xl h-10 px-4 bg-transparent border-black/10 dark:border-white/10 hover:bg-surface"
                       >
                         <Copy className="h-4 w-4 mr-2" />
                         {t('common:actions.copy')}
@@ -807,7 +802,7 @@ export function Settings() {
                           variant="outline"
                           onClick={handleCopyCliCommand}
                           disabled={!openclawCliCommand}
-                          className="rounded-xl h-10 px-4 bg-transparent border-black/10 dark:border-white/10 hover:bg-black/5 dark:hover:bg-white/5"
+                          className="rounded-xl h-10 px-4 bg-transparent border-black/10 dark:border-white/10 hover:bg-surface"
                         >
                           <Copy className="h-4 w-4 mr-2" />
                           {t('common:actions.copy')}
@@ -830,7 +825,7 @@ export function Settings() {
                           variant="outline"
                           onClick={() => void handleRunOpenClawDoctor('diagnose')}
                           disabled={doctorRunningMode !== null}
-                          className="rounded-xl h-10 px-4 bg-transparent border-black/10 dark:border-white/10 hover:bg-black/5 dark:hover:bg-white/5"
+                          className="rounded-xl h-10 px-4 bg-transparent border-black/10 dark:border-white/10 hover:bg-surface"
                         >
                           <RefreshCw className={`h-4 w-4 mr-2${doctorRunningMode === 'diagnose' ? ' animate-spin' : ''}`} />
                           {doctorRunningMode === 'diagnose' ? t('common:status.running') : t('developer.runDoctor')}
@@ -840,7 +835,7 @@ export function Settings() {
                           variant="outline"
                           onClick={() => void handleRunOpenClawDoctor('fix')}
                           disabled={doctorRunningMode !== null}
-                          className="rounded-xl h-10 px-4 bg-transparent border-black/10 dark:border-white/10 hover:bg-black/5 dark:hover:bg-white/5"
+                          className="rounded-xl h-10 px-4 bg-transparent border-black/10 dark:border-white/10 hover:bg-surface"
                         >
                           <RefreshCw className={`h-4 w-4 mr-2${doctorRunningMode === 'fix' ? ' animate-spin' : ''}`} />
                           {doctorRunningMode === 'fix' ? t('common:status.running') : t('developer.runDoctorFix')}
@@ -850,7 +845,7 @@ export function Settings() {
                           variant="outline"
                           onClick={handleCopyDoctorOutput}
                           disabled={!doctorResult}
-                          className="rounded-xl h-10 px-4 bg-transparent border-black/10 dark:border-white/10 hover:bg-black/5 dark:hover:bg-white/5"
+                          className="rounded-xl h-10 px-4 bg-transparent border-black/10 dark:border-white/10 hover:bg-surface"
                         >
                           <Copy className="h-4 w-4 mr-2" />
                           {t('common:actions.copy')}
@@ -859,7 +854,7 @@ export function Settings() {
                     </div>
 
                     {doctorResult && (
-                      <div className="space-y-3 rounded-2xl border border-black/10 dark:border-white/10 p-5 bg-black/5 dark:bg-white/5">
+                      <div className="space-y-3 rounded-2xl border border-black/10 dark:border-white/10 p-5 bg-surface">
                         <div className="flex flex-wrap gap-2 text-[12px]">
                           <Badge variant={doctorResult.success ? 'secondary' : 'destructive'} className="rounded-full px-3 py-1">
                             {doctorResult.mode === 'fix'
@@ -922,7 +917,7 @@ export function Settings() {
                         variant="outline"
                         size="sm"
                         onClick={() => setShowTelemetryViewer((prev) => !prev)}
-                        className="rounded-full px-5 h-9 bg-transparent border-black/10 dark:border-white/10 hover:bg-black/5 dark:hover:bg-white/5"
+                        className="rounded-full px-5 h-9 bg-transparent border-black/10 dark:border-white/10 hover:bg-surface"
                       >
                         {showTelemetryViewer
                           ? t('common:actions.hide')
@@ -931,7 +926,7 @@ export function Settings() {
                     </div>
 
                     {showTelemetryViewer && (
-                      <div className="space-y-4 rounded-2xl border border-black/10 dark:border-white/10 p-5 bg-black/5 dark:bg-white/5">
+                      <div className="space-y-4 rounded-2xl border border-black/10 dark:border-white/10 p-5 bg-surface">
                         <div className="flex flex-wrap items-center gap-2">
                           <Badge variant="secondary" className="rounded-full px-3 py-1 bg-white dark:bg-card border border-black/5 dark:border-white/5">{t('developer.telemetryTotal')}: {telemetryStats.total}</Badge>
                           <Badge variant={telemetryStats.errorCount > 0 ? 'destructive' : 'secondary'} className={cn("rounded-full px-3 py-1", telemetryStats.errorCount === 0 && "bg-white dark:bg-card border border-black/5 dark:border-white/5")}>
@@ -1004,13 +999,11 @@ export function Settings() {
             </>
           )}
 
-          <Separator className="bg-black/5 dark:bg-white/5" />
+          <Separator className="bg-surface" />
 
           {/* Updates */}
           <div>
-            <h2 className="text-3xl font-serif text-foreground mb-6 font-normal tracking-tight" style={{ fontFamily: 'Georgia, Cambria, "Times New Roman", Times, serif' }}>
-              {t('updates.title')}
-            </h2>
+            <SectionHeader title={t('updates.title')} />
             <div className="space-y-6">
               <UpdateSettings />
 
@@ -1045,13 +1038,11 @@ export function Settings() {
             </div>
           </div>
 
-          <Separator className="bg-black/5 dark:bg-white/5" />
+          <Separator className="bg-surface" />
 
           {/* About */}
           <div>
-            <h2 className="text-3xl font-serif text-foreground mb-6 font-normal tracking-tight" style={{ fontFamily: 'Georgia, Cambria, "Times New Roman", Times, serif' }}>
-              {t('about.title')}
-            </h2>
+            <SectionHeader title={t('about.title')} />
             <div className="space-y-3 text-[14px] text-muted-foreground">
               <p>
                 <strong className="text-foreground font-semibold">{t('about.appName')}</strong> - {t('about.tagline')}

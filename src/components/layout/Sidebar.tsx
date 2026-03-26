@@ -57,7 +57,7 @@ function NavItem({ to, icon, label, badge, collapsed, onClick }: NavItemProps) {
       className={({ isActive }) =>
         cn(
           'flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-[14px] font-medium transition-colors',
-          'hover:bg-black/5 dark:hover:bg-white/5 text-foreground/80',
+          'hover:bg-surface text-foreground/80',
           isActive
             ? 'bg-black/5 dark:bg-white/10 text-foreground'
             : '',
@@ -218,7 +218,7 @@ export function Sidebar() {
   return (
     <aside
       className={cn(
-        'flex shrink-0 flex-col border-r bg-[#eae8e1]/60 dark:bg-background transition-all duration-300',
+        'flex shrink-0 flex-col border-r bg-surface dark:bg-background transition-all duration-300',
         sidebarCollapsed ? 'w-16' : 'w-64'
       )}
     >
@@ -256,7 +256,7 @@ export function Sidebar() {
           }}
           className={cn(
             'flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-[14px] font-medium transition-colors mb-2',
-            'bg-black/5 dark:bg-accent shadow-none border border-transparent text-foreground',
+            'bg-white/60 dark:bg-accent shadow-none border border-transparent text-foreground',
             sidebarCollapsed && 'justify-center px-0',
           )}
         >
@@ -293,14 +293,14 @@ export function Sidebar() {
                         onClick={() => { switchSession(s.key); navigate('/'); }}
                         className={cn(
                           'w-full text-left rounded-lg px-2.5 py-1.5 text-[13px] transition-colors pr-7',
-                          'hover:bg-black/5 dark:hover:bg-white/5',
+                          'hover:bg-surface',
                           isOnChat && currentSessionKey === s.key
                             ? 'bg-black/5 dark:bg-white/10 text-foreground font-medium'
                             : 'text-foreground/75',
                         )}
                       >
                         <div className="flex min-w-0 items-center gap-2">
-                          <span className="shrink-0 rounded-full bg-black/[0.04] px-2 py-0.5 text-[10px] font-medium text-foreground/70 dark:bg-white/[0.08]">
+                          <span className="shrink-0 rounded-full bg-surface px-2 py-0.5 text-[10px] font-medium text-foreground/70 dark:bg-white/[0.08]">
                             {agentName}
                           </span>
                           <span className="truncate">{getSessionLabel(s.key, s.displayName, s.label)}</span>
@@ -339,7 +339,7 @@ export function Sidebar() {
             className={({ isActive }) =>
               cn(
                 'flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-[14px] font-medium transition-colors',
-                'hover:bg-black/5 dark:hover:bg-white/5 text-foreground/80',
+                'hover:bg-surface text-foreground/80',
                 isActive && 'bg-black/5 dark:bg-white/10 text-foreground',
                 sidebarCollapsed ? 'justify-center px-0' : ''
               )
@@ -359,7 +359,7 @@ export function Sidebar() {
           variant="ghost"
           className={cn(
             'flex items-center gap-2.5 rounded-lg px-2.5 py-2 h-auto text-[14px] font-medium transition-colors w-full mt-1',
-            'hover:bg-black/5 dark:hover:bg-white/5 text-foreground/80',
+            'hover:bg-surface text-foreground/80',
             sidebarCollapsed ? 'justify-center px-0' : 'justify-start'
           )}
           onClick={openDevConsole}

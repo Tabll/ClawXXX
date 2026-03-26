@@ -72,7 +72,7 @@ export const ChatMessage = memo(function ChatMessage({
     >
       {/* Avatar */}
       {!isUser && (
-        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full mt-1 bg-black/5 dark:bg-white/5 text-foreground">
+        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full mt-1 bg-surface text-foreground">
           <Sparkles className="h-4 w-4" />
         </div>
       )}
@@ -143,7 +143,7 @@ export const ChatMessage = memo(function ChatMessage({
                 ) : (
                   <div
                     key={`local-${i}`}
-                    className="w-36 h-36 rounded-xl border border-black/10 dark:border-white/10 bg-black/5 dark:bg-white/5 flex items-center justify-center text-muted-foreground"
+                    className="w-36 h-36 rounded-xl border border-black/10 dark:border-white/10 bg-surface flex items-center justify-center text-muted-foreground"
                   >
                     <File className="h-8 w-8" />
                   </div>
@@ -204,7 +204,7 @@ export const ChatMessage = memo(function ChatMessage({
               }
               if (isImage && !file.preview) {
                 return (
-                  <div key={`local-${i}`} className="w-36 h-36 rounded-xl border border-black/10 dark:border-white/10 bg-black/5 dark:bg-white/5 flex items-center justify-center text-muted-foreground">
+                  <div key={`local-${i}`} className="w-36 h-36 rounded-xl border border-black/10 dark:border-white/10 bg-surface flex items-center justify-center text-muted-foreground">
                     <File className="h-8 w-8" />
                   </div>
                 );
@@ -338,7 +338,7 @@ function MessageBubble({
         !isUser && 'w-full',
         isUser
           ? 'bg-[#0a84ff] text-white shadow-sm'
-          : 'bg-black/5 dark:bg-white/5 text-foreground',
+          : 'bg-surface text-foreground',
       )}
     >
       {isUser ? (
@@ -393,7 +393,7 @@ function ThinkingBlock({ content }: { content: string }) {
   const [expanded, setExpanded] = useState(false);
 
   return (
-    <div className="w-full rounded-xl border border-black/10 dark:border-white/10 bg-black/5 dark:bg-white/5 text-[14px]">
+    <div className="w-full rounded-xl border border-black/10 dark:border-white/10 bg-surface text-[14px]">
       <button
         className="flex items-center gap-2 w-full px-3 py-2 text-muted-foreground hover:text-foreground transition-colors"
         onClick={() => setExpanded(!expanded)}
@@ -440,7 +440,7 @@ function FileCard({ file }: { file: AttachedFileMeta }) {
   return (
     <div 
       className={cn(
-        "flex items-center gap-3 rounded-xl border border-black/10 dark:border-white/10 px-3 py-2.5 bg-black/5 dark:bg-white/5 max-w-[220px]",
+        "flex items-center gap-3 rounded-xl border border-black/10 dark:border-white/10 px-3 py-2.5 bg-surface max-w-[220px]",
         file.filePath && "cursor-pointer hover:bg-black/10 dark:hover:bg-white/10 transition-colors"
       )}
       onClick={handleOpen}
