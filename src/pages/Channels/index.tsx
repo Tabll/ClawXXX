@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { RefreshCw, Trash2, AlertCircle, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { PageHeader, SectionHeader } from '@/components/ui/page-header';
 import { Badge } from '@/components/ui/badge';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { useGatewayStore } from '@/stores/gateway';
@@ -228,17 +229,10 @@ export function Channels() {
   return (
     <div className="flex flex-col -m-6 dark:bg-background h-[calc(100vh-2.5rem)] overflow-hidden">
       <div className="w-full max-w-5xl mx-auto flex flex-col h-full p-10 pt-16">
-        <div className="flex flex-col md:flex-row md:items-start justify-between mb-12 shrink-0 gap-4">
-          <div>
-            <h1 className="text-5xl md:text-6xl font-serif text-foreground mb-3 font-normal tracking-tight" style={{ fontFamily: 'Georgia, Cambria, "Times New Roman", Times, serif' }}>
-              {t('title')}
-            </h1>
-            <p className="text-[17px] text-foreground/70 font-medium">
-              {t('subtitle')}
-            </p>
-          </div>
-
-          <div className="flex items-center gap-3 md:mt-2">
+        <PageHeader
+          title={t('title')}
+          subtitle={t('subtitle')}
+          actions={
             <Button
               variant="outline"
               onClick={handleRefresh}
@@ -248,10 +242,10 @@ export function Channels() {
               <RefreshCw className="h-3.5 w-3.5 mr-2" />
               {t('refresh')}
             </Button>
-          </div>
-        </div>
+          }
+        />
 
-        <div className="flex-1 overflow-y-auto pr-2 pb-10 min-h-0 -mr-2">
+        <div className="flex-1 overflow-y-auto pr-2 pb-10 min-h-0 -mr-2 animate-content-in">
           {gatewayStatus.state !== 'running' && (
             <div className="mb-8 p-4 rounded-xl border border-yellow-500/50 bg-yellow-500/10 flex items-center gap-3">
               <AlertCircle className="h-5 w-5 text-yellow-600 dark:text-yellow-400" />
@@ -272,15 +266,13 @@ export function Channels() {
 
           {configuredGroups.length > 0 && (
             <div className="mb-12">
-              <h2 className="text-3xl font-serif text-foreground mb-6 font-normal tracking-tight" style={{ fontFamily: 'Georgia, Cambria, "Times New Roman", Times, serif' }}>
-                {t('configured')}
-              </h2>
+              <SectionHeader title={t('configured')} />
               <div className="space-y-4">
                 {configuredGroups.map((group) => (
                   <div key={group.channelType} className="rounded-2xl border border-black/10 dark:border-white/10 p-4 bg-transparent">
                     <div className="flex items-center justify-between gap-2 mb-3">
                       <div className="flex items-center gap-3 min-w-0">
-                        <div className="h-[40px] w-[40px] shrink-0 flex items-center justify-center text-foreground bg-black/5 dark:bg-white/5 border border-black/5 dark:border-white/10 rounded-full shadow-sm">
+                        <div className="h-[40px] w-[40px] shrink-0 flex items-center justify-center text-foreground bg-surface border border-black/5 dark:border-white/10 rounded-full shadow-sm">
                           <ChannelLogo type={group.channelType as ChannelType} />
                         </div>
                         <div className="min-w-0">
@@ -347,7 +339,7 @@ export function Channels() {
                             ? t('account.mainAccount')
                             : account.name;
                         return (
-                        <div key={`${group.channelType}-${account.accountId}`} className="rounded-xl bg-black/5 dark:bg-white/5 px-3 py-2">
+                        <div key={`${group.channelType}-${account.accountId}`} className="rounded-xl bg-surface px-3 py-2">
                           <div className="flex items-center justify-between gap-3">
                             <div className="min-w-0">
                               <div className="flex items-center gap-2">
@@ -421,9 +413,7 @@ export function Channels() {
           )}
 
           <div className="mb-8">
-            <h2 className="text-3xl font-serif text-foreground mb-6 font-normal tracking-tight" style={{ fontFamily: 'Georgia, Cambria, "Times New Roman", Times, serif' }}>
-              {t('supportedChannels')}
-            </h2>
+            <SectionHeader title={t('supportedChannels')} />
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
               {unsupportedGroups.map((type) => {
@@ -441,17 +431,17 @@ export function Channels() {
                       setShowConfigModal(true);
                     }}
                     className={cn(
-                      'group flex items-start gap-4 p-4 rounded-2xl transition-all text-left border relative overflow-hidden bg-transparent border-transparent hover:bg-black/5 dark:hover:bg-white/5'
+                      'group flex items-start gap-4 p-4 rounded-2xl transition-all text-left border relative overflow-hidden bg-transparent border-transparent hover:bg-surface'
                     )}
                   >
-                    <div className="h-[46px] w-[46px] shrink-0 flex items-center justify-center text-foreground bg-black/5 dark:bg-white/5 border border-black/5 dark:border-white/10 rounded-full shadow-sm mb-3">
+                    <div className="h-[46px] w-[46px] shrink-0 flex items-center justify-center text-foreground bg-surface border border-black/5 dark:border-white/10 rounded-full shadow-sm mb-3">
                       <ChannelLogo type={type} />
                     </div>
                     <div className="flex flex-col flex-1 min-w-0 py-0.5 mt-1">
                       <div className="flex items-center gap-2 mb-1">
                         <h3 className="text-[16px] font-semibold text-foreground truncate">{meta.name}</h3>
                         {meta.isPlugin && (
-                          <Badge variant="secondary" className="font-mono text-[10px] font-medium px-2 py-0.5 rounded-full bg-black/[0.04] dark:bg-white/[0.08] border-0 shadow-none text-foreground/70">
+                          <Badge variant="secondary" className="font-mono text-[10px] font-medium px-2 py-0.5 rounded-full bg-surface/80 border-0 shadow-none text-foreground/70">
                             {t('pluginBadge')}
                           </Badge>
                         )}

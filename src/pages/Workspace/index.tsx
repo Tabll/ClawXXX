@@ -2,7 +2,8 @@
  * Workspace Page
  * Browse and preview files in agent workspaces
  */
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import {
   FolderOpen,
   File,
@@ -19,6 +20,7 @@ import {
   ExternalLink,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { PageHeader } from '@/components/ui/page-header';
 import { cn } from '@/lib/utils';
 import { hostApiFetch } from '@/lib/host-api';
 import { invokeIpc } from '@/lib/api-client';
@@ -415,7 +417,7 @@ function FileTreeItem({
       <div>
         <button
           className={cn(
-            'flex w-full items-center gap-1.5 rounded-lg px-2 py-1.5 text-[13px] hover:bg-black/5 dark:hover:bg-white/5 transition-colors',
+            'flex w-full items-center gap-1.5 rounded-lg px-2 py-1.5 text-[13px] hover:bg-surface transition-colors',
             'text-foreground/80'
           )}
           style={{ paddingLeft: `${depth * 16 + 8}px` }}
@@ -449,9 +451,9 @@ function FileTreeItem({
   return (
     <button
       className={cn(
-        'flex w-full items-center gap-1.5 rounded-lg px-2 py-1.5 text-[13px] hover:bg-black/5 dark:hover:bg-white/5 transition-colors',
+        'flex w-full items-center gap-1.5 rounded-lg px-2 py-1.5 text-[13px] hover:bg-surface transition-colors',
         selectedPath === node.path
-          ? 'bg-black/5 dark:bg-white/10 text-foreground font-medium'
+          ? 'bg-surface text-foreground font-medium'
           : 'text-foreground/70'
       )}
       style={{ paddingLeft: `${depth * 16 + 28}px` }}
@@ -509,7 +511,7 @@ function FilePreview({
   if (fileContent.fileType === 'image' && fileContent.content) {
     return (
       <div className="flex flex-1 flex-col overflow-hidden">
-        <div className="border-b border-black/10 dark:border-white/10 px-4 py-2.5 text-[13px] text-foreground/60 flex items-center gap-2 shrink-0 bg-black/[0.02] dark:bg-white/[0.02]">
+        <div className="border-b border-black/10 dark:border-white/10 px-4 py-2.5 text-[13px] text-foreground/60 flex items-center gap-2 shrink-0 bg-surface/40">
           <Image className="h-4 w-4" />
           <span className="truncate font-medium">{filePath}</span>
           {fileContent.size && (
@@ -531,7 +533,7 @@ function FilePreview({
   if (fileContent.fileType === 'html' && fileContent.content) {
     return (
       <div className="flex flex-1 flex-col overflow-hidden">
-        <div className="border-b border-black/10 dark:border-white/10 px-4 py-2.5 text-[13px] text-foreground/60 flex items-center gap-2 shrink-0 bg-black/[0.02] dark:bg-white/[0.02]">
+        <div className="border-b border-black/10 dark:border-white/10 px-4 py-2.5 text-[13px] text-foreground/60 flex items-center gap-2 shrink-0 bg-surface/40">
           <Globe className="h-4 w-4" />
           <span className="truncate font-medium">{filePath}</span>
           {fileContent.size && (
@@ -555,7 +557,7 @@ function FilePreview({
     const htmlContent = renderMarkdownToHtml(fileContent.content);
     return (
       <div className="flex flex-1 flex-col overflow-hidden">
-        <div className="border-b border-black/10 dark:border-white/10 px-4 py-2.5 text-[13px] text-foreground/60 flex items-center gap-2 shrink-0 bg-black/[0.02] dark:bg-white/[0.02]">
+        <div className="border-b border-black/10 dark:border-white/10 px-4 py-2.5 text-[13px] text-foreground/60 flex items-center gap-2 shrink-0 bg-surface/40">
           <FileText className="h-4 w-4" />
           <span className="truncate font-medium">{filePath}</span>
           {fileContent.size && (
@@ -580,17 +582,17 @@ function FilePreview({
       const highlighted = highlightCode(content, lang);
       return (
         <div className="flex flex-1 flex-col overflow-hidden">
-          <div className="border-b border-black/10 dark:border-white/10 px-4 py-2.5 text-[13px] text-foreground/60 flex items-center gap-2 shrink-0 bg-black/[0.02] dark:bg-white/[0.02]">
+          <div className="border-b border-black/10 dark:border-white/10 px-4 py-2.5 text-[13px] text-foreground/60 flex items-center gap-2 shrink-0 bg-surface/40">
             <Code className="h-4 w-4" />
             <span className="truncate font-medium">{filePath}</span>
-            <span className="ml-1 text-[11px] px-2 py-0.5 rounded-full bg-black/5 dark:bg-white/10 font-mono text-foreground/50">{lang}</span>
+            <span className="ml-1 text-[11px] px-2 py-0.5 rounded-full bg-surface font-mono text-foreground/50">{lang}</span>
             {fileContent.size && (
               <span className="ml-auto text-[12px] shrink-0 text-foreground/40">{formatFileSize(fileContent.size)}</span>
             )}
           </div>
           <div className="flex-1 overflow-auto">
             <div className="flex text-[13px] font-mono">
-              <div className="select-none text-right pr-3 pl-3 py-3 text-foreground/20 border-r border-black/5 dark:border-white/5 bg-black/[0.02] dark:bg-white/[0.02] leading-[1.65]">
+              <div className="select-none text-right pr-3 pl-3 py-3 text-foreground/20 border-r border-black/5 dark:border-white/5 bg-surface/40 leading-[1.65]">
                 {content.split('\n').map((_, idx) => (
                   <div key={idx}>{idx + 1}</div>
                 ))}
@@ -607,7 +609,7 @@ function FilePreview({
     // Plain text
     return (
       <div className="flex flex-1 flex-col overflow-hidden">
-        <div className="border-b border-black/10 dark:border-white/10 px-4 py-2.5 text-[13px] text-foreground/60 flex items-center gap-2 shrink-0 bg-black/[0.02] dark:bg-white/[0.02]">
+        <div className="border-b border-black/10 dark:border-white/10 px-4 py-2.5 text-[13px] text-foreground/60 flex items-center gap-2 shrink-0 bg-surface/40">
           <FileText className="h-4 w-4" />
           <span className="truncate font-medium">{filePath}</span>
           {fileContent.size && (
@@ -655,7 +657,17 @@ function AgentSelector({
   onSelect: (id: string) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
   const selectedAgent = agents.find((a) => a.id === selectedAgentId);
+
+  const handleToggle = () => {
+    if (!open && buttonRef.current) {
+      const rect = buttonRef.current.getBoundingClientRect();
+      setPos({ top: rect.bottom + 6, left: rect.left });
+    }
+    setOpen(!open);
+  };
 
   if (agents.length <= 1) {
     return (
@@ -668,16 +680,20 @@ function AgentSelector({
   return (
     <div className="relative">
       <button
+        ref={buttonRef}
         className="flex items-center gap-2 rounded-full border border-black/10 dark:border-white/10 bg-transparent px-4 py-1.5 text-[13px] font-medium hover:bg-black/5 dark:hover:bg-white/5 transition-colors text-foreground/80"
-        onClick={() => setOpen(!open)}
+        onClick={handleToggle}
       >
         <span>{selectedAgent?.name || selectedAgentId}</span>
         <ChevronsUpDown className="h-3.5 w-3.5 text-muted-foreground" />
       </button>
-      {open && (
+      {open && pos && createPortal(
         <>
-          <div className="fixed inset-0 z-30" onClick={() => setOpen(false)} />
-          <div className="absolute left-0 top-full mt-1.5 z-40 min-w-[280px] max-w-[420px] rounded-xl border border-black/10 dark:border-white/10 bg-[#f3f1e9] dark:bg-card shadow-lg py-1.5 overflow-hidden">
+          <div className="fixed inset-0 z-[100]" onClick={() => setOpen(false)} />
+          <div
+            className="fixed z-[101] min-w-[280px] max-w-[420px] rounded-xl border border-black/10 dark:border-white/10 bg-card shadow-lg py-1.5 overflow-hidden"
+            style={{ top: pos.top, left: pos.left }}
+          >
             {agents.map((agent) => (
               <button
                 key={agent.id}
@@ -710,7 +726,8 @@ function AgentSelector({
               </button>
             ))}
           </div>
-        </>
+        </>,
+        document.body
       )}
     </div>
   );
@@ -823,50 +840,45 @@ export function Workspace() {
     <div className="flex flex-col -m-6 dark:bg-background h-[calc(100vh-2.5rem)] overflow-hidden">
       <div className="w-full max-w-[1400px] mx-auto flex flex-col h-full p-10 pt-16">
         {/* Header */}
-        <div className="flex flex-col md:flex-row md:items-start justify-between mb-8 shrink-0 gap-4">
-          <div>
-            <h1
-              className="text-5xl md:text-6xl font-serif text-foreground mb-3 font-normal tracking-tight"
-              style={{ fontFamily: 'Georgia, Cambria, "Times New Roman", Times, serif' }}
-            >
-              {t('title')}
-            </h1>
-            <p className="text-[17px] text-foreground/70 font-medium">{t('subtitle')}</p>
-          </div>
-          <div className="flex items-center gap-3 md:mt-2">
-            <AgentSelector
-              agents={agents}
-              selectedAgentId={selectedAgentId}
-              onSelect={setSelectedAgentId}
-            />
-            <Button
-              variant="outline"
-              onClick={handleRefresh}
-              className="h-9 text-[13px] font-medium rounded-full px-4 border-black/10 dark:border-white/10 bg-transparent hover:bg-black/5 dark:hover:bg-white/5 shadow-none text-foreground/80 hover:text-foreground transition-colors"
-            >
-              <RefreshCw className="h-3.5 w-3.5 mr-2" />
-              {t('refresh')}
-            </Button>
-            {workspacePath && (
+        <PageHeader
+          title={t('title')}
+          subtitle={t('subtitle')}
+          actions={
+            <>
+              <AgentSelector
+                agents={agents}
+                selectedAgentId={selectedAgentId}
+                onSelect={setSelectedAgentId}
+              />
               <Button
                 variant="outline"
-                onClick={async () => {
-                  const err = await invokeIpc<string>('shell:openPath', workspacePath);
-                  if (err) console.error('Failed to open workspace:', err);
-                }}
+                onClick={handleRefresh}
                 className="h-9 text-[13px] font-medium rounded-full px-4 border-black/10 dark:border-white/10 bg-transparent hover:bg-black/5 dark:hover:bg-white/5 shadow-none text-foreground/80 hover:text-foreground transition-colors"
               >
-                <ExternalLink className="h-3.5 w-3.5 mr-2" />
-                {t(window.electron.platform === 'darwin' ? 'revealInFinder' : window.electron.platform === 'win32' ? 'revealInExplorer' : 'revealInFileManager')}
+                <RefreshCw className="h-3.5 w-3.5 mr-2" />
+                {t('refresh')}
               </Button>
-            )}
-          </div>
-        </div>
+              {workspacePath && (
+                <Button
+                  variant="outline"
+                  onClick={async () => {
+                    const err = await invokeIpc<string>('shell:openPath', workspacePath);
+                    if (err) console.error('Failed to open workspace:', err);
+                  }}
+                  className="h-9 text-[13px] font-medium rounded-full px-4 border-black/10 dark:border-white/10 bg-transparent hover:bg-black/5 dark:hover:bg-white/5 shadow-none text-foreground/80 hover:text-foreground transition-colors"
+                >
+                  <ExternalLink className="h-3.5 w-3.5 mr-2" />
+                  {t(window.electron.platform === 'darwin' ? 'revealInFinder' : window.electron.platform === 'win32' ? 'revealInExplorer' : 'revealInFileManager')}
+                </Button>
+              )}
+            </>
+          }
+        />
 
         {/* Content - Split Panel */}
-        <div className="flex flex-1 overflow-hidden min-h-0 rounded-2xl border border-black/10 dark:border-white/10">
+        <div className="flex flex-1 overflow-hidden min-h-0 rounded-2xl border border-black/10 dark:border-white/10 animate-content-in">
           {/* File Tree Panel */}
-          <div className="w-72 shrink-0 overflow-y-auto border-r border-black/10 dark:border-white/10 bg-black/[0.02] dark:bg-white/[0.02] py-2 px-1.5">
+          <div className="w-72 shrink-0 overflow-y-auto border-r border-black/10 dark:border-white/10 bg-surface/40 py-2 px-1.5">
             {treeLoading ? (
               <div className="flex items-center justify-center py-12">
                 <LoadingSpinner size="lg" />

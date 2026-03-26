@@ -1,30 +1,58 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
   :root {
-    /* #f1ede1 */
-    --background: 45 36.4% 91.4%;
+    /* Refined blue-gray light theme */
+    --background: 220 14% 98.5%;
     --foreground: 222.2 84% 4.9%;
     --card: 0 0% 100%;
     --card-foreground: 222.2 84% 4.9%;
     --popover: 0 0% 100%;
     --popover-foreground: 222.2 84% 4.9%;
     --primary: 221.2 83.2% 53.3%;
-    --primary-foreground: 210 40% 98%;
-    --secondary: 210 40% 96.1%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 216 20% 95.5%;
     --secondary-foreground: 222.2 47.4% 11.2%;
-    --muted: 210 40% 96.1%;
+    --muted: 216 16% 95%;
+    --muted-foreground: 218 12% 46%;
+    --accent: 216 20% 95.5%;
+    --accent-foreground: 222.2 47.4% 11.2%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 218 16% 91%;
+    --input: 218 16% 91%;
+    --ring: 221.2 83.2% 53.3%;
+    --radius: 0.5rem;
+    --surface: 216 18% 96.5%;
+  }
+
+  /* Warm eye-care palette (#f1ede1 background) */
+  .eye-care {
+    --background: 45 36.4% 91.4%;
+    --foreground: 222.2 84% 4.9%;
+    --card: 42 30% 96%;
+    --card-foreground: 222.2 84% 4.9%;
+    --popover: 42 30% 96%;
+    --popover-foreground: 222.2 84% 4.9%;
+    --primary: 221.2 83.2% 53.3%;
+    --primary-foreground: 210 40% 98%;
+    --secondary: 40 25% 93%;
+    --secondary-foreground: 222.2 47.4% 11.2%;
+    --muted: 40 25% 93%;
     --muted-foreground: 215.4 16.3% 46.9%;
-    --accent: 210 40% 96.1%;
+    --accent: 40 25% 93%;
     --accent-foreground: 222.2 47.4% 11.2%;
     --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 210 40% 98%;
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
+    --border: 40 20% 87%;
+    --input: 40 20% 87%;
     --ring: 221.2 83.2% 53.3%;
     --radius: 0.5rem;
+    --surface: 40 22% 94%;
   }
 
   /* Neutral deep-gray dark palette */
@@ -48,6 +76,7 @@
     --border: 240 3% 24%;
     --input: 240 3% 18%;
     --ring: 217.2 91.2% 59.8%;
+    --surface: 240 3% 15%;
   }
 }
 
@@ -58,7 +87,11 @@
 
   body {
     @apply bg-background text-foreground;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial,
+      'Noto Sans SC', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
     font-feature-settings: "rlig" 1, "calt" 1;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
 }
 
@@ -164,4 +197,112 @@
   30% {
     transform: translateY(-4px);
   }
+}
+
+/* Premium page title styles */
+.page-title {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-weight: 600;
+  letter-spacing: -0.025em;
+  line-height: 1.15;
+}
+
+.page-subtitle {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-weight: 400;
+  letter-spacing: -0.005em;
+  line-height: 1.5;
+}
+
+.section-title {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.25;
+}
+
+/* Page entrance animation */
+@keyframes page-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes title-slide-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes subtitle-slide-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes content-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.animate-page-in {
+  animation: page-fade-in 0.4s ease-out both;
+}
+
+.animate-title-in {
+  animation: title-slide-in 0.45s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.animate-subtitle-in {
+  animation: subtitle-slide-in 0.4s cubic-bezier(0.16, 1, 0.3, 1) 0.08s both;
+}
+
+.animate-content-in {
+  animation: content-fade-in 0.4s ease-out 0.15s both;
+}
+
+.title-decoration {
+  position: relative;
+}
+
+.title-decoration::after {
+  content: '';
+  position: absolute;
+  bottom: -6px;
+  left: 0;
+  width: 32px;
+  height: 2px;
+  border-radius: 1px;
+  background: linear-gradient(90deg, hsl(var(--primary)), hsl(var(--primary) / 0.2));
+  animation: subtitle-slide-in 0.4s cubic-bezier(0.16, 1, 0.3, 1) 0.15s both;
 }

@@ -8,7 +8,7 @@ import i18n from '@/i18n';
 import { hostApiFetch } from '@/lib/host-api';
 import { resolveSupportedLanguage } from '../../shared/language';
 
-type Theme = 'light' | 'dark' | 'system';
+type Theme = 'light' | 'dark' | 'eye-care' | 'system';
 type UpdateChannel = 'stable' | 'beta' | 'dev';
 
 interface SettingsState {

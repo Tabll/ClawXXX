@@ -6,6 +6,7 @@ import {
   X,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { PageHeader, SectionHeader } from '@/components/ui/page-header';
 import { useGatewayStore } from '@/stores/gateway';
 import { useSettingsStore } from '@/stores/settings';
 import { hostApiFetch } from '@/lib/host-api';
@@ -196,39 +197,28 @@ export function Models() {
       <div className="w-full max-w-5xl mx-auto flex flex-col h-full p-10 pt-16">
         
         {/* Header */}
-        <div className="flex flex-col md:flex-row md:items-start justify-between mb-12 shrink-0 gap-4">
-          <div>
-            <h1 className="text-5xl md:text-6xl font-serif text-foreground mb-3 font-normal tracking-tight" style={{ fontFamily: 'Georgia, Cambria, "Times New Roman", Times, serif' }}>
-              {t('dashboard:models.title')}
-            </h1>
-            <p className="text-[17px] text-foreground/70 font-medium">
-              {t('dashboard:models.subtitle')}
-            </p>
-          </div>
-        </div>
+        <PageHeader title={t('dashboard:models.title')} subtitle={t('dashboard:models.subtitle')} />
 
         {/* Content Area */}
-        <div className="flex-1 overflow-y-auto pr-2 pb-10 min-h-0 -mr-2 space-y-12">
+        <div className="flex-1 overflow-y-auto pr-2 pb-10 min-h-0 -mr-2 space-y-12 animate-content-in">
           
           {/* AI Providers Section */}
           <ProvidersSettings />
 
           {/* Token Usage History Section */}
           <div>
-            <h2 className="text-3xl font-serif text-foreground mb-6 font-normal tracking-tight" style={{ fontFamily: 'Georgia, Cambria, "Times New Roman", Times, serif' }}>
-              {t('dashboard:recentTokenHistory.title', 'Token Usage History')}
-            </h2>
+            <SectionHeader title={t('dashboard:recentTokenHistory.title', 'Token Usage History')} />
             <div>
               {usageLoading ? (
-                <div className="flex items-center justify-center py-12 text-muted-foreground bg-black/5 dark:bg-white/5 rounded-3xl border border-transparent border-dashed">
+                <div className="flex items-center justify-center py-12 text-muted-foreground bg-surface rounded-3xl border border-transparent border-dashed">
                   <FeedbackState state="loading" title={t('dashboard:recentTokenHistory.loading')} />
                 </div>
               ) : visibleUsageHistory.length === 0 ? (
-                <div className="flex items-center justify-center py-12 text-muted-foreground bg-black/5 dark:bg-white/5 rounded-3xl border border-transparent border-dashed">
+                <div className="flex items-center justify-center py-12 text-muted-foreground bg-surface rounded-3xl border border-transparent border-dashed">
                   <FeedbackState state="empty" title={t('dashboard:recentTokenHistory.empty')} />
                 </div>
               ) : filteredUsageHistory.length === 0 ? (
-                <div className="flex items-center justify-center py-12 text-muted-foreground bg-black/5 dark:bg-white/5 rounded-3xl border border-transparent border-dashed">
+                <div className="flex items-center justify-center py-12 text-muted-foreground bg-surface rounded-3xl border border-transparent border-dashed">
                   <FeedbackState state="empty" title={t('dashboard:recentTokenHistory.emptyForWindow')} />
                 </div>
               ) : (
@@ -243,7 +233,7 @@ export function Models() {
                             setUsageGroupBy('model');
                             setUsagePage(1);
                           }}
-                          className={usageGroupBy === 'model' ? "rounded-lg bg-black/5 dark:bg-white/10 text-foreground" : "rounded-lg text-muted-foreground"}
+                          className={usageGroupBy === 'model' ? "rounded-lg bg-surface text-foreground" : "rounded-lg text-muted-foreground"}
                         >
                           {t('dashboard:recentTokenHistory.groupByModel')}
                         </Button>
@@ -254,7 +244,7 @@ export function Models() {
                             setUsageGroupBy('day');
                             setUsagePage(1);
                           }}
-                          className={usageGroupBy === 'day' ? "rounded-lg bg-black/5 dark:bg-white/10 text-foreground" : "rounded-lg text-muted-foreground"}
+                          className={usageGroupBy === 'day' ? "rounded-lg bg-surface text-foreground" : "rounded-lg text-muted-foreground"}
                         >
                           {t('dashboard:recentTokenHistory.groupByTime')}
                         </Button>
@@ -267,7 +257,7 @@ export function Models() {
                             setUsageWindow('7d');
                             setUsagePage(1);
                           }}
-                          className={usageWindow === '7d' ? "rounded-lg bg-black/5 dark:bg-white/10 text-foreground" : "rounded-lg text-muted-foreground"}
+                          className={usageWindow === '7d' ? "rounded-lg bg-surface text-foreground" : "rounded-lg text-muted-foreground"}
                         >
                           {t('dashboard:recentTokenHistory.last7Days')}
                         </Button>
@@ -278,7 +268,7 @@ export function Models() {
                             setUsageWindow('30d');
                             setUsagePage(1);
                           }}
-                          className={usageWindow === '30d' ? "rounded-lg bg-black/5 dark:bg-white/10 text-foreground" : "rounded-lg text-muted-foreground"}
+                          className={usageWindow === '30d' ? "rounded-lg bg-surface text-foreground" : "rounded-lg text-muted-foreground"}
                         >
                           {t('dashboard:recentTokenHistory.last30Days')}
                         </Button>
@@ -289,7 +279,7 @@ export function Models() {
                             setUsageWindow('all');
                             setUsagePage(1);
                           }}
-                          className={usageWindow === 'all' ? "rounded-lg bg-black/5 dark:bg-white/10 text-foreground" : "rounded-lg text-muted-foreground"}
+                          className={usageWindow === 'all' ? "rounded-lg bg-surface text-foreground" : "rounded-lg text-muted-foreground"}
                         >
                           {t('dashboard:recentTokenHistory.allTime')}
                         </Button>
@@ -313,7 +303,7 @@ export function Models() {
                     {pagedUsageHistory.map((entry) => (
                       <div
                         key={`${entry.sessionId}-${entry.timestamp}`}
-                        className="rounded-2xl bg-transparent border border-black/10 dark:border-white/10 p-5 hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
+                        className="rounded-2xl bg-transparent border border-black/10 dark:border-white/10 p-5 hover:bg-surface transition-colors"
                       >
                         <div className="flex items-start justify-between gap-3">
                           <div className="min-w-0">
@@ -341,7 +331,7 @@ export function Models() {
                             <span className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-amber-500"></div>{t('dashboard:recentTokenHistory.cacheWrite', { value: formatTokenCount(entry.cacheWriteTokens) })}</span>
                           )}
                           {typeof entry.costUsd === 'number' && Number.isFinite(entry.costUsd) && (
-                            <span className="flex items-center gap-1.5 ml-auto text-foreground/80 bg-black/5 dark:bg-white/5 px-2 py-0.5 rounded-md">{t('dashboard:recentTokenHistory.cost', { amount: entry.costUsd.toFixed(4) })}</span>
+                            <span className="flex items-center gap-1.5 ml-auto text-foreground/80 bg-surface px-2 py-0.5 rounded-md">{t('dashboard:recentTokenHistory.cost', { amount: entry.costUsd.toFixed(4) })}</span>
                           )}
                           {devModeUnlocked && entry.content && (
                             <Button
@@ -475,7 +465,7 @@ function UsageBarChart({
               {totalLabel}: {formatTokenCount(group.totalTokens)}
             </span>
           </div>
-          <div className="h-3.5 overflow-hidden rounded-full bg-black/5 dark:bg-white/5">
+          <div className="h-3.5 overflow-hidden rounded-full bg-surface">
             <div
               className="flex h-full overflow-hidden rounded-full"
               style={{
