@@ -87,6 +87,7 @@ if (gotElectronLock) {
     const fileLock = acquireProcessInstanceFileLock({
       userDataDir: app.getPath('userData'),
       lockName: 'clawx',
+      force: true, // Electron lock already guarantees exclusivity; force-clean orphan/recycled-PID locks
     });
     gotFileLock = fileLock.acquired;
     releaseProcessInstanceFileLock = fileLock.release;
@@ -170,9 +171,19 @@ function createWindow(): BrowserWindow {
     show: false,
   });
 
-  // Handle external links
+  // Handle external links — only allow safe protocols to prevent arbitrary
+  // command execution via shell.openExternal() (e.g. file://, ms-msdt:, etc.)
   win.webContents.setWindowOpenHandler(({ url }) => {
-    shell.openExternal(url);
+    try {
+      const parsed = new URL(url);
+      if (parsed.protocol === 'https:' || parsed.protocol === 'http:') {
+        shell.openExternal(url);
+      } else {
+        logger.warn(`Blocked openExternal for disallowed protocol: ${parsed.protocol}`);
+      }
+    } catch {
+      logger.warn(`Blocked openExternal for malformed URL: ${url}`);
+    }
     return { action: 'deny' };
   });
 
