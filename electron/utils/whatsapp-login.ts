@@ -11,12 +11,24 @@ const require = createRequire(import.meta.url);
 // Resolve dependencies from OpenClaw package context (pnpm-safe)
 const openclawPath = getOpenClawDir();
 const openclawResolvedPath = getOpenClawResolvedDir();
+// Primary: resolves from openclaw's real (dereferenced) path in pnpm store.
+// In packaged builds this is the flat `resources/openclaw/node_modules/`.
 const openclawRequire = createRequire(join(openclawResolvedPath, 'package.json'));
+// Fallback: resolves from the symlink path (`node_modules/openclaw`).
+// In dev mode, Node walks UP from here to `<project>/node_modules/`, which
+// contains ClawX's own devDependencies — packages that are NOT deps of openclaw
+// (e.g. @whiskeysockets/baileys) become resolvable through pnpm hoisting.
+const projectRequire = createRequire(join(openclawPath, 'package.json'));
 
 function resolveOpenClawPackageJson(packageName: string): string {
     const specifier = `${packageName}/package.json`;
+    // 1. Try openclaw's own deps (works in packaged mode + openclaw transitive deps)
     try {
         return openclawRequire.resolve(specifier);
+    } catch { /* fall through */ }
+    // 2. Fallback to project-level deps (works in dev mode for ClawX devDependencies)
+    try {
+        return projectRequire.resolve(specifier);
     } catch (err) {
         const reason = err instanceof Error ? err.message : String(err);
         throw new Error(
@@ -28,7 +40,8 @@ function resolveOpenClawPackageJson(packageName: string): string {
 }
 
 const baileysPath = dirname(resolveOpenClawPackageJson('@whiskeysockets/baileys'));
-const qrcodeTerminalPath = dirname(resolveOpenClawPackageJson('qrcode-terminal'));
+const qrCodeModulePath = openclawRequire.resolve('qrcode-terminal/vendor/QRCode/index.js');
+const qrErrorCorrectLevelPath = openclawRequire.resolve('qrcode-terminal/vendor/QRCode/QRErrorCorrectLevel.js');
 
 // Load Baileys dependencies dynamically
 const {
@@ -39,8 +52,8 @@ const {
 } = require(baileysPath);
 
 // Load QRCode dependencies dynamically
-const QRCodeModule = require(join(qrcodeTerminalPath, 'vendor', 'QRCode', 'index.js'));
-const QRErrorCorrectLevelModule = require(join(qrcodeTerminalPath, 'vendor', 'QRCode', 'QRErrorCorrectLevel.js'));
+const QRCodeModule = require(qrCodeModulePath);
+const QRErrorCorrectLevelModule = require(qrErrorCorrectLevelPath);
 
 // Types from Baileys (approximate since we don't have types for dynamic require)
 interface BaileysError extends Error {

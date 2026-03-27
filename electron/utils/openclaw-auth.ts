@@ -133,6 +133,19 @@ async function discoverAgentIds(): Promise<string[]> {
 const OPENCLAW_CONFIG_PATH = join(homedir(), '.openclaw', 'openclaw.json');
 const FEISHU_PLUGIN_ID_CANDIDATES = ['openclaw-lark', 'feishu-openclaw-plugin'] as const;
 const VALID_COMPACTION_MODES = new Set(['default', 'safeguard']);
+const BUILTIN_CHANNEL_IDS = new Set([
+  'discord',
+  'telegram',
+  'whatsapp',
+  'slack',
+  'signal',
+  'imessage',
+  'matrix',
+  'line',
+  'msteams',
+  'googlechat',
+  'mattermost',
+]);
 
 async function readOpenClawJson(): Promise<Record<string, unknown>> {
   return (await readJsonFile<Record<string, unknown>>(OPENCLAW_CONFIG_PATH)) ?? {};
@@ -383,6 +396,33 @@ export async function removeProviderFromOpenClaw(provider: string): Promise<void
         delete providers[provider];
         modified = true;
         console.log(`Removed OpenClaw provider config: ${provider}`);
+      }
+
+      // Clean up agents.defaults.model references that point to the deleted provider.
+      // Model refs use the format "providerType/modelId", e.g. "openai/gpt-4".
+      // Leaving stale refs causes the Gateway to report "Unknown model" errors.
+      const agents = config.agents as Record<string, unknown> | undefined;
+      const agentDefaults = (agents?.defaults && typeof agents.defaults === 'object'
+        ? agents.defaults as Record<string, unknown>
+        : null);
+      if (agentDefaults?.model && typeof agentDefaults.model === 'object') {
+        const modelCfg = agentDefaults.model as Record<string, unknown>;
+        const prefix = `${provider}/`;
+
+        if (typeof modelCfg.primary === 'string' && modelCfg.primary.startsWith(prefix)) {
+          delete modelCfg.primary;
+          modified = true;
+          console.log(`Removed deleted provider "${provider}" from agents.defaults.model.primary`);
+        }
+
+        if (Array.isArray(modelCfg.fallbacks)) {
+          const filtered = (modelCfg.fallbacks as string[]).filter((fb) => !fb.startsWith(prefix));
+          if (filtered.length !== modelCfg.fallbacks.length) {
+            modelCfg.fallbacks = filtered.length > 0 ? filtered : undefined;
+            modified = true;
+            console.log(`Removed deleted provider "${provider}" from agents.defaults.model.fallbacks`);
+          }
+        }
       }
 
       if (modified) {
@@ -918,18 +958,20 @@ export async function syncSessionIdleMinutesToOpenClaw(): Promise<void> {
 /**
  * Update a provider entry in every discovered agent's models.json.
  */
-export async function updateAgentModelProvider(
+type AgentModelProviderEntry = {
+  baseUrl?: string;
+  api?: string;
+  models?: Array<{ id: string; name: string }>;
+  apiKey?: string;
+  /** When true, pi-ai sends Authorization: Bearer instead of x-api-key */
+  authHeader?: boolean;
+};
+
+async function updateModelsJsonProviderEntriesForAgents(
+  agentIds: string[],
   providerType: string,
-  entry: {
-    baseUrl?: string;
-    api?: string;
-    models?: Array<{ id: string; name: string }>;
-    apiKey?: string;
-    /** When true, pi-ai sends Authorization: Bearer instead of x-api-key */
-    authHeader?: boolean;
-  }
+  entry: AgentModelProviderEntry,
 ): Promise<void> {
-  const agentIds = await discoverAgentIds();
   for (const agentId of agentIds) {
     const modelsPath = join(homedir(), '.openclaw', 'agents', agentId, 'agent', 'models.json');
     let data: Record<string, unknown> = {};
@@ -975,6 +1017,26 @@ export async function updateAgentModelProvider(
   }
 }
 
+export async function updateAgentModelProvider(
+  providerType: string,
+  entry: AgentModelProviderEntry,
+): Promise<void> {
+  const agentIds = await discoverAgentIds();
+  await updateModelsJsonProviderEntriesForAgents(agentIds, providerType, entry);
+}
+
+export async function updateSingleAgentModelProvider(
+  agentId: string,
+  providerType: string,
+  entry: AgentModelProviderEntry,
+): Promise<void> {
+  const normalizedAgentId = agentId.trim();
+  if (!normalizedAgentId) {
+    throw new Error('agentId is required');
+  }
+  await updateModelsJsonProviderEntriesForAgents([normalizedAgentId], providerType, entry);
+}
+
 /**
  * Sanitize ~/.openclaw/openclaw.json before Gateway start.
  *
@@ -995,7 +1057,24 @@ export async function updateAgentModelProvider(
  */
 export async function sanitizeOpenClawConfig(): Promise<void> {
   return withConfigLock(async () => {
-    const config = await readOpenClawJson();
+    // Skip sanitization if the config file does not exist yet.
+    // Creating a skeleton config here would overwrite any data written
+    // by the Gateway on its first run.
+    if (!(await fileExists(OPENCLAW_CONFIG_PATH))) {
+      console.log('[sanitize] openclaw.json does not exist yet, skipping sanitization');
+      return;
+    }
+
+    // Read the raw file directly instead of going through readOpenClawJson()
+    // which coalesces null → {}.  We need to distinguish a genuinely empty
+    // file (valid, proceed normally) from a corrupt/unreadable file (null,
+    // bail out to avoid overwriting the user's data with a skeleton config).
+    const rawConfig = await readJsonFile<Record<string, unknown>>(OPENCLAW_CONFIG_PATH);
+    if (rawConfig === null) {
+      console.log('[sanitize] openclaw.json could not be parsed, skipping sanitization to preserve data');
+      return;
+    }
+    const config: Record<string, unknown> = rawConfig;
     let modified = false;
 
     // ── skills section ──────────────────────────────────────────────
@@ -1243,6 +1322,67 @@ export async function sanitizeOpenClawConfig(): Promise<void> {
             modified = true;
           }
         }
+      }
+
+      // ── Reconcile built-in channels with restrictive plugin allowlists ──
+      // If plugins.allow is active because an external plugin is configured,
+      // configured built-in channels must also be present or they will be
+      // blocked on restart. If the allowlist only contains built-ins, drop it.
+      const configuredBuiltIns = new Set<string>();
+      const channelsObj = config.channels as Record<string, Record<string, unknown>> | undefined;
+      if (channelsObj && typeof channelsObj === 'object') {
+        for (const [channelId, section] of Object.entries(channelsObj)) {
+          if (!BUILTIN_CHANNEL_IDS.has(channelId)) continue;
+          if (!section || section.enabled === false) continue;
+          if (Object.keys(section).length > 0) {
+            configuredBuiltIns.add(channelId);
+          }
+        }
+      }
+
+      if (pEntries.whatsapp) {
+        delete pEntries.whatsapp;
+        console.log('[sanitize] Removed legacy plugins.entries.whatsapp for built-in channel');
+        modified = true;
+      }
+
+      const externalPluginIds = allowArr2.filter((pluginId) => !BUILTIN_CHANNEL_IDS.has(pluginId));
+      let nextAllow = [...externalPluginIds];
+      if (externalPluginIds.length > 0) {
+        for (const channelId of configuredBuiltIns) {
+          if (!nextAllow.includes(channelId)) {
+            nextAllow.push(channelId);
+            modified = true;
+            console.log(`[sanitize] Added configured built-in channel "${channelId}" to plugins.allow`);
+          }
+        }
+      }
+
+      if (JSON.stringify(nextAllow) !== JSON.stringify(allowArr2)) {
+        if (nextAllow.length > 0) {
+          pluginsObj.allow = nextAllow;
+        } else {
+          delete pluginsObj.allow;
+        }
+        modified = true;
+      }
+
+      if (Array.isArray(pluginsObj.allow) && pluginsObj.allow.length === 0) {
+        delete pluginsObj.allow;
+        modified = true;
+      }
+      if (pluginsObj.entries && Object.keys(pEntries).length === 0) {
+        delete pluginsObj.entries;
+        modified = true;
+      }
+      const pluginKeysExcludingEnabled = Object.keys(pluginsObj).filter((key) => key !== 'enabled');
+      if (pluginsObj.enabled === true && pluginKeysExcludingEnabled.length === 0) {
+        delete pluginsObj.enabled;
+        modified = true;
+      }
+      if (Object.keys(pluginsObj).length === 0) {
+        delete config.plugins;
+        modified = true;
       }
     }
 
