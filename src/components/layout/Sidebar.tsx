@@ -47,13 +47,15 @@ interface NavItemProps {
   badge?: string;
   collapsed?: boolean;
   onClick?: () => void;
+  testId?: string;
 }
 
-function NavItem({ to, icon, label, badge, collapsed, onClick }: NavItemProps) {
+function NavItem({ to, icon, label, badge, collapsed, onClick, testId }: NavItemProps) {
   return (
     <NavLink
       to={to}
       onClick={onClick}
+      data-testid={testId}
       className={({ isActive }) =>
         cn(
           'flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-[14px] font-medium transition-colors',
@@ -207,16 +209,17 @@ export function Sidebar() {
   }
 
   const navItems = [
-    { to: '/models', icon: <Cpu className="h-[18px] w-[18px]" strokeWidth={2} />, label: t('sidebar.models') },
-    { to: '/agents', icon: <Bot className="h-[18px] w-[18px]" strokeWidth={2} />, label: t('sidebar.agents') },
-    { to: '/channels', icon: <Network className="h-[18px] w-[18px]" strokeWidth={2} />, label: t('sidebar.channels') },
-    { to: '/skills', icon: <Puzzle className="h-[18px] w-[18px]" strokeWidth={2} />, label: t('sidebar.skills') },
-    { to: '/cron', icon: <Clock className="h-[18px] w-[18px]" strokeWidth={2} />, label: t('sidebar.cronTasks') },
-    { to: '/workspace', icon: <FolderTree className="h-[18px] w-[18px]" strokeWidth={2} />, label: t('sidebar.workspace') },
+    { to: '/models', icon: <Cpu className="h-[18px] w-[18px]" strokeWidth={2} />, label: t('sidebar.models'), testId: 'sidebar-nav-models' },
+    { to: '/agents', icon: <Bot className="h-[18px] w-[18px]" strokeWidth={2} />, label: t('sidebar.agents'), testId: 'sidebar-nav-agents' },
+    { to: '/channels', icon: <Network className="h-[18px] w-[18px]" strokeWidth={2} />, label: t('sidebar.channels'), testId: 'sidebar-nav-channels' },
+    { to: '/skills', icon: <Puzzle className="h-[18px] w-[18px]" strokeWidth={2} />, label: t('sidebar.skills'), testId: 'sidebar-nav-skills' },
+    { to: '/cron', icon: <Clock className="h-[18px] w-[18px]" strokeWidth={2} />, label: t('sidebar.cronTasks'), testId: 'sidebar-nav-cron' },
+    { to: '/workspace', icon: <FolderTree className="h-[18px] w-[18px]" strokeWidth={2} />, label: t('sidebar.workspace'), testId: 'sidebar-nav-workspace' },
   ];
 
   return (
     <aside
+      data-testid="sidebar"
       className={cn(
         'flex shrink-0 flex-col border-r bg-surface dark:bg-background transition-all duration-300',
         sidebarCollapsed ? 'w-16' : 'w-64'
@@ -249,6 +252,7 @@ export function Sidebar() {
       {/* Navigation */}
       <nav className="flex flex-col px-2 gap-0.5">
         <button
+          data-testid="sidebar-new-chat"
           onClick={() => {
             const { messages } = useChatStore.getState();
             if (messages.length > 0) newSession();
@@ -336,6 +340,7 @@ export function Sidebar() {
       <div className="p-2 mt-auto">
         <NavLink
             to="/settings"
+            data-testid="sidebar-nav-settings"
             className={({ isActive }) =>
               cn(
                 'flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-[14px] font-medium transition-colors',
@@ -356,6 +361,7 @@ export function Sidebar() {
         </NavLink>
 
         <Button
+          data-testid="sidebar-open-dev-console"
           variant="ghost"
           className={cn(
             'flex items-center gap-2.5 rounded-lg px-2.5 py-2 h-auto text-[14px] font-medium transition-colors w-full mt-1',
