@@ -24,7 +24,10 @@ export async function probeGatewayReady(
       settled = true;
       clearTimeout(timeout);
       try {
-        testWs.close();
+        // Use terminate() (TCP RST) instead of close() (WS close handshake)
+        // to avoid leaving TIME_WAIT connections on Windows. These probe
+        // WebSockets are short-lived and don't need a graceful close.
+        testWs.terminate();
       } catch {
         // ignore
       }
@@ -171,7 +174,7 @@ export async function connectGatewaySocket(options: {
   getToken: () => Promise<string>;
   onHandshakeComplete: (ws: WebSocket) => void;
   onMessage: (message: unknown) => void;
-  onCloseAfterHandshake: () => void;
+  onCloseAfterHandshake: (code: number) => void;
   challengeTimeoutMs?: number;
   connectTimeoutMs?: number;
 }): Promise<WebSocket> {
@@ -308,7 +311,7 @@ export async function connectGatewaySocket(options: {
         return;
       }
       cleanupHandshakeRequest();
-      options.onCloseAfterHandshake();
+      options.onCloseAfterHandshake(code);
     });
 
     ws.on('error', (error) => {

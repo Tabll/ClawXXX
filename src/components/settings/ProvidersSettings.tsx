@@ -34,6 +34,7 @@ import {
   getProviderDocsUrl,
   type ProviderType,
   getProviderIconUrl,
+  normalizeProviderApiKeyInput,
   resolveProviderApiKeyForSave,
   resolveProviderModelForSave,
   shouldShowProviderModelId,
@@ -424,10 +425,11 @@ function ProviderCard({
     try {
       const payload: { newApiKey?: string; updates?: Partial<ProviderConfig> } = {};
       const normalizedFallbackModels = normalizeFallbackModels(fallbackModelsText.split('\n'));
+      const normalizedNewKey = normalizeProviderApiKeyInput(newKey);
 
-      if (newKey.trim()) {
+      if (normalizedNewKey) {
         setValidating(true);
-        const result = await onValidateKey(newKey, {
+        const result = await onValidateKey(normalizedNewKey, {
           baseUrl: baseUrl.trim() || undefined,
           apiProtocol: (account.vendorId === 'custom' || account.vendorId === 'ollama') ? apiProtocol : undefined,
         });
@@ -437,7 +439,7 @@ function ProviderCard({
           setSaving(false);
           return;
         }
-        payload.newApiKey = newKey.trim();
+        payload.newApiKey = normalizedNewKey;
       }
 
       {
@@ -1134,6 +1136,9 @@ function AddProviderDialog({
   };
 
   const availableTypes = PROVIDER_TYPE_INFO.filter((type) => {
+    // Skip providers that are temporarily hidden from the UI.
+    if (type.hidden) return false;
+
     // MiniMax portal variants are mutually exclusive — hide BOTH variants
     // when either one already exists (account may have vendorId of either variant).
     const hasMinimax = existingVendorIds.has('minimax-portal') || existingVendorIds.has('minimax-portal-cn');
@@ -1161,13 +1166,14 @@ function AddProviderDialog({
     try {
       // Validate key first if the provider requires one and a key was entered
       const requiresKey = typeInfo?.requiresApiKey ?? false;
-      if (requiresKey && !apiKey.trim()) {
+      const normalizedApiKey = normalizeProviderApiKeyInput(apiKey);
+      if (requiresKey && !normalizedApiKey) {
         setValidationError(t('aiProviders.toast.invalidKey')); // reusing invalid key msg or should add 'required' msg? null checks
         setSaving(false);
         return;
       }
-      if (requiresKey && apiKey) {
-        const result = await onValidateKey(selectedType, apiKey, {
+      if (requiresKey && normalizedApiKey) {
+        const result = await onValidateKey(selectedType, normalizedApiKey, {
           baseUrl: baseUrl.trim() || undefined,
           apiProtocol: (selectedType === 'custom' || selectedType === 'ollama') ? apiProtocol : undefined,
         });
@@ -1188,7 +1194,7 @@ function AddProviderDialog({
       await onAdd(
         selectedType,
         name || (typeInfo?.id === 'custom' ? t('aiProviders.custom') : typeInfo?.name) || selectedType,
-        apiKey.trim(),
+        normalizedApiKey,
         {
           baseUrl: baseUrl.trim() || undefined,
           apiProtocol: (selectedType === 'custom' || selectedType === 'ollama') ? apiProtocol : undefined,
@@ -1652,6 +1658,7 @@ function AddProviderDialog({
 
               <div className="flex justify-end gap-3">
                 <Button
+                  data-testid="add-provider-submit-button"
                   onClick={handleAdd}
                   className={cn("rounded-full px-8 h-[42px] text-[13px] font-semibold bg-[#0a84ff] hover:bg-[#007aff] text-white shadow-sm", useOAuthFlow && "hidden")}
                   disabled={!selectedType || saving || (showModelIdField && modelId.trim().length === 0)}

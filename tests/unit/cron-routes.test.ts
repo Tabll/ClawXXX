@@ -43,7 +43,7 @@ describe('handleCronRoutes', () => {
     const handled = await handleCronRoutes(
       { method: 'POST' } as IncomingMessage,
       {} as ServerResponse,
-      new URL('http://127.0.0.1:3210/api/cron/jobs'),
+      new URL('http://127.0.0.1:13210/api/cron/jobs'),
       {
         gatewayManager: { rpc },
       } as never,
@@ -89,7 +89,7 @@ describe('handleCronRoutes', () => {
     await handleCronRoutes(
       { method: 'PUT' } as IncomingMessage,
       {} as ServerResponse,
-      new URL('http://127.0.0.1:3210/api/cron/jobs/job-2'),
+      new URL('http://127.0.0.1:13210/api/cron/jobs/job-2'),
       {
         gatewayManager: { rpc },
       } as never,
@@ -139,7 +139,7 @@ describe('handleCronRoutes', () => {
     await handleCronRoutes(
       { method: 'PUT' } as IncomingMessage,
       {} as ServerResponse,
-      new URL('http://127.0.0.1:3210/api/cron/jobs/job-account'),
+      new URL('http://127.0.0.1:13210/api/cron/jobs/job-account'),
       {
         gatewayManager: { rpc },
       } as never,
@@ -158,7 +158,7 @@ describe('handleCronRoutes', () => {
     });
   });
 
-  it('rejects WeChat scheduled delivery because the plugin requires a live context token', async () => {
+  it('allows WeChat scheduled delivery', async () => {
     parseJsonBodyMock.mockResolvedValue({
       name: 'WeChat delivery',
       message: 'Send update',
@@ -172,26 +172,37 @@ describe('handleCronRoutes', () => {
       enabled: true,
     });
 
-    const rpc = vi.fn();
+    const rpc = vi.fn().mockResolvedValue({
+      id: 'job-wechat',
+      name: 'WeChat delivery',
+      enabled: true,
+      createdAtMs: 1,
+      updatedAtMs: 2,
+      schedule: { kind: 'cron', expr: '0 10 * * *' },
+      payload: { kind: 'agentTurn', message: 'Send update' },
+      delivery: { mode: 'announce', channel: 'openclaw-weixin', to: 'wechat:wxid_target', accountId: 'wechat-bot' },
+      state: {},
+    });
 
     const { handleCronRoutes } = await import('@electron/api/routes/cron');
     const handled = await handleCronRoutes(
       { method: 'POST' } as IncomingMessage,
       {} as ServerResponse,
-      new URL('http://127.0.0.1:3210/api/cron/jobs'),
+      new URL('http://127.0.0.1:13210/api/cron/jobs'),
       {
         gatewayManager: { rpc },
       } as never,
     );
 
     expect(handled).toBe(true);
-    expect(rpc).not.toHaveBeenCalled();
+    expect(rpc).toHaveBeenCalledWith('cron.add', expect.objectContaining({
+      delivery: expect.objectContaining({ mode: 'announce', to: 'wechat:wxid_target' }),
+    }));
     expect(sendJsonMock).toHaveBeenCalledWith(
       expect.anything(),
-      400,
+      200,
       expect.objectContaining({
-        success: false,
-        error: expect.stringContaining('WeChat scheduled delivery is not supported'),
+        id: 'job-wechat',
       }),
     );
   });

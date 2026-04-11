@@ -157,6 +157,7 @@ function createWindow(): BrowserWindow {
   const isMac = process.platform === 'darwin';
   const isWindows = process.platform === 'win32';
   const useCustomTitleBar = isWindows;
+  const shouldSkipSetupForE2E = process.env.CLAWX_E2E_SKIP_SETUP === '1';
 
   const win = new BrowserWindow({
     width: 1280,
@@ -195,12 +196,20 @@ function createWindow(): BrowserWindow {
 
   // Load the app
   if (process.env.VITE_DEV_SERVER_URL) {
-    win.loadURL(process.env.VITE_DEV_SERVER_URL);
+    const rendererUrl = new URL(process.env.VITE_DEV_SERVER_URL);
+    if (shouldSkipSetupForE2E) {
+      rendererUrl.searchParams.set('e2eSkipSetup', '1');
+    }
+    win.loadURL(rendererUrl.toString());
     if (!isE2EMode) {
       win.webContents.openDevTools();
     }
   } else {
-    win.loadFile(join(__dirname, '../../dist/index.html'));
+    win.loadFile(join(__dirname, '../../dist/index.html'), {
+      query: shouldSkipSetupForE2E
+        ? { e2eSkipSetup: '1' }
+        : undefined,
+    });
   }
 
   return win;
@@ -246,7 +255,7 @@ function createMainWindow(): BrowserWindow {
   });
 
   win.on('close', (event) => {
-    if (!isQuitting()) {
+    if (!isQuitting() && !isE2EMode) {
       event.preventDefault();
       win.hide();
     }
@@ -363,8 +372,9 @@ async function initialize(): Promise<void> {
     });
   }
 
-  // Pre-deploy/upgrade bundled OpenClaw plugins (dingtalk, wecom, qqbot, feishu, wechat)
+  // Pre-deploy/upgrade bundled OpenClaw plugins (dingtalk, wecom, feishu, wechat)
   // to ~/.openclaw/extensions/ so they are always up-to-date after an app update.
+  // Note: qqbot was moved to a built-in channel in OpenClaw 3.31.
   if (!isE2EMode) {
     void ensureAllBundledPluginsInstalled().catch((error) => {
       logger.warn('Failed to install/upgrade bundled plugins:', error);
@@ -546,7 +556,7 @@ if (gotTheLock) {
   });
 
   app.on('window-all-closed', () => {
-    if (process.platform !== 'darwin') {
+    if (process.platform !== 'darwin' || isE2EMode) {
       app.quit();
     }
   });

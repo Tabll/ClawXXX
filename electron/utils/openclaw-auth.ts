@@ -9,10 +9,11 @@
  * Responding" hangs.
  */
 import { access, mkdir, readFile, writeFile } from 'fs/promises';
-import { constants } from 'fs';
+import { constants, readdirSync, readFileSync, existsSync } from 'fs';
 import { join } from 'path';
 import { homedir } from 'os';
 import { listConfiguredAgentIds } from './agent-config';
+import { getOpenClawResolvedDir } from './paths';
 import {
   getProviderEnvVar,
   getProviderDefaultModel,
@@ -221,11 +222,81 @@ const BUILTIN_CHANNEL_IDS = new Set([
   'msteams',
   'googlechat',
   'mattermost',
+  'qqbot',
 ]);
 const AUTH_PROFILE_PROVIDER_KEY_MAP: Record<string, string> = {
   'openai-codex': 'openai',
   'google-gemini-cli': 'google',
 };
+
+/**
+ * Reverse of AUTH_PROFILE_PROVIDER_KEY_MAP.
+ * Maps a UI provider key (e.g. "openai") to all raw auth-profile provider
+ * keys that normalise to it (e.g. ["openai-codex"]).
+ */
+const AUTH_PROFILE_PROVIDER_KEY_REVERSE_MAP: Record<string, string[]> = Object.entries(
+  AUTH_PROFILE_PROVIDER_KEY_MAP,
+).reduce<Record<string, string[]>>((acc, [raw, normalized]) => {
+  if (!acc[normalized]) acc[normalized] = [];
+  acc[normalized].push(raw);
+  return acc;
+}, {});
+
+/**
+ * Return all raw auth-profile `provider` values that should be treated as
+ * equivalent to `provider` when cleaning up auth-profile entries.
+ * Always includes the provider itself.
+ */
+function expandProviderKeysForDeletion(provider: string): string[] {
+  return [provider, ...(AUTH_PROFILE_PROVIDER_KEY_REVERSE_MAP[provider] ?? [])];
+}
+
+/**
+ * Scan OpenClaw's bundled extensions directory to find all plugins that have
+ * `enabledByDefault: true` in their `openclaw.plugin.json` manifest.
+ *
+ * When `plugins.allow` is explicitly set (e.g. for third-party channel
+ * plugins), OpenClaw blocks ALL plugins not in the allowlist — even bundled
+ * ones with `enabledByDefault: true`.  This function discovers those plugins
+ * so they can be preserved in the allowlist.
+ *
+ * Results are cached for the lifetime of the process since bundled
+ * extensions don't change at runtime.
+ */
+let _bundledPluginCache: { all: Set<string>; enabledByDefault: string[] } | null = null;
+function discoverBundledPlugins(): { all: Set<string>; enabledByDefault: string[] } {
+  if (_bundledPluginCache) return _bundledPluginCache;
+  const all = new Set<string>();
+  const enabledByDefault: string[] = [];
+  try {
+    const extensionsDir = join(getOpenClawResolvedDir(), 'dist', 'extensions');
+    if (!existsSync(extensionsDir)) {
+      _bundledPluginCache = { all, enabledByDefault };
+      return _bundledPluginCache;
+    }
+    for (const entry of readdirSync(extensionsDir, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue;
+      const manifestPath = join(extensionsDir, entry.name, 'openclaw.plugin.json');
+      if (!existsSync(manifestPath)) continue;
+      try {
+        const manifest = JSON.parse(readFileSync(manifestPath, 'utf-8'));
+        if (typeof manifest.id === 'string') {
+          all.add(manifest.id);
+          if (manifest.enabledByDefault === true) {
+            enabledByDefault.push(manifest.id);
+          }
+        }
+      } catch {
+        // Malformed manifest — skip silently
+      }
+    }
+  } catch {
+    // Extension directory not found or unreadable — return empty
+  }
+  _bundledPluginCache = { all, enabledByDefault };
+  return _bundledPluginCache;
+}
+
 
 function normalizeAuthProfileProviderKey(provider: string): string {
   return AUTH_PROFILE_PROVIDER_KEY_MAP[provider] ?? provider;
@@ -438,12 +509,23 @@ export async function removeProviderKeyFromOpenClaw(
  * Remove a provider completely from OpenClaw (delete config, disable plugins, delete keys)
  */
 export async function removeProviderFromOpenClaw(provider: string): Promise<void> {
-  // 1. Remove from auth-profiles.json
+  // 1. Remove from auth-profiles.json.
+  // We must also remove entries whose raw `provider` field maps to this UI
+  // provider key via AUTH_PROFILE_PROVIDER_KEY_MAP (e.g. "openai-codex" → "openai").
+  // If those entries survive, getProvidersFromAuthProfileStores() will re-add
+  // the provider and trigger a re-seed loop in listAccounts().
+  const providerKeysToRemove = expandProviderKeysForDeletion(provider);
   const agentIds = await discoverAgentIds();
   if (agentIds.length === 0) agentIds.push('main');
   for (const id of agentIds) {
     const store = await readAuthProfiles(id);
-    if (removeProfilesForProvider(store, provider)) {
+    let storeModified = false;
+    for (const key of providerKeysToRemove) {
+      if (removeProfilesForProvider(store, key)) {
+        storeModified = true;
+      }
+    }
+    if (storeModified) {
       await writeAuthProfiles(store, id);
     }
   }
@@ -473,7 +555,7 @@ export async function removeProviderFromOpenClaw(provider: string): Promise<void
       const config = await readOpenClawJson();
       let modified = false;
 
-      // Disable plugin (for OAuth like qwen-portal-auth)
+      // Disable plugin (for OAuth like minimax-portal-auth)
       const plugins = config.plugins as Record<string, unknown> | undefined;
       const entries = (plugins?.entries ?? {}) as Record<string, Record<string, unknown>>;
       const pluginName = `${provider}-auth`;
@@ -501,8 +583,11 @@ export async function removeProviderFromOpenClaw(provider: string): Promise<void
           : null
       );
       if (authProfiles) {
+        // Also clean up raw auth-profile provider keys that map to this provider
+        // (e.g. "openai-codex" is stored as-is but maps to "openai" in the UI).
+        const providerKeysToClean = new Set(expandProviderKeysForDeletion(provider));
         for (const [profileId, profile] of Object.entries(authProfiles)) {
-          if (profile?.provider !== provider) {
+          if (!providerKeysToClean.has(profile?.provider)) {
             continue;
           }
           delete authProfiles[profileId];
@@ -739,23 +824,66 @@ function removeLegacyMoonshotProviderEntry(
   return false;
 }
 
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function removeLegacyMoonshotKimiSearchConfig(config: Record<string, unknown>): boolean {
+  const tools = isPlainRecord(config.tools) ? config.tools : null;
+  const web = tools && isPlainRecord(tools.web) ? tools.web : null;
+  const search = web && isPlainRecord(web.search) ? web.search : null;
+  if (!search || !('kimi' in search)) return false;
+
+  delete search.kimi;
+  if (Object.keys(search).length === 0) {
+    delete web.search;
+  }
+  if (Object.keys(web).length === 0) {
+    delete tools.web;
+  }
+  if (Object.keys(tools).length === 0) {
+    delete config.tools;
+  }
+  return true;
+}
+
+function upsertMoonshotWebSearchConfig(
+  config: Record<string, unknown>,
+  legacyKimi?: Record<string, unknown>,
+): void {
+  const plugins = isPlainRecord(config.plugins)
+    ? config.plugins
+    : (Array.isArray(config.plugins) ? { load: [...config.plugins] } : {});
+  const entries = isPlainRecord(plugins.entries) ? plugins.entries : {};
+  const moonshot = isPlainRecord(entries[OPENCLAW_PROVIDER_KEY_MOONSHOT])
+    ? entries[OPENCLAW_PROVIDER_KEY_MOONSHOT] as Record<string, unknown>
+    : {};
+  const moonshotConfig = isPlainRecord(moonshot.config) ? moonshot.config as Record<string, unknown> : {};
+  const currentWebSearch = isPlainRecord(moonshotConfig.webSearch)
+    ? moonshotConfig.webSearch as Record<string, unknown>
+    : {};
+
+  const nextWebSearch = { ...(legacyKimi || {}), ...currentWebSearch };
+  delete nextWebSearch.apiKey;
+  nextWebSearch.baseUrl = 'https://api.moonshot.cn/v1';
+
+  moonshotConfig.webSearch = nextWebSearch;
+  moonshot.config = moonshotConfig;
+  entries[OPENCLAW_PROVIDER_KEY_MOONSHOT] = moonshot;
+  plugins.entries = entries;
+  config.plugins = plugins;
+}
+
 function ensureMoonshotKimiWebSearchCnBaseUrl(config: Record<string, unknown>, provider: string): void {
   if (provider !== OPENCLAW_PROVIDER_KEY_MOONSHOT) return;
 
-  const tools = (config.tools || {}) as Record<string, unknown>;
-  const web = (tools.web || {}) as Record<string, unknown>;
-  const search = (web.search || {}) as Record<string, unknown>;
-  const kimi = (search.kimi && typeof search.kimi === 'object' && !Array.isArray(search.kimi))
-    ? (search.kimi as Record<string, unknown>)
-    : {};
+  const tools = isPlainRecord(config.tools) ? config.tools : null;
+  const web = tools && isPlainRecord(tools.web) ? tools.web : null;
+  const search = web && isPlainRecord(web.search) ? web.search : null;
+  const legacyKimi = search && isPlainRecord(search.kimi) ? search.kimi : undefined;
 
-  // Prefer env/auth-profiles for key resolution; stale inline kimi.apiKey can cause persistent 401.
-  delete kimi.apiKey;
-  kimi.baseUrl = 'https://api.moonshot.cn/v1';
-  search.kimi = kimi;
-  web.search = search;
-  tools.web = web;
-  config.tools = tools;
+  upsertMoonshotWebSearchConfig(config, legacyKimi);
+  removeLegacyMoonshotKimiSearchConfig(config);
 }
 
 /**
@@ -872,6 +1000,10 @@ export async function setOpenClawDefaultModelWithOverride(
  * Get a set of all active provider IDs configured in openclaw.json.
  * Reads the file ONCE and extracts both models.providers and plugins.entries.
  */
+// Provider IDs that have been deprecated and should never appear as active.
+// These may still linger in openclaw.json from older versions.
+const DEPRECATED_PROVIDER_IDS = new Set(['qwen-portal']);
+
 export async function getActiveOpenClawProviders(): Promise<Set<string>> {
   const activeProviders = new Set<string>();
 
@@ -897,7 +1029,7 @@ export async function getActiveOpenClawProviders(): Promise<Set<string>> {
     }
 
     // 3. agents.defaults.model.primary — the default model reference encodes
-    //    the provider prefix (e.g. "qwen-portal/coder-model" → "qwen-portal").
+    //    the provider prefix (e.g. "modelstudio/qwen3.5-plus" → "modelstudio").
     //    This covers providers that are active via OAuth or env-key but don't
     //    have an explicit models.providers entry.
     const agents = config.agents as Record<string, unknown> | undefined;
@@ -919,6 +1051,11 @@ export async function getActiveOpenClawProviders(): Promise<Set<string>> {
     }
   } catch (err) {
     console.warn('Failed to read openclaw.json for active providers:', err);
+  }
+
+  // Remove deprecated providers that may still linger in config/auth files.
+  for (const deprecated of DEPRECATED_PROVIDER_IDS) {
+    activeProviders.delete(deprecated);
   }
 
   return activeProviders;
@@ -1311,24 +1448,43 @@ export async function sanitizeOpenClawConfig(): Promise<void> {
     }
 
     // ── tools.web.search.kimi ─────────────────────────────────────
-    // OpenClaw web_search(kimi) prioritizes tools.web.search.kimi.apiKey over
-    // environment/auth-profiles. A stale inline key can cause persistent 401s.
-    // When ClawX-managed moonshot provider exists, prefer centralized key
-    // resolution and strip the inline key.
+    // OpenClaw moved moonshot web search config under
+    // plugins.entries.moonshot.config.webSearch. Migrate the old key and strip
+    // any inline apiKey so auth-profiles/env remain the single source of truth.
     const providers = ((config.models as Record<string, unknown> | undefined)?.providers as Record<string, unknown> | undefined) || {};
     if (providers[OPENCLAW_PROVIDER_KEY_MOONSHOT]) {
-      const tools = (config.tools as Record<string, unknown> | undefined) || {};
-      const web = (tools.web as Record<string, unknown> | undefined) || {};
-      const search = (web.search as Record<string, unknown> | undefined) || {};
-      const kimi = (search.kimi as Record<string, unknown> | undefined) || {};
-      if ('apiKey' in kimi) {
-        console.log('[sanitize] Removing stale key "tools.web.search.kimi.apiKey" from openclaw.json');
-        delete kimi.apiKey;
-        search.kimi = kimi;
-        web.search = search;
-        tools.web = web;
-        config.tools = tools;
+      const tools = isPlainRecord(config.tools) ? config.tools : null;
+      const web = tools && isPlainRecord(tools.web) ? tools.web : null;
+      const search = web && isPlainRecord(web.search) ? web.search : null;
+      const legacyKimi = search && isPlainRecord(search.kimi) ? search.kimi : undefined;
+      const hadInlineApiKey = Boolean(legacyKimi && 'apiKey' in legacyKimi);
+      const hadLegacyKimi = Boolean(legacyKimi);
+
+      if (legacyKimi) {
+        upsertMoonshotWebSearchConfig(config, legacyKimi);
+        removeLegacyMoonshotKimiSearchConfig(config);
         modified = true;
+        console.log('[sanitize] Migrated legacy "tools.web.search.kimi" to "plugins.entries.moonshot.config.webSearch"');
+      } else {
+        const plugins = isPlainRecord(config.plugins) ? config.plugins : null;
+        const entries = plugins && isPlainRecord(plugins.entries) ? plugins.entries : null;
+        const moonshot = entries && isPlainRecord(entries[OPENCLAW_PROVIDER_KEY_MOONSHOT])
+          ? entries[OPENCLAW_PROVIDER_KEY_MOONSHOT] as Record<string, unknown>
+          : null;
+        const moonshotConfig = moonshot && isPlainRecord(moonshot.config) ? moonshot.config as Record<string, unknown> : null;
+        const webSearch = moonshotConfig && isPlainRecord(moonshotConfig.webSearch)
+          ? moonshotConfig.webSearch as Record<string, unknown>
+          : null;
+        if (webSearch && 'apiKey' in webSearch) {
+          delete webSearch.apiKey;
+          moonshotConfig!.webSearch = webSearch;
+          modified = true;
+        }
+      }
+      if (hadInlineApiKey) {
+        console.log('[sanitize] Removing stale key "tools.web.search.kimi.apiKey" from openclaw.json');
+      } else if (hadLegacyKimi) {
+        console.log('[sanitize] Removing legacy key "tools.web.search.kimi" from openclaw.json');
       }
     }
 
@@ -1350,10 +1506,24 @@ export async function sanitizeOpenClawConfig(): Promise<void> {
       toolsModified = true;
     }
 
+    // ── tools.exec approvals (OpenClaw 3.28+) ──────────────────────
+    // ClawX is a local desktop app where the user is the trusted operator.
+    // Exec approval prompts add unnecessary friction in this context, so we
+    // set security="full" (allow all commands) and ask="off" (never prompt).
+    // If a user has manually configured a stricter ~/.openclaw/exec-approvals.json,
+    // OpenClaw's minSecurity/maxAsk merge will still respect their intent.
+    const execConfig = (toolsConfig.exec as Record<string, unknown> | undefined) || {};
+    if (execConfig.security !== 'full' || execConfig.ask !== 'off') {
+      execConfig.security = 'full';
+      execConfig.ask = 'off';
+      toolsConfig.exec = execConfig;
+      toolsModified = true;
+      console.log('[sanitize] Set tools.exec.security="full" and tools.exec.ask="off" to disable exec approvals for ClawX desktop');
+    }
+
     if (toolsModified) {
       config.tools = toolsConfig;
       modified = true;
-      console.log('[sanitize] Enforced tools.profile="full" and tools.sessions.visibility="all" for OpenClaw 3.8+');
     }
 
     // ── plugins.entries.feishu cleanup ──────────────────────────────
@@ -1436,34 +1606,59 @@ export async function sanitizeOpenClawConfig(): Promise<void> {
         modified = true;
       }
 
-      // ── qqbot → openclaw-qqbot migration ────────────────────────
-      // The qqbot npm package (@tencent-connect/openclaw-qqbot) declares
-      // id="openclaw-qqbot" in its manifest, but older ClawX versions
-      // wrote bare "qqbot" into plugins.allow.  Migrate to the manifest ID
-      // so the Gateway can resolve the plugin correctly.
-      const LEGACY_QQBOT_ID = 'qqbot';
-      const NEW_QQBOT_ID = 'openclaw-qqbot';
-      if (Array.isArray(pluginsObj.allow)) {
-        const allowArr = pluginsObj.allow as string[];
-        const legacyIdx = allowArr.indexOf(LEGACY_QQBOT_ID);
-        if (legacyIdx !== -1) {
-          if (!allowArr.includes(NEW_QQBOT_ID)) {
-            allowArr[legacyIdx] = NEW_QQBOT_ID;
-          } else {
-            allowArr.splice(legacyIdx, 1);
-          }
-          console.log(`[sanitize] Migrated plugins.allow: ${LEGACY_QQBOT_ID} → ${NEW_QQBOT_ID}`);
+      // ── qqbot built-in channel cleanup ──────────────────────────
+      // OpenClaw 3.31 moved qqbot from a third-party plugin to a built-in
+      // channel.  Clean up legacy plugin entries (both bare "qqbot" and
+      // manifest-declared "openclaw-qqbot") from plugins.entries.
+      // plugins.allow is left untouched — having openclaw-qqbot there is harmless.
+      // The channel config under channels.qqbot is preserved and works
+      // identically with the built-in channel.
+      const QQBOT_PLUGIN_IDS = ['qqbot', 'openclaw-qqbot'] as const;
+      for (const qqbotId of QQBOT_PLUGIN_IDS) {
+        if (pEntries?.[qqbotId]) {
+          delete pEntries[qqbotId];
+          console.log(`[sanitize] Removed built-in channel plugin from plugins.entries: ${qqbotId}`);
           modified = true;
         }
       }
-      if (pEntries?.[LEGACY_QQBOT_ID]) {
-        if (!pEntries[NEW_QQBOT_ID]) {
-          pEntries[NEW_QQBOT_ID] = pEntries[LEGACY_QQBOT_ID];
+
+      // ── qwen-portal → modelstudio migration ────────────────────
+      // OpenClaw 2026.3.28 deprecated qwen-portal OAuth (portal.qwen.ai)
+      // in favor of Model Studio (DashScope API key).  Clean up legacy
+      // qwen-portal-auth plugin entries and qwen-portal provider config.
+      const LEGACY_QWEN_PLUGIN_ID = 'qwen-portal-auth';
+      if (Array.isArray(pluginsObj.allow)) {
+        const allowArr = pluginsObj.allow as string[];
+        const legacyIdx = allowArr.indexOf(LEGACY_QWEN_PLUGIN_ID);
+        if (legacyIdx !== -1) {
+          allowArr.splice(legacyIdx, 1);
+          console.log(`[sanitize] Removed deprecated plugin from plugins.allow: ${LEGACY_QWEN_PLUGIN_ID}`);
+          modified = true;
         }
-        delete pEntries[LEGACY_QQBOT_ID];
-        console.log(`[sanitize] Migrated plugins.entries: ${LEGACY_QQBOT_ID} → ${NEW_QQBOT_ID}`);
+      }
+      if (pEntries?.[LEGACY_QWEN_PLUGIN_ID]) {
+        delete pEntries[LEGACY_QWEN_PLUGIN_ID];
+        console.log(`[sanitize] Removed deprecated plugin from plugins.entries: ${LEGACY_QWEN_PLUGIN_ID}`);
         modified = true;
       }
+
+      // Remove deprecated models.providers.qwen-portal
+      const LEGACY_QWEN_PROVIDER = 'qwen-portal';
+      if (providers[LEGACY_QWEN_PROVIDER]) {
+        delete providers[LEGACY_QWEN_PROVIDER];
+        console.log(`[sanitize] Removed deprecated provider: ${LEGACY_QWEN_PROVIDER}`);
+        modified = true;
+      }
+
+      // Clean up qwen-portal OAuth auth profile (no longer functional)
+      const authConfig = config.auth as Record<string, unknown> | undefined;
+      const authProfiles = authConfig?.profiles as Record<string, unknown> | undefined;
+      if (authProfiles?.[LEGACY_QWEN_PROVIDER]) {
+        delete authProfiles[LEGACY_QWEN_PROVIDER];
+        console.log(`[sanitize] Removed deprecated auth profile: ${LEGACY_QWEN_PROVIDER}`);
+        modified = true;
+      }
+
 
       // ── Remove bare 'feishu' when canonical feishu plugin is present ──
       // The Gateway binary automatically adds bare 'feishu' to plugins.allow
@@ -1513,7 +1708,15 @@ export async function sanitizeOpenClawConfig(): Promise<void> {
         modified = true;
       }
 
-      const externalPluginIds = allowArr2.filter((pluginId) => !BUILTIN_CHANNEL_IDS.has(pluginId));
+      // Discover all bundled extension IDs and which ones are enabledByDefault
+      // so we can (a) exclude them from the "external" set (prevents stale
+      // entries surviving across OpenClaw upgrades) and (b) re-add the
+      // enabledByDefault ones to prevent the allowlist from blocking them.
+      const bundled = discoverBundledPlugins();
+
+      const externalPluginIds = allowArr2.filter(
+        (pluginId) => !BUILTIN_CHANNEL_IDS.has(pluginId) && !bundled.all.has(pluginId),
+      );
       let nextAllow = [...externalPluginIds];
       if (externalPluginIds.length > 0) {
         for (const channelId of configuredBuiltIns) {
@@ -1521,6 +1724,20 @@ export async function sanitizeOpenClawConfig(): Promise<void> {
             nextAllow.push(channelId);
             modified = true;
             console.log(`[sanitize] Added configured built-in channel "${channelId}" to plugins.allow`);
+          }
+        }
+      }
+
+      // ── Ensure enabledByDefault built-in plugins survive restrictive allowlists ──
+      // OpenClaw's plugin enable logic checks the allowlist BEFORE enabledByDefault,
+      // so any bundled plugin with enabledByDefault: true (e.g. browser, diffs, etc.)
+      // gets blocked when plugins.allow is non-empty.  We add them back here.
+      // On upgrade, plugins removed from enabledByDefault are also removed from the
+      // allowlist because they were excluded from externalPluginIds above.
+      if (nextAllow.length > 0) {
+        for (const pluginId of bundled.enabledByDefault) {
+          if (!nextAllow.includes(pluginId)) {
+            nextAllow.push(pluginId);
           }
         }
       }
@@ -1553,30 +1770,54 @@ export async function sanitizeOpenClawConfig(): Promise<void> {
       }
     }
 
-    // ── channels default-account migration ─────────────────────────
-    // Most OpenClaw channel plugins read the default account's credentials
-    // from the top level of `channels.<type>` (e.g. channels.feishu.appId),
-    // but ClawX historically stored them only under `channels.<type>.accounts.default`.
-    // Mirror the default account credentials at the top level so plugins can
-    // discover them.
+    // ── channels default-account migration and cleanup ─────────────
+    // Most OpenClaw channel plugins/built-ins read the default account's
+    // credentials from the top level of `channels.<type>`.  Mirror them
+    // there so the runtime can discover them.
+    //
+    // Strict-schema channels (e.g. dingtalk, additionalProperties:false)
+    // reject the `accounts` / `defaultAccount` keys entirely — strip them
+    // so the Gateway doesn't crash on startup.
     const channelsObj = config.channels as Record<string, Record<string, unknown>> | undefined;
+    const CHANNELS_EXCLUDING_TOP_LEVEL_MIRROR = new Set(['dingtalk']);
+
     if (channelsObj && typeof channelsObj === 'object') {
       for (const [channelType, section] of Object.entries(channelsObj)) {
         if (!section || typeof section !== 'object') continue;
-        const accounts = section.accounts as Record<string, Record<string, unknown>> | undefined;
-        const defaultAccount = accounts?.default;
-        if (!defaultAccount || typeof defaultAccount !== 'object') continue;
-        // Mirror each missing key from accounts.default to the top level
-        let mirrored = false;
-        for (const [key, value] of Object.entries(defaultAccount)) {
-          if (!(key in section)) {
-            section[key] = value;
-            mirrored = true;
+
+        if (CHANNELS_EXCLUDING_TOP_LEVEL_MIRROR.has(channelType)) {
+          // Strict-schema channel: strip `accounts` and `defaultAccount`.
+          // Credentials should live flat at the channel root.
+          if ('accounts' in section) {
+            delete section['accounts'];
+            modified = true;
+            console.log(`[sanitize] Removed incompatible 'accounts' from channels.${channelType}`);
           }
-        }
-        if (mirrored) {
-          modified = true;
-          console.log(`[sanitize] Mirrored ${channelType} default account credentials to top-level channels.${channelType}`);
+          if ('defaultAccount' in section) {
+            delete section['defaultAccount'];
+            modified = true;
+            console.log(`[sanitize] Removed incompatible 'defaultAccount' from channels.${channelType}`);
+          }
+        } else {
+          // Normal channel: mirror missing keys from default account to top level.
+          const accounts = section.accounts as Record<string, Record<string, unknown>> | undefined;
+          const defaultAccountId =
+            typeof section.defaultAccount === 'string' && section.defaultAccount.trim()
+                ? section.defaultAccount
+                : 'default';
+          const defaultAccountData = accounts?.[defaultAccountId] ?? accounts?.['default'];
+          if (!defaultAccountData || typeof defaultAccountData !== 'object') continue;
+          let mirrored = false;
+          for (const [key, value] of Object.entries(defaultAccountData)) {
+            if (!(key in section)) {
+              section[key] = value;
+              mirrored = true;
+            }
+          }
+          if (mirrored) {
+            modified = true;
+            console.log(`[sanitize] Mirrored ${channelType} default account credentials to top-level channels.${channelType}`);
+          }
         }
       }
     }

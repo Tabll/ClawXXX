@@ -1,6 +1,6 @@
 import { app } from 'electron';
 import path from 'path';
-import { existsSync, readFileSync, mkdirSync, rmSync } from 'fs';
+import { existsSync, readFileSync, mkdirSync, readdirSync, rmSync, symlinkSync } from 'fs';
 import { homedir } from 'os';
 import { join } from 'path';
 
@@ -49,7 +49,7 @@ const CHANNEL_PLUGIN_MAP: Record<string, { dirName: string; npmName: string }> =
   dingtalk: { dirName: 'dingtalk', npmName: '@soimy/dingtalk' },
   wecom: { dirName: 'wecom', npmName: '@wecom/wecom-openclaw-plugin' },
   feishu: { dirName: 'feishu-openclaw-plugin', npmName: '@larksuite/openclaw-lark' },
-  qqbot: { dirName: 'qqbot', npmName: '@tencent-connect/openclaw-qqbot' },
+
   'openclaw-weixin': { dirName: 'openclaw-weixin', npmName: '@tencent-weixin/openclaw-weixin' },
 };
 
@@ -59,7 +59,7 @@ const CHANNEL_PLUGIN_MAP: Record<string, { dirName: string; npmName: string }> =
  * ~/.openclaw/extensions/, the broken copy overrides the working built-in
  * plugin and must be removed.
  */
-const BUILTIN_CHANNEL_EXTENSIONS = ['discord', 'telegram'];
+const BUILTIN_CHANNEL_EXTENSIONS = ['discord', 'telegram', 'qqbot'];
 
 function cleanupStaleBuiltInExtensions(): void {
   for (const ext of BUILTIN_CHANNEL_EXTENSIONS) {
@@ -164,6 +164,73 @@ function ensureConfiguredPluginsUpgraded(configuredChannels: string[]): void {
   }
 }
 
+/**
+ * Ensure extension-specific packages are resolvable from shared dist/ chunks.
+ *
+ * OpenClaw's Rollup bundler creates shared chunks in dist/ (e.g.
+ * sticker-cache-*.js) that eagerly `import "grammy"`.  ESM bare specifier
+ * resolution walks from the importing file's directory upward:
+ *   dist/node_modules/ → openclaw/node_modules/ → …
+ * It does NOT search `dist/extensions/telegram/node_modules/`.
+ *
+ * NODE_PATH only works for CJS require(), NOT for ESM import statements.
+ *
+ * Fix: create symlinks in openclaw/node_modules/ pointing to packages in
+ * dist/extensions/<ext>/node_modules/.  This makes the standard ESM
+ * resolution algorithm find them.  Skip-if-exists avoids overwriting
+ * openclaw's own deps (they take priority).
+ */
+function ensureExtensionDepsResolvable(openclawDir: string): void {
+  const extDir = join(openclawDir, 'dist', 'extensions');
+  const topNM = join(openclawDir, 'node_modules');
+  let linkedCount = 0;
+
+  try {
+    if (!existsSync(extDir)) return;
+
+    for (const ext of readdirSync(extDir, { withFileTypes: true })) {
+      if (!ext.isDirectory()) continue;
+      const extNM = join(extDir, ext.name, 'node_modules');
+      if (!existsSync(extNM)) continue;
+
+      for (const pkg of readdirSync(extNM, { withFileTypes: true })) {
+        if (pkg.name === '.bin') continue;
+
+        if (pkg.name.startsWith('@')) {
+          // Scoped package — iterate sub-entries
+          const scopeDir = join(extNM, pkg.name);
+          let scopeEntries;
+          try { scopeEntries = readdirSync(scopeDir, { withFileTypes: true }); } catch { continue; }
+          for (const sub of scopeEntries) {
+            if (!sub.isDirectory()) continue;
+            const dest = join(topNM, pkg.name, sub.name);
+            if (existsSync(dest)) continue;
+            try {
+              mkdirSync(join(topNM, pkg.name), { recursive: true });
+              symlinkSync(join(scopeDir, sub.name), dest);
+              linkedCount++;
+            } catch { /* skip on error — non-fatal */ }
+          }
+        } else {
+          const dest = join(topNM, pkg.name);
+          if (existsSync(dest)) continue;
+          try {
+            mkdirSync(topNM, { recursive: true });
+            symlinkSync(join(extNM, pkg.name), dest);
+            linkedCount++;
+          } catch { /* skip on error — non-fatal */ }
+        }
+      }
+    }
+  } catch {
+    // extensions dir may not exist or be unreadable — non-fatal
+  }
+
+  if (linkedCount > 0) {
+    logger.info(`[extension-deps] Linked ${linkedCount} extension packages into ${topNM}`);
+  }
+}
+
 // ── Pre-launch sync ──────────────────────────────────────────────
 
 export async function syncGatewayConfigBeforeLaunch(
@@ -208,7 +275,7 @@ export async function syncGatewayConfigBeforeLaunch(
         pluginIdToChannel[info.dirName] = channelType;
       }
       // Known manifest IDs that differ from their dirName/channelType
-      pluginIdToChannel['openclaw-qqbot'] = 'qqbot';
+
       pluginIdToChannel['openclaw-lark'] = 'feishu';
       pluginIdToChannel['feishu-openclaw-plugin'] = 'feishu';
 
@@ -364,6 +431,11 @@ export async function prepareGatewayLaunchContext(port: number): Promise<Gateway
     CLAWDBOT_SKIP_CHANNELS: skipChannels ? '1' : '',
     OPENCLAW_NO_RESPAWN: '1',
   };
+
+  // Ensure extension-specific packages (e.g. grammy from the telegram
+  // extension) are resolvable by shared dist/ chunks via symlinks in
+  // openclaw/node_modules/.  NODE_PATH does NOT work for ESM imports.
+  ensureExtensionDepsResolvable(openclawDir);
 
   return {
     appSettings,

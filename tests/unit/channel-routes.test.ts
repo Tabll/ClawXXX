@@ -10,6 +10,11 @@ const readOpenClawConfigMock = vi.fn();
 const listAgentsSnapshotMock = vi.fn();
 const sendJsonMock = vi.fn();
 const proxyAwareFetchMock = vi.fn();
+const saveChannelConfigMock = vi.fn();
+const setChannelDefaultAccountMock = vi.fn();
+const assignChannelAccountToAgentMock = vi.fn();
+const clearChannelBindingMock = vi.fn();
+const parseJsonBodyMock = vi.fn();
 const testOpenClawConfigDir = join(tmpdir(), 'clawx-tests', 'channel-routes-openclaw');
 
 vi.mock('@electron/utils/channel-config', () => ({
@@ -18,26 +23,28 @@ vi.mock('@electron/utils/channel-config', () => ({
   deleteChannelConfig: vi.fn(),
   getChannelFormValues: vi.fn(),
   listConfiguredChannelAccounts: (...args: unknown[]) => listConfiguredChannelAccountsMock(...args),
+  listConfiguredChannelAccountsFromConfig: (...args: unknown[]) => listConfiguredChannelAccountsMock(...args),
   listConfiguredChannels: (...args: unknown[]) => listConfiguredChannelsMock(...args),
+  listConfiguredChannelsFromConfig: (...args: unknown[]) => listConfiguredChannelsMock(...args),
   readOpenClawConfig: (...args: unknown[]) => readOpenClawConfigMock(...args),
-  saveChannelConfig: vi.fn(),
-  setChannelDefaultAccount: vi.fn(),
+  saveChannelConfig: (...args: unknown[]) => saveChannelConfigMock(...args),
+  setChannelDefaultAccount: (...args: unknown[]) => setChannelDefaultAccountMock(...args),
   setChannelEnabled: vi.fn(),
   validateChannelConfig: vi.fn(),
   validateChannelCredentials: vi.fn(),
 }));
 
 vi.mock('@electron/utils/agent-config', () => ({
-  assignChannelAccountToAgent: vi.fn(),
+  assignChannelAccountToAgent: (...args: unknown[]) => assignChannelAccountToAgentMock(...args),
   clearAllBindingsForChannel: vi.fn(),
-  clearChannelBinding: vi.fn(),
+  clearChannelBinding: (...args: unknown[]) => clearChannelBindingMock(...args),
   listAgentsSnapshot: (...args: unknown[]) => listAgentsSnapshotMock(...args),
+  listAgentsSnapshotFromConfig: (...args: unknown[]) => listAgentsSnapshotMock(...args),
 }));
 
 vi.mock('@electron/utils/plugin-install', () => ({
   ensureDingTalkPluginInstalled: vi.fn(),
   ensureFeishuPluginInstalled: vi.fn(),
-  ensureQQBotPluginInstalled: vi.fn(),
   ensureWeChatPluginInstalled: vi.fn(),
   ensureWeComPluginInstalled: vi.fn(),
 }));
@@ -57,7 +64,7 @@ vi.mock('@electron/utils/whatsapp-login', () => ({
 }));
 
 vi.mock('@electron/api/route-utils', () => ({
-  parseJsonBody: vi.fn().mockResolvedValue({}),
+  parseJsonBody: (...args: unknown[]) => parseJsonBodyMock(...args),
   sendJson: (...args: unknown[]) => sendJsonMock(...args),
 }));
 
@@ -91,6 +98,8 @@ describe('handleChannelRoutes', () => {
     vi.resetAllMocks();
     rmSync(testOpenClawConfigDir, { recursive: true, force: true });
     proxyAwareFetchMock.mockReset();
+    parseJsonBodyMock.mockResolvedValue({});
+    listConfiguredChannelAccountsMock.mockReturnValue({});
     listAgentsSnapshotMock.mockResolvedValue({
       agents: [],
       channelAccountOwners: {},
@@ -160,7 +169,7 @@ describe('handleChannelRoutes', () => {
     const handled = await handleChannelRoutes(
       { method: 'GET' } as IncomingMessage,
       {} as ServerResponse,
-      new URL('http://127.0.0.1:3210/api/channels/accounts'),
+      new URL('http://127.0.0.1:13210/api/channels/accounts'),
       {
         gatewayManager: {
           rpc,
@@ -172,7 +181,7 @@ describe('handleChannelRoutes', () => {
     );
 
     expect(handled).toBe(true);
-    expect(rpc).toHaveBeenCalledWith('channels.status', { probe: true });
+    expect(rpc).toHaveBeenCalledWith('channels.status', { probe: false }, 8000);
     expect(sendJsonMock).toHaveBeenCalledWith(
       expect.anything(),
       200,
@@ -190,6 +199,214 @@ describe('handleChannelRoutes', () => {
         ],
       }),
     );
+  });
+
+  it('rejects non-canonical account ID on channel config save', async () => {
+    parseJsonBodyMock.mockResolvedValue({
+      channelType: 'feishu',
+      accountId: '测试账号',
+      config: { appId: 'cli_xxx', appSecret: 'secret' },
+    });
+
+    const { handleChannelRoutes } = await import('@electron/api/routes/channels');
+    const handled = await handleChannelRoutes(
+      { method: 'POST' } as IncomingMessage,
+      {} as ServerResponse,
+      new URL('http://127.0.0.1:13210/api/channels/config'),
+      {
+        gatewayManager: {
+          rpc: vi.fn(),
+          getStatus: () => ({ state: 'running' }),
+          debouncedReload: vi.fn(),
+          debouncedRestart: vi.fn(),
+        },
+      } as never,
+    );
+
+    expect(handled).toBe(true);
+    expect(sendJsonMock).toHaveBeenCalledWith(
+      expect.anything(),
+      400,
+      expect.objectContaining({
+        success: false,
+        error: expect.stringContaining('Invalid accountId format'),
+      }),
+    );
+    expect(saveChannelConfigMock).not.toHaveBeenCalled();
+  });
+
+  it('allows legacy non-canonical account ID on channel config save when account already exists', async () => {
+    parseJsonBodyMock.mockResolvedValue({
+      channelType: 'telegram',
+      accountId: 'Legacy_Account',
+      config: { botToken: 'token', allowedUsers: '123456' },
+    });
+    listConfiguredChannelAccountsMock.mockReturnValue({
+      telegram: {
+        defaultAccountId: 'default',
+        accountIds: ['default', 'Legacy_Account'],
+      },
+    });
+
+    const { handleChannelRoutes } = await import('@electron/api/routes/channels');
+    const handled = await handleChannelRoutes(
+      { method: 'POST' } as IncomingMessage,
+      {} as ServerResponse,
+      new URL('http://127.0.0.1:13210/api/channels/config'),
+      {
+        gatewayManager: {
+          rpc: vi.fn(),
+          getStatus: () => ({ state: 'running' }),
+          debouncedReload: vi.fn(),
+          debouncedRestart: vi.fn(),
+        },
+      } as never,
+    );
+
+    expect(handled).toBe(true);
+    expect(saveChannelConfigMock).toHaveBeenCalledWith(
+      'telegram',
+      { botToken: 'token', allowedUsers: '123456' },
+      'Legacy_Account',
+    );
+    expect(sendJsonMock).toHaveBeenCalledWith(
+      expect.anything(),
+      200,
+      expect.objectContaining({ success: true }),
+    );
+  });
+
+  it('rejects non-canonical account ID on default-account route', async () => {
+    parseJsonBodyMock.mockResolvedValue({
+      channelType: 'feishu',
+      accountId: 'ABC',
+    });
+
+    const { handleChannelRoutes } = await import('@electron/api/routes/channels');
+    await handleChannelRoutes(
+      { method: 'PUT' } as IncomingMessage,
+      {} as ServerResponse,
+      new URL('http://127.0.0.1:13210/api/channels/default-account'),
+      {
+        gatewayManager: {
+          rpc: vi.fn(),
+          getStatus: () => ({ state: 'running' }),
+          debouncedReload: vi.fn(),
+          debouncedRestart: vi.fn(),
+        },
+      } as never,
+    );
+
+    expect(sendJsonMock).toHaveBeenCalledWith(
+      expect.anything(),
+      400,
+      expect.objectContaining({
+        success: false,
+        error: expect.stringContaining('Invalid accountId format'),
+      }),
+    );
+    expect(setChannelDefaultAccountMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects non-canonical account ID on binding routes', async () => {
+    parseJsonBodyMock.mockResolvedValue({
+      channelType: 'feishu',
+      accountId: 'Account-Upper',
+      agentId: 'main',
+    });
+
+    const { handleChannelRoutes } = await import('@electron/api/routes/channels');
+    await handleChannelRoutes(
+      { method: 'PUT' } as IncomingMessage,
+      {} as ServerResponse,
+      new URL('http://127.0.0.1:13210/api/channels/binding'),
+      {
+        gatewayManager: {
+          rpc: vi.fn(),
+          getStatus: () => ({ state: 'running' }),
+          debouncedReload: vi.fn(),
+          debouncedRestart: vi.fn(),
+        },
+      } as never,
+    );
+
+    expect(sendJsonMock).toHaveBeenCalledWith(
+      expect.anything(),
+      400,
+      expect.objectContaining({
+        success: false,
+        error: expect.stringContaining('Invalid accountId format'),
+      }),
+    );
+    expect(assignChannelAccountToAgentMock).not.toHaveBeenCalled();
+
+    parseJsonBodyMock.mockResolvedValue({
+      channelType: 'feishu',
+      accountId: 'INVALID VALUE',
+    });
+    await handleChannelRoutes(
+      { method: 'DELETE' } as IncomingMessage,
+      {} as ServerResponse,
+      new URL('http://127.0.0.1:13210/api/channels/binding'),
+      {
+        gatewayManager: {
+          rpc: vi.fn(),
+          getStatus: () => ({ state: 'running' }),
+          debouncedReload: vi.fn(),
+          debouncedRestart: vi.fn(),
+        },
+      } as never,
+    );
+    expect(clearChannelBindingMock).not.toHaveBeenCalled();
+  });
+
+  it('allows legacy non-canonical account ID on default-account and binding routes', async () => {
+    listConfiguredChannelAccountsMock.mockReturnValue({
+      feishu: {
+        defaultAccountId: 'default',
+        accountIds: ['default', 'Legacy_Account'],
+      },
+    });
+
+    parseJsonBodyMock.mockResolvedValue({
+      channelType: 'feishu',
+      accountId: 'Legacy_Account',
+    });
+    const { handleChannelRoutes } = await import('@electron/api/routes/channels');
+    await handleChannelRoutes(
+      { method: 'PUT' } as IncomingMessage,
+      {} as ServerResponse,
+      new URL('http://127.0.0.1:13210/api/channels/default-account'),
+      {
+        gatewayManager: {
+          rpc: vi.fn(),
+          getStatus: () => ({ state: 'running' }),
+          debouncedReload: vi.fn(),
+          debouncedRestart: vi.fn(),
+        },
+      } as never,
+    );
+    expect(setChannelDefaultAccountMock).toHaveBeenCalledWith('feishu', 'Legacy_Account');
+
+    parseJsonBodyMock.mockResolvedValue({
+      channelType: 'feishu',
+      accountId: 'Legacy_Account',
+      agentId: 'main',
+    });
+    await handleChannelRoutes(
+      { method: 'PUT' } as IncomingMessage,
+      {} as ServerResponse,
+      new URL('http://127.0.0.1:13210/api/channels/binding'),
+      {
+        gatewayManager: {
+          rpc: vi.fn(),
+          getStatus: () => ({ state: 'running' }),
+          debouncedReload: vi.fn(),
+          debouncedRestart: vi.fn(),
+        },
+      } as never,
+    );
+    expect(assignChannelAccountToAgentMock).toHaveBeenCalledWith('main', 'feishu', 'Legacy_Account');
   });
 
   it('keeps channel connected when one account is healthy and another errors', async () => {
@@ -242,7 +459,7 @@ describe('handleChannelRoutes', () => {
     await handleChannelRoutes(
       { method: 'GET' } as IncomingMessage,
       {} as ServerResponse,
-      new URL('http://127.0.0.1:3210/api/channels/accounts'),
+      new URL('http://127.0.0.1:13210/api/channels/accounts'),
       {
         gatewayManager: {
           rpc,
@@ -272,6 +489,85 @@ describe('handleChannelRoutes', () => {
     );
   });
 
+  it('filters runtime-only stale accounts when not configured locally', async () => {
+    listConfiguredChannelsMock.mockResolvedValue(['feishu']);
+    listConfiguredChannelAccountsMock.mockResolvedValue({
+      feishu: {
+        defaultAccountId: 'default',
+        accountIds: ['default'],
+      },
+    });
+    readOpenClawConfigMock.mockResolvedValue({
+      channels: {
+        feishu: {
+          defaultAccount: 'default',
+        },
+      },
+    });
+
+    const rpc = vi.fn().mockResolvedValue({
+      channels: {
+        feishu: {
+          configured: true,
+        },
+      },
+      channelAccounts: {
+        feishu: [
+          {
+            accountId: 'default',
+            configured: true,
+            connected: true,
+            running: true,
+          },
+          {
+            accountId: '2',
+            configured: false,
+            connected: false,
+            running: false,
+            lastError: 'stale runtime session',
+          },
+        ],
+      },
+      channelDefaultAccountId: {
+        feishu: 'default',
+      },
+    });
+
+    const { handleChannelRoutes } = await import('@electron/api/routes/channels');
+    await handleChannelRoutes(
+      { method: 'GET' } as IncomingMessage,
+      {} as ServerResponse,
+      new URL('http://127.0.0.1:13210/api/channels/accounts'),
+      {
+        gatewayManager: {
+          rpc,
+          getStatus: () => ({ state: 'running' }),
+          debouncedReload: vi.fn(),
+          debouncedRestart: vi.fn(),
+        },
+      } as never,
+    );
+
+    expect(sendJsonMock).toHaveBeenCalledWith(
+      expect.anything(),
+      200,
+      expect.objectContaining({
+        success: true,
+        channels: [
+          expect.objectContaining({
+            channelType: 'feishu',
+            accounts: [expect.objectContaining({ accountId: 'default' })],
+          }),
+        ],
+      }),
+    );
+    const payload = sendJsonMock.mock.calls.at(-1)?.[2] as {
+      channels?: Array<{ channelType: string; accounts: Array<{ accountId: string }> }>;
+    };
+    const feishu = payload.channels?.find((entry) => entry.channelType === 'feishu');
+    expect(feishu?.accounts.map((entry) => entry.accountId)).toEqual(['default']);
+  });
+
   it('lists known QQ Bot targets for a configured account', async () => {
     const knownUsersPath = join(testOpenClawConfigDir, 'qqbot', 'data');
     mkdirSync(knownUsersPath, { recursive: true });
@@ -297,7 +593,7 @@ describe('handleChannelRoutes', () => {
     const handled = await handleChannelRoutes(
       { method: 'GET' } as IncomingMessage,
       {} as ServerResponse,
-      new URL('http://127.0.0.1:3210/api/channels/targets?channelType=qqbot&accountId=default'),
+      new URL('http://127.0.0.1:13210/api/channels/targets?channelType=qqbot&accountId=default'),
       {
         gatewayManager: {
           rpc: vi.fn(),
@@ -411,7 +707,7 @@ describe('handleChannelRoutes', () => {
     const handled = await handleChannelRoutes(
       { method: 'GET' } as IncomingMessage,
       {} as ServerResponse,
-      new URL('http://127.0.0.1:3210/api/channels/targets?channelType=feishu&accountId=default'),
+      new URL('http://127.0.0.1:13210/api/channels/targets?channelType=feishu&accountId=default'),
       {
         gatewayManager: {
           rpc: vi.fn(),
@@ -470,7 +766,7 @@ describe('handleChannelRoutes', () => {
     const handled = await handleChannelRoutes(
       { method: 'GET' } as IncomingMessage,
       {} as ServerResponse,
-      new URL('http://127.0.0.1:3210/api/channels/targets?channelType=wecom&accountId=default'),
+      new URL('http://127.0.0.1:13210/api/channels/targets?channelType=wecom&accountId=default'),
       {
         gatewayManager: {
           rpc: vi.fn(),
@@ -520,7 +816,7 @@ describe('handleChannelRoutes', () => {
     const handled = await handleChannelRoutes(
       { method: 'GET' } as IncomingMessage,
       {} as ServerResponse,
-      new URL('http://127.0.0.1:3210/api/channels/targets?channelType=dingtalk&accountId=default'),
+      new URL('http://127.0.0.1:13210/api/channels/targets?channelType=dingtalk&accountId=default'),
       {
         gatewayManager: {
           rpc: vi.fn(),
@@ -572,7 +868,7 @@ describe('handleChannelRoutes', () => {
     const handled = await handleChannelRoutes(
       { method: 'GET' } as IncomingMessage,
       {} as ServerResponse,
-      new URL('http://127.0.0.1:3210/api/channels/targets?channelType=wechat&accountId=wechat-bot'),
+      new URL('http://127.0.0.1:13210/api/channels/targets?channelType=wechat&accountId=wechat-bot'),
       {
         gatewayManager: {
           rpc: vi.fn(),

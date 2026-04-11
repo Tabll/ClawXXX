@@ -23,6 +23,14 @@ const GOOGLE_OAUTH_DEFAULT_MODEL_REF = `${GOOGLE_OAUTH_RUNTIME_PROVIDER}/gemini-
 const OPENAI_OAUTH_RUNTIME_PROVIDER = 'openai-codex';
 const OPENAI_OAUTH_DEFAULT_MODEL_REF = `${OPENAI_OAUTH_RUNTIME_PROVIDER}/gpt-5.4`;
 
+/**
+ * Provider types that are not in the built-in provider registry (no `providerConfig.api`).
+ * They require explicit api-protocol defaulting to `openai-completions`.
+ */
+function isUnregisteredProviderType(type: string): boolean {
+  return type === 'custom' || type === 'ollama';
+}
+
 type RuntimeProviderSyncContext = {
   runtimeProviderKey: string;
   meta: ReturnType<typeof getProviderConfig>;
@@ -44,7 +52,7 @@ function normalizeProviderBaseUrl(
     return normalized.replace(/\/v1$/, '').replace(/\/anthropic$/, '').replace(/\/$/, '') + '/anthropic';
   }
 
-  if (config.type === 'custom' || config.type === 'ollama') {
+  if (isUnregisteredProviderType(config.type)) {
     const protocol = apiProtocol || config.apiProtocol || 'openai-completions';
     if (protocol === 'openai-responses') {
       return normalized.replace(/\/responses?$/i, '');
@@ -65,7 +73,7 @@ function shouldUseExplicitDefaultOverride(config: ProviderConfig, runtimeProvide
 }
 
 export function getOpenClawProviderKey(type: string, providerId: string): string {
-  if (type === 'custom' || type === 'ollama') {
+  if (isUnregisteredProviderType(type)) {
     // If the providerId is already a runtime key (e.g. re-seeded from openclaw.json
     // as "custom-XXXXXXXX"), return it directly to avoid double-hashing.
     const prefix = `${type}-`;
@@ -286,7 +294,7 @@ async function syncProviderSecretToRuntime(
 async function resolveRuntimeSyncContext(config: ProviderConfig): Promise<RuntimeProviderSyncContext | null> {
   const runtimeProviderKey = await resolveRuntimeProviderKey(config);
   const meta = getProviderConfig(config.type);
-  const api = config.apiProtocol || (config.type === 'custom' ? 'openai-completions' : meta?.api);
+  const api = config.apiProtocol || (isUnregisteredProviderType(config.type) ? 'openai-completions' : meta?.api);
   if (!api) {
     return null;
   }
@@ -315,7 +323,7 @@ async function syncCustomProviderAgentModel(
   runtimeProviderKey: string,
   apiKey: string | undefined,
 ): Promise<void> {
-  if (config.type !== 'custom') {
+  if (!isUnregisteredProviderType(config.type)) {
     return;
   }
 
@@ -402,7 +410,7 @@ async function buildAgentModelProviderEntry(
   authHeader?: boolean;
 } | null> {
   const meta = getProviderConfig(config.type);
-  const api = config.apiProtocol || (config.type === 'custom' ? 'openai-completions' : meta?.api);
+  const api = config.apiProtocol || (isUnregisteredProviderType(config.type) ? 'openai-completions' : meta?.api);
   const baseUrl = normalizeProviderBaseUrl(config, config.baseUrl || meta?.baseUrl, api);
   if (!api || !baseUrl) {
     return null;
@@ -411,7 +419,7 @@ async function buildAgentModelProviderEntry(
   let apiKey: string | undefined;
   let authHeader: boolean | undefined;
 
-  if (config.type === 'custom') {
+  if (isUnregisteredProviderType(config.type)) {
     apiKey = (await getApiKey(config.id)) || undefined;
   } else if (config.type === 'minimax-portal' || config.type === 'minimax-portal-cn') {
     const accountApiKey = await getApiKey(config.id);
@@ -420,13 +428,6 @@ async function buildAgentModelProviderEntry(
     } else {
       authHeader = true;
       apiKey = 'minimax-oauth';
-    }
-  } else if (config.type === 'qwen-portal') {
-    const accountApiKey = await getApiKey(config.id);
-    if (accountApiKey) {
-      apiKey = accountApiKey;
-    } else {
-      apiKey = 'qwen-oauth';
     }
   }
 
@@ -514,7 +515,7 @@ export async function syncUpdatedProviderToRuntime(
   const defaultProviderId = await getDefaultProvider();
   if (defaultProviderId === config.id) {
     const modelOverride = config.model ? `${ock}/${config.model}` : undefined;
-    if (config.type !== 'custom') {
+    if (!isUnregisteredProviderType(config.type)) {
       if (shouldUseExplicitDefaultOverride(config, ock)) {
         await setOpenClawDefaultModelWithOverride(ock, modelOverride, {
           baseUrl: normalizeProviderBaseUrl(config, config.baseUrl || context.meta?.baseUrl, context.api),
@@ -591,7 +592,7 @@ export async function syncDefaultProviderToRuntime(
   const ock = await resolveRuntimeProviderKey(provider);
   const providerKey = await getApiKey(providerId);
   const fallbackModels = await getProviderFallbackModelRefs(provider);
-  const oauthTypes = ['qwen-portal', 'minimax-portal', 'minimax-portal-cn'];
+  const oauthTypes = ['minimax-portal', 'minimax-portal-cn'];
   const browserOAuthRuntimeProvider = await getBrowserOAuthRuntimeProvider(provider);
   const isOAuthProvider = (oauthTypes.includes(provider.type) && !providerKey) || Boolean(browserOAuthRuntimeProvider);
 
@@ -600,7 +601,7 @@ export async function syncDefaultProviderToRuntime(
       ? (provider.model.startsWith(`${ock}/`) ? provider.model : `${ock}/${provider.model}`)
       : undefined;
 
-    if (provider.type === 'custom') {
+    if (isUnregisteredProviderType(provider.type)) {
       await setOpenClawDefaultModelWithOverride(ock, modelOverride, {
         baseUrl: normalizeProviderBaseUrl(provider, provider.baseUrl, provider.apiProtocol || 'openai-completions'),
         api: provider.apiProtocol || 'openai-completions',
@@ -662,20 +663,15 @@ export async function syncDefaultProviderToRuntime(
 
     const defaultBaseUrl = provider.type === 'minimax-portal'
       ? 'https://api.minimax.io/anthropic'
-      : (provider.type === 'minimax-portal-cn' ? 'https://api.minimaxi.com/anthropic' : 'https://portal.qwen.ai/v1');
-    const api: 'anthropic-messages' | 'openai-completions' =
-      (provider.type === 'minimax-portal' || provider.type === 'minimax-portal-cn')
-        ? 'anthropic-messages'
-        : 'openai-completions';
+      : 'https://api.minimaxi.com/anthropic';
+    const api = 'anthropic-messages' as const;
 
     let baseUrl = provider.baseUrl || defaultBaseUrl;
-    if ((provider.type === 'minimax-portal' || provider.type === 'minimax-portal-cn') && baseUrl) {
+    if (baseUrl) {
       baseUrl = baseUrl.replace(/\/v1$/, '').replace(/\/anthropic$/, '').replace(/\/$/, '') + '/anthropic';
     }
 
-    const targetProviderKey = (provider.type === 'minimax-portal' || provider.type === 'minimax-portal-cn')
-      ? 'minimax-portal'
-      : provider.type;
+    const targetProviderKey = 'minimax-portal';
 
     await setOpenClawDefaultModelWithOverride(targetProviderKey, getProviderModelRef(provider), {
       baseUrl,
@@ -701,7 +697,7 @@ export async function syncDefaultProviderToRuntime(
   }
 
   if (
-    provider.type === 'custom' &&
+    isUnregisteredProviderType(provider.type) &&
     providerKey &&
     provider.baseUrl
   ) {

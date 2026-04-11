@@ -30,7 +30,7 @@
 </p>
 
 <p align="center">
-  <a href="README.md">English</a> | <a href="README.zh-CN.md">简体中文</a> | 日本語
+  <a href="README.md">English</a> | <a href="README.zh-CN.md">简体中文</a> | 日本語 | <a href="README.ru-RU.md">Русский</a>
 </p>
 
 ---
@@ -105,12 +105,13 @@ ClawXは公式の**OpenClaw**コアを直接ベースに構築されています
 ### 📡 マルチチャネル管理
 複数のAIチャネルを同時に設定・監視できます。各チャネルは独立して動作するため、異なるタスクに特化したエージェントを実行できます。
 現在は各チャンネルで複数アカウントを扱え、Channels ページでアカウントの Agent 紐付けやデフォルトアカウント切替を直接管理できます。
+カスタムのチャンネルアカウント ID には、ルーティング不一致を防ぐため OpenClaw 互換の正規形式（`[a-z0-9_-]`、英小文字、最大 64 文字、先頭は英小文字または数字）を必須にしています。
 ClawX には Tencent 公式の個人 WeChat チャンネルプラグインも同梱されており、Channels ページからアプリ内 QR フローで直接 WeChat を連携できます。
 
 ### ⏰ Cronベースの自動化
 AIタスクを自動的に実行するようスケジュール設定できます。トリガーを定義し、間隔を設定することで、手動介入なしにAIエージェントを24時間稼働させることができます。
 定期タスク画面では外部配信を「送信アカウント」と「受信先ターゲット」の 2 段階セレクターで設定できるようになりました。対応チャネルでは、受信先候補をチャネルのディレクトリ機能や既知セッション履歴から自動検出するため、`jobs.json` を手で編集する必要はありません。
-既知の制限: WeChat は現在、定期タスク配信の対応チャネルから意図的に除外しています。`openclaw-weixin` プラグインの送信処理が、リアルタイム会話で得られる `contextToken` を必要とするため、cron のような能動配信をプラグイン自体がサポートしていません。
+
 
 ### 🧩 拡張可能なスキルシステム
 事前構築されたスキルでAIエージェントを拡張できます。統合スキルパネルからスキルの閲覧、インストール、管理が可能です。パッケージマネージャーは不要です。
@@ -124,6 +125,7 @@ Skills ページでは OpenClaw の複数ソース（管理ディレクトリ、
 ### 🔐 セキュアなプロバイダー統合
 複数のAIプロバイダー（OpenAI、Anthropicなど）に接続でき、資格情報はシステムのネイティブキーチェーンに安全に保存されます。OpenAI は API キーとブラウザ OAuth（Codex サブスクリプション）の両方に対応しています。
 OpenAI-compatible ゲートウェイを **Custom プロバイダー** で使う場合、**設定 → AI Providers → Provider 編集** でカスタム `User-Agent` を設定でき、互換性が必要なエンドポイントで有効です。
+互換ゲートウェイで `/models` が認証以外の理由で使えない場合、ClawX は API キー検証時に軽量な `/chat/completions` または `/responses` プローブへ自動フォールバックします。
 
 ### 🌙 アダプティブテーマ
 ライトモード、ダークモード、またはシステム同期テーマ。ClawXはあなたの好みに自動的に適応します。
@@ -318,6 +320,7 @@ AI を開発ワークフローに統合できます。エージェントを使�
 │   ├── i18n/                # ローカライズリソース
 │   └── types/               # TypeScript 型定義
 ├── tests/
+│   ├── e2e/                 # Playwright による Electron E2E スモークテスト
 │   └── unit/                # Vitest ユニット/統合寄りテスト
 ├── resources/                # 静的アセット（アイコン、画像）
 └── scripts/                  # ビルド/ユーティリティスクリプト
@@ -335,6 +338,8 @@ pnpm typecheck            # TypeScriptの型チェック
 
 # テスト
 pnpm test                 # ユニットテストを実行
+pnpm run test:e2e         # Electron E2E スモークテストを実行
+pnpm run test:e2e:headed  # 表示付きウィンドウで Electron E2E を実行
 pnpm run comms:replay     # 通信リプレイ指標を算出
 pnpm run comms:baseline   # 通信ベースラインを更新
 pnpm run comms:compare    # リプレイ指標をベースライン閾値と比較
@@ -347,6 +352,8 @@ pnpm package:mac          # macOS向けにパッケージ化
 pnpm package:win          # Windows向けにパッケージ化
 pnpm package:linux        # Linux向けにパッケージ化
 ```
+
+ヘッドレス Linux では Electron テストに表示サーバーが必要です。`xvfb-run -a pnpm run test:e2e` を利用してください。
 
 ### 通信回帰チェック
 

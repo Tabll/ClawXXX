@@ -194,7 +194,7 @@ describe('WeCom plugin configuration', () => {
     expect(channels.whatsapp.enabled).toBe(true);
   });
 
-  it('keeps configured built-in channels in plugins.allow when a plugin-backed channel is enabled', async () => {
+  it('saves qqbot as a built-in channel without plugin registration (OpenClaw 3.31+)', async () => {
     const { saveChannelConfig } = await import('@electron/utils/channel-config');
 
     await saveChannelConfig('discord', { token: 'discord-token' }, 'default');
@@ -202,9 +202,17 @@ describe('WeCom plugin configuration', () => {
     await saveChannelConfig('qqbot', { appId: 'qq-app', token: 'qq-token', appSecret: 'qq-secret' }, 'default');
 
     const config = await readOpenClawJson();
-    const plugins = config.plugins as { allow: string[] };
+    const channels = config.channels as Record<string, { accounts?: Record<string, unknown> }>;
 
-    expect(plugins.allow).toEqual(expect.arrayContaining(['openclaw-qqbot', 'discord', 'whatsapp']));
+    // QQBot config should be saved under channels.qqbot
+    expect(channels.qqbot.accounts?.default).toBeDefined();
+
+    // QQBot should NOT appear in plugins.entries (built-in channel)
+    const plugins = config.plugins as { entries?: Record<string, unknown> } | undefined;
+    if (plugins?.entries) {
+      expect(plugins.entries['openclaw-qqbot']).toBeUndefined();
+      expect(plugins.entries['qqbot']).toBeUndefined();
+    }
   });
 });
 
@@ -240,5 +248,57 @@ describe('WeChat dangling plugin cleanup', () => {
     const config = await readOpenClawJson();
     expect(config.plugins).toBeUndefined();
     expect(existsSync(join(testHome, '.openclaw', 'openclaw-weixin'))).toBe(false);
+  });
+});
+
+describe('configured channel account extraction', () => {
+  beforeEach(async () => {
+    vi.resetAllMocks();
+    vi.resetModules();
+    await rm(testHome, { recursive: true, force: true });
+    await rm(testUserData, { recursive: true, force: true });
+  });
+
+  it('ignores malformed array-shaped accounts and falls back to default account', async () => {
+    const { listConfiguredChannelAccountsFromConfig } = await import('@electron/utils/channel-config');
+
+    const result = listConfiguredChannelAccountsFromConfig({
+      channels: {
+        feishu: {
+          enabled: true,
+          defaultAccount: 'default',
+          accounts: [null, null, { appId: 'ghost-account' }],
+          appId: 'cli_real_app',
+          appSecret: 'real_secret',
+        },
+      },
+    });
+
+    expect(result.feishu).toEqual({
+      defaultAccountId: 'default',
+      accountIds: ['default'],
+    });
+    expect(result.feishu.accountIds).not.toContain('2');
+  });
+
+  it('keeps intentionally configured numeric account ids from object-shaped accounts', async () => {
+    const { listConfiguredChannelAccountsFromConfig } = await import('@electron/utils/channel-config');
+
+    const result = listConfiguredChannelAccountsFromConfig({
+      channels: {
+        feishu: {
+          enabled: true,
+          defaultAccount: '2',
+          accounts: {
+            '2': { enabled: true, appId: 'cli_numeric' },
+          },
+        },
+      },
+    });
+
+    expect(result.feishu).toEqual({
+      defaultAccountId: '2',
+      accountIds: ['2'],
+    });
   });
 });

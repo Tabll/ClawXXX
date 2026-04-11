@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  normalizeProviderApiKeyInput,
   PROVIDER_TYPES,
   PROVIDER_TYPE_INFO,
   getProviderDocsUrl,
@@ -58,7 +59,7 @@ describe('provider metadata', () => {
 
   it('keeps builtin provider sources in sync', () => {
     expect(BUILTIN_PROVIDER_TYPES).toEqual(
-      expect.arrayContaining(['anthropic', 'openai', 'google', 'openrouter', 'ark', 'moonshot', 'siliconflow', 'minimax-portal', 'minimax-portal-cn', 'qwen-portal', 'ollama'])
+      expect.arrayContaining(['anthropic', 'openai', 'google', 'openrouter', 'ark', 'moonshot', 'siliconflow', 'minimax-portal', 'minimax-portal-cn', 'modelstudio', 'ollama'])
     );
   });
 
@@ -125,13 +126,13 @@ describe('provider metadata', () => {
     const google = PROVIDER_TYPE_INFO.find((provider) => provider.id === 'google');
     const minimax = PROVIDER_TYPE_INFO.find((provider) => provider.id === 'minimax-portal');
     const minimaxCn = PROVIDER_TYPE_INFO.find((provider) => provider.id === 'minimax-portal-cn');
-    const qwen = PROVIDER_TYPE_INFO.find((provider) => provider.id === 'qwen-portal');
+    const qwen = PROVIDER_TYPE_INFO.find((provider) => provider.id === 'modelstudio');
 
     expect(openai).toMatchObject({ showModelId: true, showModelIdInDevModeOnly: true, defaultModelId: 'gpt-5.4' });
     expect(google).toMatchObject({ showModelId: true, showModelIdInDevModeOnly: true, defaultModelId: 'gemini-3-pro-preview' });
     expect(minimax).toMatchObject({ showModelId: true, showModelIdInDevModeOnly: true, defaultModelId: 'MiniMax-M2.7' });
     expect(minimaxCn).toMatchObject({ showModelId: true, showModelIdInDevModeOnly: true, defaultModelId: 'MiniMax-M2.7' });
-    expect(qwen).toMatchObject({ showModelId: true, showModelIdInDevModeOnly: true, defaultModelId: 'coder-model' });
+    expect(qwen).toMatchObject({ showModelId: true, showModelIdInDevModeOnly: true, defaultModelId: 'qwen3.5-plus' });
 
     expect(shouldShowProviderModelId(openai, false)).toBe(false);
     expect(shouldShowProviderModelId(google, false)).toBe(false);
@@ -149,7 +150,7 @@ describe('provider metadata', () => {
     expect(resolveProviderModelForSave(google, '   ', true)).toBe('gemini-3-pro-preview');
     expect(resolveProviderModelForSave(minimax, '   ', true)).toBe('MiniMax-M2.7');
     expect(resolveProviderModelForSave(minimaxCn, '   ', true)).toBe('MiniMax-M2.7');
-    expect(resolveProviderModelForSave(qwen, '   ', true)).toBe('coder-model');
+    expect(resolveProviderModelForSave(qwen, '   ', true)).toBe('qwen3.5-plus');
   });
 
   it('saves OpenRouter model overrides by default and SiliconFlow only in dev mode', () => {
@@ -171,6 +172,7 @@ describe('provider metadata', () => {
   });
 
   it('normalizes provider API keys for save flow', () => {
+    expect(normalizeProviderApiKeyInput('  sk-test \n')).toBe('sk-test');
     expect(resolveProviderApiKeyForSave('ollama', '')).toBe('ollama-local');
     expect(resolveProviderApiKeyForSave('ollama', '   ')).toBe('ollama-local');
     expect(resolveProviderApiKeyForSave('ollama', 'real-key')).toBe('real-key');

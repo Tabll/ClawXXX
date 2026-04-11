@@ -393,6 +393,158 @@ describe('sanitizeOpenClawConfig', () => {
 
     logSpy.mockRestore();
   });
+
+  it('migrates legacy tools.web.search.kimi into moonshot plugin config', async () => {
+    await writeOpenClawJson({
+      models: {
+        providers: {
+          moonshot: { baseUrl: 'https://api.moonshot.cn/v1', api: 'openai-completions' },
+        },
+      },
+      tools: {
+        web: {
+          search: {
+            kimi: {
+              apiKey: 'stale-inline-key',
+              baseUrl: 'https://api.moonshot.cn/v1',
+            },
+          },
+        },
+      },
+    });
+
+    const { sanitizeOpenClawConfig } = await import('@electron/utils/openclaw-auth');
+    await sanitizeOpenClawConfig();
+
+    const result = await readOpenClawJson();
+    const tools = (result.tools as Record<string, unknown> | undefined) || {};
+    const web = (tools.web as Record<string, unknown> | undefined) || {};
+    const search = (web.search as Record<string, unknown> | undefined) || {};
+    const moonshot = ((((result.plugins as Record<string, unknown>).entries as Record<string, unknown>).moonshot as Record<string, unknown>).config as Record<string, unknown>).webSearch as Record<string, unknown>;
+
+    expect(search).not.toHaveProperty('kimi');
+    expect(moonshot).not.toHaveProperty('apiKey');
+    expect(moonshot.baseUrl).toBe('https://api.moonshot.cn/v1');
+  });
+
+  it('mirrors telegram default account credentials to top level during sanitize', async () => {
+    await writeOpenClawJson({
+      channels: {
+        telegram: {
+          enabled: true,
+          defaultAccount: 'default',
+          accounts: {
+            default: {
+              botToken: 'telegram-token',
+              enabled: true,
+            },
+          },
+          proxy: 'socks5://127.0.0.1:7891',
+        },
+      },
+    });
+
+    const { sanitizeOpenClawConfig } = await import('@electron/utils/openclaw-auth');
+    await sanitizeOpenClawConfig();
+
+    const result = await readOpenClawJson();
+    const channels = result.channels as Record<string, Record<string, unknown>>;
+    const telegram = channels.telegram;
+    // telegram is NOT in the exclude set, so credentials are mirrored to top level
+    expect(telegram.proxy).toBe('socks5://127.0.0.1:7891');
+    expect(telegram.botToken).toBe('telegram-token');
+  });
+
+  it('strips accounts/defaultAccount from dingtalk (strict-schema channel) during sanitize', async () => {
+    await writeOpenClawJson({
+      channels: {
+        dingtalk: {
+          enabled: true,
+          defaultAccount: 'default',
+          accounts: {
+            default: {
+              clientId: 'dt-client-id-nested',
+              clientSecret: 'dt-secret-nested',
+              enabled: true,
+            },
+          },
+          clientId: 'dt-client-id',
+          clientSecret: 'dt-secret',
+        },
+      },
+    });
+
+    const { sanitizeOpenClawConfig } = await import('@electron/utils/openclaw-auth');
+    await sanitizeOpenClawConfig();
+
+    const result = await readOpenClawJson();
+    const channels = result.channels as Record<string, Record<string, unknown>>;
+    const dingtalk = channels.dingtalk;
+    // dingtalk's strict schema rejects accounts/defaultAccount — they must be stripped
+    expect(dingtalk.enabled).toBe(true);
+    expect(dingtalk.accounts).toBeUndefined();
+    expect(dingtalk.defaultAccount).toBeUndefined();
+    // Top-level credentials must be preserved
+    expect(dingtalk.clientId).toBe('dt-client-id');
+    expect(dingtalk.clientSecret).toBe('dt-secret');
+  });
+});
+
+describe('syncProviderConfigToOpenClaw', () => {
+  beforeEach(async () => {
+    vi.resetModules();
+    vi.restoreAllMocks();
+    await rm(testHome, { recursive: true, force: true });
+    await rm(testUserData, { recursive: true, force: true });
+  });
+
+  it('writes moonshot web search config to plugin config instead of tools.web.search.kimi', async () => {
+    await writeOpenClawJson({
+      models: {
+        providers: {},
+      },
+    });
+
+    const { syncProviderConfigToOpenClaw } = await import('@electron/utils/openclaw-auth');
+
+    await syncProviderConfigToOpenClaw('moonshot', 'kimi-k2.5', {
+      baseUrl: 'https://api.moonshot.cn/v1',
+      api: 'openai-completions',
+    });
+
+    const result = await readOpenClawJson();
+    const tools = (result.tools as Record<string, unknown> | undefined) || {};
+    const web = (tools.web as Record<string, unknown> | undefined) || {};
+    const search = (web.search as Record<string, unknown> | undefined) || {};
+    const moonshot = ((((result.plugins as Record<string, unknown>).entries as Record<string, unknown>).moonshot as Record<string, unknown>).config as Record<string, unknown>).webSearch as Record<string, unknown>;
+
+    expect(search).not.toHaveProperty('kimi');
+    expect(moonshot.baseUrl).toBe('https://api.moonshot.cn/v1');
+  });
+
+  it('preserves legacy plugins array by converting it into plugins.load during moonshot sync', async () => {
+    await writeOpenClawJson({
+      plugins: ['/tmp/custom-plugin.js'],
+      models: {
+        providers: {},
+      },
+    });
+
+    const { syncProviderConfigToOpenClaw } = await import('@electron/utils/openclaw-auth');
+
+    await syncProviderConfigToOpenClaw('moonshot', 'kimi-k2.5', {
+      baseUrl: 'https://api.moonshot.cn/v1',
+      api: 'openai-completions',
+    });
+
+    const result = await readOpenClawJson();
+    const plugins = result.plugins as Record<string, unknown>;
+    const load = plugins.load as string[];
+    const moonshot = (((plugins.entries as Record<string, unknown>).moonshot as Record<string, unknown>).config as Record<string, unknown>).webSearch as Record<string, unknown>;
+
+    expect(load).toEqual(['/tmp/custom-plugin.js']);
+    expect(moonshot.baseUrl).toBe('https://api.moonshot.cn/v1');
+  });
 });
 
 describe('auth-backed provider discovery', () => {
