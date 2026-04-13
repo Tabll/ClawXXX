@@ -20,6 +20,7 @@ import {
   History,
   Pause,
   ChevronDown,
+  Bot,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { PageHeader } from '@/components/ui/page-header';
@@ -33,6 +34,8 @@ import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { hostApiFetch } from '@/lib/host-api';
 import { useCronStore } from '@/stores/cron';
 import { useGatewayStore } from '@/stores/gateway';
+import { useAgentsStore } from '@/stores/agents';
+import { useChatStore } from '@/stores/chat';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { formatRelativeTime, cn } from '@/lib/utils';
 import { toast } from 'sonner';
@@ -244,9 +247,12 @@ interface TaskDialogProps {
 function TaskDialog({ job, configuredChannels, onClose, onSave }: TaskDialogProps) {
   const { t } = useTranslation('cron');
   const [saving, setSaving] = useState(false);
+  const agents = useAgentsStore((s) => s.agents);
 
   const [name, setName] = useState(job?.name || '');
   const [message, setMessage] = useState(job?.message || '');
+  const [selectedAgentId, setSelectedAgentId] = useState(job?.agentId || useChatStore.getState().currentAgentId);
+  const [agentIdChanged, setAgentIdChanged] = useState(false);
   // Extract cron expression string from CronSchedule object or use as-is if string
   const initialSchedule = (() => {
     const s = job?.schedule;
@@ -406,6 +412,7 @@ function TaskDialog({ job, configuredChannels, onClose, onSave }: TaskDialogProp
         schedule: finalSchedule,
         delivery: finalDelivery,
         enabled,
+        ...(agentIdChanged ? { agentId: selectedAgentId } : {}),
       });
       onClose();
       toast.success(job ? t('toast.updated') : t('toast.created'));
@@ -452,6 +459,26 @@ function TaskDialog({ job, configuredChannels, onClose, onSave }: TaskDialogProp
               rows={3}
               className="rounded-xl font-mono text-[13px] bg-white dark:bg-card border-black/10 dark:border-white/10 focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:border-primary shadow-sm transition-all text-foreground placeholder:text-foreground/40 resize-none"
             />
+          </div>
+
+          {/* Agent */}
+          <div className="space-y-2.5">
+            <Label htmlFor="agent" className="text-[14px] text-foreground/80 font-bold">{t('dialog.agent')}</Label>
+            <SelectField
+              id="agent"
+              value={selectedAgentId}
+              onChange={(e) => {
+                setSelectedAgentId(e.target.value);
+                setAgentIdChanged(true);
+              }}
+              className="h-[44px] rounded-xl border-black/10 dark:border-white/10 bg-[#eeece3] dark:bg-muted text-[13px]"
+            >
+              {agents.map((agent) => (
+                <option key={agent.id} value={agent.id}>
+                  {agent.name}
+                </option>
+              ))}
+            </SelectField>
           </div>
 
           {/* Schedule */}
@@ -686,6 +713,8 @@ interface CronJobCardProps {
 function CronJobCard({ job, deliveryAccountName, onToggle, onEdit, onDelete, onTrigger }: CronJobCardProps) {
   const { t } = useTranslation('cron');
   const [triggering, setTriggering] = useState(false);
+  const agents = useAgentsStore((s) => s.agents);
+  const agentName = agents.find((a) => a.id === job.agentId)?.name ?? job.agentId;
 
   const handleTrigger = async (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -788,6 +817,11 @@ function CronJobCard({ job, deliveryAccountName, onToggle, onEdit, onDelete, onT
               {t('card.next')}: {new Date(job.nextRun).toLocaleString()}
             </span>
           )}
+
+          <span className="flex items-center gap-1.5">
+            <Bot className="h-3.5 w-3.5" />
+            {agentName}
+          </span>
         </div>
 
         {/* Last Run Error */}
