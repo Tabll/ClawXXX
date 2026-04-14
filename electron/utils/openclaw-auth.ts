@@ -1236,6 +1236,89 @@ export async function syncSessionIdleMinutesToOpenClaw(): Promise<void> {
 }
 
 /**
+ * Batch-apply gateway token, browser config, and session idle minutes in a
+ * single config lock + read + write cycle.  Replaces three separate
+ * withConfigLock calls during pre-launch sync.
+ */
+export async function batchSyncConfigFields(token: string): Promise<void> {
+  const DEFAULT_IDLE_MINUTES = 10_080; // 7 days
+
+  return withConfigLock(async () => {
+    const config = await readOpenClawJson();
+    let modified = true;
+
+    // ── Gateway token + controlUi ──
+    const gateway = (
+      config.gateway && typeof config.gateway === 'object'
+        ? { ...(config.gateway as Record<string, unknown>) }
+        : {}
+    ) as Record<string, unknown>;
+
+    const auth = (
+      gateway.auth && typeof gateway.auth === 'object'
+        ? { ...(gateway.auth as Record<string, unknown>) }
+        : {}
+    ) as Record<string, unknown>;
+    auth.mode = 'token';
+    auth.token = token;
+    gateway.auth = auth;
+
+    const controlUi = (
+      gateway.controlUi && typeof gateway.controlUi === 'object'
+        ? { ...(gateway.controlUi as Record<string, unknown>) }
+        : {}
+    ) as Record<string, unknown>;
+    const allowedOrigins = Array.isArray(controlUi.allowedOrigins)
+      ? (controlUi.allowedOrigins as unknown[]).filter((v): v is string => typeof v === 'string')
+      : [];
+    if (!allowedOrigins.includes('file://')) {
+      controlUi.allowedOrigins = [...allowedOrigins, 'file://'];
+    }
+    gateway.controlUi = controlUi;
+    if (!gateway.mode) gateway.mode = 'local';
+    config.gateway = gateway;
+
+    // ── Browser config ──
+    const browser = (
+      config.browser && typeof config.browser === 'object'
+        ? { ...(config.browser as Record<string, unknown>) }
+        : {}
+    ) as Record<string, unknown>;
+    if (browser.enabled === undefined) {
+      browser.enabled = true;
+      config.browser = browser;
+      modified = true;
+    }
+    if (browser.defaultProfile === undefined) {
+      browser.defaultProfile = 'openclaw';
+      config.browser = browser;
+      modified = true;
+    }
+
+    // ── Session idle minutes ──
+    const session = (
+      config.session && typeof config.session === 'object'
+        ? { ...(config.session as Record<string, unknown>) }
+        : {}
+    ) as Record<string, unknown>;
+    const hasExplicitSessionConfig = session.idleMinutes !== undefined
+      || session.reset !== undefined
+      || session.resetByType !== undefined
+      || session.resetByChannel !== undefined;
+    if (!hasExplicitSessionConfig) {
+      session.idleMinutes = DEFAULT_IDLE_MINUTES;
+      config.session = session;
+      modified = true;
+    }
+
+    if (modified) {
+      await writeOpenClawJson(config);
+      console.log('Synced gateway token, browser config, and session idle to openclaw.json');
+    }
+  });
+}
+
+/**
  * Update a provider entry in every discovered agent's models.json.
  */
 type AgentModelProviderEntry = {
@@ -1665,29 +1748,34 @@ export async function sanitizeOpenClawConfig(): Promise<void> {
       }
 
 
-      // ── Remove bare 'feishu' when canonical feishu plugin is present ──
-      // The Gateway binary automatically adds bare 'feishu' to plugins.allow
-      // because the official plugin registers the 'feishu' channel.
-      // However, there's no plugin with id='feishu', so Gateway validation
-      // fails with "plugin not found: feishu".  Remove it from allow[] and
-      // disable the entries.feishu entry to prevent Gateway from re-adding it.
+      // ── Disable built-in 'feishu' when official openclaw-lark plugin is active ──
+      // OpenClaw ships a built-in 'feishu' extension in dist/extensions/feishu/
+      // that conflicts with the official @larksuite/openclaw-lark plugin
+      // (id: 'openclaw-lark').  When the canonical feishu plugin is NOT the
+      // built-in 'feishu' itself, we must:
+      //   1. Remove bare 'feishu' from plugins.allow (already done above at line ~1648)
+      //   2. Delete plugins.entries.feishu entirely — keeping it with enabled:false
+      //      causes the Gateway to report the feishu channel as "disabled".
+      //      Since 'feishu' is not in plugins.allow, the built-in won't load.
       const allowArr2 = Array.isArray(pluginsObj.allow) ? pluginsObj.allow as string[] : [];
       const hasCanonicalFeishu = allowArr2.includes(canonicalFeishuId) || !!pEntries[canonicalFeishuId];
-      if (hasCanonicalFeishu) {
+      if (hasCanonicalFeishu && canonicalFeishuId !== 'feishu') {
         // Remove bare 'feishu' from plugins.allow
         const bareFeishuIdx = allowArr2.indexOf('feishu');
         if (bareFeishuIdx !== -1) {
           allowArr2.splice(bareFeishuIdx, 1);
-          console.log('[sanitize] Removed bare "feishu" from plugins.allow (feishu plugin is configured)');
+          console.log('[sanitize] Removed bare "feishu" from plugins.allow (openclaw-lark plugin is configured)');
           modified = true;
         }
-        // Disable bare 'feishu' in plugins.entries so Gateway won't re-add it
-        if (pEntries.feishu) {
-          if (pEntries.feishu.enabled !== false) {
-            pEntries.feishu.enabled = false;
-            console.log('[sanitize] Disabled bare plugins.entries.feishu (feishu plugin is configured)');
-            modified = true;
-          }
+        // Explicitly disable the built-in feishu extension so it doesn't
+        // conflict with the official openclaw-lark plugin at runtime.
+        // Simply deleting the entry is NOT sufficient — the built-in
+        // extension in dist/extensions/feishu/ (enabledByDefault: true) will
+        // still load unless explicitly marked as disabled.
+        if (!pEntries.feishu || (pEntries.feishu as Record<string, unknown>).enabled !== false) {
+          pEntries.feishu = { enabled: false };
+          console.log('[sanitize] Disabled built-in feishu plugin (openclaw-lark plugin is configured)');
+          modified = true;
         }
       }
 
@@ -1741,6 +1829,14 @@ export async function sanitizeOpenClawConfig(): Promise<void> {
       // allowlist because they were excluded from externalPluginIds above.
       if (nextAllow.length > 0) {
         for (const pluginId of bundled.enabledByDefault) {
+          // When the official openclaw-lark (or similar) plugin replaces the
+          // built-in 'feishu' extension, skip re-adding 'feishu' here —
+          // otherwise the enabledByDefault logic undoes the conflict
+          // resolution performed above and the built-in extension keeps
+          // reappearing in plugins.allow on every gateway restart.
+          if (pluginId === 'feishu' && canonicalFeishuId !== 'feishu') {
+            continue;
+          }
           if (!nextAllow.includes(pluginId)) {
             nextAllow.push(pluginId);
           }
