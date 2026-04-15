@@ -1,0 +1,85 @@
+{
+    "title": "梦境",
+    "subtitle": "睡眠时进行记忆巩固。",
+    "tabs": {
+        "scene": "场景",
+        "diary": "日记",
+        "advanced": "高级"
+    },
+    "header": {
+        "refresh": "刷新",
+        "refreshing": "刷新中…",
+        "on": "Dreaming 已开启",
+        "off": "Dreaming 已关闭"
+    },
+    "status": {
+        "active": "Dreaming 运行中",
+        "idle": "Dreaming 空闲"
+    },
+    "phase": {
+        "light": "浅睡",
+        "deep": "深睡",
+        "rem": "REM"
+    },
+    "stats": {
+        "shortTerm": "短期",
+        "grounded": "已落地",
+        "signals": "信号",
+        "promoted": "已提升",
+        "phaseHits": "阶段命中"
+    },
+    "scene": {
+        "backfill": "回填",
+        "dedupeDiary": "去重日记",
+        "reset": "重置",
+        "clearGrounded": "清除已落地",
+        "repairCache": "修复缓存",
+        "working": "处理中…",
+        "actionSuccess": "操作已成功完成。"
+    },
+    "diary": {
+        "title": "梦境日记",
+        "noDreamsYet": "尚无梦境",
+        "noDreamsHint": "首次梦境周期运行后，梦境会显示在这里。",
+        "waitingTitle": "日记正在等待",
+        "waitingHint": "下一次梦境周期后将显示叙事条目。",
+        "reload": "重新加载",
+        "reloading": "重新加载中…",
+        "dateCount": "个日期",
+        "undated": "未标注日期"
+    },
+    "advanced": {
+        "eyebrow": "查看",
+        "title": "每日日志回顾",
+        "description": "查看每日日志中的内容、等待提升的内容，以及最近已提升的内容。",
+        "summaryFromDailyLog": "来自每日日志",
+        "summaryWaiting": "等待中",
+        "summaryPromotedToday": "今日已提升",
+        "shortTermTitle": "等待提升",
+        "shortTermDescription": "当前等待升级为真实记忆的短期候选项。",
+        "emptyShortTerm": "没有可查看的短期条目。",
+        "promotedTitle": "最近提升",
+        "promotedDescription": "已经完成提升的条目。",
+        "emptyPromoted": "没有可查看的最近提升条目。",
+        "sortRecent": "最新",
+        "sortSignals": "支持度最高",
+        "noData": "暂无梦境数据，请刷新加载。",
+        "actionsTitle": "操作"
+    },
+    "phrases": {
+        "consolidatingMemories": "正在整合记忆…",
+        "tidyingKnowledgeGraph": "正在整理知识图谱…",
+        "replayingConversations": "正在重放今天的对话…",
+        "weavingShortTerm": "正在将短期记忆编织进长期记忆…",
+        "defragmentingMindPalace": "正在整理心智宫殿的碎片…",
+        "filingLooseThoughts": "正在归档零散思绪…",
+        "connectingDots": "正在连接遥远的线索…",
+        "compostingContext": "正在将旧上下文窗口化作养分…",
+        "promotingHunches": "正在提升有希望的直觉…",
+        "forgettingNoise": "正在遗忘无关紧要的噪音…",
+        "reorganizingAttic": "正在重新整理记忆阁楼…",
+        "indexingDay": "正在轻轻索引这一天…",
+        "nurturingInsights": "正在培育初现的洞见…",
+        "simmeringIdeas": "正在酝酿尚未成形的想法…"
+    }
+}

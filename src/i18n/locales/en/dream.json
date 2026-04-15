@@ -1,0 +1,85 @@
+{
+    "title": "Dreaming",
+    "subtitle": "Memory consolidation during sleep cycles.",
+    "tabs": {
+        "scene": "Scene",
+        "diary": "Diary",
+        "advanced": "Advanced"
+    },
+    "header": {
+        "refresh": "Refresh",
+        "refreshing": "Refreshing…",
+        "on": "Dreaming On",
+        "off": "Dreaming Off"
+    },
+    "status": {
+        "active": "Dreaming Active",
+        "idle": "Dreaming Idle"
+    },
+    "phase": {
+        "light": "Light",
+        "deep": "Deep",
+        "rem": "REM"
+    },
+    "stats": {
+        "shortTerm": "Short-term",
+        "grounded": "Grounded",
+        "signals": "Signals",
+        "promoted": "Promoted",
+        "phaseHits": "Phase Hits"
+    },
+    "scene": {
+        "backfill": "Backfill",
+        "dedupeDiary": "Dedupe Diary",
+        "reset": "Reset",
+        "clearGrounded": "Clear Grounded",
+        "repairCache": "Repair Cache",
+        "working": "Working…",
+        "actionSuccess": "Action completed successfully."
+    },
+    "diary": {
+        "title": "Dream Diary",
+        "noDreamsYet": "No dreams yet",
+        "noDreamsHint": "Dreams will appear here after the first dreaming cycle runs.",
+        "waitingTitle": "Diary is waiting",
+        "waitingHint": "Narrative entries will show after the next dreaming cycle.",
+        "reload": "Reload",
+        "reloading": "Reloading…",
+        "dateCount": "dates",
+        "undated": "Undated"
+    },
+    "advanced": {
+        "eyebrow": "Review",
+        "title": "Daily Log Review",
+        "description": "See what's in the daily log, what's waiting to be promoted, and what was recently promoted.",
+        "summaryFromDailyLog": "from daily log",
+        "summaryWaiting": "waiting",
+        "summaryPromotedToday": "promoted today",
+        "shortTermTitle": "Short-term Waiting",
+        "shortTermDescription": "Current short-term candidates waiting to be promoted to real memories.",
+        "emptyShortTerm": "No short-term entries to review.",
+        "promotedTitle": "Recently Promoted",
+        "promotedDescription": "Entries that have already been promoted.",
+        "emptyPromoted": "No recently promoted entries to review.",
+        "sortRecent": "Recent",
+        "sortSignals": "Most Support",
+        "noData": "No dreaming data available. Refresh to load.",
+        "actionsTitle": "Actions"
+    },
+    "phrases": {
+        "consolidatingMemories": "Consolidating memories…",
+        "tidyingKnowledgeGraph": "Tidying knowledge graph…",
+        "replayingConversations": "Replaying today's conversations…",
+        "weavingShortTerm": "Weaving short-term into long-term memory…",
+        "defragmentingMindPalace": "Defragmenting mind palace…",
+        "filingLooseThoughts": "Filing loose thoughts…",
+        "connectingDots": "Connecting distant threads…",
+        "compostingContext": "Composting old context windows…",
+        "promotingHunches": "Promoting promising hunches…",
+        "forgettingNoise": "Forgetting irrelevant noise…",
+        "reorganizingAttic": "Reorganizing the memory attic…",
+        "indexingDay": "Gently indexing the day…",
+        "nurturingInsights": "Nurturing nascent insights…",
+        "simmeringIdeas": "Simmering half-formed ideas…"
+    }
+}

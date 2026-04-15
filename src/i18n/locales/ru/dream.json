@@ -1,0 +1,85 @@
+{
+    "title": "Сновидения",
+    "subtitle": "Консолидация памяти во время циклов сна.",
+    "tabs": {
+        "scene": "Сцена",
+        "diary": "Дневник",
+        "advanced": "Расширенное"
+    },
+    "header": {
+        "refresh": "Обновить",
+        "refreshing": "Обновление…",
+        "on": "Dreaming включён",
+        "off": "Dreaming выключен"
+    },
+    "status": {
+        "active": "Dreaming активен",
+        "idle": "Dreaming неактивен"
+    },
+    "phase": {
+        "light": "Лёгкий",
+        "deep": "Глубокий",
+        "rem": "REM"
+    },
+    "stats": {
+        "shortTerm": "Краткосрочные",
+        "grounded": "Закреплённые",
+        "signals": "Сигналы",
+        "promoted": "Продвинутые",
+        "phaseHits": "Попадания фаз"
+    },
+    "scene": {
+        "backfill": "Заполнить",
+        "dedupeDiary": "Дедупликация",
+        "reset": "Сброс",
+        "clearGrounded": "Очистить закреплённые",
+        "repairCache": "Восстановить кэш",
+        "working": "Обработка…",
+        "actionSuccess": "Действие выполнено успешно."
+    },
+    "diary": {
+        "title": "Дневник сновидений",
+        "noDreamsYet": "Пока нет сновидений",
+        "noDreamsHint": "Сновидения появятся здесь после первого цикла dreaming.",
+        "waitingTitle": "Дневник ожидает",
+        "waitingHint": "Записи появятся после следующего цикла dreaming.",
+        "reload": "Перезагрузить",
+        "reloading": "Перезагрузка…",
+        "dateCount": "дат",
+        "undated": "Без даты"
+    },
+    "advanced": {
+        "eyebrow": "Обзор",
+        "title": "Обзор ежедневного журнала",
+        "description": "Просмотр содержимого журнала, ожидающих продвижения записей и недавно продвинутых.",
+        "summaryFromDailyLog": "из журнала",
+        "summaryWaiting": "ожидают",
+        "summaryPromotedToday": "продвинуто сегодня",
+        "shortTermTitle": "Ожидают продвижения",
+        "shortTermDescription": "Краткосрочные кандидаты на повышение до реальных воспоминаний.",
+        "emptyShortTerm": "Нет краткосрочных записей для просмотра.",
+        "promotedTitle": "Недавно продвинутые",
+        "promotedDescription": "Записи, которые уже были продвинуты.",
+        "emptyPromoted": "Нет недавних продвинутых записей.",
+        "sortRecent": "Новые",
+        "sortSignals": "По поддержке",
+        "noData": "Нет данных о сновидениях. Обновите для загрузки.",
+        "actionsTitle": "Действия"
+    },
+    "phrases": {
+        "consolidatingMemories": "Консолидация памяти…",
+        "tidyingKnowledgeGraph": "Упорядочивание графа знаний…",
+        "replayingConversations": "Воспроизведение сегодняшних разговоров…",
+        "weavingShortTerm": "Вплетение краткосрочной памяти…",
+        "defragmentingMindPalace": "Дефрагментация дворца памяти…",
+        "filingLooseThoughts": "Архивация разрозненных мыслей…",
+        "connectingDots": "Соединение далёких нитей…",
+        "compostingContext": "Компостирование старого контекста…",
+        "promotingHunches": "Продвижение перспективных интуиций…",
+        "forgettingNoise": "Забывание неважного шума…",
+        "reorganizingAttic": "Реорганизация чердака памяти…",
+        "indexingDay": "Мягкая индексация дня…",
+        "nurturingInsights": "Взращивание зарождающихся инсайтов…",
+        "simmeringIdeas": "Созревание полуоформленных идей…"
+    }
+}

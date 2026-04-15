@@ -1,0 +1,85 @@
+{
+    "title": "ドリーミング",
+    "subtitle": "睡眠サイクル中の記憶定着。",
+    "tabs": {
+        "scene": "シーン",
+        "diary": "日記",
+        "advanced": "詳細"
+    },
+    "header": {
+        "refresh": "更新",
+        "refreshing": "更新中…",
+        "on": "Dreaming オン",
+        "off": "Dreaming オフ"
+    },
+    "status": {
+        "active": "Dreaming アクティブ",
+        "idle": "Dreaming アイドル"
+    },
+    "phase": {
+        "light": "ライト",
+        "deep": "ディープ",
+        "rem": "REM"
+    },
+    "stats": {
+        "shortTerm": "短期",
+        "grounded": "グラウンデッド",
+        "signals": "シグナル",
+        "promoted": "プロモート済み",
+        "phaseHits": "フェーズヒット"
+    },
+    "scene": {
+        "backfill": "バックフィル",
+        "dedupeDiary": "日記の重複削除",
+        "reset": "リセット",
+        "clearGrounded": "グラウンデッドをクリア",
+        "repairCache": "キャッシュ修復",
+        "working": "処理中…",
+        "actionSuccess": "操作が正常に完了しました。"
+    },
+    "diary": {
+        "title": "ドリームダイアリー",
+        "noDreamsYet": "まだ夢がありません",
+        "noDreamsHint": "最初のドリーミングサイクル実行後にここに表示されます。",
+        "waitingTitle": "日記は待機中",
+        "waitingHint": "次のドリーミングサイクル後にナラティブエントリが表示されます。",
+        "reload": "再読み込み",
+        "reloading": "再読み込み中…",
+        "dateCount": "日付",
+        "undated": "日付なし"
+    },
+    "advanced": {
+        "eyebrow": "レビュー",
+        "title": "デイリーログレビュー",
+        "description": "デイリーログの内容、プロモート待ち、最近プロモートされたものを確認できます。",
+        "summaryFromDailyLog": "デイリーログから",
+        "summaryWaiting": "待機中",
+        "summaryPromotedToday": "本日プロモート済み",
+        "shortTermTitle": "プロモート待ち",
+        "shortTermDescription": "実際のメモリへのアップグレードを待っている短期の候補。",
+        "emptyShortTerm": "レビューする短期エントリがありません。",
+        "promotedTitle": "最近プロモート済み",
+        "promotedDescription": "プロモートが完了したエントリ。",
+        "emptyPromoted": "レビューする最近のプロモートエントリがありません。",
+        "sortRecent": "最新",
+        "sortSignals": "サポート順",
+        "noData": "ドリーミングデータがありません。更新して読み込んでください。",
+        "actionsTitle": "アクション"
+    },
+    "phrases": {
+        "consolidatingMemories": "記憶を統合中…",
+        "tidyingKnowledgeGraph": "ナレッジグラフを整理中…",
+        "replayingConversations": "今日の会話をリプレイ中…",
+        "weavingShortTerm": "短期記憶を長期記憶に織り込み中…",
+        "defragmentingMindPalace": "マインドパレスをデフラグ中…",
+        "filingLooseThoughts": "散らばった思考を整理中…",
+        "connectingDots": "遠い手がかりを繋ぎ中…",
+        "compostingContext": "古いコンテキストを堆肥化中…",
+        "promotingHunches": "有望な直感をプロモート中…",
+        "forgettingNoise": "無関係なノイズを忘却中…",
+        "reorganizingAttic": "記憶の屋根裏を再整理中…",
+        "indexingDay": "一日をそっとインデックス中…",
+        "nurturingInsights": "芽生えたインサイトを育成中…",
+        "simmeringIdeas": "まだ形にならないアイデアを熟成中…"
+    }
+}

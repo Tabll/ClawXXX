@@ -306,3 +306,68 @@
   background: linear-gradient(90deg, hsl(var(--primary)), hsl(var(--primary) / 0.2));
   animation: subtitle-slide-in 0.4s cubic-bezier(0.16, 1, 0.3, 1) 0.15s both;
 }
+
+/* ------------------------------------------------------------------ */
+/*  Dream page animations                                             */
+/* ------------------------------------------------------------------ */
+
+@keyframes dream-breathe {
+  0%, 100% { transform: scale(1) translateY(0); }
+  50% { transform: scale(1.06) translateY(-6px); }
+}
+
+@keyframes dream-blink {
+  0%, 90%, 100% { opacity: 1; }
+  95% { opacity: 0; }
+}
+
+@keyframes dream-float-z {
+  0% { opacity: 0; transform: translate(0) rotate(-10deg); }
+  20% { opacity: 0.6; }
+  100% { opacity: 0; transform: translate(20px, -40px) rotate(10deg); }
+}
+
+@keyframes dream-twinkle {
+  0% { opacity: 0.15; transform: scale(0.8); }
+  100% { opacity: 0.5; transform: scale(1.2); }
+}
+
+@keyframes dream-bubble-float {
+  0%, 100% { opacity: 0.8; transform: translateY(0); }
+  50% { opacity: 1; transform: translateY(-8px); }
+}
+
+@keyframes dream-moon-glow {
+  0% { opacity: 0.6; box-shadow: 0 0 40px rgba(251,191,36,0.2), 0 0 80px rgba(251,191,36,0.08); }
+  100% { opacity: 0.8; box-shadow: 0 0 60px rgba(251,191,36,0.3), 0 0 120px rgba(251,191,36,0.12); }
+}
+
+@keyframes dream-glow-pulse {
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 1; }
+}
+
+@keyframes dream-dot-pulse {
+  0%, 100% { opacity: 1; box-shadow: 0 0 0 rgba(34,197,94,0.4); }
+  50% { opacity: 0.6; box-shadow: 0 0 8px rgba(34,197,94,0.4); }
+}
+
+@keyframes dream-diary-entry {
+  0% { opacity: 0; transform: translateY(12px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes dream-diary-glow {
+  0% { opacity: 0.5; }
+  100% { opacity: 1; }
+}
+
+.animate-dream-breathe { animation: dream-breathe 4s ease-in-out infinite; }
+.animate-dream-blink { animation: dream-blink 6s ease-in-out infinite; }
+.animate-dream-float-z { animation: dream-float-z 4s ease-out infinite; }
+.animate-dream-twinkle { animation: dream-twinkle 3s ease-in-out infinite alternate; }
+.animate-dream-bubble-float { animation: dream-bubble-float 6s ease-in-out infinite; }
+.animate-dream-moon-glow { animation: dream-moon-glow 8s ease-in-out infinite alternate; }
+.animate-dream-glow-pulse { animation: dream-glow-pulse 4s ease-in-out infinite; }
+.animate-dream-diary-entry { animation: dream-diary-entry 1.4s cubic-bezier(0.22,1,0.36,1) both; }
+.animate-dream-diary-glow { animation: dream-diary-glow 6s ease-in-out infinite alternate; }

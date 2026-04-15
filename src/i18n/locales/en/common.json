@@ -12,7 +12,8 @@
         "models": "Models",
         "deleteSessionConfirm": "Are you sure you want to delete session \"{{label}}\"?",
         "openClawPage": "OpenClaw Page",
-        "workspace": "Workspace"
+        "workspace": "Workspace",
+        "dreams": "Dreaming"
     },
     "actions": {
         "save": "Save",

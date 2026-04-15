@@ -17,6 +17,7 @@ import { Skills } from './pages/Skills';
 import { Cron } from './pages/Cron';
 import { Settings } from './pages/Settings';
 import { Workspace } from './pages/Workspace';
+import { Dream } from './pages/Dream';
 import { Setup } from './pages/Setup';
 import { useSettingsStore } from './stores/settings';
 import { useGatewayStore } from './stores/gateway';
@@ -181,6 +182,7 @@ function App() {
             <Route path="/channels" element={<Channels />} />
             <Route path="/skills" element={<Skills />} />
             <Route path="/cron" element={<Cron />} />
+            <Route path="/dreams" element={<Dream />} />
             <Route path="/settings/*" element={<Settings />} />
           </Route>
         </Routes>

@@ -12,7 +12,8 @@
         "models": "モデル",
         "deleteSessionConfirm": "セッション \"{{label}}\" を削除してもよろしいですか？",
         "openClawPage": "OpenClaw ページ",
-        "workspace": "ワークスペース"
+        "workspace": "ワークスペース",
+        "dreams": "ドリーミング"
     },
     "actions": {
         "save": "保存",

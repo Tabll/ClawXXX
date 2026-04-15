@@ -17,6 +17,7 @@ import enSkills from './locales/en/skills.json';
 import enCron from './locales/en/cron.json';
 import enSetup from './locales/en/setup.json';
 import enWorkspace from './locales/en/workspace.json';
+import enDream from './locales/en/dream.json';
 
 // ZH
 import zhCommon from './locales/zh/common.json';
@@ -29,6 +30,7 @@ import zhSkills from './locales/zh/skills.json';
 import zhCron from './locales/zh/cron.json';
 import zhSetup from './locales/zh/setup.json';
 import zhWorkspace from './locales/zh/workspace.json';
+import zhDream from './locales/zh/dream.json';
 
 // JA
 import jaCommon from './locales/ja/common.json';
@@ -41,6 +43,7 @@ import jaSkills from './locales/ja/skills.json';
 import jaCron from './locales/ja/cron.json';
 import jaSetup from './locales/ja/setup.json';
 import jaWorkspace from './locales/ja/workspace.json';
+import jaDream from './locales/ja/dream.json';
 
 // RU
 import ruCommon from './locales/ru/common.json';
@@ -52,6 +55,7 @@ import ruAgents from './locales/ru/agents.json';
 import ruSkills from './locales/ru/skills.json';
 import ruCron from './locales/ru/cron.json';
 import ruSetup from './locales/ru/setup.json';
+import ruDream from './locales/ru/dream.json';
 
 export const SUPPORTED_LANGUAGES = [
     { code: 'en', label: 'English' },
@@ -72,6 +76,7 @@ const resources = {
         cron: enCron,
         setup: enSetup,
         workspace: enWorkspace,
+        dream: enDream,
     },
     zh: {
         common: zhCommon,
@@ -84,6 +89,7 @@ const resources = {
         cron: zhCron,
         setup: zhSetup,
         workspace: zhWorkspace,
+        dream: zhDream,
     },
     ja: {
         common: jaCommon,
@@ -96,6 +102,7 @@ const resources = {
         cron: jaCron,
         setup: jaSetup,
         workspace: jaWorkspace,
+        dream: jaDream,
     },
     ru: {
         common: ruCommon,
@@ -107,6 +114,7 @@ const resources = {
         skills: ruSkills,
         cron: ruCron,
         setup: ruSetup,
+        dream: ruDream,
     },
 };
 
@@ -118,7 +126,7 @@ i18n
         fallbackLng: 'en',
         supportedLngs: [...SUPPORTED_LANGUAGE_CODES],
         defaultNS: 'common',
-        ns: ['common', 'settings', 'dashboard', 'chat', 'channels', 'agents', 'skills', 'cron', 'setup', 'workspace'],
+        ns: ['common', 'settings', 'dashboard', 'chat', 'channels', 'agents', 'skills', 'cron', 'setup', 'workspace', 'dream'],
         interpolation: {
             escapeValue: false, // React already escapes
         },
