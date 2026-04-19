@@ -2,6 +2,7 @@ import { randomBytes } from 'node:crypto';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { getPort } from '../utils/config';
 import { logger } from '../utils/logger';
+import { extensionRegistry } from '../extensions/registry';
 import type { HostApiContext } from './context';
 import { handleAppRoutes } from './routes/app';
 import { handleGatewayRoutes } from './routes/gateway';
@@ -16,6 +17,7 @@ import { handleFileRoutes } from './routes/files';
 import { handleSessionRoutes } from './routes/sessions';
 import { handleCronRoutes } from './routes/cron';
 import { handleWorkspaceRoutes } from './routes/workspace';
+import { handleDiagnosticsRoutes } from './routes/diagnostics';
 import { sendJson, setCorsHeaders, requireJsonContentType } from './route-utils';
 
 type RouteHandler = (
@@ -25,7 +27,7 @@ type RouteHandler = (
   ctx: HostApiContext,
 ) => Promise<boolean>;
 
-const routeHandlers: RouteHandler[] = [
+const coreRouteHandlers: RouteHandler[] = [
   handleAppRoutes,
   handleGatewayRoutes,
   handleSettingsRoutes,
@@ -37,9 +39,15 @@ const routeHandlers: RouteHandler[] = [
   handleSessionRoutes,
   handleCronRoutes,
   handleWorkspaceRoutes,
+  handleDiagnosticsRoutes,
   handleLogRoutes,
   handleUsageRoutes,
 ];
+
+function buildRouteHandlers(): RouteHandler[] {
+  const extensionHandlers = extensionRegistry.getRouteHandlers();
+  return [...coreRouteHandlers, ...extensionHandlers];
+}
 
 /**
  * Per-session secret token used to authenticate Host API requests.
@@ -96,6 +104,7 @@ export function startHostApiServer(ctx: HostApiContext, port = getPort('CLAWX_HO
         return;
       }
 
+      const routeHandlers = buildRouteHandlers();
       for (const handler of routeHandlers) {
         if (await handler(req, res, requestUrl, ctx)) {
           return;

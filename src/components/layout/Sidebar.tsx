@@ -22,6 +22,7 @@ import {
   Moon,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { rendererExtensionRegistry } from '@/extensions/registry';
 import { useSettingsStore } from '@/stores/settings';
 import { useChatStore } from '@/stores/chat';
 import { useGatewayStore } from '@/stores/gateway';
@@ -210,7 +211,10 @@ export function Sidebar() {
     sessionBucketMap[bucketKey].sessions.push(session);
   }
 
-  const navItems = [
+  const hiddenRoutes = rendererExtensionRegistry.getHiddenRoutes();
+  const extraNavItems = rendererExtensionRegistry.getExtraNavItems();
+
+  const coreNavItems = [
     { to: '/models', icon: <Cpu className="h-[18px] w-[18px]" strokeWidth={2} />, label: t('sidebar.models'), testId: 'sidebar-nav-models' },
     { to: '/agents', icon: <Bot className="h-[18px] w-[18px]" strokeWidth={2} />, label: t('sidebar.agents'), testId: 'sidebar-nav-agents' },
     { to: '/channels', icon: <Network className="h-[18px] w-[18px]" strokeWidth={2} />, label: t('sidebar.channels'), testId: 'sidebar-nav-channels' },
@@ -218,6 +222,16 @@ export function Sidebar() {
     { to: '/cron', icon: <Clock className="h-[18px] w-[18px]" strokeWidth={2} />, label: t('sidebar.cronTasks'), testId: 'sidebar-nav-cron' },
     { to: '/workspace', icon: <FolderTree className="h-[18px] w-[18px]" strokeWidth={2} />, label: t('sidebar.workspace'), testId: 'sidebar-nav-workspace' },
     { to: '/dreams', icon: <Moon className="h-[18px] w-[18px]" strokeWidth={2} />, label: t('sidebar.dreams'), testId: 'sidebar-nav-dreams' },
+  ];
+
+  const navItems = [
+    ...coreNavItems.filter((item) => !hiddenRoutes.has(item.to)),
+    ...extraNavItems.map((item) => ({
+      to: item.to,
+      icon: <item.icon className="h-[18px] w-[18px]" strokeWidth={2} />,
+      label: item.labelI18nKey ? t(item.labelI18nKey) : item.label,
+      testId: item.testId,
+    })),
   ];
 
   return (
