@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { CheckCircle2, ChevronDown, ChevronRight, CircleDashed, GitBranch, MessageSquare, Wrench, XCircle } from 'lucide-react';
+import { CheckCircle2, ChevronDown, ChevronRight, CircleDashed, GitBranch, Link, MessageSquare, Wrench, XCircle } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 import type { TaskStep } from './task-visualization';
@@ -47,18 +47,17 @@ function StepDetailCard({ step }: { step: TaskStep }) {
   const isNarration = step.kind === 'message';
   const isTool = step.kind === 'tool';
   const isThinking = step.kind === 'thinking';
-  const showRunningDots = isTool && step.status === 'running';
+  const showRunningDots = (isTool || isThinking) && step.status === 'running';
   const hideStatusText = isTool && step.status === 'completed';
   const detailPreview = step.detail?.replace(/\s+/g, ' ').trim();
   const canExpand = hasDetail;
-  const usePlainExpandedDetail = isTool || isThinking;
-  const displayLabel = isThinking ? t('executionGraph.thinkingLabel') : step.label;
+    const displayLabel = isThinking ? t('executionGraph.thinkingLabel') : step.label;
 
   return (
     <div
       className={cn(
         'min-w-0 flex-1 text-muted-foreground',
-        isTool || isNarration
+        isTool || isNarration || isThinking
           ? 'px-0 py-0'
           : 'rounded-xl border border-black/10 bg-white/40 px-3 py-2 dark:border-white/10 dark:bg-white/[0.03]',
       )}
@@ -76,24 +75,36 @@ function StepDetailCard({ step }: { step: TaskStep }) {
         }}
       >
         <div className="min-w-0 flex-1">
-          {!isNarration && (
+          {(!isNarration && !isThinking || expanded) && (
             <div className="flex min-w-0 items-center gap-2">
               <p className="shrink-0 text-sm font-medium text-muted-foreground">{displayLabel}</p>
+              {isTool && step.label === 'web_fetch' && step.url && (
+                <a
+                  href={step.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={(e) => e.stopPropagation()}
+                  className="shrink-0 text-muted-foreground hover:text-foreground"
+                  title={step.url}
+                >
+                  <Link className="h-3.5 w-3.5" />
+                </a>
+              )}
               {isTool && detailPreview && !expanded && (
-                <p className="min-w-0 truncate text-[12px] leading-4 text-muted-foreground/80">
+                <p className="min-w-0 truncate text-xs leading-4 text-muted-foreground/80">
                   {detailPreview}
                 </p>
               )}
               {!hideStatusText && !showRunningDots && (
-                <span className="rounded-full bg-black/5 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground dark:bg-white/10">
+                <span className="rounded-full bg-black/5 px-2 py-0.5 text-2xs font-medium uppercase tracking-wide text-muted-foreground dark:bg-white/10">
                   {t(`taskPanel.stepStatus.${step.status}`)}
                 </span>
               )}
               {showRunningDots && (
-                <AnimatedDots className="text-[14px]" />
+                <AnimatedDots className="text-sm" />
               )}
               {step.depth > 1 && (
-                <span className="rounded-full bg-black/5 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground dark:bg-white/10">
+                <span className="rounded-full bg-black/5 px-2 py-0.5 text-2xs font-medium uppercase tracking-wide text-muted-foreground dark:bg-white/10">
                   {t('executionGraph.branchLabel')}
                 </span>
               )}
@@ -104,10 +115,8 @@ function StepDetailCard({ step }: { step: TaskStep }) {
               className={cn(
                 'text-muted-foreground',
                 isThinking
-                  ? 'mt-0.5 text-[12px] leading-5 line-clamp-1'
-                  : isNarration
-                  ? 'text-[13px] leading-6 text-muted-foreground line-clamp-2'
-                  : 'mt-0.5 text-[12px] leading-5 line-clamp-2',
+                  ? 'mt-0.5 text-meta leading-5 line-clamp-2'
+                  : 'text-meta leading-6 text-muted-foreground line-clamp-2',
               )}
             >
               {step.detail}
@@ -120,29 +129,30 @@ function StepDetailCard({ step }: { step: TaskStep }) {
           </span>
         )}
       </button>
-      {step.detail && expanded && canExpand && (
-        usePlainExpandedDetail ? (
-          <pre
-            className={cn(
-              'mt-0.5 whitespace-pre-wrap text-[12px] leading-5 text-muted-foreground',
-              isTool ? 'break-all' : 'break-words',
-            )}
-          >
-            {step.detail}
-          </pre>
-        ) : (
-        <div className="mt-3 rounded-lg border border-black/10 bg-black/[0.03] px-3 py-2 dark:border-white/10 dark:bg-white/[0.03]">
-          <pre
-            className={cn(
-              'whitespace-pre-wrap text-[12px] leading-5',
-              isNarration ? 'text-muted-foreground' : 'break-all text-muted-foreground',
-            )}
-          >
-            {step.detail}
-          </pre>
-        </div>
-        )
-      )}
+      {step.detail && expanded && canExpand && isTool && (() => {
+            let formatted = step.detail;
+            try {
+              formatted = JSON.stringify(JSON.parse(step.detail), null, 2);
+            } catch { /* not valid JSON */ }
+            return (
+              <div className="mt-3 rounded-lg border border-black/10 bg-black/[0.03] px-3 py-2 dark:border-white/10 dark:bg-white/[0.03]">
+                <pre
+                  className="whitespace-pre-wrap text-xs leading-5 text-muted-foreground"
+                >
+                  {formatted}
+                </pre>
+              </div>
+            );
+          })()}
+          {step.detail && expanded && canExpand && (isNarration || isThinking) && (
+            <div className="mt-3 rounded-lg border border-black/10 bg-black/[0.03] px-3 py-2 dark:border-white/10 dark:bg-white/[0.03]">
+              <pre
+                className="whitespace-pre-wrap break-words text-xs leading-5 text-muted-foreground"
+              >
+                {step.detail}
+              </pre>
+            </div>
+          )}
     </div>
   );
 }
@@ -187,7 +197,7 @@ export function ExecutionGraphCard({
         data-testid="chat-execution-graph"
         data-collapsed="true"
         onClick={() => setExpanded(true)}
-        className="group flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[12px] text-muted-foreground transition-colors hover:bg-black/5 hover:text-muted-foreground dark:hover:bg-white/5"
+        className="group flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs text-muted-foreground transition-colors hover:bg-black/5 hover:text-muted-foreground dark:hover:bg-white/5"
       >
         <ChevronRight className="h-3.5 w-3.5 shrink-0 transition-transform group-hover:translate-x-0.5" />
         <span className="truncate">
@@ -207,7 +217,7 @@ export function ExecutionGraphCard({
         type="button"
         data-testid="chat-execution-graph-collapse"
         onClick={() => setExpanded(false)}
-        className="group flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[12px] text-muted-foreground transition-colors hover:bg-black/5 hover:text-muted-foreground dark:hover:bg-white/5"
+        className="group flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs text-muted-foreground transition-colors hover:bg-black/5 hover:text-muted-foreground dark:hover:bg-white/5"
         aria-label={t('executionGraph.collapseAction')}
         title={t('executionGraph.collapseAction')}
       >
@@ -260,7 +270,7 @@ export function ExecutionGraphCard({
                     )}
                   >
                     {step.kind === 'thinking'
-                      ? <AnimatedDots className="text-[14px]" />
+                      ? <MessageSquare className="h-3.5 w-3.5" />
                       : step.kind === 'tool'
                         ? <Wrench className="h-3.5 w-3.5" />
                         : step.kind === 'message'
@@ -286,7 +296,7 @@ export function ExecutionGraphCard({
               <div className="w-6 shrink-0" />
               <div className="min-w-0 flex-1 text-sm text-muted-foreground">
                 <span className="font-medium">{t('executionGraph.thinkingLabel')}</span>
-                <AnimatedDots className="ml-1 inline-flex text-[14px]" />
+                <AnimatedDots className="ml-1 inline-flex text-sm" />
               </div>
             </div>
           </div>

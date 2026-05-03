@@ -7,6 +7,7 @@ import { create } from 'zustand';
 import { hostApiFetch } from '@/lib/host-api';
 import { useGatewayStore } from './gateway';
 import { useAgentsStore } from './agents';
+import { buildBaselineRunKey, captureBaseline, clearBaselines } from './baseline-cache';
 import { buildCronSessionHistoryPath, isCronSessionKey } from './chat/cron-session-utils';
 import {
   CHAT_HISTORY_STARTUP_RETRY_DELAYS_MS,
@@ -60,6 +61,7 @@ let _loadSessionsInFlight: Promise<void> | null = null;
 let _lastLoadSessionsAt = 0;
 const _historyLoadInFlight = new Map<string, Promise<void>>();
 const _lastHistoryLoadAtBySession = new Map<string, number>();
+const _forceNextHistoryLoadBySession = new Set<string>();
 const _foregroundHistoryLoadSeen = new Set<string>();
 const SESSION_LOAD_MIN_INTERVAL_MS = 1_200;
 const HISTORY_LOAD_MIN_INTERVAL_MS = 800;
@@ -79,6 +81,10 @@ function clearHistoryPoll(): void {
     clearTimeout(_historyPollTimer);
     _historyPollTimer = null;
   }
+}
+
+function forceNextHistoryLoad(sessionKey: string): void {
+  _forceNextHistoryLoadBySession.add(sessionKey);
 }
 
 function pruneChatEventDedupe(now: number): void {
@@ -230,8 +236,31 @@ function normalizeStreamingMessage(message: unknown): unknown {
     : rawMessage;
 }
 
+/**
+ * Strip Gateway-injected metadata that does NOT exist on the renderer's
+ * optimistic user message but is echoed back when the Gateway persists it:
+ *   - leading timestamp `[Wed 2026-04-22 10:30 GMT+8] `
+ *   - `[message_id: uuid]` tags sprinkled throughout the text
+ *   - `[media attached: path (mime) | path]` references appended when the
+ *     renderer sends attachments via `chat:sendWithMedia`
+ *   - Gateway-injected "Conversation info (untrusted metadata): ..." blocks
+ *
+ * Keeping this aligned with `cleanUserText` in `pages/Chat/message-utils.ts`
+ * is important: the user bubble renders the cleaned text, so the comparison
+ * used to dedupe optimistic vs server echoes must operate on the same
+ * cleaned form — otherwise the same visible message renders twice.
+ */
+function stripGatewayUserMetadata(text: string): string {
+  return text
+    .replace(/^\s*\[(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)\s+\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}\s+[^\]]+\]\s*/i, '')
+    .replace(/\s*\[media attached:[^\]]*\]/g, '')
+    .replace(/\s*\[message_id:\s*[^\]]+\]/g, '')
+    .replace(/^Conversation info\s*\([^)]*\):\s*```[a-z]*\n[\s\S]*?```\s*/i, '')
+    .replace(/^Conversation info\s*\([^)]*\):\s*\{[\s\S]*?\}\s*/i, '');
+}
+
 function normalizeComparableUserText(content: unknown): string {
-  return getMessageText(content)
+  return stripGatewayUserMetadata(getMessageText(content))
     .replace(/\s+/g, ' ')
     .trim();
 }
@@ -308,6 +337,30 @@ function getMessageText(content: unknown): string {
     return compactProgressiveTextParts(parts).join('\n');
   }
   return '';
+}
+
+function getMessageStopReason(message: RawMessage | unknown): string | null {
+  if (!message || typeof message !== 'object') return null;
+  const msg = message as Record<string, unknown>;
+  const rawStopReason = msg.stopReason ?? msg.stop_reason;
+  if (typeof rawStopReason !== 'string') return null;
+  const normalized = rawStopReason.trim().toLowerCase();
+  return normalized || null;
+}
+
+function getMessageErrorMessage(message: RawMessage | unknown): string | null {
+  if (!message || typeof message !== 'object') return null;
+  const msg = message as Record<string, unknown>;
+  const rawError = msg.errorMessage ?? msg.error_message;
+  if (typeof rawError !== 'string') return null;
+  const normalized = rawError.trim();
+  return normalized || null;
+}
+
+function isTerminalAssistantErrorMessage(message: RawMessage | unknown): boolean {
+  if (!message || typeof message !== 'object') return false;
+  const msg = message as Record<string, unknown>;
+  return msg.role === 'assistant' && getMessageStopReason(message) === 'error';
 }
 
 /** Extract media file refs from [media attached: <path> (<mime>) | ...] patterns */
@@ -568,6 +621,9 @@ function enrichWithToolResultFiles(messages: RawMessage[]): RawMessage[] {
           }
         }
       }
+      // Tag all files from tool results so ChatMessage can suppress them
+      // in segments that already have an ExecutionGraphCard.
+      for (const f of imageFiles) f.source = 'tool-result';
       pending.push(...imageFiles);
 
       // 2. [media attached: ...] patterns in tool result text output
@@ -576,12 +632,12 @@ function enrichWithToolResultFiles(messages: RawMessage[]): RawMessage[] {
         const mediaRefs = extractMediaRefs(text);
         const mediaRefPaths = new Set(mediaRefs.map(r => r.filePath));
         for (const ref of mediaRefs) {
-          pending.push(makeAttachedFile(ref));
+          pending.push({ ...makeAttachedFile(ref), source: 'tool-result' });
         }
         // 3. Raw file paths in tool result text (documents, audio, video, etc.)
         for (const ref of extractRawFilePaths(text)) {
           if (!mediaRefPaths.has(ref.filePath)) {
-            pending.push(makeAttachedFile(ref));
+            pending.push({ ...makeAttachedFile(ref), source: 'tool-result' });
           }
         }
       }
@@ -658,9 +714,9 @@ function enrichWithCachedImages(messages: RawMessage[]): RawMessage[] {
 
     const files: AttachedFileMeta[] = allRefs.map(ref => {
       const cached = _imageCache.get(ref.filePath);
-      if (cached) return { ...cached, filePath: ref.filePath };
+      if (cached) return { ...cached, filePath: ref.filePath, source: 'message-ref' as const };
       const fileName = ref.filePath.split(/[\\/]/).pop() || 'file';
-      return { fileName, mimeType: ref.mimeType, fileSize: 0, preview: null, filePath: ref.filePath };
+      return { fileName, mimeType: ref.mimeType, fileSize: 0, preview: null, filePath: ref.filePath, source: 'message-ref' as const };
     });
     return { ...msg, _attachedFiles: files };
   });
@@ -934,11 +990,106 @@ function isToolResultRole(role: unknown): boolean {
 /** True for internal plumbing messages that should never be shown in the UI. */
 function isInternalMessage(msg: { role?: unknown; content?: unknown }): boolean {
   if (msg.role === 'system') return true;
+  const text = getMessageText(msg.content);
   if (msg.role === 'assistant') {
-    const text = getMessageText(msg.content);
     if (/^(HEARTBEAT_OK|NO_REPLY)\s*$/.test(text)) return true;
   }
+  // Runtime system injections: these arrive as user or assistant-role messages
+  // but are internal plumbing (exec results, async-command notices, time pings, etc.)
+  if ((msg.role === 'user' || msg.role === 'assistant') && isRuntimeSystemInjection(text)) return true;
   return false;
+}
+
+/**
+ * Detect runtime-injected system messages that should be hidden from the chat UI.
+ * These are injected by the OpenClaw runtime as user-role messages and include:
+ *   - "System (untrusted): ..." — exec results, tool output, etc.
+ *   - "An async command you ran earlier has completed" — async completion notices
+ *   - "Current time: ..." followed by nothing else — periodic heartbeat time pings
+ *   - "Handle the result internally. Do not relay it to the user" — internal directives
+ */
+function isRuntimeSystemInjection(text: string): boolean {
+  if (!text) return false;
+  const normalized = text.trim();
+  if (/^\s*System\s*\(untrusted\)\s*:/i.test(normalized)) return true;
+  if (
+    /An async command you ran earlier has completed/i.test(normalized)
+    && /Do not relay it to the user unless explicitly requested/i.test(normalized)
+  ) {
+    return true;
+  }
+  if (
+    /^\s*Current time\s*:/i.test(normalized)
+    && /^\s*Current time\s*:[^\n]*\/\s*\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}\s+UTC\s*$/i.test(normalized)
+  ) {
+    return true;
+  }
+  return false;
+}
+
+// ── Write tool_use baseline capture ─────────────────────────────
+//
+// Tool name sets mirror generated-files.ts so we detect the same tools.
+const BASELINE_WRITE_TOOLS = new Set([
+  'Write', 'write_file', 'create_file', 'WriteFile', 'createFile', 'write',
+]);
+const BASELINE_EDIT_TOOLS = new Set([
+  'Edit', 'edit', 'edit_file', 'EditFile',
+  'StrReplace', 'str_replace', 'str_replace_editor',
+  'MultiEdit', 'multi_edit', 'multiEdit',
+]);
+const BASELINE_FILE_PATH_KEYS = ['file_path', 'filepath', 'path', 'fileName', 'file_name', 'target_path'];
+
+function pickFilePathFromInput(input: unknown): string | null {
+  if (!input || typeof input !== 'object') return null;
+  const rec = input as Record<string, unknown>;
+  for (const key of BASELINE_FILE_PATH_KEYS) {
+    const value = rec[key];
+    if (typeof value === 'string' && value.trim()) return value.trim();
+  }
+  return null;
+}
+
+/**
+ * Scan a streaming message for Write/Edit tool_use blocks and trigger
+ * async baseline reads from disk for each target file.  Called on every
+ * `delta` event; `captureBaseline` is idempotent — duplicate calls for
+ * the same path are no-ops.
+ */
+function isBaselineRealUserMessage(message: RawMessage | undefined): boolean {
+  if (!message || message.role !== 'user') return false;
+  const content = message.content;
+  if (!Array.isArray(content)) return true;
+  const blocks = content as Array<{ type?: string }>;
+  return blocks.length === 0 || !blocks.every((block) => block.type === 'tool_result' || block.type === 'toolResult');
+}
+
+function countBaselineRealUserMessages(messages: RawMessage[]): number {
+  let count = 0;
+  for (const message of messages) {
+    if (isBaselineRealUserMessage(message)) count += 1;
+  }
+  return count;
+}
+
+function getBaselineRunKeyForMessages(sessionKey: string, messages: RawMessage[]): string | null {
+  const userTurnOrdinal = countBaselineRealUserMessages(messages);
+  return buildBaselineRunKey(sessionKey, userTurnOrdinal);
+}
+
+function captureBaselinesFromMessage(message: unknown, runKey: string | null): void {
+  if (!runKey || !message || typeof message !== 'object') return;
+  const content = (message as Record<string, unknown>).content;
+  if (!Array.isArray(content)) return;
+  for (const block of content as ContentBlock[]) {
+    if (block.type !== 'tool_use' && block.type !== 'toolCall') continue;
+    const name = typeof block.name === 'string' ? block.name : '';
+    if (!name) continue;
+    if (!BASELINE_WRITE_TOOLS.has(name) && !BASELINE_EDIT_TOOLS.has(name)) continue;
+    const input = block.input ?? block.arguments;
+    const filePath = pickFilePathFromInput(input);
+    if (filePath) captureBaseline(runKey, filePath);
+  }
 }
 
 function extractTextFromContent(content: unknown): string {
@@ -1152,6 +1303,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   messages: [],
   loading: false,
   error: null,
+  runError: null,
 
   sending: false,
   activeRunId: null,
@@ -1329,6 +1481,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     // This prevents the poll timer from firing after the switch and loading
     // the wrong session's history into the new session's view.
     clearHistoryPoll();
+    clearBaselines();
     set((s) => buildSessionSwitchPatch(s, key));
     get().loadHistory();
   },
@@ -1377,6 +1530,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         streamingTools: [],
         activeRunId: null,
         error: null,
+        runError: null,
         pendingFinal: false,
         lastUserMessageAt: null,
         pendingToolImages: [],
@@ -1432,6 +1586,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       streamingTools: [],
       activeRunId: null,
       error: null,
+      runError: null,
       pendingFinal: false,
       lastUserMessageAt: null,
       pendingToolImages: [],
@@ -1470,18 +1625,24 @@ export const useChatStore = create<ChatState>((set, get) => ({
     const { currentSessionKey } = get();
     const isInitialForegroundLoad = !quiet && !_foregroundHistoryLoadSeen.has(currentSessionKey);
     const historyTimeoutOverride = getStartupHistoryTimeoutOverride(isInitialForegroundLoad);
+    const forceLoad = _forceNextHistoryLoadBySession.delete(currentSessionKey);
     const existingLoad = _historyLoadInFlight.get(currentSessionKey);
     if (existingLoad) {
       await existingLoad;
-      return;
+      if (!forceLoad) {
+        return;
+      }
+      if (get().currentSessionKey !== currentSessionKey) {
+        return;
+      }
     }
 
     const lastLoadAt = _lastHistoryLoadAtBySession.get(currentSessionKey) || 0;
-    if (quiet && Date.now() - lastLoadAt < HISTORY_LOAD_MIN_INTERVAL_MS) {
+    if (!forceLoad && quiet && Date.now() - lastLoadAt < HISTORY_LOAD_MIN_INTERVAL_MS) {
       return;
     }
 
-    if (!quiet) set({ loading: true, error: null });
+      if (!quiet) set({ loading: true, error: null, runError: null });
 
     // Safety guard: if history loading takes too long, force loading to false
     // to prevent the UI from being stuck in a spinner forever.
@@ -1557,7 +1718,40 @@ export const useChatStore = create<ChatState>((set, get) => ({
         }
       }
 
-      set({ messages: finalMessages, thinkingLevel, loading: false });
+      const { pendingFinal, lastUserMessageAt, sending: isSendingNow } = get();
+      const userMsTs = lastUserMessageAt ? toMs(lastUserMessageAt) : 0;
+      const isAfterUserMsg = (msg: RawMessage): boolean => {
+        if (!userMsTs || !msg.timestamp) return true;
+        return toMs(msg.timestamp) >= userMsTs;
+      };
+      const isRealUserBoundary = (msg: RawMessage): boolean => {
+        if (msg.role !== 'user') return false;
+        if (!Array.isArray(msg.content)) return true;
+        const blocks = msg.content as Array<{ type?: string }>;
+        return blocks.length === 0 || !blocks.every((block) => block.type === 'tool_result' || block.type === 'toolResult');
+      };
+      const postBoundaryMessages = userMsTs
+        ? filteredMessages.filter((msg) => isAfterUserMsg(msg))
+        : (() => {
+            for (let i = filteredMessages.length - 1; i >= 0; i -= 1) {
+              if (isRealUserBoundary(filteredMessages[i])) {
+                return filteredMessages.slice(i + 1);
+              }
+            }
+            return filteredMessages;
+          })();
+      const lastAssistantAfterBoundary = [...postBoundaryMessages].reverse().find((msg) => msg.role === 'assistant');
+      const latestTerminalAssistantErrorMessage = lastAssistantAfterBoundary
+        && getMessageStopReason(lastAssistantAfterBoundary) === 'error'
+        ? getMessageErrorMessage(lastAssistantAfterBoundary)
+        : null;
+
+      set({
+        messages: finalMessages,
+        thinkingLevel,
+        loading: false,
+        runError: latestTerminalAssistantErrorMessage,
+      });
 
       // Extract first user message text as a session label for display in the toolbar.
       // Skip main sessions (key ends with ":main") — they rely on the Gateway-provided
@@ -1594,16 +1788,17 @@ export const useChatStore = create<ChatState>((set, get) => ({
           }));
         }
       });
-      const { pendingFinal, lastUserMessageAt, sending: isSendingNow } = get();
 
-      // If we're sending but haven't received streaming events, check
-      // whether the loaded history reveals intermediate tool-call activity.
-      // This surfaces progress via the pendingFinal → ActivityIndicator path.
-      const userMsTs = lastUserMessageAt ? toMs(lastUserMessageAt) : 0;
-      const isAfterUserMsg = (msg: RawMessage): boolean => {
-        if (!userMsTs || !msg.timestamp) return true;
-        return toMs(msg.timestamp) >= userMsTs;
-      };
+      if (latestTerminalAssistantErrorMessage) {
+        clearHistoryPoll();
+        set({
+          sending: false,
+          activeRunId: null,
+          pendingFinal: false,
+          lastUserMessageAt: null,
+        });
+        return true;
+      }
 
       if (isSendingNow && !pendingFinal) {
         const hasRecentAssistantActivity = [...filteredMessages].reverse().some((msg) => {
@@ -1777,6 +1972,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       messages: [...s.messages, userMsg],
       sending: true,
       error: null,
+      runError: null,
       streamingText: '',
       streamingMessage: null,
       streamingTools: [],
@@ -1967,9 +2163,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
     let resolvedState = eventState;
     if (!resolvedState && event.message && typeof event.message === 'object') {
       const msg = event.message as Record<string, unknown>;
-      const stopReason = msg.stopReason ?? msg.stop_reason;
-      if (stopReason) {
-        resolvedState = 'final';
+        const stopReason = getMessageStopReason(msg);
+        if (stopReason === 'error') {
+          resolvedState = 'error';
+        } else if (stopReason) {
+          resolvedState = 'final';
       } else if (msg.role || msg.content) {
         resolvedState = 'delta';
       }
@@ -1987,7 +2185,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       // show loading/streaming in the app when this session has an active run.
       const { sending } = get();
       if (!sending && runId) {
-        set({ sending: true, activeRunId: runId, error: null });
+          set({ sending: true, activeRunId: runId, error: null, runError: null });
       }
     }
 
@@ -1996,7 +2194,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         // Run just started (e.g. from console); show loading immediately.
         const { sending: currentSending } = get();
         if (!currentSending && runId) {
-          set({ sending: true, activeRunId: runId, error: null });
+          set({ sending: true, activeRunId: runId, error: null, runError: null });
         }
         break;
       }
@@ -2005,10 +2203,16 @@ export const useChatStore = create<ChatState>((set, get) => ({
         if (_errorRecoveryTimer) {
           clearErrorRecoveryTimer();
         }
-        if (get().error) {
-          set({ error: null });
+        if (get().error || get().runError) {
+          set({ error: null, runError: null });
         }
         const updates = collectToolUpdates(event.message, resolvedState);
+        // Capture baseline file content from disk before the runtime
+        // executes Write tool calls — enables proper before/after diff.
+        captureBaselinesFromMessage(
+          event.message,
+          getBaselineRunKeyForMessages(currentSessionKey, get().messages),
+        );
         set((s) => ({
           streamingMessage: (() => {
             if (event.message && typeof event.message === 'object') {
@@ -2023,12 +2227,41 @@ export const useChatStore = create<ChatState>((set, get) => ({
       }
       case 'final': {
         clearErrorRecoveryTimer();
-        if (get().error) set({ error: null });
+        if (get().error || get().runError) set({ error: null, runError: null });
         // Message complete - add to history and clear streaming
         const finalMsg = event.message as RawMessage | undefined;
         if (finalMsg) {
           const normalizedFinalMessage = normalizeStreamingMessage(finalMsg) as RawMessage;
+          if (isTerminalAssistantErrorMessage(normalizedFinalMessage)) {
+            get().handleChatEvent({
+              ...event,
+              state: 'error',
+              errorMessage: getMessageErrorMessage(normalizedFinalMessage) ?? event.errorMessage,
+              message: normalizedFinalMessage,
+            });
+            break;
+          }
           const updates = collectToolUpdates(normalizedFinalMessage, resolvedState);
+          // Filter out internal-only final responses (NO_REPLY, HEARTBEAT_OK, etc.)
+          // before adding to messages. Without this guard, the internal token appears
+          // briefly in the UI until loadHistory replaces the message list — and if the
+          // quiet-mode reload is debounced away, the token can stay visible permanently.
+          if (isInternalMessage(normalizedFinalMessage)) {
+            const sessionKeyForReload = get().currentSessionKey;
+            set({
+              streamingText: '',
+              streamingMessage: null,
+              sending: false,
+              activeRunId: null,
+              pendingFinal: false,
+              streamingTools: [],
+              pendingToolImages: [],
+            });
+            clearHistoryPoll();
+            forceNextHistoryLoad(sessionKeyForReload);
+            void get().loadHistory(true);
+            break;
+          }
           if (isToolResultRole(normalizedFinalMessage.role)) {
             // Resolve file path from the streaming assistant message's matching tool call
             const currentStreamForPath = get().streamingMessage as RawMessage | null;
@@ -2148,7 +2381,12 @@ export const useChatStore = create<ChatState>((set, get) => ({
         break;
       }
       case 'error': {
-        const errorMsg = String(event.errorMessage || 'An error occurred');
+        const errorMsg = String(
+          event.errorMessage
+          || getMessageErrorMessage(event.message)
+          || 'An error occurred',
+        );
+        const terminalAssistantError = isTerminalAssistantErrorMessage(event.message);
         const wasSending = get().sending;
 
         // Snapshot the current streaming message into messages[] so partial
@@ -2167,40 +2405,22 @@ export const useChatStore = create<ChatState>((set, get) => ({
         }
 
         set({
-          error: errorMsg,
+          error: terminalAssistantError ? null : errorMsg,
+          runError: terminalAssistantError ? errorMsg : null,
+          sending: false,
+          activeRunId: null,
           streamingText: '',
           streamingMessage: null,
           streamingTools: [],
           pendingFinal: false,
+          lastUserMessageAt: null,
           pendingToolImages: [],
         });
 
-        // Don't immediately give up: the Gateway often retries internally
-        // after transient API failures (e.g. "terminated"). Keep `sending`
-        // true for a grace period so that recovery events are processed and
-        // the agent-phase-completion handler can still trigger loadHistory.
+        clearHistoryPoll();
+        clearErrorRecoveryTimer();
         if (wasSending) {
-          clearErrorRecoveryTimer();
-          const ERROR_RECOVERY_GRACE_MS = 15_000;
-          _errorRecoveryTimer = setTimeout(() => {
-            _errorRecoveryTimer = null;
-            const state = get();
-            if (state.sending && !state.streamingMessage) {
-              clearHistoryPoll();
-              // Grace period expired with no recovery — finalize the error
-              set({
-                sending: false,
-                activeRunId: null,
-                lastUserMessageAt: null,
-              });
-              // One final history reload in case the Gateway completed in the
-              // background and we just missed the event.
-              state.loadHistory(true);
-            }
-          }, ERROR_RECOVERY_GRACE_MS);
-        } else {
-          clearHistoryPoll();
-          set({ sending: false, activeRunId: null, lastUserMessageAt: null });
+          void get().loadHistory(true);
         }
         break;
       }
@@ -2244,5 +2464,5 @@ export const useChatStore = create<ChatState>((set, get) => ({
     await Promise.all([loadHistory(), loadSessions()]);
   },
 
-  clearError: () => set({ error: null }),
+  clearError: () => set({ error: null, runError: null }),
 }));

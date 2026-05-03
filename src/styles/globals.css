@@ -4,6 +4,34 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ──────────────────────────────────────────────────────────────────────────
+ * ClawX design tokens — CSS variable layer
+ * ──────────────────────────────────────────────────────────────────────────
+ *
+ * This file is the *CSS variable layer only*. HSL channel triplets are
+ * stored without an `hsl()` wrapper — `tailwind.config.js` re-assembles
+ * them through `hsl(var(--xxx))` or `hsl(var(--xxx) / <alpha-value>)`.
+ *
+ * Two groups of variables:
+ *
+ *   1. shadcn semantic tokens (--background / --foreground / --primary
+ *      / ...). The standard shadcn/ui palette — do not rename or remove,
+ *      Radix-driven components read these directly.
+ *
+ *   2. ClawX surface tokens (--surface-modal / --surface-input /
+ *      --surface-sidebar). Three light-mode "cream paper" layers added
+ *      by ClawX. In dark mode each one is redirected to an existing
+ *      shadcn token (--card / --muted / --background) so we don't have
+ *      to maintain a second dark-cream palette.
+ *
+ * Usage:
+ *   - Application code should always go through Tailwind utilities, e.g.
+ *       bg-foreground   bg-surface-modal   bg-brand
+ *     Do NOT hand-write `var(--xxx)` or `hsl(var(--xxx))` in components.
+ *   - Adding a new color: define the CSS variable here → map it to a
+ *     utility token in tailwind.config.js → use the utility in code.
+ * ────────────────────────────────────────────────────────────────────────── */
+
 @layer base {
   :root {
     /* Refined blue-gray light theme */
@@ -182,6 +210,11 @@
 }
 
 .prose th {
+  background: transparent;
+  font-weight: 700;
+}
+
+.dark .prose th {
   background: hsl(var(--muted));
 }
 

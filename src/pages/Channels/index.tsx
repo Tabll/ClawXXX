@@ -99,6 +99,12 @@ interface DeleteTarget {
   accountId?: string;
 }
 
+type FetchPageDataOptions = {
+  probe?: boolean;
+  configOnly?: boolean;
+  forceAgentsRefresh?: boolean;
+};
+
 function removeDeletedTarget(groups: ChannelGroupItem[], target: DeleteTarget): ChannelGroupItem[] {
   if (target.accountId) {
     return groups
@@ -144,7 +150,9 @@ export function Channels() {
   const [deleteTarget, setDeleteTarget] = useState<DeleteTarget | null>(null);
   const convergenceRefreshTimersRef = useRef<number[]>([]);
   const fetchInFlightRef = useRef(false);
-  const queuedFetchOptionsRef = useRef<{ probe?: boolean } | null>(null);
+  const queuedFetchOptionsRef = useRef<FetchPageDataOptions | null>(null);
+  const agentsFetchInFlightRef = useRef<Promise<void> | null>(null);
+  const hasLoadedAgentsRef = useRef(false);
 
   const displayedChannelTypes = getPrimaryChannels();
   const visibleChannelGroups = channelGroups;
@@ -160,16 +168,46 @@ export function Channels() {
   const agentsRef = useRef(agents);
   agentsRef.current = agents;
 
+  const ensureAgentsLoaded = useCallback(async () => {
+    if (hasLoadedAgentsRef.current) return;
+    if (agentsFetchInFlightRef.current) {
+      await agentsFetchInFlightRef.current;
+      return;
+    }
+
+    agentsFetchInFlightRef.current = (async () => {
+      try {
+        const agentsRes = await hostApiFetch<{ success: boolean; agents?: AgentItem[]; error?: string }>('/api/agents');
+        if (!agentsRes.success) {
+          throw new Error(agentsRes.error || 'Failed to load agents');
+        }
+        setAgents(agentsRes.agents || []);
+        hasLoadedAgentsRef.current = true;
+      } catch (agentsError) {
+        console.warn(`[channels-ui] load agents failed error=${String(agentsError)}`);
+      } finally {
+        agentsFetchInFlightRef.current = null;
+      }
+    })();
+
+    await agentsFetchInFlightRef.current;
+  }, []);
+
   const mergeFetchOptions = (
-    base: { probe?: boolean } | null,
-    incoming: { probe?: boolean } | undefined,
-  ): { probe?: boolean } => {
+    base: FetchPageDataOptions | null,
+    incoming: FetchPageDataOptions | undefined,
+  ): FetchPageDataOptions => {
+    if (!base) return incoming ?? {};
+    if (!incoming) return base;
     return {
       probe: Boolean(base?.probe) || Boolean(incoming?.probe),
+      // If either request needs runtime data, do not keep config-only mode.
+      configOnly: Boolean(base?.configOnly) && Boolean(incoming?.configOnly),
+      forceAgentsRefresh: Boolean(base?.forceAgentsRefresh) || Boolean(incoming?.forceAgentsRefresh),
     };
   };
 
-  const fetchPageData = useCallback(async (options?: { probe?: boolean }) => {
+  const fetchPageData = useCallback(async (options?: FetchPageDataOptions) => {
     if (fetchInFlightRef.current) {
       queuedFetchOptionsRef.current = mergeFetchOptions(queuedFetchOptionsRef.current, options);
       return;
@@ -177,20 +215,27 @@ export function Channels() {
     fetchInFlightRef.current = true;
     const startedAt = Date.now();
     const probe = options?.probe === true;
-    console.info(`[channels-ui] fetch start probe=${probe ? '1' : '0'}`);
+    const configOnly = options?.configOnly === true;
+    console.info(`[channels-ui] fetch start mode=${configOnly ? 'config' : 'runtime'} probe=${probe ? '1' : '0'}`);
     // Only show loading spinner on first load (stale-while-revalidate).
     const hasData = channelGroupsRef.current.length > 0 || agentsRef.current.length > 0;
     if (!hasData) {
       setLoading(true);
     }
     setError(null);
+    if (options?.forceAgentsRefresh) {
+      hasLoadedAgentsRef.current = false;
+    }
+    void ensureAgentsLoaded();
     try {
-      const [channelsRes, agentsRes] = await Promise.all([
-        hostApiFetch<{ success: boolean; channels?: ChannelGroupItem[]; error?: string }>(
-          options?.probe ? '/api/channels/accounts?probe=1' : '/api/channels/accounts'
-        ),
-        hostApiFetch<{ success: boolean; agents?: AgentItem[]; error?: string }>('/api/agents'),
-      ]);
+      const channelsPath = configOnly
+        ? '/api/channels/accounts?mode=config'
+        : options?.probe
+          ? '/api/channels/accounts?probe=1'
+          : '/api/channels/accounts';
+      const channelsRes = await hostApiFetch<{ success: boolean; channels?: ChannelGroupItem[]; error?: string }>(
+        channelsPath
+      );
 
       type ChannelsResponse = {
         success: boolean;
@@ -204,23 +249,18 @@ export function Channels() {
         throw new Error(channelsPayload.error || 'Failed to load channels');
       }
 
-      if (!agentsRes.success) {
-        throw new Error(agentsRes.error || 'Failed to load agents');
-      }
-
       setChannelGroups(channelsPayload.channels || []);
-      setAgents(agentsRes.agents || []);
       setGatewayHealth(channelsPayload.gatewayHealth || DEFAULT_GATEWAY_HEALTH);
       setDiagnosticsSnapshot(null);
       setShowDiagnostics(false);
       console.info(
-        `[channels-ui] fetch ok probe=${probe ? '1' : '0'} elapsedMs=${Date.now() - startedAt} view=${(channelsPayload.channels || []).map((item) => `${item.channelType}:${item.status}`).join(',')}`
+        `[channels-ui] fetch ok mode=${configOnly ? 'config' : 'runtime'} probe=${probe ? '1' : '0'} elapsedMs=${Date.now() - startedAt} view=${(channelsPayload.channels || []).map((item) => `${item.channelType}:${item.status}`).join(',')}`
       );
     } catch (fetchError) {
       // Preserve previous data on error — don't clear channelGroups/agents.
       setError(String(fetchError));
       console.warn(
-        `[channels-ui] fetch fail probe=${probe ? '1' : '0'} elapsedMs=${Date.now() - startedAt} error=${String(fetchError)}`
+        `[channels-ui] fetch fail mode=${configOnly ? 'config' : 'runtime'} probe=${probe ? '1' : '0'} elapsedMs=${Date.now() - startedAt} error=${String(fetchError)}`
       );
     } finally {
       fetchInFlightRef.current = false;
@@ -233,7 +273,7 @@ export function Channels() {
     }
   // Stable reference — reads state via refs, no deps needed.
    
-  }, []);
+  }, [ensureAgentsLoaded]);
 
   const clearConvergenceRefreshTimers = useCallback(() => {
     convergenceRefreshTimersRef.current.forEach((timerId) => {
@@ -262,6 +302,7 @@ export function Channels() {
   }, [clearConvergenceRefreshTimers, fetchPageData]);
 
   useEffect(() => {
+    void fetchPageData({ configOnly: true });
     void fetchPageData();
   }, [fetchPageData]);
 
@@ -330,7 +371,7 @@ export function Channels() {
   const unsupportedGroups = displayedChannelTypes.filter((type) => !configuredTypes.includes(type));
 
   const handleRefresh = () => {
-    void fetchPageData({ probe: true });
+    void fetchPageData({ probe: true, forceAgentsRefresh: true });
   };
 
   const fetchDiagnosticsSnapshot = useCallback(async (): Promise<GatewayDiagnosticSnapshot> => {
@@ -486,7 +527,7 @@ export function Channels() {
               variant="outline"
               onClick={handleRefresh}
               disabled={gatewayStatus.state !== 'running'}
-              className="h-9 text-[13px] font-medium rounded-full px-4 border-black/10 dark:border-white/10 bg-transparent hover:bg-black/5 dark:hover:bg-white/5 shadow-none text-foreground/80 hover:text-foreground transition-colors"
+              className="h-9 text-meta font-medium rounded-full px-4 border-black/10 dark:border-white/10 bg-transparent hover:bg-black/5 dark:hover:bg-white/5 shadow-none text-foreground/80 hover:text-foreground transition-colors"
             >
               <RefreshCw className={cn('h-3.5 w-3.5 mr-2', isUsingStableValue && 'animate-spin')} />
               {t('refresh')}
@@ -576,7 +617,7 @@ export function Channels() {
               {showDiagnostics && diagnosticsText && (
                 <div className="mt-4 rounded-xl border border-black/10 dark:border-white/10 bg-background/80 p-3">
                   <p className="mb-2 text-xs font-medium text-muted-foreground">{t('health.diagnosticsTitle')}</p>
-                  <pre data-testid="channels-diagnostics" className="max-h-[320px] overflow-auto whitespace-pre-wrap break-all text-[11px] text-foreground/85">
+                  <pre data-testid="channels-diagnostics" className="max-h-[320px] overflow-auto whitespace-pre-wrap break-all text-tiny text-foreground/85">
                     {diagnosticsText}
                   </pre>
                 </div>
@@ -605,10 +646,10 @@ export function Channels() {
                           <ChannelLogo type={group.channelType as ChannelType} />
                         </div>
                         <div className="min-w-0">
-                          <h3 className="text-[16px] font-semibold text-foreground truncate">
+                          <h3 className="text-base font-semibold text-foreground truncate">
                             {CHANNEL_NAMES[group.channelType as ChannelType] || group.channelType}
                           </h3>
-                          <div className="flex items-center gap-2 text-[12px] text-muted-foreground">
+                          <div className="flex items-center gap-2 text-xs text-muted-foreground">
                             <span>{group.channelType}</span>
                             <span className="w-1 h-1 rounded-full bg-black/20 dark:bg-white/20" />
                             <span className="flex items-center gap-1">
@@ -676,13 +717,13 @@ export function Channels() {
                           <div className="flex items-center justify-between gap-3">
                             <div className="min-w-0">
                               <div className="flex items-center gap-2">
-                                <p className="text-[13px] font-medium text-foreground truncate">{displayName}</p>
+                                <p className="text-meta font-medium text-foreground truncate">{displayName}</p>
                               </div>
                               {account.lastError && (
-                                <div className="text-[12px] text-destructive mt-1">{account.lastError}</div>
+                                <div className="text-xs text-destructive mt-1">{account.lastError}</div>
                               )}
                               {!account.lastError && account.statusReason && account.status === 'degraded' && (
-                                <div className="text-[12px] text-yellow-700 dark:text-yellow-300 mt-1">
+                                <div className="text-xs text-yellow-700 dark:text-yellow-300 mt-1">
                                   {t(`health.reasons.${account.statusReason}`)}
                                 </div>
                               )}
@@ -777,14 +818,14 @@ export function Channels() {
                     </div>
                     <div className="flex flex-col flex-1 min-w-0 py-0.5 mt-1">
                       <div className="flex items-center gap-2 mb-1">
-                        <h3 className="text-[16px] font-semibold text-foreground truncate">{meta.name}</h3>
+                        <h3 className="text-base font-semibold text-foreground truncate">{meta.name}</h3>
                         {meta.isPlugin && (
                           <Badge variant="secondary" className="font-mono text-[10px] font-medium px-2 py-0.5 rounded-full bg-surface/80 border-0 shadow-none text-foreground/70">
                             {t('pluginBadge')}
                           </Badge>
                         )}
                       </div>
-                      <p className="text-[13.5px] text-muted-foreground line-clamp-2 leading-[1.5]">
+                      <p className="text-sm text-muted-foreground line-clamp-2 leading-[1.5]">
                         {t(meta.description.replace('channels:', ''))}
                       </p>
                     </div>
@@ -864,7 +905,7 @@ function ChannelLogo({ type }: { type: ChannelType }) {
     case 'qqbot':
       return <img src={qqIcon} alt="QQ" className="w-[22px] h-[22px] dark:invert" />;
     default:
-      return <span className="text-[22px]">{CHANNEL_ICONS[type] || '💬'}</span>;
+      return <span className="text-xl">{CHANNEL_ICONS[type] || '💬'}</span>;
   }
 }
 

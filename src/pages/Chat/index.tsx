@@ -4,11 +4,13 @@
  * via gateway:rpc IPC. Session selector, thinking toggle, and refresh
  * are in the toolbar; messages render with markdown + streaming.
  */
-import { useEffect, useMemo, useState } from 'react';
+import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AlertCircle, Loader2, Sparkles } from 'lucide-react';
 import { useChatStore, type RawMessage } from '@/stores/chat';
+import { buildBaselineRunKey, getBaseline } from '@/stores/baseline-cache';
 import { useGatewayStore } from '@/stores/gateway';
 import { useAgentsStore } from '@/stores/agents';
+import { useArtifactPanel } from '@/stores/artifact-panel';
 import { hostApiFetch } from '@/lib/host-api';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { ChatMessage } from './ChatMessage';
@@ -21,6 +23,18 @@ import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 import { useStickToBottomInstant } from '@/hooks/use-stick-to-bottom-instant';
 import { useMinLoading } from '@/hooks/use-min-loading';
+import { extractGeneratedFiles, generatedFileHasDiffPayload, type GeneratedFile } from '@/lib/generated-files';
+import { GeneratedFilesPanel } from '@/components/file-preview/GeneratedFilesPanel';
+import type { FilePreviewTarget } from '@/components/file-preview/types';
+import { buildPreviewTarget } from '@/components/file-preview/build-preview-target';
+import type { AttachedFileMeta } from '@/stores/chat/types';
+
+const ArtifactPanelLazy = lazy(() =>
+  import('@/components/file-preview/ArtifactPanel').then((m) => ({ default: m.ArtifactPanel })),
+);
+const PanelResizeDividerLazy = lazy(() =>
+  import('@/components/file-preview/PanelResizeDivider').then((m) => ({ default: m.PanelResizeDivider })),
+);
 
 type GraphStepCacheEntry = {
   steps: ReturnType<typeof deriveTaskSteps>;
@@ -41,12 +55,38 @@ type UserRunCard = {
   steps: TaskStep[];
   messageStepTexts: string[];
   streamingReplyText: string | null;
+  /**
+   * Whether the trailing "Thinking..." indicator should be hidden for this
+   * card. True only when the run's live stream is currently rendered AS a
+   * streaming step inside the graph (the step itself already signals
+   * liveness, so the extra indicator would be redundant). False in all
+   * other cases — including when the stream is promoted to a bubble
+   * below the graph, or when there is no streaming content at all (the
+   * gap between tool rounds), because the graph has no visible activity
+   * of its own in those windows and the indicator is what tells the user
+   * "work is still in progress".
+   */
+  suppressThinking: boolean;
 };
 
 function getPrimaryMessageStepTexts(steps: TaskStep[]): string[] {
   return steps
     .filter((step) => step.kind === 'message' && step.parentId === 'agent-run' && !!step.detail)
     .map((step) => step.detail!);
+}
+
+function generatedFileToTarget(file: GeneratedFile): FilePreviewTarget {
+  return {
+    filePath: file.filePath,
+    fileName: file.fileName,
+    ext: file.ext,
+    mimeType: file.mimeType,
+    contentType: file.contentType,
+    action: file.action,
+    fullContent: file.fullContent,
+    baseline: file.baseline,
+    edits: file.edits,
+  };
 }
 
 // Keep the last non-empty execution-graph snapshot per session/run outside
@@ -67,9 +107,11 @@ export function Chat() {
   const loading = useChatStore((s) => s.loading);
   const sending = useChatStore((s) => s.sending);
   const error = useChatStore((s) => s.error);
+  const runError = useChatStore((s) => s.runError);
   const streamingMessage = useChatStore((s) => s.streamingMessage);
   const streamingTools = useChatStore((s) => s.streamingTools);
   const pendingFinal = useChatStore((s) => s.pendingFinal);
+  const activeRunId = useChatStore((s) => s.activeRunId);
   const sendMessage = useChatStore((s) => s.sendMessage);
   const abortRun = useChatStore((s) => s.abortRun);
   const clearError = useChatStore((s) => s.clearError);
@@ -77,7 +119,32 @@ export function Chat() {
   const agents = useAgentsStore((s) => s.agents);
 
   const cleanupEmptySession = useChatStore((s) => s.cleanupEmptySession);
+  const lastUserMessageAt = useChatStore((s) => s.lastUserMessageAt);
+  const agentsList = useAgentsStore((s) => s.agents);
+  const currentAgent = useMemo(
+    () => (agentsList ?? []).find((a) => a.id === currentAgentId) ?? null,
+    [agentsList, currentAgentId],
+  );
+  const panelOpen = useArtifactPanel((s) => s.open);
+  const panelWidthPct = useArtifactPanel((s) => s.widthPct);
+  const openChanges = useArtifactPanel((s) => s.openChanges);
+  const openPreview = useArtifactPanel((s) => s.openPreview);
+  const closeArtifactPanel = useArtifactPanel((s) => s.close);
+  const splitContainerRef = useRef<HTMLDivElement | null>(null);
+  // Close the panel when the session changes — its contents would otherwise
+  // be stale (file list belongs to the previous chat).
+  useEffect(() => {
+    closeArtifactPanel();
+  }, [currentSessionKey, closeArtifactPanel]);
   const [childTranscripts, setChildTranscripts] = useState<Record<string, RawMessage[]>>({});
+
+  // Callback for file cards in chat messages — opens the in-app preview
+  // panel instead of the system default editor.
+  const handleOpenAttachedFile = useCallback((file: AttachedFileMeta) => {
+    if (!file.filePath) return;
+    const target = buildPreviewTarget(file.filePath, file.fileName);
+    openPreview(target);
+  }, [openPreview]);
   // Persistent per-run override for the Execution Graph's expanded/collapsed
   // state. Keyed by a stable run id (trigger message id, or a fallback of
   // `${sessionKey}:${triggerIdx}`) so user toggles survive the `loadHistory`
@@ -174,6 +241,13 @@ export function Chat() {
     : 0;
   const streamText = streamMsg ? extractText(streamMsg) : (typeof streamingMessage === 'string' ? streamingMessage : '');
   const hasStreamText = streamText.trim().length > 0;
+  // Whether the streaming chunk currently carries a `thinking` block. Used as
+  // a liveness signal so the run stays "active" (and the ExecutionGraphCard
+  // keeps showing its trailing "Thinking..." indicator) during the brief window
+  // between a tool finishing and the next text/tool chunk arriving — that gap
+  // is normally only filled by streamed thinking. NOT included in
+  // `shouldRenderStreaming`: a thinking-only stream chunk should not produce
+  // a chat bubble (thinking is rendered exclusively inside the ExecutionGraph).
   const streamThinking = streamMsg ? extractThinking(streamMsg) : null;
   const hasStreamThinking = !!streamThinking && streamThinking.trim().length > 0;
   const streamTools = streamMsg ? extractToolUse(streamMsg) : [];
@@ -182,7 +256,7 @@ export function Chat() {
   const hasStreamImages = streamImages.length > 0;
   const hasStreamToolStatus = streamingTools.length > 0;
   const hasRunningStreamToolStatus = streamingTools.some((tool) => tool.status === 'running');
-  const shouldRenderStreaming = sending && (hasStreamText || hasStreamThinking || hasStreamTools || hasStreamImages || hasStreamToolStatus);
+  const shouldRenderStreaming = sending && (hasStreamText || hasStreamTools || hasStreamImages || hasStreamToolStatus);
   const hasAnyStreamContent = hasStreamText || hasStreamThinking || hasStreamTools || hasStreamImages || hasStreamToolStatus;
 
   const isEmpty = messages.length === 0 && !sending;
@@ -236,7 +310,22 @@ export function Chat() {
     const hasToolActivity = segmentMessages.some((m) =>
       m.role === 'assistant' && extractToolUse(m).length > 0,
     );
-    const hasFinalReply = segmentMessages.some((m) => {
+    // Locate the last tool-use message so we only count text messages that
+    // come AFTER all tool calls as "final reply".  Intermediate narration
+    // messages (pure text, no tool_use) sit BEFORE tool calls and must not
+    // be misread as the concluding reply — otherwise `runStillExecutingTools`
+    // flips to false between tool rounds, collapsing the trailing
+    // "Thinking..." indicator during the brief gap before the next stream chunk.
+    let lastToolUseOffset = -1;
+    for (let i = segmentMessages.length - 1; i >= 0; i -= 1) {
+      const m = segmentMessages[i];
+      if (m.role === 'assistant' && extractToolUse(m).length > 0) {
+        lastToolUseOffset = i;
+        break;
+      }
+    }
+    const hasFinalReply = segmentMessages.some((m, i) => {
+      if (i <= lastToolUseOffset) return false;
       if (m.role !== 'assistant') return false;
       if (extractText(m).trim().length === 0) return false;
       const content = m.content;
@@ -246,8 +335,15 @@ export function Chat() {
       );
     });
     const runStillExecutingTools = hasToolActivity && !hasFinalReply;
-    const isLatestOpenRun = nextUserIndex === -1
-      && (sending || pendingFinal || hasAnyStreamContent || runStillExecutingTools);
+    // runStillExecutingTools bridges the brief gap between tool rounds when
+    // Gateway temporarily clears sending.  However, after an explicit abort
+    // (which clears activeRunId), we must NOT keep the run "open" — so we
+    // gate it on activeRunId being present. We also bail out as soon as a
+    // terminal model error has been surfaced so the run doesn't appear active.
+    const isLatestRunSegment = nextUserIndex === -1;
+    const isLatestOpenRun = isLatestRunSegment
+      && !runError
+      && (sending || pendingFinal || hasAnyStreamContent || (runStillExecutingTools && !!activeRunId));
     const replyIndexOffset = findReplyMessageIndex(segmentMessages, isLatestOpenRun);
     const replyIndex = replyIndexOffset === -1 ? null : idx + 1 + replyIndexOffset;
 
@@ -293,22 +389,36 @@ export function Chat() {
     };
 
     // Show the streaming response as a separate bubble (not inside the
-    // execution graph) once all tool calls have finished.
+    // execution graph) once tool activity has happened and the CURRENT stream
+    // chunk carries no tool_use block.
     //
-    // Three signals indicate "tools finished, now streaming the reply":
-    //   1. `pendingFinal`        — set by tool-result final events
-    //   2. `allToolsCompleted`   — all entries in streamingTools are completed
-    //   3. `hasCompletedToolPhase` — historical messages (loaded by the poll)
-    //      contain tool_use blocks, meaning the Gateway executed tools
-    //      server-side without sending streaming tool events to the client.
-    //      During intermediate narration (before reply), stripProcessMessagePrefix
-    //      will produce an empty trimmedReplyText, so the graph stays active.
+    // We use an optimistic promotion strategy because the distinguishing
+    // signal between "narration-before-next-tool" and "final reply" is not
+    // available during early deltas — both are text-only, both arrive after
+    // `hasToolActivity` has flipped true.  Any of these signals opens the
+    // promotion gate:
+    //   1. `pendingFinal`       — tool-result final just fired; next text is
+    //      (almost always) the final reply.
+    //   2. `allToolsCompleted`  — every client-tracked tool entry reached
+    //      `completed` state.
+    //   3. `hasToolActivity`    — at least one prior tool_use exists in the
+    //      segment, i.e. we're past the first tool round.
+    //
+    // Demotion happens the moment a tool_use block appears in the streaming
+    // message (`streamTools.length > 0`) OR a tool transitions back to
+    // `running`.  When demoted, the stream re-renders inside the graph as a
+    // narration step.  A brief flicker when narration turns into the next
+    // tool round is inherent to optimistic promotion and is accepted.
+    //
+    // Earlier iterations tried restricting this gate to only
+    // `pendingFinal || allToolsCompleted` to protect the trailing
+    // "Thinking..." indicator.  That check is real, but belongs in the
+    // `suppressThinking` coupling below — not here.  With the coupling
+    // fixed, the three-signal gate gives the correct bubble placement for
+    // both narration and final reply.
     const allToolsCompleted = streamingTools.length > 0 && !hasRunningStreamToolStatus;
-    const hasCompletedToolPhase = segmentMessages.some((msg) =>
-      msg.role === 'assistant' && extractToolUse(msg).length > 0,
-    );
     const rawStreamingReplyCandidate = isLatestOpenRun
-      && (pendingFinal || allToolsCompleted || hasCompletedToolPhase)
+      && (pendingFinal || allToolsCompleted || hasToolActivity)
       && (hasStreamText || hasStreamImages)
       && streamTools.length === 0
       && !hasRunningStreamToolStatus;
@@ -341,6 +451,7 @@ export function Chat() {
           steps: [],
           messageStepTexts: [],
           streamingReplyText: null,
+          suppressThinking: false,
         }];
       }
       const cached = graphStepCache[runKey];
@@ -362,6 +473,7 @@ export function Chat() {
         steps: cleanedSteps,
         messageStepTexts: getPrimaryMessageStepTexts(cleanedSteps),
         streamingReplyText: null,
+        suppressThinking: false,
       }];
     }
 
@@ -395,6 +507,23 @@ export function Chat() {
     // uncontrolled path before the controlled `expanded` override could kick in.
     const cardActive = isLatestOpenRun;
 
+    // Suppress the trailing "Thinking..." indicator only when the live stream is
+    // currently rendered AS a streaming step inside this card's graph. In
+    // that case the streaming step itself is the activity signal, and the
+    // separate trailing indicator would be redundant.
+    //   - streamingReplyText != null: stream is promoted to a bubble → graph
+    //     has no live step of its own → DO show the trailing indicator so the
+    //     user still sees progress in the graph (indicator rendered above the
+    //     bubble).
+    //   - no stream content at all (the gap between tool rounds): graph also
+    //     has no live step → DO show the indicator — this is the very case
+    //     the indicator exists for.
+    //   - stream IS in graph (e.g. tool_use is streaming): indicator is
+    //     redundant → suppress.
+    const streamIsInGraph =
+      isLatestOpenRun && streamingReplyText == null && hasAnyStreamContent;
+    const suppressThinking = streamIsInGraph;
+
     return [{
       triggerIndex: idx,
       replyIndex,
@@ -405,8 +534,9 @@ export function Chat() {
       steps,
       messageStepTexts: getPrimaryMessageStepTexts(steps),
       streamingReplyText,
+      suppressThinking,
     }];
-  });
+  }, [messages, subagentCompletionInfos, currentSessionKey, streamingMessage, streamingTools, pendingFinal, sending, hasAnyStreamContent, hasStreamText, hasStreamImages, streamText, streamTools.length, hasRunningStreamToolStatus, childTranscripts, currentAgentId, agents, sessionLabels, graphStepCache, runError]);
   const hasActiveExecutionGraph = userRunCards.some((card) => card.active);
   const replyTextOverrides = useMemo(() => {
     const map = new Map<number, string>();
@@ -428,6 +558,38 @@ export function Chat() {
   // streaming or has a reply override) during render instead of in an effect,
   // so we don't violate react-hooks/set-state-in-effect. Explicit user toggles
   // still win via `graphExpandedOverrides` and are merged in at the call site.
+  // Pre-compute generated files per run (memoised so the cards and the
+  // ArtifactPanel can both read them without re-parsing tool calls every
+  // render).
+  const filesByRun = useMemo(() => {
+    const map = new Map<number, GeneratedFile[]>();
+    for (const card of userRunCards) {
+      const userTurnOrdinal = messages
+        .slice(0, card.triggerIndex + 1)
+        .filter((msg) => msg.role === 'user' && (!Array.isArray(msg.content) || !(msg.content as Array<{ type?: string }>).every((b) => b.type === 'tool_result' || b.type === 'toolResult')))
+        .length;
+      const runKey = buildBaselineRunKey(currentSessionKey, userTurnOrdinal);
+      const raw = extractGeneratedFiles(
+        messages,
+        card.triggerIndex,
+        card.segmentEnd,
+        runKey ? (filePath) => getBaseline(runKey, filePath) : undefined,
+      );
+      map.set(card.triggerIndex, raw.filter(generatedFileHasDiffPayload));
+    }
+    return map;
+  }, [currentSessionKey, userRunCards, messages]);
+  const allGeneratedFiles = useMemo(() => {
+    const all: GeneratedFile[] = [];
+    for (const files of filesByRun.values()) all.push(...files);
+    return all;
+  }, [filesByRun]);
+
+  const refreshSignal = useMemo(() => {
+    if (sending) return undefined;
+    return lastUserMessageAt ?? 0;
+  }, [sending, lastUserMessageAt]);
+
   const autoCollapsedRunKeys = useMemo(() => {
     const keys = new Set<string>();
     for (const card of userRunCards) {
@@ -443,7 +605,7 @@ export function Chat() {
       keys.add(runKey);
     }
     return keys;
-  }, [currentSessionKey, messages, replyTextOverrides, userRunCards]);
+  }, [currentSessionKey, messages, userRunCards]);
 
   useEffect(() => {
     if (userRunCards.length === 0) return;
@@ -496,7 +658,13 @@ export function Chat() {
   }, [userRunCards, messages, currentSessionKey]);
 
   return (
-    <div className={cn("relative flex min-h-0 flex-col -m-6 transition-colors duration-500 dark:bg-background")} style={{ height: 'calc(100vh - 2.5rem)' }}>
+    <div
+      ref={splitContainerRef}
+      className={cn('relative flex min-h-0 -m-6 transition-colors duration-500 dark:bg-background')}
+      style={{ height: 'calc(100vh - 2.5rem)' }}
+    >
+      {/* Left column: chat */}
+      <div className="flex min-w-0 flex-1 flex-col">
       {/* Toolbar */}
       <div className="flex shrink-0 items-center justify-end px-4 py-2">
         <ChatToolbar />
@@ -509,8 +677,8 @@ export function Chat() {
             <div
               ref={contentRef}
               className={cn(
-                "space-y-4 transition-all duration-300",
-                isEmpty ? "mx-auto w-full max-w-3xl" : "max-w-4xl",
+                "mx-auto space-y-4 transition-all duration-300",
+                isEmpty ? "w-full max-w-3xl" : "max-w-4xl",
               )}
             >
               {isEmpty ? (
@@ -534,6 +702,7 @@ export function Chat() {
                         textOverride={replyTextOverrides.get(idx)}
                         suppressToolCards={suppressToolCards}
                         suppressProcessAttachments={suppressToolCards}
+                        onOpenFile={handleOpenAttachedFile}
                       />
                       {userRunCards
                         .filter((card) => card.triggerIndex === idx)
@@ -552,18 +721,27 @@ export function Chat() {
                           const expanded = userOverride != null
                             ? userOverride
                             : !autoCollapsedRunKeys.has(runKey);
+                          const generatedFiles = filesByRun.get(card.triggerIndex) ?? [];
                           return (
-                            <ExecutionGraphCard
-                              key={`graph-${currentSessionKey}:${card.triggerIndex}`}
-                              agentLabel={card.agentLabel}
-                              steps={card.steps}
-                              active={card.active}
-                              suppressThinking={card.streamingReplyText != null}
-                              expanded={expanded}
-                              onExpandedChange={(next) =>
-                                setGraphExpandedOverrides((prev) => ({ ...prev, [runKey]: next }))
-                              }
-                            />
+                            <div key={`run-${currentSessionKey}:${card.triggerIndex}`} className="space-y-3">
+                              <ExecutionGraphCard
+                                key={`graph-${currentSessionKey}:${card.triggerIndex}`}
+                                agentLabel={card.agentLabel}
+                                steps={card.steps}
+                                active={card.active}
+                                suppressThinking={card.suppressThinking}
+                                expanded={expanded}
+                                onExpandedChange={(next) =>
+                                  setGraphExpandedOverrides((prev) => ({ ...prev, [runKey]: next }))
+                                }
+                              />
+                              {generatedFiles.length > 0 && (
+                                <GeneratedFilesPanel
+                                  files={generatedFiles}
+                                  onOpen={(file) => openChanges(generatedFileToTarget(file))}
+                                />
+                              )}
+                            </div>
                           );
                         })}
                     </div>
@@ -604,6 +782,7 @@ export function Chat() {
                       textOverride={streamingReplyText ?? undefined}
                       isStreaming
                       streamingTools={streamingReplyText != null ? [] : streamingTools}
+                      onOpenFile={handleOpenAttachedFile}
                     />
                   )}
 
@@ -623,6 +802,21 @@ export function Chat() {
 
         </div>
       </div>
+
+      {/* Run error callout */}
+      {runError && (
+        <div className="px-4 pt-2" data-testid="chat-run-error">
+          <div className="max-w-4xl mx-auto rounded-xl border border-destructive/20 bg-destructive/10 px-4 py-3">
+            <p className="text-sm font-medium text-destructive flex items-center gap-2">
+              <AlertCircle className="h-4 w-4" />
+              {t('runError.title')}
+            </p>
+            <p className="mt-1 text-sm text-destructive/90 break-words">
+              {runError}
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Error bar */}
       {error && (
@@ -650,6 +844,35 @@ export function Chat() {
         sending={sending || hasActiveExecutionGraph}
         isEmpty={isEmpty}
       />
+      </div>
+
+      {/* Right column: artifact / file preview panel (WorkBuddy-style) */}
+      {panelOpen && (
+        <>
+          <Suspense fallback={null}>
+            <PanelResizeDividerLazy containerRef={splitContainerRef} />
+          </Suspense>
+          <aside
+            className="hidden shrink-0 border-l border-black/5 dark:border-white/10 lg:flex lg:flex-col"
+            style={{ width: `${panelWidthPct}%` }}
+          >
+            <Suspense
+              fallback={
+                <div className="flex h-full items-center justify-center">
+                  <LoadingSpinner size="md" />
+                </div>
+              }
+            >
+              <ArtifactPanelLazy
+                files={allGeneratedFiles}
+                agent={currentAgent}
+                runStartedAt={lastUserMessageAt ?? null}
+                refreshSignal={refreshSignal}
+              />
+            </Suspense>
+          </aside>
+        </>
+      )}
 
       {/* Transparent loading overlay */}
       {minLoading && !sending && (

@@ -13,7 +13,8 @@
         "deleteSessionConfirm": "确定要删除对话 \"{{label}}\" 吗？",
         "openClawPage": "OpenClaw 页面",
         "workspace": "工作空间",
-        "dreams": "梦境"
+        "dreams": "梦境",
+                "openClawDreams": "梦境"
     },
     "actions": {
         "save": "保存",

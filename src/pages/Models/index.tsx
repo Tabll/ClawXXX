@@ -365,7 +365,7 @@ export function Models() {
                         </Button>
                       </div>
                     </div>
-                    <p className="text-[13px] font-medium text-muted-foreground">
+                    <p className="text-meta font-medium text-muted-foreground">
                       {usageRefreshing
                         ? t('dashboard:recentTokenHistory.loading')
                         : t('dashboard:recentTokenHistory.showingLast', { count: filteredUsageHistory.length })}
@@ -390,10 +390,10 @@ export function Models() {
                       >
                         <div className="flex items-start justify-between gap-3">
                           <div className="min-w-0">
-                            <p className="font-semibold text-[15px] text-foreground truncate">
+                            <p className="font-semibold text-sm text-foreground truncate">
                               {entry.model || t('dashboard:recentTokenHistory.unknownModel')}
                             </p>
-                            <p className="text-[13px] text-muted-foreground truncate mt-0.5">
+                            <p className="text-meta text-muted-foreground truncate mt-0.5">
                               {[formatUsageSource(entry.provider), formatUsageSource(entry.agentId), entry.sessionId].filter(Boolean).join(' • ')}
                             </p>
                           </div>
@@ -402,21 +402,21 @@ export function Models() {
                               {formatUsageTotal(entry)}
                             </p>
                             {entry.usageStatus === 'missing' && (
-                              <p className="text-[12px] text-muted-foreground mt-0.5">
+                              <p className="text-xs text-muted-foreground mt-0.5">
                                 {t('dashboard:recentTokenHistory.noUsage')}
                               </p>
                             )}
                             {entry.usageStatus === 'error' && (
-                              <p className="text-[12px] text-red-500 dark:text-red-400 mt-0.5">
+                              <p className="text-xs text-red-500 dark:text-red-400 mt-0.5">
                                 {t('dashboard:recentTokenHistory.usageParseError')}
                               </p>
                             )}
-                            <p className="text-[12px] text-muted-foreground mt-0.5">
+                            <p className="text-xs text-muted-foreground mt-0.5">
                               {formatUsageTimestamp(entry.timestamp)}
                             </p>
                           </div>
                         </div>
-                        <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1.5 text-[12.5px] font-medium text-muted-foreground">
+                        <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1.5 text-meta font-medium text-muted-foreground">
                           {entry.usageStatus === 'available' || entry.usageStatus === undefined ? (
                             <>
                               <span className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-sky-500"></div>{t('dashboard:recentTokenHistory.input', { value: formatTokenCount(entry.inputTokens) })}</span>
@@ -429,7 +429,7 @@ export function Models() {
                               )}
                             </>
                           ) : (
-                            <span className="text-[12px]">
+                            <span className="text-xs">
                               {entry.usageStatus === 'missing'
                                 ? t('dashboard:recentTokenHistory.noUsage')
                                 : t('dashboard:recentTokenHistory.usageParseError')}
@@ -442,7 +442,7 @@ export function Models() {
                             <Button
                               variant="outline"
                               size="sm"
-                              className="h-6 rounded-full px-2.5 text-[11.5px] border-black/10 dark:border-white/10"
+                              className="h-6 rounded-full px-2.5 text-tiny border-black/10 dark:border-white/10"
                               onClick={() => setSelectedUsageEntry(entry)}
                             >
                               {t('dashboard:recentTokenHistory.viewContent')}
@@ -454,7 +454,7 @@ export function Models() {
                   </div>
 
                   <div className="flex items-center justify-between gap-3 pt-2">
-                    <p className="text-[13px] font-medium text-muted-foreground">
+                    <p className="text-meta font-medium text-muted-foreground">
                       {t('dashboard:recentTokenHistory.page', { current: safeUsagePage, total: usageTotalPages })}
                     </p>
                     <div className="flex items-center gap-2">
@@ -505,9 +505,9 @@ function formatTokenCount(value: number): string {
 }
 
 function getUsageTotalClass(entry: UsageHistoryEntry): string {
-  if (entry.usageStatus === 'error') return 'font-bold text-[15px] text-red-500 dark:text-red-400';
-  if (entry.usageStatus === 'missing') return 'font-bold text-[15px] text-muted-foreground';
-  return 'font-bold text-[15px]';
+  if (entry.usageStatus === 'error') return 'font-bold text-sm text-red-500 dark:text-red-400';
+  if (entry.usageStatus === 'missing') return 'font-bold text-sm text-muted-foreground';
+  return 'font-bold text-sm';
 }
 
 function formatUsageTotal(entry: UsageHistoryEntry): string {
@@ -550,7 +550,7 @@ function UsageBarChart({
 }) {
   if (groups.length === 0) {
     return (
-      <div className="rounded-2xl border border-dashed border-black/10 dark:border-white/10 p-8 text-center text-[14px] font-medium text-muted-foreground">
+      <div className="rounded-2xl border border-dashed border-black/10 dark:border-white/10 p-8 text-center text-sm font-medium text-muted-foreground">
         {emptyLabel}
       </div>
     );
@@ -560,7 +560,7 @@ function UsageBarChart({
 
   return (
     <div className="space-y-4 bg-transparent p-5 rounded-2xl border border-black/10 dark:border-white/10">
-      <div className="flex flex-wrap gap-4 text-[13px] font-medium text-muted-foreground mb-2">
+      <div className="flex flex-wrap gap-4 text-meta font-medium text-muted-foreground mb-2">
         <span className="inline-flex items-center gap-2">
           <span className="h-2.5 w-2.5 rounded-full bg-sky-500" />
           {inputLabel}
@@ -576,7 +576,7 @@ function UsageBarChart({
       </div>
       {groups.map((group) => (
         <div key={group.label} className="space-y-1.5">
-          <div className="flex items-center justify-between gap-3 text-[13.5px]">
+          <div className="flex items-center justify-between gap-3 text-sm">
             <span className="truncate font-semibold text-foreground">{group.label}</span>
             <span className="text-muted-foreground font-medium">
               {totalLabel}: {formatTokenCount(group.totalTokens)}

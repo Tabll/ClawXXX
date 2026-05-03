@@ -323,7 +323,7 @@ function AgentCard({
       <div className="flex flex-col flex-1 min-w-0 py-0.5 mt-1">
         <div className="flex items-center justify-between gap-3 mb-1">
           <div className="flex items-center gap-2 min-w-0">
-            <h2 className="text-[16px] font-semibold text-foreground truncate">{agent.name}</h2>
+            <h2 className="text-base font-semibold text-foreground truncate">{agent.name}</h2>
             {agent.isDefault && (
               <Badge
                 variant="secondary"
@@ -360,13 +360,13 @@ function AgentCard({
             </Button>
           </div>
         </div>
-        <p className="text-[13.5px] text-muted-foreground line-clamp-2 leading-[1.5]">
+        <p className="text-sm text-muted-foreground line-clamp-2 leading-[1.5]">
           {t('modelLine', {
             model: agent.modelDisplay,
             suffix: agent.inheritedModel ? ` (${t('inherited')})` : '',
           })}
         </p>
-        <p className="text-[13.5px] text-muted-foreground line-clamp-2 leading-[1.5]">
+        <p className="text-sm text-muted-foreground line-clamp-2 leading-[1.5]">
           {t('channelsLine', { channels: channelsText })}
         </p>
       </div>
@@ -397,7 +397,7 @@ function ChannelLogo({ type }: { type: ChannelType }) {
     case 'qqbot':
       return <img src={qqIcon} alt="QQ" className="w-[20px] h-[20px] dark:invert" />;
     default:
-      return <span className="text-[20px] leading-none">{CHANNEL_ICONS[type] || '💬'}</span>;
+      return <span className="text-xl leading-none">{CHANNEL_ICONS[type] || '💬'}</span>;
   }
 }
 
@@ -433,7 +433,7 @@ function AddAgentDialog({
           <CardTitle className="text-2xl font-semibold tracking-tight">
             {t('createDialog.title')}
           </CardTitle>
-          <CardDescription className="text-[15px] mt-1 text-foreground/70">
+          <CardDescription className="text-sm mt-1 text-foreground/70">
             {t('createDialog.description')}
           </CardDescription>
         </CardHeader>
@@ -451,7 +451,7 @@ function AddAgentDialog({
           <div className="flex items-center justify-between">
             <div className="space-y-0.5">
               <Label htmlFor="inherit-workspace" className={labelClasses}>{t('createDialog.inheritWorkspaceLabel')}</Label>
-              <p className="text-[13px] text-foreground/60">{t('createDialog.inheritWorkspaceDescription')}</p>
+              <p className="text-meta text-foreground/60">{t('createDialog.inheritWorkspaceDescription')}</p>
             </div>
             <Switch
               id="inherit-workspace"
@@ -463,14 +463,14 @@ function AddAgentDialog({
             <Button
               variant="outline"
               onClick={onClose}
-              className="h-9 text-[13px] font-medium rounded-full px-4 border-black/10 dark:border-white/10 bg-transparent hover:bg-black/5 dark:hover:bg-white/5 shadow-none text-foreground/80 hover:text-foreground"
+              className="h-9 text-meta font-medium rounded-full px-4 border-black/10 dark:border-white/10 bg-transparent hover:bg-black/5 dark:hover:bg-white/5 shadow-none text-foreground/80 hover:text-foreground"
             >
               {t('common:actions.cancel')}
             </Button>
             <Button
               onClick={() => void handleSubmit()}
               disabled={saving || !name.trim()}
-              className="h-9 text-[13px] font-medium rounded-full px-4 shadow-none"
+              className="h-9 text-meta font-medium rounded-full px-4 shadow-none"
             >
               {saving ? (
                 <>
@@ -553,7 +553,7 @@ function AgentSettingsModal({
             <CardTitle className="text-2xl font-semibold tracking-tight">
               {t('settingsDialog.title', { name: agent.name })}
             </CardTitle>
-            <CardDescription className="text-[15px] mt-1 text-foreground/70">
+            <CardDescription className="text-sm mt-1 text-foreground/70">
               {t('settingsDialog.description')}
             </CardDescription>
           </div>
@@ -600,21 +600,21 @@ function AgentSettingsModal({
                 <p className="text-[11px] uppercase tracking-[0.08em] text-muted-foreground/80 font-medium">
                   {t('settingsDialog.agentIdLabel')}
                 </p>
-                <p className="font-mono text-[13px] text-foreground">{agent.id}</p>
+                <p className="font-mono text-meta text-foreground">{agent.id}</p>
               </div>
               <button
                 type="button"
                 onClick={() => setShowModelModal(true)}
                 className="space-y-1 rounded-2xl bg-surface border border-transparent p-4 text-left hover:bg-black/10 dark:hover:bg-white/10 transition-colors"
               >
-                <p className="text-[11px] uppercase tracking-[0.08em] text-muted-foreground/80 font-medium">
+                <p className="text-tiny uppercase tracking-[0.08em] text-muted-foreground/80 font-medium">
                   {t('settingsDialog.modelLabel')}
                 </p>
-                <p className="text-[13.5px] text-foreground">
+                <p className="text-sm text-foreground">
                   {agent.modelDisplay}
                   {agent.inheritedModel ? ` (${t('inherited')})` : ''}
                 </p>
-                <p className="font-mono text-[12px] text-foreground/70 break-all">
+                <p className="font-mono text-xs text-foreground/70 break-all">
                   {agent.modelRef || defaultModelRef || '-'}
                 </p>
               </button>
@@ -627,7 +627,7 @@ function AgentSettingsModal({
                 <h3 className="text-xl font-semibold text-foreground tracking-tight">
                   {t('settingsDialog.channelsTitle')}
                 </h3>
-                <p className="text-[14px] text-foreground/70 mt-1">{t('settingsDialog.channelsDescription')}</p>
+                <p className="text-sm text-foreground/70 mt-1">{t('settingsDialog.channelsDescription')}</p>
               </div>
             </div>
 
@@ -644,8 +644,8 @@ function AgentSettingsModal({
                         <ChannelLogo type={channel.channelType} />
                       </div>
                       <div className="min-w-0">
-                        <p className="text-[15px] font-semibold text-foreground">{channel.name}</p>
-                        <p className="text-[13.5px] text-muted-foreground">
+                        <p className="text-sm font-semibold text-foreground">{channel.name}</p>
+                        <p className="text-sm text-muted-foreground">
                           {CHANNEL_NAMES[channel.channelType]} · {channel.accountId === 'default' ? t('settingsDialog.mainAccount') : channel.accountId}
                         </p>
                         {channel.error && (
@@ -822,13 +822,13 @@ function AgentModelModal({
 
   return (
     <div className="fixed inset-0 z-[60] bg-black/50 flex items-center justify-center p-4">
-      <Card className="w-full max-w-xl rounded-3xl border-0 shadow-2xl bg-[#f3f1e9] dark:bg-card overflow-hidden">
+      <Card className="w-full max-w-xl rounded-3xl border-0 shadow-2xl bg-surface-modal overflow-hidden">
         <CardHeader className="flex flex-row items-start justify-between pb-2">
           <div>
             <CardTitle className="text-2xl font-serif font-normal tracking-tight">
               {t('settingsDialog.modelLabel')}
             </CardTitle>
-            <CardDescription className="text-[15px] mt-1 text-foreground/70">
+            <CardDescription className="text-sm mt-1 text-foreground/70">
               {t('settingsDialog.modelOverrideDescription', { defaultModel: defaultModelRef || '-' })}
             </CardDescription>
           </div>
@@ -843,7 +843,7 @@ function AgentModelModal({
         </CardHeader>
         <CardContent className="space-y-4 p-6 pt-4">
           <div className="space-y-2">
-            <Label htmlFor="agent-model-provider" className="text-[12px] text-foreground/70">{t('settingsDialog.modelProviderLabel')}</Label>
+            <Label htmlFor="agent-model-provider" className="text-xs text-foreground/70">{t('settingsDialog.modelProviderLabel')}</Label>
             <select
               id="agent-model-provider"
               value={selectedRuntimeProviderKey}
@@ -866,7 +866,7 @@ function AgentModelModal({
             </select>
           </div>
           <div className="space-y-2">
-            <Label htmlFor="agent-model-id" className="text-[12px] text-foreground/70">{t('settingsDialog.modelIdLabel')}</Label>
+            <Label htmlFor="agent-model-id" className="text-xs text-foreground/70">{t('settingsDialog.modelIdLabel')}</Label>
             <Input
               id="agent-model-id"
               value={modelIdInput}
@@ -876,12 +876,12 @@ function AgentModelModal({
             />
           </div>
           {!!nextModelRef && (
-            <p className="text-[12px] font-mono text-foreground/70 break-all">
+            <p className="text-xs font-mono text-foreground/70 break-all">
               {t('settingsDialog.modelPreview')}: {nextModelRef}
             </p>
           )}
           {runtimeProviderOptions.length === 0 && (
-            <p className="text-[12px] text-amber-600 dark:text-amber-400">
+            <p className="text-xs text-amber-600 dark:text-amber-400">
               {t('settingsDialog.modelProviderEmpty')}
             </p>
           )}
@@ -890,21 +890,21 @@ function AgentModelModal({
               variant="outline"
               onClick={handleUseDefaultModel}
               disabled={savingModel || !normalizedDefaultModelRef || isUsingDefaultModelInForm}
-              className="h-9 text-[13px] font-medium rounded-full px-4 border-black/10 dark:border-white/10 bg-transparent hover:bg-black/5 dark:hover:bg-white/5 shadow-none text-foreground/80 hover:text-foreground"
+              className="h-9 text-meta font-medium rounded-full px-4 border-black/10 dark:border-white/10 bg-transparent hover:bg-black/5 dark:hover:bg-white/5 shadow-none text-foreground/80 hover:text-foreground"
             >
               {t('settingsDialog.useDefaultModel')}
             </Button>
             <Button
               variant="outline"
               onClick={handleRequestClose}
-              className="h-9 text-[13px] font-medium rounded-full px-4 border-black/10 dark:border-white/10 bg-transparent hover:bg-black/5 dark:hover:bg-white/5 shadow-none text-foreground/80 hover:text-foreground"
+              className="h-9 text-meta font-medium rounded-full px-4 border-black/10 dark:border-white/10 bg-transparent hover:bg-black/5 dark:hover:bg-white/5 shadow-none text-foreground/80 hover:text-foreground"
             >
               {t('common:actions.cancel')}
             </Button>
             <Button
               onClick={() => void handleSaveModel()}
               disabled={savingModel || !selectedRuntimeProviderKey || !trimmedModelId || !modelChanged}
-              className="h-9 text-[13px] font-medium rounded-full px-4 shadow-none"
+              className="h-9 text-meta font-medium rounded-full px-4 shadow-none"
             >
               {savingModel ? (
                 <RefreshCw className="h-4 w-4 animate-spin" />

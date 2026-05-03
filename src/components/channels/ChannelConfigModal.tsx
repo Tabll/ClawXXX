@@ -513,7 +513,7 @@ export function ChannelConfigModal({
                   : t('dialog.configureTitle', { name: CHANNEL_NAMES[selectedType] })
                 : t('dialog.addTitle')}
             </CardTitle>
-            <CardDescription className="text-[15px] mt-1 text-foreground/70">
+            <CardDescription className="text-sm mt-1 text-foreground/70">
               {selectedType && isExistingConfig
                 ? t('dialog.existingDesc')
                 : meta ? t(meta.description.replace('channels:', '')) : t('dialog.selectDesc')}
@@ -550,25 +550,25 @@ export function ChannelConfigModal({
                     </div>
                     <div className="flex flex-col flex-1 min-w-0 py-0.5 mt-1">
                       <div className="flex items-center gap-2 mb-1">
-                        <p className="text-[16px] font-semibold text-foreground truncate">{channelMeta.name}</p>
+                        <p className="text-base font-semibold text-foreground truncate">{channelMeta.name}</p>
                         {channelMeta.isPlugin && (
                           <Badge
                             variant="secondary"
-                            className="font-mono text-[10px] font-medium px-2 py-0.5 rounded-full bg-black/[0.04] dark:bg-white/[0.08] border-0 shadow-none text-foreground/70"
+                            className="font-mono text-2xs font-medium px-2 py-0.5 rounded-full bg-black/[0.04] dark:bg-white/[0.08] border-0 shadow-none text-foreground/70"
                           >
                             {t('pluginBadge')}
                           </Badge>
                         )}
                       </div>
-                      <p className="text-[13.5px] text-muted-foreground line-clamp-2 leading-[1.5]">
+                      <p className="text-sm text-muted-foreground line-clamp-2 leading-[1.5]">
                         {t(channelMeta.description.replace('channels:', ''))}
                       </p>
-                      <p className="text-[12px] font-medium text-muted-foreground/80 mt-2">
+                      <p className="text-xs font-medium text-muted-foreground/80 mt-2">
                         {channelMeta.connectionType === 'qr' ? t('dialog.qrCode') : t('dialog.token')}
                       </p>
                     </div>
                     {isConfigured && (
-                      <Badge className="absolute top-3 right-3 text-[10px] font-medium rounded-full bg-green-600 hover:bg-green-600">
+                      <Badge className="absolute top-3 right-3 text-2xs font-medium rounded-full bg-green-600 hover:bg-green-600">
                         {t('configuredBadge')}
                       </Badge>
                     )}
@@ -587,7 +587,7 @@ export function ChannelConfigModal({
                   </div>
                 )}
               </div>
-              <p className="text-[14px] text-muted-foreground">
+              <p className="text-sm text-muted-foreground">
                 {t('dialog.scanQR', { name: meta?.name })}
               </p>
               <div className="flex justify-center gap-2">
@@ -606,12 +606,12 @@ export function ChannelConfigModal({
           ) : loadingConfig ? (
             <div className="flex items-center justify-center py-10 rounded-2xl bg-white dark:bg-card border border-black/10 dark:border-white/10">
               <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-              <span className="ml-2 text-[14px] text-muted-foreground">{t('dialog.loadingConfig')}</span>
+              <span className="ml-2 text-sm text-muted-foreground">{t('dialog.loadingConfig')}</span>
             </div>
           ) : (
             <div className="space-y-6">
               {isExistingConfig && (
-                <div className="bg-blue-500/10 text-blue-600 dark:text-blue-400 p-4 rounded-2xl text-[13.5px] flex items-center gap-2 border border-blue-500/20">
+                <div className="bg-blue-500/10 text-blue-600 dark:text-blue-400 p-4 rounded-2xl text-sm flex items-center gap-2 border border-blue-500/20">
                   <CheckCircle className="h-4 w-4 shrink-0" />
                   <span>{t('dialog.existingHint')}</span>
                 </div>
@@ -621,7 +621,7 @@ export function ChannelConfigModal({
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <p className={labelClasses}>{t('dialog.howToConnect')}</p>
-                    <p className="text-[13px] text-muted-foreground mt-1">
+                    <p className="text-meta text-muted-foreground mt-1">
                       {meta ? t(meta.description.replace('channels:', '')) : ''}
                     </p>
                   </div>
@@ -635,7 +635,7 @@ export function ChannelConfigModal({
                     <ExternalLink className="h-3 w-3 ml-1" />
                   </Button>
                 </div>
-                <ol className="list-decimal pl-5 text-[13px] text-muted-foreground leading-relaxed space-y-1.5">
+                <ol className="list-decimal pl-5 text-meta text-muted-foreground leading-relaxed space-y-1.5">
                   {meta?.instructions.map((instruction, index) => (
                     <li key={index}>{t(instruction)}</li>
                   ))}
@@ -672,9 +672,9 @@ export function ChannelConfigModal({
                     className={cn(inputClasses, accountIdError && 'border-destructive/50 focus-visible:ring-destructive/30')}
                   />
                   {accountIdError ? (
-                    <p className="text-[12px] text-destructive">{accountIdError}</p>
+                    <p className="text-xs text-destructive">{accountIdError}</p>
                   ) : (
-                    <p className="text-[12px] text-muted-foreground">{t('account.customIdHint')}</p>
+                    <p className="text-xs text-muted-foreground">{t('account.customIdHint')}</p>
                   )}
                 </div>
               )}
@@ -822,7 +822,7 @@ function ChannelLogo({ type }: { type: ChannelType }) {
     case 'qqbot':
       return <img src={qqIcon} alt="QQ" className="w-[22px] h-[22px] dark:invert" />;
     default:
-      return <span className="text-[22px]">{CHANNEL_ICONS[type] || '💬'}</span>;
+      return <span className="text-xl">{CHANNEL_ICONS[type] || '💬'}</span>;
   }
 }
 
@@ -858,12 +858,12 @@ function ConfigField({ field, value, onChange, showSecret, onToggleSecret }: Con
         )}
       </div>
       {field.description && (
-        <p className="text-[13px] text-muted-foreground leading-relaxed">
+        <p className="text-meta text-muted-foreground leading-relaxed">
           {t(field.description)}
         </p>
       )}
       {field.envVar && (
-        <p className="text-[12px] text-muted-foreground/70 font-mono">
+        <p className="text-xs text-muted-foreground/70 font-mono">
           {t('dialog.envVar', { var: field.envVar })}
         </p>
       )}

@@ -5,14 +5,14 @@
 import { ipcMain, BrowserWindow, shell, dialog, app, nativeImage } from 'electron';
 import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { join, extname, basename } from 'node:path';
+import { join, extname, basename, resolve, sep, relative } from 'node:path';
 import crypto from 'node:crypto';
 import { GatewayManager } from '../gateway/manager';
 import { ClawHubService, ClawHubSearchParams, ClawHubInstallParams, ClawHubUninstallParams } from '../gateway/clawhub';
 import {
   type ProviderConfig,
 } from '../utils/secure-storage';
-import { getOpenClawStatus, getOpenClawDir, getOpenClawConfigDir, getOpenClawSkillsDir, ensureDir } from '../utils/paths';
+import { getOpenClawStatus, getOpenClawDir, getOpenClawConfigDir, getOpenClawSkillsDir, ensureDir, expandPath } from '../utils/paths';
 import { getOpenClawCliCommand } from '../utils/openclaw-cli';
 import { getAllSettings, getSetting, resetSettings, setSetting, type AppSettings } from '../utils/store';
 import {
@@ -138,6 +138,9 @@ export function registerIpcHandlers(
 
   // File staging handlers (upload/send separation)
   registerFileHandlers();
+
+  // File preview handlers (sandboxed read/write/list for inline viewer)
+  registerFilePreviewHandlers();
 }
 
 function registerUnifiedRequestHandlers(gatewayManager: GatewayManager): void {
@@ -1414,6 +1417,18 @@ function registerGatewayHandlers(
     }
   });
 
+  gatewayManager.on('gateway:health', (data) => {
+    if (!mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('gateway:health-changed', data);
+    }
+  });
+
+  gatewayManager.on('gateway:presence', (data) => {
+    if (!mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('gateway:presence-changed', data);
+    }
+  });
+
   gatewayManager.on('channel:status', (data) => {
     if (!mainWindow.isDestroyed()) {
       mainWindow.webContents.send('gateway:channel-status', data);
@@ -2082,7 +2097,7 @@ function registerClawHubHandlers(clawHubService: ClawHubService): void {
       const results = await clawHubService.search(params);
       return { success: true, results };
     } catch (error) {
-      return { success: false, error: String(error) };
+      return { success: false, error: error instanceof Error ? error.message : String(error) };
     }
   });
 
@@ -2092,7 +2107,7 @@ function registerClawHubHandlers(clawHubService: ClawHubService): void {
       await clawHubService.install(params);
       return { success: true };
     } catch (error) {
-      return { success: false, error: String(error) };
+      return { success: false, error: error instanceof Error ? error.message : String(error) };
     }
   });
 
@@ -2102,7 +2117,7 @@ function registerClawHubHandlers(clawHubService: ClawHubService): void {
       await clawHubService.uninstall(params);
       return { success: true };
     } catch (error) {
-      return { success: false, error: String(error) };
+      return { success: false, error: error instanceof Error ? error.message : String(error) };
     }
   });
 
@@ -2112,7 +2127,7 @@ function registerClawHubHandlers(clawHubService: ClawHubService): void {
       const results = await clawHubService.listInstalled();
       return { success: true, results };
     } catch (error) {
-      return { success: false, error: String(error) };
+      return { success: false, error: error instanceof Error ? error.message : String(error) };
     }
   });
 
@@ -2626,6 +2641,395 @@ function registerSessionHandlers(): void {
     } catch (err) {
       logger.error(`[session:delete] Unexpected error for ${sessionKey}:`, err);
       return { success: false, error: String(err) };
+    }
+  });
+}
+
+// ── File preview (sandboxed) ──────────────────────────────────────────
+//
+// IPC channels backing the in-app file preview / overlay components.
+// Reads, writes, dir listings and tree scans are restricted to a small
+// allowlist of roots so the renderer can never reach arbitrary disk paths
+// (defence in depth on top of contextIsolation).
+
+const FILE_PREVIEW_MAX_TEXT_BYTES = 2 * 1024 * 1024; // 2 MB
+const FILE_PREVIEW_TREE_MAX_DEPTH = 6;
+const FILE_PREVIEW_TREE_MAX_NODES = 5000;
+const FILE_PREVIEW_DIR_BLACKLIST = new Set([
+  'node_modules',
+  '.venv',
+  '__pycache__',
+  '.git',
+  'dist',
+  'build',
+  '.next',
+  '.turbo',
+  '.cache',
+]);
+
+interface FilePreviewTreeOptions {
+  maxDepth?: number;
+  maxNodes?: number;
+  includeHidden?: boolean;
+}
+
+interface FilePreviewTreeNode {
+  name: string;
+  relPath: string;
+  absPath: string;
+  isDir: boolean;
+  size?: number;
+  mtime?: number;
+  children?: FilePreviewTreeNode[];
+}
+
+function isPathInside(child: string, parent: string): boolean {
+  const c = resolve(child);
+  const p = resolve(parent);
+  // Windows file systems are case-insensitive: realpath() returns the
+  // on-disk casing while `homedir()` / `resolve()` may preserve whatever
+  // casing the OS reported, leading to false `outsideSandbox` rejections
+  // (e.g. `C:\Users\Foo\.openclaw\…` vs `c:\users\foo\.openclaw\…`).
+  // Compare case-insensitively on Windows; keep strict comparison on
+  // POSIX so we don't accidentally widen the sandbox there.
+  if (process.platform === 'win32') {
+    const cl = c.toLowerCase();
+    const pl = p.toLowerCase();
+    return cl === pl || cl.startsWith(pl + sep);
+  }
+  return c === p || c.startsWith(p + sep);
+}
+
+/**
+ * Roots inside which the file preview pipeline can READ AND WRITE.
+ * These are the user's own data directories — modifying them is safe.
+ */
+function getFilePreviewWriteRoots(): string[] {
+  const roots: string[] = [];
+  const openclawDir = join(homedir(), '.openclaw');
+  roots.push(resolve(openclawDir));
+  try {
+    roots.push(resolve(app.getPath('userData')));
+  } catch {
+    // ignore — userData should always exist
+  }
+  roots.push(resolve(OUTBOUND_DIR));
+  return roots;
+}
+
+/**
+ * Additional roots inside which the file preview pipeline can READ ONLY.
+ * Bundled skills, app resources and the dev-mode project root live here:
+ * the user has a legitimate reason to peek at SKILL.md / scripts shipped
+ * with the app, but writing to them would corrupt the install.
+ */
+function getFilePreviewReadOnlyRoots(): string[] {
+  const roots: string[] = [];
+  try {
+    // In dev this is the project root (covers `node_modules/.pnpm/...`),
+    // in prod it points at the asar / app dir.
+    roots.push(resolve(app.getAppPath()));
+  } catch {
+    // app.getAppPath() can throw before the app is ready; ignore.
+  }
+  if (typeof process.resourcesPath === 'string' && process.resourcesPath) {
+    roots.push(resolve(process.resourcesPath));
+  }
+  return roots;
+}
+
+interface ResolvedSandboxedPath {
+  realPath: string;
+  /** True when the resolved path lives in a read-only-only root (e.g. bundled skill). */
+  readOnly: boolean;
+}
+
+async function resolveSandboxedPath(
+  input: string,
+  mode: 'read' | 'write' = 'read',
+): Promise<ResolvedSandboxedPath> {
+  if (typeof input !== 'string' || !input.trim()) {
+    throw new Error('outsideSandbox');
+  }
+  // OpenClaw stores agent.workspace / agentDir paths as `~/.openclaw/...`
+  // literals; expand the tilde before realpath so sandbox resolution
+  // matches what the user actually sees on disk.
+  const expanded = expandPath(input);
+  const fsP = await import('fs/promises');
+  let real: string;
+  try {
+    real = await fsP.realpath(expanded);
+  } catch {
+    // Path may not exist yet (e.g. write that should fail later);
+    // resolve without realpath fallback so the sandbox check is still applied.
+    real = resolve(expanded);
+  }
+  const writeRoots = getFilePreviewWriteRoots();
+  if (writeRoots.some((root) => isPathInside(real, root))) {
+    return { realPath: real, readOnly: false };
+  }
+  if (mode === 'write') {
+    // Caller wants to mutate. If the path is inside a read-only root we can
+    // surface a more informative error; otherwise it's a true sandbox miss.
+    const roRoots = getFilePreviewReadOnlyRoots();
+    if (roRoots.some((root) => isPathInside(real, root))) {
+      throw new Error('readOnlyRoot');
+    }
+    throw new Error('outsideSandbox');
+  }
+  const roRoots = getFilePreviewReadOnlyRoots();
+  if (roRoots.some((root) => isPathInside(real, root))) {
+    return { realPath: real, readOnly: true };
+  }
+  throw new Error('outsideSandbox');
+}
+
+function looksLikeBinary(buf: Buffer): boolean {
+  // Treat presence of a NUL byte in the first 8 KB as binary, matching
+  // the heuristic used by isbinaryfile / git.
+  const limit = Math.min(buf.length, 8192);
+  for (let i = 0; i < limit; i += 1) {
+    if (buf[i] === 0) return true;
+  }
+  return false;
+}
+
+function shouldSkipDirEntry(name: string, includeHidden: boolean): boolean {
+  if (FILE_PREVIEW_DIR_BLACKLIST.has(name)) return true;
+  if (!includeHidden && name.startsWith('.')) return true;
+  return false;
+}
+
+function shouldSkipFileEntry(name: string, includeHidden: boolean): boolean {
+  if (!includeHidden && name.startsWith('.')) return true;
+  return false;
+}
+
+function registerFilePreviewHandlers(): void {
+  ipcMain.handle('file:readText', async (_, inputPath: string) => {
+    try {
+      const { realPath: real, readOnly } = await resolveSandboxedPath(inputPath, 'read');
+      const fsP = await import('fs/promises');
+      const stat = await fsP.stat(real);
+      if (!stat.isFile()) {
+        return { ok: false, error: 'notFound' };
+      }
+      if (stat.size > FILE_PREVIEW_MAX_TEXT_BYTES) {
+        return { ok: false, error: 'tooLarge', size: stat.size };
+      }
+      const buf = await fsP.readFile(real);
+      if (looksLikeBinary(buf)) {
+        return { ok: false, error: 'binary', size: stat.size };
+      }
+      return {
+        ok: true,
+        content: buf.toString('utf8'),
+        mimeType: getMimeType(extname(real)),
+        size: stat.size,
+        readOnly,
+      };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (message === 'outsideSandbox') {
+        return { ok: false, error: 'outsideSandbox' };
+      }
+      if (message.includes('ENOENT')) {
+        return { ok: false, error: 'notFound' };
+      }
+      return { ok: false, error: message };
+    }
+  });
+
+  ipcMain.handle('file:writeText', async (_, inputPath: string, content: string) => {
+    try {
+      if (typeof content !== 'string') {
+        return { ok: false, error: 'invalidContent' };
+      }
+      if (Buffer.byteLength(content, 'utf8') > FILE_PREVIEW_MAX_TEXT_BYTES) {
+        return { ok: false, error: 'tooLarge' };
+      }
+      const { realPath: real } = await resolveSandboxedPath(inputPath, 'write');
+      const fsP = await import('fs/promises');
+      // Only allow writing existing files to avoid surprise creation.
+      let stat;
+      try {
+        stat = await fsP.stat(real);
+      } catch {
+        return { ok: false, error: 'notFound' };
+      }
+      if (!stat.isFile()) {
+        return { ok: false, error: 'notFound' };
+      }
+      await fsP.writeFile(real, content, 'utf8');
+      return { ok: true };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (message === 'outsideSandbox') {
+        return { ok: false, error: 'outsideSandbox' };
+      }
+      if (message === 'readOnlyRoot') {
+        return { ok: false, error: 'readOnlyRoot' };
+      }
+      return { ok: false, error: message };
+    }
+  });
+
+  ipcMain.handle('file:stat', async (_, inputPath: string) => {
+    try {
+      const { realPath: real, readOnly } = await resolveSandboxedPath(inputPath, 'read');
+      const fsP = await import('fs/promises');
+      const stat = await fsP.stat(real);
+      return {
+        ok: true,
+        size: stat.size,
+        mtime: stat.mtimeMs,
+        isFile: stat.isFile(),
+        isDir: stat.isDirectory(),
+        readOnly,
+      };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (message === 'outsideSandbox') {
+        return { ok: false, error: 'outsideSandbox' };
+      }
+      if (message.includes('ENOENT')) {
+        return { ok: false, error: 'notFound' };
+      }
+      return { ok: false, error: message };
+    }
+  });
+
+  ipcMain.handle('file:listDir', async (_, inputPath: string) => {
+    try {
+      const { realPath: real } = await resolveSandboxedPath(inputPath, 'read');
+      const fsP = await import('fs/promises');
+      const dirents = await fsP.readdir(real, { withFileTypes: true });
+      const entries = await Promise.all(dirents.map(async (entry) => {
+        const abs = join(real, entry.name);
+        let size = 0;
+        try {
+          if (entry.isFile()) {
+            size = (await fsP.stat(abs)).size;
+          }
+        } catch {
+          // non-fatal
+        }
+        return {
+          name: entry.name,
+          path: abs,
+          isDir: entry.isDirectory(),
+          size,
+        };
+      }));
+      return { ok: true, entries };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (message === 'outsideSandbox') {
+        return { ok: false, error: 'outsideSandbox' };
+      }
+      if (message.includes('ENOENT')) {
+        return { ok: false, error: 'notFound' };
+      }
+      return { ok: false, error: message };
+    }
+  });
+
+  ipcMain.handle('file:listTree', async (_, inputPath: string, opts?: FilePreviewTreeOptions) => {
+    try {
+      const { realPath: real } = await resolveSandboxedPath(inputPath, 'read');
+      const fsP = await import('fs/promises');
+      const stat = await fsP.stat(real);
+      if (!stat.isDirectory()) {
+        return { ok: false, error: 'notDirectory' };
+      }
+      const maxDepth = Math.max(1, Math.min(opts?.maxDepth ?? FILE_PREVIEW_TREE_MAX_DEPTH, 12));
+      const maxNodes = Math.max(1, Math.min(opts?.maxNodes ?? FILE_PREVIEW_TREE_MAX_NODES, 50000));
+      const includeHidden = !!opts?.includeHidden;
+
+      let nodeCount = 0;
+      let truncated = false;
+
+      const walk = async (
+        absDir: string,
+        depth: number,
+      ): Promise<FilePreviewTreeNode[] | undefined> => {
+        if (depth > maxDepth || truncated) return undefined;
+        let dirents;
+        try {
+          dirents = await fsP.readdir(absDir, { withFileTypes: true });
+        } catch {
+          return [];
+        }
+        const children: FilePreviewTreeNode[] = [];
+        for (const entry of dirents) {
+          if (truncated) break;
+          const isDir = entry.isDirectory();
+          const isFile = entry.isFile();
+          if (!isDir && !isFile) continue;
+          if (isDir && shouldSkipDirEntry(entry.name, includeHidden)) continue;
+          if (isFile && shouldSkipFileEntry(entry.name, includeHidden)) continue;
+          if (nodeCount >= maxNodes) {
+            truncated = true;
+            break;
+          }
+          nodeCount += 1;
+          const abs = join(absDir, entry.name);
+          // Normalise relPath to forward slashes for renderer use — the
+          // renderer derives the same value cross-platform when looking
+          // up a node by path, and Windows backslashes look out of place
+          // in URLs / display strings.
+          const rel = relative(real, abs).split(sep).join('/');
+          const node: FilePreviewTreeNode = {
+            name: entry.name,
+            relPath: rel,
+            absPath: abs,
+            isDir,
+          };
+          if (isFile) {
+            try {
+              const fstat = await fsP.stat(abs);
+              node.size = fstat.size;
+              node.mtime = fstat.mtimeMs;
+            } catch {
+              // non-fatal
+            }
+          } else if (isDir) {
+            try {
+              const fstat = await fsP.stat(abs);
+              node.mtime = fstat.mtimeMs;
+            } catch {
+              // non-fatal
+            }
+            node.children = await walk(abs, depth + 1) ?? [];
+          }
+          children.push(node);
+        }
+        children.sort((a, b) => {
+          if (a.isDir !== b.isDir) return a.isDir ? -1 : 1;
+          return a.name.localeCompare(b.name);
+        });
+        return children;
+      };
+
+      const root: FilePreviewTreeNode = {
+        name: basename(real) || real,
+        relPath: '',
+        absPath: real,
+        isDir: true,
+        mtime: stat.mtimeMs,
+        children: (await walk(real, 1)) ?? [],
+      };
+
+      return { ok: true, root, truncated };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (message === 'outsideSandbox') {
+        return { ok: false, error: 'outsideSandbox' };
+      }
+      if (message.includes('ENOENT')) {
+        return { ok: false, error: 'notFound' };
+      }
+      return { ok: false, error: message };
     }
   });
 }

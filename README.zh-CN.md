@@ -91,6 +91,8 @@ ClawX 直接基于官方 **OpenClaw** 核心构建。无需单独安装，我们
 
 我们致力于与上游 OpenClaw 项目保持严格同步，确保你始终可以使用官方发布的最新功能、稳定性改进和生态兼容性。
 
+打开开发者模式后，侧边栏还会提供原生 Dreams 页面，可在 ClawX 内查看 OpenClaw 记忆回顾、梦境日记，并执行基础维护操作；需要更深诊断时仍可从该页面打开完整 OpenClaw Dreams UI。
+
 ---
 
 ## 功能特性
@@ -99,7 +101,7 @@ ClawX 直接基于官方 **OpenClaw** 核心构建。无需单独安装，我们
 从安装到第一次 AI 对话，全程通过直观的图形界面完成。无需终端命令，无需 YAML 文件，无需到处寻找环境变量。
 
 ### 💬 智能聊天界面
-通过现代化的聊天体验与 AI 智能体交互。支持多会话上下文、消息历史记录、Markdown 富文本渲染，以及在多 Agent 场景下通过主输入框中的 `@agent` 直接路由到目标智能体。
+通过现代化的聊天体验与 AI 智能体交互。支持多会话上下文、消息历史记录、Markdown 富文本渲染（包括 GitHub 风格表格以及由 KaTeX 渲染的 LaTeX 数学公式：`$行内$`、`$$块级$$`、`\(行内\)` 和 `\[块级\]`），以及在多 Agent 场景下通过主输入框中的 `@agent` 直接路由到目标智能体。
 当你使用 `@agent` 选择其他智能体时，ClawX 会直接切换到该智能体自己的对话上下文，而不是经过默认智能体转发。各 Agent 工作区默认彼此分离，但更强的运行时隔离仍取决于 OpenClaw 的 sandbox 配置。
 每个 Agent 还可以单独覆盖自己的 `provider/model` 运行时设置；未覆盖的 Agent 会继续继承全局默认模型。
 
@@ -116,11 +118,10 @@ ClawX 现在还内置了腾讯官方个人微信渠道插件，可直接在 Chan
 
 ### 🧩 可扩展技能系统
 通过预构建的技能扩展 AI 智能体的能力。在集成的技能面板中浏览、安装和管理技能——无需包管理器。
-ClawX 还会内置预装完整的文档处理技能（`pdf`、`xlsx`、`docx`、`pptx`），在启动时自动部署到托管技能目录（默认 `~/.openclaw/skills`），并在首次安装时默认启用。额外预装技能（`find-skills`、`self-improving-agent`、`tavily-search`、`brave-web-search`）也会默认启用；若缺少必需的 API Key，OpenClaw 会在运行时给出配置错误提示。  
+ClawX 还会内置预装完整的文档处理技能（`pdf`、`xlsx`、`docx`、`pptx`），在启动时自动部署到托管技能目录（默认 `~/.openclaw/skills`），并在首次安装时默认启用。额外预装技能（`find-skills`、`self-improving-agent`、`tavily-search`）也会默认启用；若缺少必需的 API Key，OpenClaw 会在运行时给出配置错误提示。  
 Skills 页面可展示来自多个 OpenClaw 来源的技能（托管目录、workspace、额外技能目录），并显示每个技能的实际路径，便于直接打开真实安装位置。
 
 重点搜索技能所需环境变量：
-- `BRAVE_SEARCH_API_KEY`：用于 `brave-web-search`
 - `TAVILY_API_KEY`：用于 `tavily-search`（上游运行时也可能支持 OAuth）
 
 ### 🔐 安全的供应商集成
@@ -271,6 +272,7 @@ ClawX 采用 **双进程 + Host API 统一接入架构**。渲染进程只调用
 - 单实例保护同时使用 Electron 自带锁与本地进程文件锁回退机制，可在桌面会话总线异常时避免重复启动。
 - 滚动升级期间若新旧版本混跑，单实例保护仍可能出现不对称行为。为保证稳定性，建议桌面客户端尽量统一升级到同一版本。
 - 但 OpenClaw Gateway 监听应始终保持**单实例**：`127.0.0.1:18789` 只能有一个监听者。
+- Gateway readiness 以 OpenClaw 的 `system-presence`、`health`、`status` 等核心信号为准；memory、Dreams 或频道失败会显示为能力降级，而不是全局 Gateway 故障。
 - 可用以下命令确认监听进程：
   - macOS/Linux：`lsof -nP -iTCP:18789 -sTCP:LISTEN`
   - Windows（PowerShell）：`Get-NetTCPConnection -LocalPort 18789 -State Listen`

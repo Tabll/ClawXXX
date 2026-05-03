@@ -12,7 +12,8 @@
         "models": "Модели",
         "deleteSessionConfirm": "Вы уверены, что хотите удалить сессию \"{{label}}\"?",
         "openClawPage": "Страница OpenClaw",
-        "dreams": "Сновидения"
+        "dreams": "Сновидения",
+                "openClawDreams": "Dreams"
     },
     "actions": {
         "save": "Сохранить",

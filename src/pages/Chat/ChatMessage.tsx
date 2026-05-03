@@ -1,18 +1,21 @@
 /**
  * Chat Message Component
  * Renders user / assistant / system / toolresult messages
- * with markdown, thinking sections, images, and tool cards.
+ * with markdown, images, and tool cards. Thinking output is
+ * surfaced via ExecutionGraphCard, not inside message bubbles.
  */
 import { useState, useCallback, useEffect, memo } from 'react';
 import { Sparkles, Copy, Check, ChevronDown, ChevronRight, Wrench, FileText, Film, Music, FileArchive, File, X, FolderOpen, ZoomIn, Loader2, CheckCircle2, AlertCircle } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
 import { createPortal } from 'react-dom';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { invokeIpc } from '@/lib/api-client';
 import type { RawMessage, AttachedFileMeta } from '@/stores/chat';
-import { extractText, extractThinking, extractImages, extractToolUse, formatTimestamp } from './message-utils';
+import { extractText, extractImages, extractToolUse, formatTimestamp } from './message-utils';
 
 interface ChatMessageProps {
   message: RawMessage;
@@ -36,9 +39,45 @@ interface ChatMessageProps {
     durationMs?: number;
     summary?: string;
   }>;
+  /**
+   * Optional callback invoked when a non-image file card is clicked.
+   * When provided, the file opens in the in-app preview panel instead of
+   * the system default editor.
+   */
+  onOpenFile?: (file: AttachedFileMeta) => void;
 }
 
 interface ExtractedImage { url?: string; data?: string; mimeType: string; }
+
+/**
+ * Normalize LaTeX delimiters so `remark-math` can detect them.
+ *
+ * Many LLMs emit LaTeX using `\(` / `\)` for inline math and `\[` / `\]`
+ * for block math (OpenAI style), which are NOT recognized by remark-math.
+ * remark-math only parses `$...$` and `$$...$$`.
+ *
+ * We convert the backslash-paren/bracket forms to dollar-sign forms so the
+ * math is rendered regardless of which convention the model uses.
+ *
+ * Transformations are skipped inside fenced/inline code spans to avoid
+ * clobbering code samples that legitimately contain `\(` etc.
+ */
+function normalizeLatexDelimiters(input: string): string {
+  if (!input || (input.indexOf('\\(') === -1 && input.indexOf('\\[') === -1)) {
+    return input;
+  }
+
+  const parts = input.split(/(```[\s\S]*?```|`[^`\n]*`)/g);
+  for (let i = 0; i < parts.length; i++) {
+    const part = parts[i];
+    if (!part) continue;
+    if (part.startsWith('```') || part.startsWith('`')) continue;
+    let next = part.replace(/\\\[([\s\S]+?)\\\]/g, (_m, body: string) => `\n$$\n${body.trim()}\n$$\n`);
+    next = next.replace(/\\\(([\s\S]+?)\\\)/g, (_m, body: string) => `$${body}$`);
+    parts[i] = next;
+  }
+  return parts.join('');
+}
 
 /** Resolve an ExtractedImage to a displayable src string, or null if not possible. */
 function imageSrc(img: ExtractedImage): string | null {
@@ -55,6 +94,7 @@ export const ChatMessage = memo(function ChatMessage({
   suppressAssistantText = false,
   isStreaming = false,
   streamingTools = [],
+  onOpenFile,
 }: ChatMessageProps) {
   const isUser = message.role === 'user';
   const role = typeof message.role === 'string' ? message.role.toLowerCase() : '';
@@ -66,24 +106,24 @@ export const ChatMessage = memo(function ChatMessage({
   // original content without surfacing the bubble.
   const hideAssistantText = suppressAssistantText && !isUser;
   const hasText = !hideAssistantText && text.trim().length > 0;
-  const visibleThinkingRaw = extractThinking(message);
-  const visibleThinking = hideAssistantText ? null : visibleThinkingRaw;
   const images = extractImages(message);
   const tools = extractToolUse(message);
   const visibleTools = suppressToolCards ? [] : tools;
-  const shouldHideProcessAttachments = suppressProcessAttachments
-    && (hasText || !!visibleThinking || images.length > 0 || visibleTools.length > 0);
-
-  const attachedFiles = shouldHideProcessAttachments
-    ? (message._attachedFiles || []).filter((file) => file.source !== 'tool-result')
-    : (message._attachedFiles || []);
+  const rawAttachedFiles = message._attachedFiles || [];
+  const filteredProcessAttachments = rawAttachedFiles.filter((file) => file.source !== 'tool-result' && file.source !== 'message-ref');
+  // When a message is attachment-only, keep those attachments visible even if
+  // process attachments are generally suppressed for this run segment —
+  // otherwise the reply disappears entirely.
+  const attachedFiles = suppressProcessAttachments && (hasText || images.length > 0 || visibleTools.length > 0)
+    ? filteredProcessAttachments
+    : rawAttachedFiles;
   const [lightboxImg, setLightboxImg] = useState<{ src: string; fileName: string; filePath?: string; base64?: string; mimeType?: string } | null>(null);
 
   // Never render tool result messages in chat UI
   if (isToolResult) return null;
 
   const hasStreamingToolStatus = isStreaming && streamingTools.length > 0;
-  if (!hasText && !visibleThinking && images.length === 0 && visibleTools.length === 0 && attachedFiles.length === 0 && !hasStreamingToolStatus) return null;
+  if (!hasText && images.length === 0 && visibleTools.length === 0 && attachedFiles.length === 0 && !hasStreamingToolStatus) return null;
 
   return (
     <div
@@ -108,11 +148,6 @@ export const ChatMessage = memo(function ChatMessage({
       >
         {isStreaming && !isUser && streamingTools.length > 0 && (
           <ToolStatusBar tools={streamingTools} />
-        )}
-
-        {/* Thinking section */}
-        {visibleThinking && (
-          <ThinkingBlock content={visibleThinking} />
         )}
 
         {/* Tool use cards */}
@@ -172,7 +207,7 @@ export const ChatMessage = memo(function ChatMessage({
                 );
               }
               // Non-image files → file card
-              return <FileCard key={`local-${i}`} file={file} />;
+              return <FileCard key={`local-${i}`} file={file} onOpen={onOpenFile} />;
             })}
           </div>
         )}
@@ -231,7 +266,7 @@ export const ChatMessage = memo(function ChatMessage({
                   </div>
                 );
               }
-              return <FileCard key={`local-${i}`} file={file} />;
+              return <FileCard key={`local-${i}`} file={file} onOpen={onOpenFile} />;
             })}
           </div>
         )}
@@ -302,10 +337,10 @@ function ToolStatusBar({
             {!isRunning && !isError && <CheckCircle2 className="h-3.5 w-3.5 text-green-500 shrink-0" />}
             {isError && <AlertCircle className="h-3.5 w-3.5 text-destructive shrink-0" />}
             <Wrench className="h-3 w-3 shrink-0 opacity-60" />
-            <span className="font-mono text-[12px] font-medium">{tool.name}</span>
-            {duration && <span className="text-[11px] opacity-60">{tool.summary ? `(${duration})` : duration}</span>}
+            <span className="font-mono text-xs font-medium">{tool.name}</span>
+            {duration && <span className="text-tiny opacity-60">{tool.summary ? `(${duration})` : duration}</span>}
             {tool.summary && (
-              <span className="truncate text-[11px] opacity-70">{tool.summary}</span>
+              <span className="truncate text-tiny opacity-70">{tool.summary}</span>
             )}
           </div>
         );
@@ -368,7 +403,8 @@ function MessageBubble({
       ) : (
         <div className="prose prose-sm dark:prose-invert max-w-none break-words break-all">
           <ReactMarkdown
-            remarkPlugins={[remarkGfm]}
+            remarkPlugins={[remarkGfm, remarkMath]}
+            rehypePlugins={[[rehypeKatex, { strict: false, throwOnError: false, output: 'html' }]]}
             components={{
               code({ className, children, ...props }) {
                 const match = /language-(\w+)/.exec(className || '');
@@ -397,7 +433,7 @@ function MessageBubble({
               },
             }}
           >
-            {text}
+            {normalizeLatexDelimiters(text)}
           </ReactMarkdown>
           {isStreaming && (
             <span className="inline-block w-2 h-4 bg-foreground/50 animate-pulse ml-0.5" />
@@ -452,12 +488,15 @@ function FileIcon({ mimeType, className }: { mimeType: string; className?: strin
   return <File className={className} />;
 }
 
-function FileCard({ file }: { file: AttachedFileMeta }) {
+function FileCard({ file, onOpen }: { file: AttachedFileMeta; onOpen?: (file: AttachedFileMeta) => void }) {
   const handleOpen = useCallback(() => {
-    if (file.filePath) {
+    if (!file.filePath) return;
+    if (onOpen) {
+      onOpen(file);
+    } else {
       invokeIpc('shell:openPath', file.filePath);
     }
-  }, [file.filePath]);
+  }, [file, onOpen]);
 
   return (
     <div 
@@ -471,7 +510,7 @@ function FileCard({ file }: { file: AttachedFileMeta }) {
       <FileIcon mimeType={file.mimeType} className="h-5 w-5 shrink-0 text-muted-foreground" />
       <div className="min-w-0 overflow-hidden">
         <p className="text-xs font-medium truncate">{file.fileName}</p>
-        <p className="text-[10px] text-muted-foreground">
+        <p className="text-2xs text-muted-foreground">
           {file.fileSize > 0 ? formatFileSize(file.fileSize) : 'File'}
         </p>
       </div>
@@ -625,7 +664,7 @@ function ToolCard({ name, input }: { name: string; input: unknown }) {
   const [expanded, setExpanded] = useState(false);
 
   return (
-    <div className="rounded-xl border border-black/10 dark:border-white/10 bg-black/5 dark:bg-white/5 text-[14px]">
+    <div className="rounded-xl border border-black/10 dark:border-white/10 bg-black/5 dark:bg-white/5 text-sm">
       <button
         className="flex items-center gap-2 w-full px-3 py-1.5 text-muted-foreground hover:text-foreground transition-colors"
         onClick={() => setExpanded(!expanded)}

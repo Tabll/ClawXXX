@@ -13,7 +13,8 @@
         "deleteSessionConfirm": "セッション \"{{label}}\" を削除してもよろしいですか？",
         "openClawPage": "OpenClaw ページ",
         "workspace": "ワークスペース",
-        "dreams": "ドリーミング"
+        "dreams": "ドリーミング",
+                "openClawDreams": "夢"
     },
     "actions": {
         "save": "保存",

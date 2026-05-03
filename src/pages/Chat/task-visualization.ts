@@ -11,6 +11,8 @@ export interface TaskStep {
   detail?: string;
   depth: number;
   parentId?: string;
+  /** Extracted URL for web_fetch tool, used to render a clickable link icon. */
+  url?: string;
 }
 
 /**
@@ -56,7 +58,7 @@ export interface SubagentCompletionInfo {
 
 function normalizeText(text: string | null | undefined): string | undefined {
   if (!text) return undefined;
-  const normalized = text.replace(/\s+/g, ' ').trim();
+  const normalized = text.replace(/[ \t]+/g, ' ').trim();
   if (!normalized) return undefined;
   return normalized;
 }
@@ -271,6 +273,8 @@ export function deriveTaskSteps({
     });
 
     toolUses.forEach((tool, index) => {
+      const input = tool.input as Record<string, unknown>;
+      const url = tool.name === 'web_fetch' && typeof input?.url === 'string' ? input.url : undefined;
       upsertStep({
         id: tool.id || makeToolId(`history-tool-${message.id || messageIndex}`, tool.name, index),
         label: tool.name,
@@ -278,6 +282,7 @@ export function deriveTaskSteps({
         kind: 'tool',
         detail: normalizeText(JSON.stringify(tool.input, null, 2)),
         depth: 1,
+        url,
       });
     });
   }
@@ -334,6 +339,8 @@ export function deriveTaskSteps({
     extractToolUse(streamMessage).forEach((tool, index) => {
       const id = tool.id || makeToolId('stream-tool', tool.name, index);
       if (activeToolIds.has(id) || activeToolNamesWithoutIds.has(tool.name)) return;
+      const input = tool.input as Record<string, unknown>;
+      const url = tool.name === 'web_fetch' && typeof input?.url === 'string' ? input.url : undefined;
       upsertStep({
         id,
         label: tool.name,
@@ -341,6 +348,7 @@ export function deriveTaskSteps({
         kind: 'tool',
         detail: normalizeText(JSON.stringify(tool.input, null, 2)),
         depth: 1,
+        url,
       });
     });
   }

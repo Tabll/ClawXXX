@@ -13,7 +13,8 @@
         "deleteSessionConfirm": "Are you sure you want to delete session \"{{label}}\"?",
         "openClawPage": "OpenClaw Page",
         "workspace": "Workspace",
-        "dreams": "Dreaming"
+        "dreams": "Dreaming",
+                "openClawDreams": "Dreams"
     },
     "actions": {
         "save": "Save",

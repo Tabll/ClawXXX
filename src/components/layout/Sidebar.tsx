@@ -19,49 +19,6 @@ import {
   Trash2,
   Cpu,
   FolderTree,
-  Moon,
-} from 'lucide-react';
-import { cn } from '@/lib/utils';
-import { rendererExtensionRegistry } from '@/extensions/registry';
-import { useSettingsStore } from '@/stores/settings';
-import { useChatStore } from '@/stores/chat';
-import { useGatewayStore } from '@/stores/gateway';
-import { useAgentsStore } from '@/stores/agents';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { ConfirmDialog } from '@/components/ui/confirm-dialog';
-import { hostApiFetch } from '@/lib/host-api';
-import { useTranslation } from 'react-i18next';
-import logoSvg from '@/assets/logo.svg';
-
-type SessionBucketKey =
-  | 'today'
-  | 'yesterday'
-  | 'withinWeek'
-  | 'withinTwoWeeks'
-  | 'withinMonth'
-  | 'older';
-
-interface NavItemProps {
-  to: string;
-  icon: React.ReactNode;
-  label: string;
-  badge?: string;
-  collapsed?: boolean;
-  onClick?: () => void;
-  testId?: string;
-}
-
-function NavItem({ to, icon, label, badge, collapsed, onClick, testId }: NavItemProps) {
-  return (
-    <NavLink
-      to={to}
-      onClick={onClick}
-      data-testid={testId}
-      className={({ isActive }) =>
-        cn(
-          'flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-[14px] font-medium transition-colors',
-          'hover:bg-surface text-foreground/80',
           isActive
             ? 'bg-black/5 dark:bg-white/10 text-foreground'
             : '',
@@ -118,6 +75,7 @@ function getAgentIdFromSessionKey(sessionKey: string): string {
 export function Sidebar() {
   const sidebarCollapsed = useSettingsStore((state) => state.sidebarCollapsed);
   const setSidebarCollapsed = useSettingsStore((state) => state.setSidebarCollapsed);
+  const devModeUnlocked = useSettingsStore((state) => state.devModeUnlocked);
 
   const sessions = useChatStore((s) => s.sessions);
   const currentSessionKey = useChatStore((s) => s.currentSessionKey);
@@ -138,9 +96,11 @@ export function Sidebar() {
     let cancelled = false;
     const hasExistingMessages = useChatStore.getState().messages.length > 0;
     (async () => {
-      await loadSessions();
+      await Promise.allSettled([
+        loadSessions(),
+        loadHistory(hasExistingMessages),
+      ]);
       if (cancelled) return;
-      await loadHistory(hasExistingMessages);
     })();
     return () => {
       cancelled = true;
@@ -155,21 +115,25 @@ export function Sidebar() {
   const getSessionLabel = (key: string, displayName?: string, label?: string) =>
     sessionLabels[key] ?? label ?? displayName ?? key;
 
-  const openDevConsole = async () => {
+  const openControlUi = async (path: string, label: string) => {
     try {
       const result = await hostApiFetch<{
         success: boolean;
         url?: string;
         error?: string;
-      }>('/api/gateway/control-ui');
+      }>(path);
       if (result.success && result.url) {
-        window.electron.openExternal(result.url);
+        await window.electron.openExternal(result.url);
       } else {
-        console.error('Failed to get Dev Console URL:', result.error);
+        console.error(`Failed to get ${label} URL:`, result.error);
       }
     } catch (err) {
-      console.error('Error opening Dev Console:', err);
+      console.error(`Error opening ${label}:`, err);
     }
+  };
+
+  const openDevConsole = async () => {
+    await openControlUi('/api/gateway/control-ui', 'OpenClaw Page');
   };
 
   const { t } = useTranslation(['common', 'chat']);
@@ -302,7 +266,7 @@ export function Sidebar() {
           {sessionBuckets.map((bucket) => (
             bucket.sessions.length > 0 ? (
               <div key={bucket.key} className="pt-2">
-                <div className="px-2.5 pb-1 text-[11px] font-medium text-muted-foreground/60 tracking-tight">
+                <div className="px-2.5 pb-1 text-tiny font-medium text-muted-foreground/60 tracking-tight">
                   {bucket.label}
                 </div>
                 {bucket.sessions.map((s) => {
