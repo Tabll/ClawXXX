@@ -19,6 +19,49 @@ import {
   Trash2,
   Cpu,
   FolderTree,
+  Moon,
+} from 'lucide-react';
+import { cn } from '@/lib/utils';
+import { rendererExtensionRegistry } from '@/extensions/registry';
+import { useSettingsStore } from '@/stores/settings';
+import { useChatStore } from '@/stores/chat';
+import { useGatewayStore } from '@/stores/gateway';
+import { useAgentsStore } from '@/stores/agents';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { hostApiFetch } from '@/lib/host-api';
+import { useTranslation } from 'react-i18next';
+import logoSvg from '@/assets/logo.svg';
+
+type SessionBucketKey =
+  | 'today'
+  | 'yesterday'
+  | 'withinWeek'
+  | 'withinTwoWeeks'
+  | 'withinMonth'
+  | 'older';
+
+interface NavItemProps {
+  to: string;
+  icon: React.ReactNode;
+  label: string;
+  badge?: string;
+  collapsed?: boolean;
+  onClick?: () => void;
+  testId?: string;
+}
+
+function NavItem({ to, icon, label, badge, collapsed, onClick, testId }: NavItemProps) {
+  return (
+    <NavLink
+      to={to}
+      onClick={onClick}
+      data-testid={testId}
+      className={({ isActive }) =>
+        cn(
+          'flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-[14px] font-medium transition-colors',
+          'hover:bg-surface text-foreground/80',
           isActive
             ? 'bg-black/5 dark:bg-white/10 text-foreground'
             : '',
@@ -266,7 +309,7 @@ export function Sidebar() {
           {sessionBuckets.map((bucket) => (
             bucket.sessions.length > 0 ? (
               <div key={bucket.key} className="pt-2">
-                <div className="px-2.5 pb-1 text-tiny font-medium text-muted-foreground/60 tracking-tight">
+                <div className="px-2.5 pb-1 text-[11px] font-medium text-muted-foreground/60 tracking-tight">
                   {bucket.label}
                 </div>
                 {bucket.sessions.map((s) => {
