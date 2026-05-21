@@ -182,83 +182,16 @@ function SkillDetailDialog({ skill, isOpen, onClose, onToggle, onUninstall, onOp
               </div>
             </div>
 
-            {/* API Key Section */}
-            {!skill.isCore && (
-              <div className="space-y-2">
-                <h3 className="text-[13px] font-bold flex items-center gap-2 text-foreground/80">
-                  <Key className="h-3.5 w-3.5 text-blue-500" />
-                  {t('detail.apiKey')}
-                </h3>
-                <Input
-                  placeholder={t('detail.apiKeyPlaceholder', 'Enter API Key (optional)')}
-                  value={apiKey}
-                  onChange={(e) => setApiKey(e.target.value)}
-                  type="password"
-                  className="h-[44px] font-mono text-[13px] bg-white dark:bg-card border-black/10 dark:border-white/10 rounded-xl focus-visible:ring-2 focus-visible:ring-blue-500/50 focus-visible:border-blue-500 shadow-sm transition-all text-foreground placeholder:text-foreground/40"
-                />
-                <p className="text-[12px] text-foreground/50 mt-2 font-medium">
-                  {t('detail.apiKeyDesc', 'The primary API key for this skill. Leave blank if not required or configured elsewhere.')}
-                </p>
-              </div>
-            )}
-
-            {/* Environment Variables Section */}
-            {!skill.isCore && (
+            {/* File Sections — read-only preview of skill content */}
+            {skill.baseDir && (
               <div className="space-y-3">
-                <div className="flex items-center justify-between w-full">
-                  <div className="flex items-center gap-2">
-                    <h3 className="text-[13px] font-bold text-foreground/80">
-                      {t('detail.envVars')}
-                      {envVars.length > 0 && (
-                        <Badge variant="secondary" className="ml-2 px-1.5 py-0 text-[10px] h-5 bg-black/10 dark:bg-white/10 text-foreground">
-                          {envVars.length}
-                        </Badge>
-                      )}
-                    </h3>
-                  </div>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 text-[12px] font-semibold text-foreground/80 gap-1.5 px-2.5 hover:bg-black/5 dark:hover:bg-white/5"
-                    onClick={handleAddEnv}
-                  >
-                    <Plus className="h-3 w-3" strokeWidth={3} />
-                    {t('detail.addVariable', 'Add Variable')}
-                  </Button>
-                </div>
-
-                <div className="space-y-2">
-                  {envVars.length === 0 && (
-                    <div className="text-[13px] text-foreground/50 font-medium italic flex items-center bg-white dark:bg-card border border-black/5 dark:border-white/5 rounded-xl px-4 py-3 shadow-sm">
-                      {t('detail.noEnvVars', 'No environment variables configured.')}
-                    </div>
-                  )}
-
-                  {envVars.map((env, index) => (
-                    <div className="flex items-center gap-3" key={index}>
-                      <Input
-                        value={env.key}
-                        onChange={(e) => handleUpdateEnv(index, 'key', e.target.value)}
-                        className="flex-1 h-[40px] font-mono text-[13px] bg-white dark:bg-card border-black/10 dark:border-white/10 rounded-xl focus-visible:ring-2 focus-visible:ring-blue-500/50 shadow-sm text-foreground"
-                        placeholder={t('detail.keyPlaceholder', 'Key')}
-                      />
-                      <Input
-                        value={env.value}
-                        onChange={(e) => handleUpdateEnv(index, 'value', e.target.value)}
-                        className="flex-1 h-[40px] font-mono text-[13px] bg-white dark:bg-card border-black/10 dark:border-white/10 rounded-xl focus-visible:ring-2 focus-visible:ring-blue-500/50 shadow-sm text-foreground"
-                        placeholder={t('detail.valuePlaceholder', 'Value')}
-                      />
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-10 w-10 text-destructive/70 hover:text-destructive hover:bg-destructive/10 shrink-0 rounded-xl transition-colors"
-                        onClick={() => handleRemoveEnv(index)}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  ))}
-                </div>
+                <h3 className="text-meta font-bold text-foreground/80">
+                  {t('detail.sections.title', { defaultValue: '内容' })}
+                </h3>
+                <SkillFileSections
+                  baseDir={skill.baseDir}
+                  onOpen={(file) => setOpenedSkillFile(skillFileToTarget(file))}
+                />
               </div>
             )}
 

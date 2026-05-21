@@ -445,31 +445,6 @@ function MessageBubble({
   );
 }
 
-// ── Thinking Block ──────────────────────────────────────────────
-
-function ThinkingBlock({ content }: { content: string }) {
-  const [expanded, setExpanded] = useState(false);
-
-  return (
-    <div className="w-full rounded-xl border border-black/10 dark:border-white/10 bg-surface text-[14px]">
-      <button
-        className="flex items-center gap-2 w-full px-3 py-2 text-muted-foreground hover:text-foreground transition-colors"
-        onClick={() => setExpanded(!expanded)}
-      >
-        {expanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
-        <span className="font-medium">Thinking</span>
-      </button>
-      {expanded && (
-        <div className="px-3 pb-3 text-muted-foreground">
-          <div className="prose prose-sm dark:prose-invert max-w-none opacity-75">
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
 // ── File Card (for user-uploaded non-image files) ───────────────
 
 function formatFileSize(bytes: number): string {
