@@ -26,7 +26,12 @@ import {
   isOAuthProviderType,
   isOpenClawOAuthPluginProviderKey,
 } from './provider-keys';
+import { normalizePiAiModelCost, type PiAiModelCostRates } from '../shared/pi-ai-model-cost';
 import { withConfigLock } from './config-mutex';
+import {
+  OPENCLAW_API_PROTOCOLS,
+  assertValidApiProtocol,
+} from '../shared/providers/types';
 
 const AUTH_STORE_VERSION = 1;
 const AUTH_PROFILE_FILENAME = 'auth-profiles.json';
@@ -418,6 +423,57 @@ async function writeAuthProfiles(store: AuthProfilesStore, agentId = 'main'): Pr
   await writeJsonFile(getAuthProfilesPath(agentId), store);
 }
 
+function getApiKeyFromAuthProfilesStore(
+  store: AuthProfilesStore,
+  provider: string,
+): string | null {
+  const profileIds = [
+    store.lastGood?.[provider],
+    ...(store.order?.[provider] ?? []),
+    `${provider}:default`,
+  ].filter((id): id is string => Boolean(id));
+
+  for (const profileId of profileIds) {
+    const profile = store.profiles[profileId];
+    if (profile?.type === 'api_key' && profile.provider === provider && profile.key) {
+      return profile.key;
+    }
+  }
+
+  for (const profile of Object.values(store.profiles)) {
+    if (profile.type === 'api_key' && profile.provider === provider && profile.key) {
+      return profile.key;
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Read the API key OpenClaw will use for a runtime provider key.
+ *
+ * This intentionally reads auth-profiles.json rather than ClawX's provider
+ * cache, so UI status can reflect providers imported or preserved by the
+ * OpenClaw runtime across overwrite installs.
+ */
+export async function getProviderApiKeyFromOpenClaw(
+  provider: string,
+  agentId?: string,
+): Promise<string | null> {
+  const agentIds = agentId ? [agentId] : await discoverAgentIds();
+  if (agentIds.length === 0) agentIds.push('main');
+
+  for (const id of agentIds) {
+    const store = await readAuthProfiles(id);
+    const apiKey = getApiKeyFromAuthProfilesStore(store, provider);
+    if (apiKey) {
+      return apiKey;
+    }
+  }
+
+  return null;
+}
+
 // ── Agent Discovery ──────────────────────────────────────────────
 
 async function discoverAgentIds(): Promise<string[]> {
@@ -459,6 +515,11 @@ const OPTIONAL_PROVIDER_LIKE_BUNDLED_PLUGIN_IDS = new Set([
   'runway',
   'talk-voice',
   'voyage',
+]);
+const BUNDLED_ALLOWLIST_PRESERVE_IDS = new Set([
+  'browser',
+  'acpx',
+  'memory-core',
 ]);
 const AUTH_PROFILE_PROVIDER_KEY_MAP: Record<string, string> = {
   'openai-codex': 'openai',
@@ -547,7 +608,6 @@ function discoverBundledPlugins(): {
   return _bundledPluginCache;
 }
 
-
 function normalizeAuthProfileProviderKey(provider: string): string {
   return AUTH_PROFILE_PROVIDER_KEY_MAP[provider] ?? provider;
 }
@@ -587,6 +647,15 @@ async function collectActiveProviderIdsFromConfig(config: Record<string, unknown
   if (providers && typeof providers === 'object') {
     for (const key of Object.keys(providers as Record<string, unknown>)) {
       activeProviders.add(key);
+    }
+  }
+
+  const plugins = (config.plugins as Record<string, unknown> | undefined)?.entries;
+  if (plugins && typeof plugins === 'object') {
+    for (const [pluginId, meta] of Object.entries(plugins as Record<string, unknown>)) {
+      if (pluginId.endsWith('-auth') && (meta as Record<string, unknown>).enabled) {
+        activeProviders.add(pluginId.replace(/-auth$/, ''));
+      }
     }
   }
 
@@ -994,6 +1063,43 @@ export async function removeProviderFromOpenClaw(provider: string): Promise<void
 }
 
 /**
+ * Self-heal helper: walk `models.providers.*` in openclaw.json and remove
+ * any entry whose `api` field is not in the OpenClaw allow-list.
+ *
+ * Used opportunistically when the user switches default provider, so that
+ * a legacy invalid entry (e.g. the historical `models.providers.openrouter
+ * = { api: 'openrouter', ... }` bug) cannot keep the Gateway in
+ * Invalid-config -> restart-loop hell on the next reload/restart.
+ *
+ * Returns the list of pruned provider keys for logging.
+ */
+export async function pruneInvalidApiProviderEntries(): Promise<string[]> {
+  const removed: string[] = [];
+  await withConfigLock(async () => {
+    const config = await readOpenClawJson();
+    const models = (config.models || {}) as Record<string, unknown>;
+    const providers = (models.providers || {}) as Record<string, unknown>;
+    let modified = false;
+
+    for (const [key, entry] of Object.entries(providers)) {
+      const api = isPlainRecord(entry) ? (entry as Record<string, unknown>).api : undefined;
+      if (typeof api !== 'string' || !(OPENCLAW_API_PROTOCOLS as readonly string[]).includes(api)) {
+        delete providers[key];
+        removed.push(key);
+        modified = true;
+      }
+    }
+
+    if (modified) {
+      models.providers = providers;
+      config.models = models;
+      await writeOpenClawJson(config);
+    }
+  });
+  return removed;
+}
+
+/**
  * Build environment variables object with all stored API keys
  * for passing to the Gateway process
  */
@@ -1043,6 +1149,7 @@ export async function setOpenClawDefaultModel(
     // Configure models.providers for providers that need explicit registration.
     const providerCfg = getProviderConfig(provider);
     if (providerCfg) {
+      assertValidApiProtocol(providerCfg.api, provider);
       upsertOpenClawProviderEntry(config, provider, {
         baseUrl: providerCfg.baseUrl,
         api: providerCfg.api,
@@ -1053,6 +1160,21 @@ export async function setOpenClawDefaultModel(
         mergeExistingModels: true,
       });
       console.log(`Configured models.providers.${provider} with baseUrl=${providerCfg.baseUrl}, model=${modelId}`);
+    } else if (provider === 'openai-codex') {
+      // OAuth Codex is not in the UI registry but still needs an explicit provider
+      // entry with a pinned embedded runtime (see OPENCLAW_PROVIDER_PINNED_AGENT_RUNTIME).
+      upsertOpenClawProviderEntry(config, provider, {
+        baseUrl: OPENAI_CODEX_OAUTH_PROVIDER_CONFIG.baseUrl,
+        api: OPENAI_CODEX_OAUTH_PROVIDER_CONFIG.api,
+        modelIds: [modelId, ...fallbackModelIds],
+        mergeExistingModels: true,
+      });
+      if (isOpenClawOAuthPluginProviderKey(provider)) {
+        ensureOAuthPluginEnabled(config, provider);
+      }
+      console.log(
+        `Configured models.providers.${provider} for OAuth (api=${OPENAI_CODEX_OAUTH_PROVIDER_CONFIG.api})`,
+      );
     } else {
       // Built-in provider: remove any stale models.providers entry
       const models = (config.models || {}) as Record<string, unknown>;
@@ -1127,11 +1249,225 @@ function mergeProviderModels(
   return merged;
 }
 
+/**
+ * OpenClaw 2026.5+ requires a positive `maxTokens` on each model (and can
+ * fall back to provider-level `maxTokens`) when `api` is `anthropic-messages`.
+ * ClawX-written entries historically only included `{ id, name }`.
+ *
+ * Generic Anthropic-compatible providers should not be capped at 8k by
+ * default: OpenClaw's native Anthropic transport caps default requests at 32k
+ * (`min(model.maxTokens, 32000)`), while high-output providers such as MiniMax
+ * M2.7 advertise a larger catalog limit.
+ */
+export const ANTHROPIC_MESSAGES_DEFAULT_MAX_TOKENS = 32768;
+export const MINIMAX_M27_MAX_TOKENS = 131072;
+
+function resolvePositiveMaxTokens(value: unknown): number | undefined {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return undefined;
+  }
+  const floored = Math.floor(value);
+  return floored > 0 ? floored : undefined;
+}
+
+function isMiniMaxM27AnthropicEntry(
+  providerKey: string | undefined,
+  entry: Record<string, unknown> | undefined,
+  model: Record<string, unknown> | undefined,
+): boolean {
+  const normalizedProvider = (providerKey || '').toLowerCase();
+  if (normalizedProvider === 'minimax' || normalizedProvider.startsWith('minimax-portal')) {
+    return true;
+  }
+
+  const baseUrl = typeof entry?.baseUrl === 'string' ? entry.baseUrl.toLowerCase() : '';
+  if (baseUrl.includes('api.minimax.io') || baseUrl.includes('api.minimaxi.com')) {
+    return true;
+  }
+
+  const modelId = typeof model?.id === 'string' ? model.id.toLowerCase() : '';
+  return modelId === 'minimax-m2.7' || modelId === 'minimax-m2.7-highspeed';
+}
+
+function resolveAnthropicMessagesDefaultMaxTokens(
+  providerKey?: string,
+  entry?: Record<string, unknown>,
+  model?: Record<string, unknown>,
+): number {
+  if (isMiniMaxM27AnthropicEntry(providerKey, entry, model)) {
+    return MINIMAX_M27_MAX_TOKENS;
+  }
+  return ANTHROPIC_MESSAGES_DEFAULT_MAX_TOKENS;
+}
+
+function ensureAnthropicMessagesModelEntry(
+  model: Record<string, unknown>,
+  providerKey?: string,
+  entry?: Record<string, unknown>,
+): Record<string, unknown> {
+  const resolved = resolvePositiveMaxTokens(model.maxTokens);
+  if (resolved !== undefined) {
+    if (model.maxTokens === resolved) {
+      return model;
+    }
+    return { ...model, maxTokens: resolved };
+  }
+  return { ...model, maxTokens: resolveAnthropicMessagesDefaultMaxTokens(providerKey, entry, model) };
+}
+
+function resolveAnthropicMessagesProviderDefaultMaxTokens(
+  providerKey: string | undefined,
+  entry: Record<string, unknown>,
+): number {
+  if (Array.isArray(entry.models)) {
+    const modelDefaults = entry.models
+      .filter(isPlainRecord)
+      .map((model) => resolveAnthropicMessagesDefaultMaxTokens(providerKey, entry, model));
+    if (modelDefaults.length > 0) {
+      return Math.max(...modelDefaults);
+    }
+  }
+  return resolveAnthropicMessagesDefaultMaxTokens(providerKey, entry);
+}
+
+/**
+ * Ensure `models.providers.*` entries using `anthropic-messages` include the
+ * token limits OpenClaw's transport layer requires. Returns whether `entry`
+ * was modified.
+ */
+function ensureAnthropicMessagesProviderDefaults(
+  entry: Record<string, unknown>,
+  providerKey?: string,
+): boolean {
+  if (entry.api !== 'anthropic-messages') {
+    return false;
+  }
+
+  let modified = false;
+
+  if (resolvePositiveMaxTokens(entry.maxTokens) === undefined) {
+    entry.maxTokens = resolveAnthropicMessagesProviderDefaultMaxTokens(providerKey, entry);
+    modified = true;
+  }
+
+  if (Array.isArray(entry.models)) {
+    const nextModels = (entry.models as Array<Record<string, unknown>>).map((model) => {
+      if (!isPlainRecord(model)) {
+        return model;
+      }
+      const next = ensureAnthropicMessagesModelEntry(model, providerKey, entry);
+      if (next !== model) {
+        modified = true;
+      }
+      return next;
+    });
+    entry.models = nextModels;
+  }
+
+  return modified;
+}
+
+function healAnthropicMessagesMaxTokensInConfig(config: Record<string, unknown>): boolean {
+  const models = (config.models || {}) as Record<string, unknown>;
+  const providers = (models.providers || {}) as Record<string, unknown>;
+  let modified = false;
+
+  for (const [providerKey, entry] of Object.entries(providers)) {
+    if (!isPlainRecord(entry)) {
+      continue;
+    }
+    if (ensureAnthropicMessagesProviderDefaults(entry, providerKey)) {
+      providers[providerKey] = entry;
+      modified = true;
+      console.log(
+        `[openclaw-auth] Ensured anthropic-messages maxTokens defaults for models.providers.${providerKey}`,
+      );
+    }
+  }
+
+  if (modified) {
+    models.providers = providers;
+    config.models = models;
+  }
+
+  return modified;
+}
+
+/**
+ * Self-heal helper: walk `models.providers.*` and ensure every
+ * `anthropic-messages` entry (and its model rows) has a positive `maxTokens`.
+ */
+export async function ensureAnthropicMessagesModelMaxTokens(): Promise<string[]> {
+  const healed: string[] = [];
+  await withConfigLock(async () => {
+    const config = await readOpenClawJson();
+    const models = (config.models || {}) as Record<string, unknown>;
+    const providers = (models.providers || {}) as Record<string, unknown>;
+    let modified = false;
+
+    for (const [providerKey, entry] of Object.entries(providers)) {
+      if (!isPlainRecord(entry)) {
+        continue;
+      }
+      if (ensureAnthropicMessagesProviderDefaults(entry, providerKey)) {
+        providers[providerKey] = entry;
+        healed.push(providerKey);
+        modified = true;
+      }
+    }
+
+    if (modified) {
+      models.providers = providers;
+      config.models = models;
+      await writeOpenClawJson(config);
+    }
+  });
+  return healed;
+}
+
+/**
+ * Map of OpenClaw `models.providers.*` keys that must be pinned to a specific
+ * embedded agent harness so that OpenClaw's auto-routing policy does not
+ * dispatch the chat to an externally-bundled harness plugin that may not be
+ * installed.
+ *
+ * OpenClaw 2026.5+ auto-routes OpenAI providers (`openai`, `openai-codex`) to the
+ * external `codex` agent harness, which expects a separate codex plugin install.
+ * The bundled OpenClaw distribution ClawX ships does not register that harness,
+ * so without pinning both keys chat fails with
+ * `Requested agent harness "codex" is not registered.`
+ */
+const OPENCLAW_PROVIDER_PINNED_AGENT_RUNTIME: Record<string, string> = {
+  openai: 'pi',
+  'openai-codex': 'pi',
+};
+
+/** Runtime models.providers entry for OpenAI Codex OAuth accounts. */
+export const OPENAI_CODEX_OAUTH_PROVIDER_CONFIG = {
+  baseUrl: 'https://api.openai.com/v1',
+  api: 'openai-codex-responses' as const,
+};
+
+function applyPinnedAgentRuntime(
+  provider: string,
+  nextProvider: Record<string, unknown>,
+): void {
+  const pinnedRuntimeId = OPENCLAW_PROVIDER_PINNED_AGENT_RUNTIME[provider];
+  if (!pinnedRuntimeId) return;
+
+  const existing = nextProvider.agentRuntime;
+  if (isPlainRecord(existing) && typeof existing.id === 'string' && existing.id.trim()) {
+    return;
+  }
+  nextProvider.agentRuntime = { id: pinnedRuntimeId };
+}
+
 function upsertOpenClawProviderEntry(
   config: Record<string, unknown>,
   provider: string,
   options: ProviderEntryBuildOptions,
 ): void {
+  assertValidApiProtocol(options.api, provider);
   const models = (config.models || {}) as Record<string, unknown>;
   const providers = (models.providers || {}) as Record<string, unknown>;
   const removedLegacyMoonshot = removeLegacyMoonshotProviderEntry(provider, providers);
@@ -1148,13 +1484,20 @@ function upsertOpenClawProviderEntry(
     ? ((getProviderConfig(provider)?.models ?? []).map((m) => ({ ...m })) as Array<Record<string, unknown>>)
     : [];
   const runtimeModels = (options.modelIds ?? []).map((id) => ({ id, name: id }));
+  let mergedModels = mergeProviderModels(registryModels, existingModels, runtimeModels);
+  if (options.api === 'anthropic-messages') {
+    mergedModels = mergedModels.map((model) => ensureAnthropicMessagesModelEntry(model, provider, existingProvider));
+  }
 
   const nextProvider: Record<string, unknown> = {
     ...existingProvider,
     baseUrl: options.baseUrl,
     api: options.api,
-    models: mergeProviderModels(registryModels, existingModels, runtimeModels),
+    models: mergedModels,
   };
+  if (options.api === 'anthropic-messages') {
+    ensureAnthropicMessagesProviderDefaults(nextProvider, provider);
+  }
   if (options.apiKeyEnv) nextProvider.apiKey = options.apiKeyEnv;
   if (options.headers !== undefined) {
     if (Object.keys(options.headers).length > 0) {
@@ -1168,6 +1511,7 @@ function upsertOpenClawProviderEntry(
   } else {
     delete nextProvider.authHeader;
   }
+  applyPinnedAgentRuntime(provider, nextProvider);
 
   providers[provider] = nextProvider;
   models.providers = providers;
@@ -1176,6 +1520,51 @@ function upsertOpenClawProviderEntry(
   if (removedLegacyMoonshot) {
     console.log('Removed legacy models.providers.moonshot alias entry');
   }
+}
+
+/**
+ * Self-heal helper: walk `models.providers.*` in openclaw.json and, for any
+ * entry whose key is in {@link OPENCLAW_PROVIDER_PINNED_AGENT_RUNTIME} but
+ * lacks an `agentRuntime.id`, write the pinned runtime id in place.
+ *
+ * Mirrors {@link pruneInvalidApiProviderEntries} — invoked opportunistically
+ * before a default-provider switch so that pre-existing on-disk entries
+ * (written by earlier ClawX builds that did not pin the runtime) get
+ * repaired before the next Gateway reload picks them up. Without this, users
+ * who upgrade ClawX while still pointing at an OpenAI provider would keep
+ * hitting `Requested agent harness "codex" is not registered.` until they
+ * re-saved the provider manually.
+ *
+ * Returns the list of provider keys that received a runtime pin, for logging.
+ */
+export async function ensureOpenClawProviderAgentRuntimePins(): Promise<string[]> {
+  const pinned: string[] = [];
+  await withConfigLock(async () => {
+    const config = await readOpenClawJson();
+    const models = (config.models || {}) as Record<string, unknown>;
+    const providers = (models.providers || {}) as Record<string, unknown>;
+    let modified = false;
+
+    for (const [provider, runtimeId] of Object.entries(OPENCLAW_PROVIDER_PINNED_AGENT_RUNTIME)) {
+      const entry = providers[provider];
+      if (!isPlainRecord(entry)) continue;
+      const existing = (entry as Record<string, unknown>).agentRuntime;
+      if (isPlainRecord(existing) && typeof existing.id === 'string' && existing.id.trim()) {
+        continue;
+      }
+      (entry as Record<string, unknown>).agentRuntime = { id: runtimeId };
+      providers[provider] = entry;
+      pinned.push(provider);
+      modified = true;
+    }
+
+    if (modified) {
+      models.providers = providers;
+      config.models = models;
+      await writeOpenClawJson(config);
+    }
+  });
+  return pinned;
 }
 
 function removeLegacyMoonshotProviderEntry(
@@ -1265,6 +1654,7 @@ export async function syncProviderConfigToOpenClaw(
     ensureMoonshotKimiWebSearchCnBaseUrl(config, provider);
 
     if (override.baseUrl && override.api) {
+      assertValidApiProtocol(override.api, provider);
       upsertOpenClawProviderEntry(config, provider, {
         baseUrl: override.baseUrl,
         api: override.api,
@@ -1315,6 +1705,7 @@ export async function setOpenClawDefaultModelWithOverride(
     config.agents = agents;
 
     if (override.baseUrl && override.api) {
+      assertValidApiProtocol(override.api, provider);
       upsertOpenClawProviderEntry(config, provider, {
         baseUrl: override.baseUrl,
         api: override.api,
@@ -1374,7 +1765,7 @@ export async function getActiveOpenClawProviders(): Promise<Set<string>> {
     }
 
     // 3. agents.defaults.model.primary — the default model reference encodes
-    //    the provider prefix (e.g. "modelstudio/qwen3.5-plus" → "modelstudio").
+    //    the provider prefix (e.g. "modelstudio/qwen3.6-plus" → "modelstudio").
     //    This covers providers that are active via OAuth or env-key but don't
     //    have an explicit models.providers entry.
     const agents = config.agents as Record<string, unknown> | undefined;
@@ -1689,7 +2080,13 @@ export async function batchSyncConfigFields(token: string): Promise<void> {
 type AgentModelProviderEntry = {
   baseUrl?: string;
   api?: string;
-  models?: Array<{ id: string; name: string }>;
+  models?: Array<{
+    id: string;
+    name: string;
+    cost?: PiAiModelCostRates;
+    maxTokens?: number;
+    [key: string]: unknown;
+  }>;
   apiKey?: string;
   /** When true, pi-ai sends Authorization: Bearer instead of x-api-key */
   authHeader?: boolean;
@@ -1724,7 +2121,11 @@ async function updateModelsJsonProviderEntriesForAgents(
 
     const mergedModels = (entry.models ?? []).map((m) => {
       const prev = existingModels.find((e) => e.id === m.id);
-      return prev ? { ...prev, id: m.id, name: m.name } : { ...m };
+      const base = prev ? { ...prev, id: m.id, name: m.name } : { ...m };
+      return {
+        ...base,
+        cost: normalizePiAiModelCost((base as { cost?: unknown }).cost),
+      };
     });
 
     if (entry.baseUrl !== undefined) existing.baseUrl = entry.baseUrl;
@@ -1732,6 +2133,7 @@ async function updateModelsJsonProviderEntriesForAgents(
     if (mergedModels.length > 0) existing.models = mergedModels;
     if (entry.apiKey !== undefined) existing.apiKey = entry.apiKey;
     if (entry.authHeader !== undefined) existing.authHeader = entry.authHeader;
+    ensureAnthropicMessagesProviderDefaults(existing, providerType);
 
     providers[providerType] = existing;
     data.providers = providers;
@@ -2221,32 +2623,25 @@ export async function sanitizeOpenClawConfig(): Promise<void> {
       }
 
 
-      // ── Disable built-in 'feishu' when official openclaw-lark plugin is active ──
-      // OpenClaw ships a built-in 'feishu' extension in dist/extensions/feishu/
-      // that conflicts with the official @larksuite/openclaw-lark plugin
-      // (id: 'openclaw-lark').  When the feishu channel IS configured and the
-      // canonical plugin is NOT the built-in 'feishu' itself, we must:
-      //   1. Remove bare 'feishu' from plugins.allow
-      //   2. Explicitly disable the built-in feishu extension
+      // ── Remove legacy built-in 'feishu' registration ───────────────
+      // ClawX bundles Feishu via the official @larksuite/openclaw-lark
+      // plugin and removes the old built-in dist/extensions/feishu tree.
+      // Keeping plugins.entries.feishu={enabled:false} looks harmless, but
+      // OpenClaw's channel startup planner treats it as an explicit blocker
+      // for the feishu channel owner and skips openclaw-lark at runtime.
       const allowArr2 = Array.isArray(pluginsObj.allow) ? pluginsObj.allow as string[] : [];
       if (isFeishuConfigured) {
         const hasCanonicalFeishu = allowArr2.includes(canonicalFeishuId) || !!pEntries[canonicalFeishuId];
         if (hasCanonicalFeishu && canonicalFeishuId !== 'feishu') {
-          // Remove bare 'feishu' from plugins.allow
           const bareFeishuIdx = allowArr2.indexOf('feishu');
           if (bareFeishuIdx !== -1) {
             allowArr2.splice(bareFeishuIdx, 1);
             console.log('[sanitize] Removed bare "feishu" from plugins.allow (openclaw-lark plugin is configured)');
             modified = true;
           }
-          // Explicitly disable the built-in feishu extension so it doesn't
-          // conflict with the official openclaw-lark plugin at runtime.
-          // Simply deleting the entry is NOT sufficient — the built-in
-          // extension in dist/extensions/feishu/ (enabledByDefault: true) will
-          // still load unless explicitly marked as disabled.
-          if (!pEntries.feishu || (pEntries.feishu as Record<string, unknown>).enabled !== false) {
-            pEntries.feishu = { enabled: false };
-            console.log('[sanitize] Disabled built-in feishu plugin (openclaw-lark plugin is configured)');
+          if (pEntries.feishu) {
+            delete pEntries.feishu;
+            console.log('[sanitize] Removed legacy plugins.entries.feishu (openclaw-lark plugin is configured)');
             modified = true;
           }
         }
@@ -2274,15 +2669,44 @@ export async function sanitizeOpenClawConfig(): Promise<void> {
         modified = true;
       }
 
-      // Discover all bundled extension IDs and which ones are enabledByDefault
-      // so we can (a) exclude them from the "external" set (prevents stale
-      // entries surviving across OpenClaw upgrades) and (b) re-add the
-      // enabledByDefault ones that are non-provider plugins, explicitly
-      // configured, or needed by the active provider config.
+      // Discover all bundled extension IDs so we can clean stale bundled
+      // allowlist entries from older OpenClaw versions. Re-add only the
+      // ClawX-critical bundled plugins, active provider plugins, and explicitly
+      // enabled bundled plugins — not every enabledByDefault provider plugin.
       const bundled = discoverBundledPlugins();
       const installedExtensionIds = await discoverInstalledExtensionPluginIds();
       const loadedPluginIds = await discoverLoadedPluginIdsFromConfig(config);
       const activeProviderIds = await collectActiveProviderIdsFromConfig(config);
+
+      const explicitlyEnabledBundledPluginIds = Object.keys(pEntries)
+        .filter((pluginId) => {
+          if (!bundled.all.has(pluginId)) return false;
+          const entry = isPlainRecord(pEntries[pluginId]) ? pEntries[pluginId] as Record<string, unknown> : {};
+          if (entry.enabled === false) return false;
+          if (pluginId === 'feishu' && (!isFeishuConfigured || canonicalFeishuId !== 'feishu')) {
+            return false;
+          }
+          return entry.enabled === true;
+        });
+
+      const activeBundledProviderPluginIds = bundled.enabledByDefault.filter((pluginId) => {
+        if (pluginId === 'feishu' && (!isFeishuConfigured || canonicalFeishuId !== 'feishu')) {
+          return false;
+        }
+        const manifest = bundled.manifestsById.get(pluginId);
+        const providerIds = manifest?.providers ?? [];
+        const isProviderPlugin = providerIds.length > 0
+          || OPTIONAL_PROVIDER_LIKE_BUNDLED_PLUGIN_IDS.has(pluginId);
+        if (!isProviderPlugin) return false;
+        return providerIds.some((providerId) => activeProviderIds.has(providerId))
+          || activeProviderIds.has(pluginId);
+      });
+
+      const requiredBundledPluginIds = Array.from(new Set([
+        ...BUNDLED_ALLOWLIST_PRESERVE_IDS,
+        ...activeBundledProviderPluginIds,
+        ...explicitlyEnabledBundledPluginIds,
+      ])).filter((pluginId) => bundled.all.has(pluginId));
 
       const externalPluginIds: string[] = [];
       for (const pluginId of allowArr2) {
@@ -2297,8 +2721,10 @@ export async function sanitizeOpenClawConfig(): Promise<void> {
         }
         externalPluginIds.push(pluginId);
       }
-      let nextAllow = [...externalPluginIds];
-      if (externalPluginIds.length > 0) {
+
+      const retainedBundledPluginIds = allowArr2.filter((pluginId) => requiredBundledPluginIds.includes(pluginId));
+      let nextAllow = [...new Set([...externalPluginIds, ...retainedBundledPluginIds])];
+      if (nextAllow.length > 0) {
         for (const channelId of configuredBuiltIns) {
           if (!nextAllow.includes(channelId)) {
             nextAllow.push(channelId);
@@ -2306,50 +2732,11 @@ export async function sanitizeOpenClawConfig(): Promise<void> {
             console.log(`[sanitize] Added configured built-in channel "${channelId}" to plugins.allow`);
           }
         }
-      }
-
-      // ── Ensure enabledByDefault built-in plugins survive restrictive allowlists ──
-      // OpenClaw's plugin enable logic checks the allowlist BEFORE enabledByDefault,
-      // so any bundled plugin with enabledByDefault: true can get blocked when
-      // plugins.allow is non-empty.  Re-adding every provider plugin makes
-      // Gateway startup mirror/copy many plugin runtime roots, which can block
-      // the Gateway event loop long enough for Dreams and health RPCs to time
-      // out.  Keep always-on non-provider plugins plus provider plugins that
-      // the current config/auth profile actually uses.
-      if (nextAllow.length > 0) {
-        for (const pluginId of Object.keys(pEntries)) {
-          if (!bundled.all.has(pluginId)) continue;
-          const entry = isPlainRecord(pEntries[pluginId]) ? pEntries[pluginId] as Record<string, unknown> : {};
-          if (entry.enabled === false) continue;
-          if (pluginId === 'feishu' && (!isFeishuConfigured || canonicalFeishuId !== 'feishu')) {
-            continue;
-          }
+        for (const pluginId of requiredBundledPluginIds) {
           if (!nextAllow.includes(pluginId)) {
             nextAllow.push(pluginId);
-          }
-        }
-
-        for (const pluginId of bundled.enabledByDefault) {
-          // When feishu is not configured at all, or the official
-          // openclaw-lark plugin replaces the built-in 'feishu' extension,
-          // skip re-adding 'feishu' here — otherwise the enabledByDefault
-          // logic undoes the cleanup performed above and the built-in
-          // extension keeps reappearing in plugins.allow.
-          if (pluginId === 'feishu' && (!isFeishuConfigured || canonicalFeishuId !== 'feishu')) {
-            continue;
-          }
-          const manifest = bundled.manifestsById.get(pluginId);
-          const providerIds = manifest?.providers ?? [];
-          const isConfiguredPlugin = Boolean(pEntries[pluginId]);
-          const isProviderPlugin = providerIds.length > 0
-            || OPTIONAL_PROVIDER_LIKE_BUNDLED_PLUGIN_IDS.has(pluginId);
-          const isActiveProviderPlugin = providerIds.some((providerId) => activeProviderIds.has(providerId))
-            || activeProviderIds.has(pluginId);
-          if (isProviderPlugin && !isConfiguredPlugin && !isActiveProviderPlugin) {
-            continue;
-          }
-          if (!nextAllow.includes(pluginId)) {
-            nextAllow.push(pluginId);
+            modified = true;
+            console.log(`[sanitize] Preserved required bundled plugin "${pluginId}" in plugins.allow`);
           }
         }
       }
@@ -2424,7 +2811,53 @@ export async function sanitizeOpenClawConfig(): Promise<void> {
           modified = true;
           console.log(`[sanitize] Mirrored ${channelType} default account credentials to top-level channels.${channelType}`);
         }
+
+        if (channelType === 'discord') {
+          const sanitizeDiscordGuildChannelConfig = (channelConfig: unknown): boolean => {
+            if (!channelConfig || typeof channelConfig !== 'object' || Array.isArray(channelConfig)) return false;
+            const channelRecord = channelConfig as Record<string, unknown>;
+            let channelModified = false;
+            if (channelRecord.allow === false && channelRecord.enabled === undefined) {
+              channelRecord.enabled = false;
+              channelModified = true;
+            }
+            for (const key of ['allow']) {
+              if (key in channelRecord) {
+                delete channelRecord[key];
+                channelModified = true;
+              }
+            }
+            return channelModified;
+          };
+          const sanitizeDiscordGuilds = (target: Record<string, unknown>): boolean => {
+            const guilds = target.guilds;
+            if (!guilds || typeof guilds !== 'object' || Array.isArray(guilds)) return false;
+            let guildsModified = false;
+            for (const guildConfig of Object.values(guilds as Record<string, unknown>)) {
+              if (!guildConfig || typeof guildConfig !== 'object' || Array.isArray(guildConfig)) continue;
+              const channels = (guildConfig as Record<string, unknown>).channels;
+              if (!channels || typeof channels !== 'object' || Array.isArray(channels)) continue;
+              for (const channelConfig of Object.values(channels as Record<string, unknown>)) {
+                guildsModified = sanitizeDiscordGuildChannelConfig(channelConfig) || guildsModified;
+              }
+            }
+            return guildsModified;
+          };
+
+          const sanitizedTopLevel = sanitizeDiscordGuilds(section);
+          const sanitizedAccounts = Object.values(accounts ?? {}).some((accountConfig) => (
+            accountConfig && typeof accountConfig === 'object' && sanitizeDiscordGuilds(accountConfig)
+          ));
+          if (sanitizedTopLevel || sanitizedAccounts) {
+            modified = true;
+            console.log('[sanitize] Removed incompatible Discord channel allow flags');
+          }
+        }
       }
+    }
+
+    if (healAnthropicMessagesMaxTokensInConfig(config)) {
+      modified = true;
     }
 
     if (modified) {

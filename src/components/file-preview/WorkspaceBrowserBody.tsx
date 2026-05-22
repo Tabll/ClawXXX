@@ -2,7 +2,7 @@
  * Inline workspace browser body — left tree + right preview.
  *
  * Strictly scoped to the current agent's `agent.workspace` directory.
- * Used by `ArtifactPanel`'s 浏览器 tab (split-pane on the chat page).
+ * Used by `ArtifactPanel`'s browser tab (split-pane on the chat page).
  */
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import { ChevronRight, FolderOpen, RefreshCw } from 'lucide-react';
@@ -12,8 +12,14 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { cn } from '@/lib/utils';
-import { invokeIpc, readTextFile } from '@/lib/api-client';
-import { supportsInlineDocumentPreview } from '@/lib/generated-files';
+import { invokeIpc, readTextFile, statFile } from '@/lib/api-client';
+import {
+  isHtmlPreviewExt,
+  isPdfPreviewExt,
+  isSheetPreviewExt,
+  supportsInlineDocumentPreview,
+  supportsRichDocumentPreview,
+} from '@/lib/generated-files';
 import {
   collectInitialExpanded,
   findNode,
@@ -23,14 +29,24 @@ import {
 import type { AgentSummary } from '@/types/agent';
 import { FilePreviewIcon } from './file-card-utils';
 import { formatFileSize } from './format';
+import {
+  confirmAndOpenFile,
+  shouldOfferDirectOpenFallback,
+} from './open-file-utils';
 import MarkdownPreview from './MarkdownPreview';
+import HtmlPreview from './HtmlPreview';
 import ImageViewer from './ImageViewer';
 
 const MonacoViewerLazy = lazy(() => import('./MonacoViewer'));
+const PdfViewerLazy = lazy(() => import('./PdfViewer'));
+const SheetViewerLazy = lazy(() => import('./SheetViewer'));
+
+/** Inline rich-doc viewers tap out past this — falls back to direct open. */
+const RICH_PREVIEW_MAX_BYTES = 50 * 1024 * 1024;
 
 export interface WorkspaceBrowserBodyProps {
   agent: AgentSummary | null;
-  /** Used to mark "本轮新增" badges on the tree. */
+  /** Used to mark "Added this run" badges on the tree. */
   runStartedAt?: number | null;
   /** Bumping this number triggers a tree reload (e.g. after AI run idles). */
   refreshSignal?: number;
@@ -52,9 +68,9 @@ type FileState =
   | { status: 'idle' }
   | { status: 'loading' }
   | { status: 'ready'; content: string }
-  | { status: 'tooLarge' }
-  | { status: 'binary' }
-  | { status: 'unsupported' }
+  | { status: 'tooLarge'; size?: number }
+  | { status: 'binary'; size?: number }
+  | { status: 'unsupported'; size?: number }
   | { status: 'error'; message: string };
 
 export function WorkspaceBrowserBody({
@@ -124,15 +140,49 @@ export function WorkspaceBrowserBody({
       return;
     }
     const node = selectedNode;
+    let cancelled = false;
     if (node.contentType === 'document' && !supportsInlineDocumentPreview(node.ext ?? '')) {
-      setFileState({ status: 'unsupported' });
-      return;
+      setFileState({ status: 'loading' });
+      void statFile(node.absPath)
+        .then((res) => {
+          if (cancelled) return;
+          setFileState({ status: 'unsupported', size: res.ok ? res.size : undefined });
+        })
+        .catch(() => {
+          if (cancelled) return;
+          setFileState({ status: 'unsupported' });
+        });
+      return () => {
+        cancelled = true;
+      };
+    }
+    if (supportsRichDocumentPreview(node.ext ?? '')) {
+      // PDF / spreadsheet viewers handle their own loading; we only need
+      // a stat for the badge / direct-open fallbacks.  Files that exceed
+      // the inline cap fall back to the existing tooLarge UI so users
+      // can still open them with the system default app.
+      setFileState({ status: 'loading' });
+      void statFile(node.absPath)
+        .then((res) => {
+          if (cancelled) return;
+          if (res.ok && typeof res.size === 'number' && res.size > RICH_PREVIEW_MAX_BYTES) {
+            setFileState({ status: 'tooLarge', size: res.size });
+            return;
+          }
+          setFileState({ status: 'ready', content: '' });
+        })
+        .catch(() => {
+          if (cancelled) return;
+          setFileState({ status: 'ready', content: '' });
+        });
+      return () => {
+        cancelled = true;
+      };
     }
     if (node.contentType === 'snapshot' || node.contentType === 'video' || node.contentType === 'audio') {
       setFileState({ status: 'ready', content: '' });
       return;
     }
-    let cancelled = false;
     setFileState({ status: 'loading' });
     /* eslint-enable react-hooks/set-state-in-effect */
     readTextFile(node.absPath)
@@ -140,11 +190,11 @@ export function WorkspaceBrowserBody({
         if (cancelled) return;
         if (!res.ok) {
           if (res.error === 'tooLarge') {
-            setFileState({ status: 'tooLarge' });
+            setFileState({ status: 'tooLarge', size: res.size });
             return;
           }
           if (res.error === 'binary') {
-            setFileState({ status: 'binary' });
+            setFileState({ status: 'binary', size: res.size });
             return;
           }
           setFileState({ status: 'error', message: String(res.error ?? 'unknown') });
@@ -164,9 +214,35 @@ export function WorkspaceBrowserBody({
   const handleOpenWorkspaceInFinder = useCallback(() => {
     if (!workspace) return;
     invokeIpc('shell:openPath', workspace).catch(() => {
-      toast.error(t('filePreview.errors.openInFinderFailed', '无法在 Finder 中显示'));
+      toast.error(t('filePreview.errors.openInFinderFailed', 'Could not reveal in file manager'));
     });
   }, [workspace, t]);
+
+  const handleOpenSelectedInFinder = useCallback(() => {
+    if (!selectedNode || selectedNode.isDir) return;
+    invokeIpc('shell:showItemInFolder', selectedNode.absPath).catch(() => {
+      toast.error(t('filePreview.errors.openInFinderFailed', 'Could not reveal in file manager'));
+    });
+  }, [selectedNode, t]);
+
+  const handleOpenSelectedDirectly = useCallback(async () => {
+    if (!selectedNode || selectedNode.isDir) return;
+    const currentSize =
+      fileState.status === 'tooLarge' || fileState.status === 'binary' || fileState.status === 'unsupported'
+        ? fileState.size
+        : undefined;
+    try {
+      await confirmAndOpenFile({
+        filePath: selectedNode.absPath,
+        fileName: selectedNode.name,
+        size: currentSize,
+        t,
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      toast.error(t('filePreview.errors.openFailed', { defaultValue: 'Open failed: {{error}}', error: message }));
+    }
+  }, [selectedNode, fileState, t]);
 
   const toggleNode = useCallback((relPath: string) => {
     setExpanded((prev) => {
@@ -189,15 +265,15 @@ export function WorkspaceBrowserBody({
       return (
         <div className="px-4 py-6 text-xs text-destructive">
           {state.message === 'outsideSandbox'
-            ? t('filePreview.errors.outsideSandbox', '路径越界，已拒绝读取')
-            : t('workspace.empty', '工作空间为空或无法访问')}
+            ? t('filePreview.errors.outsideSandbox', 'Path is outside the workspace; read denied')
+            : t('workspace.empty', 'Workspace is empty or inaccessible')}
         </div>
       );
     }
     return (
       <div className="space-y-1 overflow-y-auto">
         <div className="px-3 py-2 text-2xs uppercase tracking-wide text-muted-foreground">
-          {t('workspace.title', '工作空间')}
+          {t('workspace.title', 'Workspace')}
           {agent?.name ? <span className="ml-1 text-foreground/60">· {agent.name}</span> : null}
         </div>
         <FileTreeNodeList
@@ -210,7 +286,7 @@ export function WorkspaceBrowserBody({
         />
         {state.truncated && (
           <div className="mt-2 px-3 py-2 text-2xs text-muted-foreground/80">
-            {t('workspace.truncated', '目录过大，已截断显示 5000 个节点')}
+            {t('workspace.truncated', 'Directory too large; truncated to first 5000 nodes')}
           </div>
         )}
       </div>
@@ -221,12 +297,38 @@ export function WorkspaceBrowserBody({
     if (!selectedNode || selectedNode.isDir) {
       return (
         <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-          {t('workspace.pickFile', '从左侧选择一个文件预览')}
+          {t('workspace.pickFile', 'Select a file on the left to preview')}
         </div>
       );
     }
     if (selectedNode.contentType === 'snapshot') {
       return <ImageViewer filePath={selectedNode.absPath} fileName={selectedNode.name} />;
+    }
+    if (isPdfPreviewExt(selectedNode.ext)) {
+      return (
+        <Suspense
+          fallback={
+            <div className="flex h-full items-center justify-center">
+              <LoadingSpinner />
+            </div>
+          }
+        >
+          <PdfViewerLazy filePath={selectedNode.absPath} fileName={selectedNode.name} surface="workspace" />
+        </Suspense>
+      );
+    }
+    if (isSheetPreviewExt(selectedNode.ext)) {
+      return (
+        <Suspense
+          fallback={
+            <div className="flex h-full items-center justify-center">
+              <LoadingSpinner />
+            </div>
+          }
+        >
+          <SheetViewerLazy filePath={selectedNode.absPath} fileName={selectedNode.name} />
+        </Suspense>
+      );
     }
     if (fileState.status === 'loading' || fileState.status === 'idle') {
       return (
@@ -236,41 +338,63 @@ export function WorkspaceBrowserBody({
       );
     }
     if (fileState.status === 'tooLarge') {
+      const directOpen = shouldOfferDirectOpenFallback(selectedNode.ext, fileState.size);
       return (
         <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center text-sm text-muted-foreground">
-          <p>{t('filePreview.errors.tooLarge', '文件过大，已禁用预览')}</p>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => invokeIpc('shell:showItemInFolder', selectedNode.absPath)}
-          >
-            <FolderOpen className="mr-2 h-4 w-4" />
-            {t('filePreview.actions.openInFinder', '在 Finder 中显示')}
-          </Button>
+          <p>
+            {directOpen
+              ? t('filePreview.errors.largeBinaryOpenHint', {
+                defaultValue: 'This file is {{size}}. ClawX does not provide an inline preview for it. You can confirm to open it directly in your system default app.',
+                size: formatFileSize(fileState.size ?? 0) || '> 2MB',
+              })
+              : t('filePreview.errors.tooLarge', 'File too large; preview disabled')}
+          </p>
+          <div className="flex flex-wrap items-center justify-center gap-2">
+            {directOpen && (
+              <Button size="sm" onClick={handleOpenSelectedDirectly}>
+                {t('filePreview.actions.openDirectly', 'Open directly')}
+              </Button>
+            )}
+            <Button variant="outline" size="sm" onClick={handleOpenSelectedInFinder}>
+              <FolderOpen className="mr-2 h-4 w-4" />
+              {t('filePreview.actions.openInFinder', 'Show in file manager')}
+            </Button>
+          </div>
         </div>
       );
     }
     if (fileState.status === 'binary') {
+      const directOpen = shouldOfferDirectOpenFallback(selectedNode.ext, fileState.size);
       return (
         <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center text-sm text-muted-foreground">
-          <p>{t('filePreview.errors.binary', '二进制文件不支持文本预览')}</p>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => invokeIpc('shell:showItemInFolder', selectedNode.absPath)}
-          >
-            <FolderOpen className="mr-2 h-4 w-4" />
-            {t('filePreview.actions.openInFinder', '在 Finder 中显示')}
-          </Button>
+          <p>
+            {directOpen
+              ? t('filePreview.errors.largeBinaryOpenHint', {
+                defaultValue: 'This file is {{size}}. ClawX does not provide an inline preview for it. You can confirm to open it directly in your system default app.',
+                size: formatFileSize(fileState.size ?? 0) || '> 2MB',
+              })
+              : t('filePreview.errors.binary', 'Binary files do not support text preview')}
+          </p>
+          <div className="flex flex-wrap items-center justify-center gap-2">
+            {directOpen && (
+              <Button size="sm" onClick={handleOpenSelectedDirectly}>
+                {t('filePreview.actions.openDirectly', 'Open directly')}
+              </Button>
+            )}
+            <Button variant="outline" size="sm" onClick={handleOpenSelectedInFinder}>
+              <FolderOpen className="mr-2 h-4 w-4" />
+              {t('filePreview.actions.openInFinder', 'Show in file manager')}
+            </Button>
+          </div>
         </div>
       );
     }
     if (fileState.status === 'error') {
       const errMsg = fileState.message;
       const hint = errMsg === 'outsideSandbox'
-        ? t('filePreview.errors.outsideSandbox', '路径越界，已拒绝读取')
+        ? t('filePreview.errors.outsideSandbox', 'Path is outside the workspace; read denied')
         : errMsg === 'notFound'
-          ? t('filePreview.errors.notFound', '文件不存在')
+          ? t('filePreview.errors.notFound', 'File not found')
           : errMsg;
       return (
         <div className="flex h-full items-center justify-center px-6 text-center text-sm text-destructive">
@@ -279,28 +403,49 @@ export function WorkspaceBrowserBody({
       );
     }
     if (fileState.status === 'unsupported') {
+      const directOpen = shouldOfferDirectOpenFallback(selectedNode.ext, fileState.size);
       return (
         <div className="flex h-full flex-col items-center justify-center gap-4 px-8 text-center">
           <div className="space-y-1.5">
             <p className="text-sm font-medium text-foreground">
-              {t('filePreview.errors.unsupportedFormatTitle', '此文件格式暂不支持内置预览或变更')}
+              {directOpen
+                ? t('filePreview.errors.largeBinaryOpenTitle', 'This file is too large for inline preview')
+                : t('filePreview.errors.unsupportedFormatTitle', 'This file format is not supported for inline preview or diff')}
             </p>
             <p className="max-w-md text-xs leading-relaxed text-muted-foreground">
-              {t(
-                'filePreview.errors.unsupportedFormatHint',
-                '当前仅支持文本/Markdown 等可直接读取的文件进行内置预览与变更对比。请在 Finder 中打开该文件。',
-              )}
+              {directOpen
+                ? t('filePreview.errors.largeBinaryOpenHint', {
+                  defaultValue: 'This file is {{size}}. ClawX does not provide an inline preview for it. You can confirm to open it directly in your system default app.',
+                  size: formatFileSize(fileState.size ?? 0) || '> 2MB',
+                })
+                : t(
+                  'filePreview.errors.unsupportedFormatHint',
+                  'Only directly readable files such as text and Markdown support inline preview and diff. Please open this file in your file manager.',
+                )}
             </p>
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => invokeIpc('shell:showItemInFolder', selectedNode.absPath)}
-          >
-            <FolderOpen className="mr-2 h-4 w-4" />
-            {t('filePreview.actions.openInFinder', '在 Finder 中显示')}
-          </Button>
+          <div className="flex flex-wrap items-center justify-center gap-2">
+            {directOpen && (
+              <Button size="sm" onClick={handleOpenSelectedDirectly}>
+                {t('filePreview.actions.openDirectly', 'Open directly')}
+              </Button>
+            )}
+            <Button variant="outline" size="sm" onClick={handleOpenSelectedInFinder}>
+              <FolderOpen className="mr-2 h-4 w-4" />
+              {t('filePreview.actions.openInFinder', 'Show in file manager')}
+            </Button>
+          </div>
         </div>
+      );
+    }
+
+    if (isHtmlPreviewExt(selectedNode.ext)) {
+      return (
+        <HtmlPreview
+          source={fileState.content}
+          filePath={selectedNode.absPath}
+          fileName={selectedNode.name}
+        />
       );
     }
 
@@ -335,7 +480,7 @@ export function WorkspaceBrowserBody({
       >
         <div className="flex min-w-0 items-center gap-3">
           <h2 className="truncate text-sm font-semibold">
-            {t('workspace.title', '工作空间')}
+            {t('workspace.title', 'Workspace')}
             {agent?.name ? <span className="ml-2 font-normal text-foreground/70">· {agent.name}</span> : null}
           </h2>
           {workspace && !compact ? (
@@ -350,11 +495,11 @@ export function WorkspaceBrowserBody({
             size="sm"
             className="h-7 px-2 text-xs"
             onClick={() => setShowHidden((v) => !v)}
-            title={t('workspace.actions.toggleHidden', '显示/隐藏隐藏文件')}
+            title={t('workspace.actions.toggleHidden', 'Show/hide hidden files')}
           >
             {showHidden
-              ? t('workspace.actions.hideHidden', '隐藏隐藏文件')
-              : t('workspace.actions.showHidden', '显示隐藏文件')}
+              ? t('workspace.actions.hideHidden', 'Hide hidden files')
+              : t('workspace.actions.showHidden', 'Show hidden files')}
           </Button>
           <Button
             variant="ghost"
@@ -362,7 +507,7 @@ export function WorkspaceBrowserBody({
             className="h-7 w-7"
             onClick={reload}
             disabled={state.status === 'loading'}
-            title={t('workspace.actions.refresh', '刷新')}
+            title={t('workspace.actions.refresh', 'Refresh')}
           >
             <RefreshCw className={cn('h-3.5 w-3.5', state.status === 'loading' && 'animate-spin')} />
           </Button>
@@ -372,7 +517,7 @@ export function WorkspaceBrowserBody({
             size="icon"
             className="h-7 w-7"
             onClick={handleOpenWorkspaceInFinder}
-            title={t('workspace.actions.openRootInFinder', '在 Finder 中显示根目录')}
+            title={t('workspace.actions.openRootInFinder', 'Show root folder in file manager')}
           >
             <FolderOpen className="h-3.5 w-3.5 pointer-events-none" />
           </Button>
@@ -399,7 +544,7 @@ export function WorkspaceBrowserBody({
                 <span className="truncate font-mono">{selectedNode.relPath || selectedNode.name}</span>
                 {selectedNode.isFresh && (
                   <Badge variant="default" className="ml-1 text-2xs px-1.5 py-0">
-                    {t('workspace.freshBadge', '本轮新增')}
+                    {t('workspace.freshBadge', 'Added this run')}
                   </Badge>
                 )}
               </div>

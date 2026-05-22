@@ -9,12 +9,15 @@ import {
   getMessageText,
   getToolCallFilePath,
   hasNonToolAssistantContent,
+  hasPendingToolUse,
   isInternalMessage,
+  isRecoverableRuntimeError,
   isTerminalAssistantErrorMessage,
   isToolOnlyMessage,
   isToolResultRole,
   makeAttachedFile,
   normalizeStreamingMessage,
+  scheduleRecoverableRuntimeError,
   snapshotStreamingAssistantMessage,
   upsertToolStatuses,
 } from './helpers';
@@ -119,8 +122,13 @@ export function handleRuntimeEventState(
                 ? getToolCallFilePath(currentStreamForPath, normalizedFinalMessage.toolCallId)
                 : undefined;
 
-              // Mirror enrichWithToolResultFiles: collect images + file refs for next assistant msg
+              // Mirror `enrichWithToolResultFiles`: collect non-image
+              // artifacts for the next assistant message. Image content
+              // blocks (vision data) and image-typed raw paths in the
+              // tool's stdout are intermediate process noise — see the
+              // comment in `helpers.ts::enrichWithToolResultFiles`.
               const toolFiles: AttachedFileMeta[] = extractImagesAsAttachedFiles(normalizedFinalMessage.content)
+                .filter((file) => !file.mimeType.startsWith('image/'))
                 .map((file) => (file.source ? file : { ...file, source: 'tool-result' }));
               if (matchedPath) {
                 for (const f of toolFiles) {
@@ -136,7 +144,9 @@ export function handleRuntimeEventState(
                 const mediaRefPaths = new Set(mediaRefs.map(r => r.filePath));
                 for (const ref of mediaRefs) toolFiles.push(makeAttachedFile(ref, 'tool-result'));
                 for (const ref of extractRawFilePaths(text)) {
-                  if (!mediaRefPaths.has(ref.filePath)) toolFiles.push(makeAttachedFile(ref, 'tool-result'));
+                  if (mediaRefPaths.has(ref.filePath)) continue;
+                  if (ref.mimeType.startsWith('image/')) continue;
+                  toolFiles.push(makeAttachedFile(ref, 'tool-result'));
                 }
               }
               set((s) => {
@@ -160,23 +170,58 @@ export function handleRuntimeEventState(
               });
               break;
             }
-            const toolOnly = isToolOnlyMessage(normalizedFinalMessage);
-            const hasOutput = hasNonToolAssistantContent(normalizedFinalMessage);
+            // Mixed `[thinking, text, toolCall]` messages with stop_reason="tool_use"
+            // (some MiniMax / gpt-5.5 variants emit these) are still intermediate
+            // turns even though they carry user-visible text. Treat them as
+            // tool-only for lifecycle purposes so the run stays "open" until the
+            // truly final reply (without a pending tool call) arrives.
+            const pendingTool = hasPendingToolUse(normalizedFinalMessage);
+            const toolOnly = isToolOnlyMessage(normalizedFinalMessage) || pendingTool;
+            const hasOutput = !pendingTool && hasNonToolAssistantContent(normalizedFinalMessage);
             const msgId = normalizedFinalMessage.id || (toolOnly ? `run-${runId}-tool-${Date.now()}` : `run-${runId}`);
             set((s) => {
               const nextTools = updates.length > 0 ? upsertToolStatuses(s.streamingTools, updates) : s.streamingTools;
               const streamingTools = hasOutput ? [] : nextTools;
 
-              // Attach any images collected from preceding tool results
+              // Attach any files collected from preceding tool results,
+              // plus file paths mentioned directly in the final assistant
+              // text (e.g. `/Users/.../1000行示例.xlsx`). The latter is
+              // what turns a plain path in the bubble into a clickable card
+              // immediately, before the quiet history reload finishes.
               const pendingImgs = s.pendingToolImages;
+              const ownText = getMessageText(normalizedFinalMessage.content);
+              const ownMediaRefs = ownText ? extractMediaRefs(ownText) : [];
+              const ownMediaPaths = new Set(ownMediaRefs.map(r => r.filePath));
+              const ownFiles = ownText
+                ? [
+                  ...ownMediaRefs.map(ref => makeAttachedFile(ref, 'message-ref')),
+                  ...extractRawFilePaths(ownText)
+                    .filter(ref => !ownMediaPaths.has(ref.filePath))
+                    .map(ref => makeAttachedFile(ref, 'message-ref')),
+                ]
+                : [];
+              const attachedFiles = [...pendingImgs];
+              const attachedPaths = new Set(attachedFiles.map(file => file.filePath).filter(Boolean));
+              for (const file of ownFiles) {
+                if (file.filePath && attachedPaths.has(file.filePath)) continue;
+                if (file.filePath) attachedPaths.add(file.filePath);
+                attachedFiles.push(file);
+              }
               const msgWithImages: RawMessage = pendingImgs.length > 0
                 ? {
                   ...normalizedFinalMessage,
                   role: (normalizedFinalMessage.role || 'assistant') as RawMessage['role'],
                   id: msgId,
-                  _attachedFiles: [...(normalizedFinalMessage._attachedFiles || []), ...pendingImgs],
+                  _attachedFiles: [...(normalizedFinalMessage._attachedFiles || []), ...attachedFiles],
                 }
-                : { ...normalizedFinalMessage, role: (normalizedFinalMessage.role || 'assistant') as RawMessage['role'], id: msgId };
+                : attachedFiles.length > 0
+                  ? {
+                    ...normalizedFinalMessage,
+                    role: (normalizedFinalMessage.role || 'assistant') as RawMessage['role'],
+                    id: msgId,
+                    _attachedFiles: [...(normalizedFinalMessage._attachedFiles || []), ...attachedFiles],
+                  }
+                  : { ...normalizedFinalMessage, role: (normalizedFinalMessage.role || 'assistant') as RawMessage['role'], id: msgId };
               const clearPendingImages = { pendingToolImages: [] as AttachedFileMeta[] };
 
               // Check if message already exists (prevent duplicates)
@@ -237,39 +282,52 @@ export function handleRuntimeEventState(
           );
           const terminalAssistantError = isTerminalAssistantErrorMessage(event.message);
           const wasSending = get().sending;
+          const sessionKeyAtError = get().currentSessionKey;
+          const recoverable = wasSending && isRecoverableRuntimeError(errorMsg);
 
-          // Snapshot the current streaming message into messages[] so partial
-          // content ("Let me get that written down...") is preserved in the UI
-          // rather than being silently discarded.
-          const currentStream = get().streamingMessage as RawMessage | null;
-          const errorSnapshot = snapshotStreamingAssistantMessage(
-            currentStream,
-            get().messages,
-            `error-${runId || Date.now()}`,
-          );
-          if (errorSnapshot.length > 0) {
-            set((s) => ({
-              messages: [...s.messages, ...errorSnapshot],
-            }));
+          const commitRuntimeError = () => {
+            const currentStream = get().streamingMessage as RawMessage | null;
+            const errorSnapshot = snapshotStreamingAssistantMessage(
+              currentStream,
+              get().messages,
+              `error-${runId || Date.now()}`,
+            );
+            if (errorSnapshot.length > 0) {
+              set((s) => ({
+                messages: [...s.messages, ...errorSnapshot],
+              }));
+            }
+
+            set({
+              error: terminalAssistantError ? null : errorMsg,
+              runError: terminalAssistantError ? errorMsg : null,
+              sending: false,
+              activeRunId: null,
+              streamingText: '',
+              streamingMessage: null,
+              streamingTools: [],
+              pendingFinal: false,
+              lastUserMessageAt: null,
+              pendingToolImages: [],
+            });
+            clearHistoryPoll();
+            clearErrorRecoveryTimer();
+            if (wasSending) {
+              void get().loadHistory(true);
+            }
+          };
+
+          if (recoverable) {
+            scheduleRecoverableRuntimeError(() => {
+              if (get().currentSessionKey !== sessionKeyAtError) return;
+              if (runId && get().activeRunId && get().activeRunId !== runId) return;
+              if (!get().sending && !get().error && !get().runError) return;
+              commitRuntimeError();
+            });
+            break;
           }
 
-          set({
-            error: terminalAssistantError ? null : errorMsg,
-            runError: terminalAssistantError ? errorMsg : null,
-            sending: false,
-            activeRunId: null,
-            streamingText: '',
-            streamingMessage: null,
-            streamingTools: [],
-            pendingFinal: false,
-            lastUserMessageAt: null,
-            pendingToolImages: [],
-          });
-          clearHistoryPoll();
-          clearErrorRecoveryTimer();
-          if (wasSending) {
-            void get().loadHistory(true);
-          }
+          commitRuntimeError();
           break;
         }
         case 'aborted': {

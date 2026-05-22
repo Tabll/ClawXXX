@@ -11,11 +11,9 @@ import {
   ExternalLink,
   Copy,
   FileText,
-  Leaf,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
-import { PageHeader, SectionHeader } from '@/components/ui/page-header';
 import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
@@ -73,8 +71,6 @@ export function Settings() {
     setProxyBypassRules,
     autoCheckUpdate,
     setAutoCheckUpdate,
-    autoDownloadUpdate,
-    setAutoDownloadUpdate,
     devModeUnlocked,
     setDevModeUnlocked,
     telemetryEnabled,
@@ -83,7 +79,6 @@ export function Settings() {
 
   const { status: gatewayStatus, restart: restartGateway } = useGatewayStore();
   const currentVersion = useUpdateStore((state) => state.currentVersion);
-  const updateSetAutoDownload = useUpdateStore((state) => state.setAutoDownload);
   const [controlUiInfo, setControlUiInfo] = useState<ControlUiInfo | null>(null);
   const [openclawCliCommand, setOpenclawCliCommand] = useState('');
   const [openclawCliError, setOpenclawCliError] = useState<string | null>(null);
@@ -478,37 +473,40 @@ export function Settings() {
       <div className="w-full max-w-5xl mx-auto flex flex-col h-full p-10 pt-16">
 
         {/* Header */}
-        <PageHeader title={t('title')} subtitle={t('subtitle')} />
+        <div className="flex flex-col md:flex-row md:items-start justify-between mb-12 shrink-0 gap-4">
+          <div>
+            <h1 className="text-5xl md:text-6xl font-serif text-foreground mb-3 font-normal tracking-tight">
+              {t('title')}
+            </h1>
+            <p className="text-subtitle text-foreground/70 font-medium">
+              {t('subtitle')}
+            </p>
+          </div>
+        </div>
 
         {/* Content Area */}
-        <div className="flex-1 overflow-y-auto pr-2 pb-10 min-h-0 -mr-2 space-y-12 animate-content-in">
+        <div className="flex-1 overflow-y-auto pr-2 pb-10 min-h-0 -mr-2 space-y-12">
 
           {/* Appearance */}
           <div>
-            <SectionHeader title={t('appearance.title')} />
+            <h2 className="text-3xl font-serif text-foreground mb-6 font-normal tracking-tight">
+              {t('appearance.title')}
+            </h2>
             <div className="space-y-6">
               <div className="space-y-3">
                 <Label className="text-sm font-medium text-foreground/80">{t('appearance.theme')}</Label>
                 <div className="flex flex-wrap gap-2">
                   <Button
                     variant={theme === 'light' ? 'secondary' : 'outline'}
-                    className={cn("rounded-full px-5 h-10 border-black/10 dark:border-white/10", theme === 'light' ? "bg-surface text-foreground" : "bg-transparent text-muted-foreground hover:bg-surface/60")}
+                    className={cn("rounded-full px-5 h-10 border-black/10 dark:border-white/10", theme === 'light' ? "bg-black/5 dark:bg-white/10 text-foreground" : "bg-transparent text-muted-foreground hover:bg-black/5 dark:hover:bg-white/5")}
                     onClick={() => setTheme('light')}
                   >
                     <Sun className="h-4 w-4 mr-2" />
                     {t('appearance.light')}
                   </Button>
                   <Button
-                    variant={theme === 'eye-care' ? 'secondary' : 'outline'}
-                    className={cn("rounded-full px-5 h-10 border-black/10 dark:border-white/10", theme === 'eye-care' ? "bg-surface text-foreground" : "bg-transparent text-muted-foreground hover:bg-surface/60")}
-                    onClick={() => setTheme('eye-care')}
-                  >
-                    <Leaf className="h-4 w-4 mr-2" />
-                    {t('appearance.eyeCare')}
-                  </Button>
-                  <Button
                     variant={theme === 'dark' ? 'secondary' : 'outline'}
-                    className={cn("rounded-full px-5 h-10 border-black/10 dark:border-white/10", theme === 'dark' ? "bg-surface text-foreground" : "bg-transparent text-muted-foreground hover:bg-surface/60")}
+                    className={cn("rounded-full px-5 h-10 border-black/10 dark:border-white/10", theme === 'dark' ? "bg-black/5 dark:bg-white/10 text-foreground" : "bg-transparent text-muted-foreground hover:bg-black/5 dark:hover:bg-white/5")}
                     onClick={() => setTheme('dark')}
                   >
                     <Moon className="h-4 w-4 mr-2" />
@@ -516,7 +514,7 @@ export function Settings() {
                   </Button>
                   <Button
                     variant={theme === 'system' ? 'secondary' : 'outline'}
-                    className={cn("rounded-full px-5 h-10 border-black/10 dark:border-white/10", theme === 'system' ? "bg-surface text-foreground" : "bg-transparent text-muted-foreground hover:bg-surface/60")}
+                    className={cn("rounded-full px-5 h-10 border-black/10 dark:border-white/10", theme === 'system' ? "bg-black/5 dark:bg-white/10 text-foreground" : "bg-transparent text-muted-foreground hover:bg-black/5 dark:hover:bg-white/5")}
                     onClick={() => setTheme('system')}
                   >
                     <Monitor className="h-4 w-4 mr-2" />
@@ -531,7 +529,7 @@ export function Settings() {
                     <Button
                       key={lang.code}
                       variant={language === lang.code ? 'secondary' : 'outline'}
-                      className={cn("rounded-full px-5 h-10 border-black/10 dark:border-white/10", language === lang.code ? "bg-surface text-foreground" : "bg-transparent text-muted-foreground hover:bg-surface/60")}
+                      className={cn("rounded-full px-5 h-10 border-black/10 dark:border-white/10", language === lang.code ? "bg-black/5 dark:bg-white/10 text-foreground" : "bg-transparent text-muted-foreground hover:bg-black/5 dark:hover:bg-white/5")}
                       onClick={() => setLanguage(lang.code)}
                     >
                       {lang.label}
@@ -554,11 +552,13 @@ export function Settings() {
             </div>
           </div>
 
-          <Separator className="bg-surface" />
+          <Separator className="bg-black/5 dark:bg-white/5" />
 
           {/* Gateway */}
           <div>
-            <SectionHeader title={t('gateway.title')} />
+            <h2 className="text-3xl font-serif text-foreground mb-6 font-normal tracking-tight">
+              {t('gateway.title')}
+            </h2>
             <div className="space-y-6">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div>
@@ -570,21 +570,23 @@ export function Settings() {
                 <div className="flex flex-wrap items-center gap-2">
                   <div className={cn(
                     "flex items-center gap-1.5 px-3 py-1.5 rounded-full text-meta font-medium border",
-                    gatewayStatus.state === 'running' ? "bg-green-500/10 text-green-600 dark:text-green-500 border-green-500/20" :
-                      gatewayStatus.state === 'error' ? "bg-red-500/10 text-red-600 dark:text-red-500 border-red-500/20" :
-                        "bg-surface text-muted-foreground border-transparent"
+                    gatewayStatus.state === 'running' && gatewayStatus.gatewayReady !== false ? "bg-green-500/10 text-green-600 dark:text-green-500 border-green-500/20" :
+                      gatewayStatus.state === 'running' ? "bg-red-500/10 text-red-600 dark:text-red-500 border-red-500/20" :
+                        gatewayStatus.state === 'error' ? "bg-red-500/10 text-red-600 dark:text-red-500 border-red-500/20" :
+                          "bg-black/5 dark:bg-white/5 text-muted-foreground border-transparent"
                   )}>
                     <div className={cn("w-1.5 h-1.5 rounded-full",
-                      gatewayStatus.state === 'running' ? "bg-green-500" :
-                        gatewayStatus.state === 'error' ? "bg-red-500" : "bg-muted-foreground"
+                      gatewayStatus.state === 'running' && gatewayStatus.gatewayReady !== false ? "bg-green-500" :
+                        gatewayStatus.state === 'running' ? "bg-red-500" :
+                          gatewayStatus.state === 'error' ? "bg-red-500" : "bg-muted-foreground"
                     )} />
-                    {gatewayStatus.state}
+                    {gatewayStatus.state === 'running' && gatewayStatus.gatewayReady === false ? 'starting' : gatewayStatus.state}
                   </div>
-                  <Button variant="outline" size="sm" onClick={restartGateway} className="rounded-full h-8 px-4 border-black/10 dark:border-white/10 bg-transparent hover:bg-surface">
+                  <Button variant="outline" size="sm" onClick={restartGateway} className="rounded-full h-8 px-4 border-black/10 dark:border-white/10 bg-transparent hover:bg-black/5 dark:hover:bg-white/5">
                     <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
                     {t('common:actions.restart')}
                   </Button>
-                  <Button variant="outline" size="sm" onClick={handleShowLogs} className="rounded-full h-8 px-4 border-black/10 dark:border-white/10 bg-transparent hover:bg-surface">
+                  <Button variant="outline" size="sm" onClick={handleShowLogs} className="rounded-full h-8 px-4 border-black/10 dark:border-white/10 bg-transparent hover:bg-black/5 dark:hover:bg-white/5">
                     <FileText className="h-3.5 w-3.5 mr-1.5" />
                     {t('gateway.logs')}
                   </Button>
@@ -592,7 +594,7 @@ export function Settings() {
               </div>
 
               {showLogs && (
-                <div className="p-4 rounded-2xl bg-surface border border-black/5 dark:border-white/5">
+                <div className="p-4 rounded-2xl bg-black/5 dark:bg-white/5 border border-black/5 dark:border-white/5">
                   <div className="flex items-center justify-between mb-3">
                     <p className="font-medium text-sm">{t('gateway.appLogs')}</p>
                     <div className="flex gap-2">
@@ -659,9 +661,11 @@ export function Settings() {
           {/* Developer */}
           {devModeUnlocked && (
             <>
-              <Separator className="bg-surface" />
+              <Separator className="bg-black/5 dark:bg-white/5" />
               <div data-testid="settings-developer-section">
-                <SectionHeader title={t('developer.title')} />
+                <h2 data-testid="settings-developer-title" className="text-3xl font-serif text-foreground mb-6 font-normal tracking-tight">
+                  {t('developer.title')}
+                </h2>
                 <div className="space-y-8">
                   {/* Gateway Proxy */}
                   <div className="space-y-4" data-testid="settings-proxy-section">
@@ -705,7 +709,7 @@ export function Settings() {
                               value={proxyServerDraft}
                               onChange={(event) => setProxyServerDraft(event.target.value)}
                               placeholder="http://127.0.0.1:7890"
-                              className="h-10 rounded-xl bg-surface border-transparent font-mono text-[13px]"
+                              className="h-10 rounded-xl bg-black/5 dark:bg-white/5 border-transparent font-mono text-meta"
                             />
                             <p className="text-tiny text-muted-foreground">
                               {t('gateway.proxyServerHelp')}
@@ -719,7 +723,7 @@ export function Settings() {
                               value={proxyHttpServerDraft}
                               onChange={(event) => setProxyHttpServerDraft(event.target.value)}
                               placeholder={proxyServerDraft || 'http://127.0.0.1:7890'}
-                              className="h-10 rounded-xl bg-surface border-transparent font-mono text-[13px]"
+                              className="h-10 rounded-xl bg-black/5 dark:bg-white/5 border-transparent font-mono text-meta"
                             />
                             <p className="text-tiny text-muted-foreground">
                               {t('gateway.proxyHttpServerHelp')}
@@ -733,7 +737,7 @@ export function Settings() {
                               value={proxyHttpsServerDraft}
                               onChange={(event) => setProxyHttpsServerDraft(event.target.value)}
                               placeholder={proxyServerDraft || 'http://127.0.0.1:7890'}
-                              className="h-10 rounded-xl bg-surface border-transparent font-mono text-[13px]"
+                              className="h-10 rounded-xl bg-black/5 dark:bg-white/5 border-transparent font-mono text-meta"
                             />
                             <p className="text-tiny text-muted-foreground">
                               {t('gateway.proxyHttpsServerHelp')}
@@ -747,7 +751,7 @@ export function Settings() {
                               value={proxyAllServerDraft}
                               onChange={(event) => setProxyAllServerDraft(event.target.value)}
                               placeholder={proxyServerDraft || 'socks5://127.0.0.1:7891'}
-                              className="h-10 rounded-xl bg-surface border-transparent font-mono text-[13px]"
+                              className="h-10 rounded-xl bg-black/5 dark:bg-white/5 border-transparent font-mono text-meta"
                             />
                             <p className="text-tiny text-muted-foreground">
                               {t('gateway.proxyAllServerHelp')}
@@ -762,13 +766,12 @@ export function Settings() {
                             value={proxyBypassRulesDraft}
                             onChange={(event) => setProxyBypassRulesDraft(event.target.value)}
                             placeholder="<local>;localhost;127.0.0.1;::1"
-                            className="h-10 rounded-xl bg-surface border-transparent font-mono text-[13px]"
+                            className="h-10 rounded-xl bg-black/5 dark:bg-white/5 border-transparent font-mono text-meta"
                           />
                           <p className="text-tiny text-muted-foreground">
                             {t('gateway.proxyBypassHelp')}
                           </p>
                         </div>
-
 
                       </div>
                     )}
@@ -791,7 +794,7 @@ export function Settings() {
                         variant="outline"
                         onClick={refreshControlUiInfo}
                         disabled={!devModeUnlocked}
-                        className="rounded-xl h-10 px-4 bg-transparent border-black/10 dark:border-white/10 hover:bg-surface"
+                        className="rounded-xl h-10 px-4 bg-transparent border-black/10 dark:border-white/10 hover:bg-black/5 dark:hover:bg-white/5"
                       >
                         <RefreshCw className="h-4 w-4 mr-2" />
                         {t('common:actions.load')}
@@ -801,7 +804,7 @@ export function Settings() {
                         variant="outline"
                         onClick={handleCopyGatewayToken}
                         disabled={!controlUiInfo?.token}
-                        className="rounded-xl h-10 px-4 bg-transparent border-black/10 dark:border-white/10 hover:bg-surface"
+                        className="rounded-xl h-10 px-4 bg-transparent border-black/10 dark:border-white/10 hover:bg-black/5 dark:hover:bg-white/5"
                       >
                         <Copy className="h-4 w-4 mr-2" />
                         {t('common:actions.copy')}
@@ -832,7 +835,7 @@ export function Settings() {
                           variant="outline"
                           onClick={handleCopyCliCommand}
                           disabled={!openclawCliCommand}
-                          className="rounded-xl h-10 px-4 bg-transparent border-black/10 dark:border-white/10 hover:bg-surface"
+                          className="rounded-xl h-10 px-4 bg-transparent border-black/10 dark:border-white/10 hover:bg-black/5 dark:hover:bg-white/5"
                         >
                           <Copy className="h-4 w-4 mr-2" />
                           {t('common:actions.copy')}
@@ -855,7 +858,7 @@ export function Settings() {
                           variant="outline"
                           onClick={() => void handleRunOpenClawDoctor('diagnose')}
                           disabled={doctorRunningMode !== null}
-                          className="rounded-xl h-10 px-4 bg-transparent border-black/10 dark:border-white/10 hover:bg-surface"
+                          className="rounded-xl h-10 px-4 bg-transparent border-black/10 dark:border-white/10 hover:bg-black/5 dark:hover:bg-white/5"
                         >
                           <RefreshCw className={`h-4 w-4 mr-2${doctorRunningMode === 'diagnose' ? ' animate-spin' : ''}`} />
                           {doctorRunningMode === 'diagnose' ? t('common:status.running') : t('developer.runDoctor')}
@@ -865,7 +868,7 @@ export function Settings() {
                           variant="outline"
                           onClick={() => void handleRunOpenClawDoctor('fix')}
                           disabled={doctorRunningMode !== null}
-                          className="rounded-xl h-10 px-4 bg-transparent border-black/10 dark:border-white/10 hover:bg-surface"
+                          className="rounded-xl h-10 px-4 bg-transparent border-black/10 dark:border-white/10 hover:bg-black/5 dark:hover:bg-white/5"
                         >
                           <RefreshCw className={`h-4 w-4 mr-2${doctorRunningMode === 'fix' ? ' animate-spin' : ''}`} />
                           {doctorRunningMode === 'fix' ? t('common:status.running') : t('developer.runDoctorFix')}
@@ -875,7 +878,7 @@ export function Settings() {
                           variant="outline"
                           onClick={handleCopyDoctorOutput}
                           disabled={!doctorResult}
-                          className="rounded-xl h-10 px-4 bg-transparent border-black/10 dark:border-white/10 hover:bg-surface"
+                          className="rounded-xl h-10 px-4 bg-transparent border-black/10 dark:border-white/10 hover:bg-black/5 dark:hover:bg-white/5"
                         >
                           <Copy className="h-4 w-4 mr-2" />
                           {t('common:actions.copy')}
@@ -884,8 +887,8 @@ export function Settings() {
                     </div>
 
                     {doctorResult && (
-                      <div className="space-y-3 rounded-2xl border border-black/10 dark:border-white/10 p-5 bg-surface">
-                        <div className="flex flex-wrap gap-2 text-[12px]">
+                      <div className="space-y-3 rounded-2xl border border-black/10 dark:border-white/10 p-5 bg-black/5 dark:bg-white/5">
+                        <div className="flex flex-wrap gap-2 text-xs">
                           <Badge variant={doctorResult.success ? 'secondary' : 'destructive'} className="rounded-full px-3 py-1">
                             {doctorResult.mode === 'fix'
                               ? (doctorResult.success ? t('developer.doctorFixOk') : t('developer.doctorFixIssue'))
@@ -947,7 +950,7 @@ export function Settings() {
                         variant="outline"
                         size="sm"
                         onClick={() => setShowTelemetryViewer((prev) => !prev)}
-                        className="rounded-full px-5 h-9 bg-transparent border-black/10 dark:border-white/10 hover:bg-surface"
+                        className="rounded-full px-5 h-9 bg-transparent border-black/10 dark:border-white/10 hover:bg-black/5 dark:hover:bg-white/5"
                       >
                         {showTelemetryViewer
                           ? t('common:actions.hide')
@@ -956,7 +959,7 @@ export function Settings() {
                     </div>
 
                     {showTelemetryViewer && (
-                      <div className="space-y-4 rounded-2xl border border-black/10 dark:border-white/10 p-5 bg-surface">
+                      <div className="space-y-4 rounded-2xl border border-black/10 dark:border-white/10 p-5 bg-black/5 dark:bg-white/5">
                         <div className="flex flex-wrap items-center gap-2">
                           <Badge variant="secondary" className="rounded-full px-3 py-1 bg-white dark:bg-card border border-black/5 dark:border-white/5">{t('developer.telemetryTotal')}: {telemetryStats.total}</Badge>
                           <Badge variant={telemetryStats.errorCount > 0 ? 'destructive' : 'secondary'} className={cn("rounded-full px-3 py-1", telemetryStats.errorCount === 0 && "bg-white dark:bg-card border border-black/5 dark:border-white/5")}>
@@ -1029,11 +1032,13 @@ export function Settings() {
             </>
           )}
 
-          <Separator className="bg-surface" />
+          <Separator className="bg-black/5 dark:bg-white/5" />
 
           {/* Updates */}
           <div>
-            <SectionHeader title={t('updates.title')} />
+            <h2 className="text-3xl font-serif text-foreground mb-6 font-normal tracking-tight">
+              {t('updates.title')}
+            </h2>
             <div className="space-y-6">
               <UpdateSettings />
 
@@ -1049,31 +1054,17 @@ export function Settings() {
                   onCheckedChange={setAutoCheckUpdate}
                 />
               </div>
-
-              <div className="flex items-center justify-between">
-                <div>
-                  <Label className="text-sm font-medium text-foreground">{t('updates.autoDownload')}</Label>
-                  <p className="text-meta text-muted-foreground mt-1">
-                    {t('updates.autoDownloadDesc')}
-                  </p>
-                </div>
-                <Switch
-                  checked={autoDownloadUpdate}
-                  onCheckedChange={(value) => {
-                    setAutoDownloadUpdate(value);
-                    updateSetAutoDownload(value);
-                  }}
-                />
-              </div>
             </div>
           </div>
 
-          <Separator className="bg-surface" />
+          <Separator className="bg-black/5 dark:bg-white/5" />
 
           {/* About */}
           <div>
-            <SectionHeader title={t('about.title')} />
-            <div className="space-y-3 text-[14px] text-muted-foreground">
+            <h2 className="text-3xl font-serif text-foreground mb-6 font-normal tracking-tight">
+              {t('about.title')}
+            </h2>
+            <div className="space-y-3 text-sm text-muted-foreground">
               <p>
                 <strong className="text-foreground font-semibold">{t('about.appName')}</strong> - {t('about.tagline')}
               </p>

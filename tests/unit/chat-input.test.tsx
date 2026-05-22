@@ -1,18 +1,29 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { ChatInput } from '@/pages/Chat/ChatInput';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { hostApiFetch } from '@/lib/host-api';
 
-const { agentsState, chatState, gatewayState } = vi.hoisted(() => ({
+const { agentsState, chatState, gatewayState, providersState, artifactPanelMocks } = vi.hoisted(() => ({
   agentsState: {
     agents: [] as Array<Record<string, unknown>>,
+    defaultModelRef: null as string | null,
+    updateAgentModel: vi.fn(),
   },
   chatState: {
     currentAgentId: 'main',
   },
   gatewayState: {
     status: { state: 'running', port: 18789 },
+  },
+  providersState: {
+    accounts: [] as Array<Record<string, unknown>>,
+    statuses: [] as Array<Record<string, unknown>>,
+    defaultAccountId: null as string | null,
+    refreshProviderSnapshot: vi.fn(),
+  },
+  artifactPanelMocks: {
+    openPreview: vi.fn(),
   },
 }));
 
@@ -26,6 +37,14 @@ vi.mock('@/stores/chat', () => ({
 
 vi.mock('@/stores/gateway', () => ({
   useGatewayStore: (selector: (state: typeof gatewayState) => unknown) => selector(gatewayState),
+}));
+
+vi.mock('@/stores/providers', () => ({
+  useProviderStore: (selector: (state: typeof providersState) => unknown) => selector(providersState),
+}));
+
+vi.mock('@/stores/artifact-panel', () => ({
+  useArtifactPanel: (selector: (state: typeof artifactPanelMocks) => unknown) => selector(artifactPanelMocks),
 }));
 
 vi.mock('@/lib/host-api', () => ({
@@ -72,6 +91,10 @@ function translate(key: string, vars?: Record<string, unknown>): string {
       return `gateway ${String(vars?.state ?? '')} | port: ${String(vars?.port ?? '')} ${String(vars?.pid ?? '')}`.trim();
     case 'composer.retryFailedAttachments':
       return 'Retry failed attachments';
+    case 'composer.skillPreviewTooltip':
+      return 'Preview SKILL.md';
+    case 'composer.skillPreviewNotFound':
+      return 'Skill not found';
     default:
       return key;
   }
@@ -94,9 +117,16 @@ function renderChatInput(onSend = vi.fn()) {
 describe('ChatInput agent targeting', () => {
   beforeEach(() => {
     agentsState.agents = [];
+    agentsState.defaultModelRef = null;
+    agentsState.updateAgentModel.mockReset();
     chatState.currentAgentId = 'main';
     gatewayState.status = { state: 'running', port: 18789 };
+    providersState.accounts = [];
+    providersState.statuses = [];
+    providersState.defaultAccountId = null;
+    providersState.refreshProviderSnapshot.mockReset();
     vi.mocked(hostApiFetch).mockReset();
+    artifactPanelMocks.openPreview.mockReset();
   });
 
   it('hides the @agent picker when only one agent is configured', () => {
@@ -182,6 +212,83 @@ describe('ChatInput agent targeting', () => {
     fireEvent.click(screen.getByTitle('Send'));
 
     expect(onSend).toHaveBeenCalledWith('Hello direct agent', undefined, 'research');
+  });
+
+  it('disables the input while gateway is running but not yet ready', () => {
+    gatewayState.status = { state: 'running', port: 18789, gatewayReady: false };
+    agentsState.agents = [
+      {
+        id: 'main',
+        name: 'Main',
+        isDefault: true,
+        modelDisplay: 'MiniMax',
+        inheritedModel: true,
+        workspace: '~/.openclaw/workspace',
+        agentDir: '~/.openclaw/agents/main/agent',
+        mainSessionKey: 'agent:main:main',
+        channelTypes: [],
+      },
+    ];
+    agentsState.defaultModelRef = 'custom-aaaaaaaa/gpt-a';
+    const now = '2025-01-01T00:00:00.000Z';
+    providersState.accounts = [
+      {
+        id: 'aaaaaaaa',
+        vendorId: 'custom',
+        label: 'Alpha',
+        authMode: 'api_key',
+        baseUrl: 'http://127.0.0.1:1/v1',
+        model: 'custom-aaaaaaaa/gpt-a',
+        enabled: true,
+        isDefault: true,
+        createdAt: now,
+        updatedAt: now,
+      },
+      {
+        id: 'bbbbbbbb',
+        vendorId: 'custom',
+        label: 'Beta',
+        authMode: 'api_key',
+        baseUrl: 'http://127.0.0.1:2/v1',
+        model: 'custom-bbbbbbbb/gpt-b',
+        enabled: true,
+        isDefault: false,
+        createdAt: now,
+        updatedAt: now,
+      },
+    ];
+    providersState.statuses = [
+      { id: 'aaaaaaaa', name: 'Alpha', type: 'custom', hasKey: true, keyMasked: 'sk-***', enabled: true, createdAt: now, updatedAt: now },
+      { id: 'bbbbbbbb', name: 'Beta', type: 'custom', hasKey: true, keyMasked: 'sk-***', enabled: true, createdAt: now, updatedAt: now },
+    ];
+    providersState.defaultAccountId = 'aaaaaaaa';
+
+    renderChatInput();
+
+    expect(screen.getByTestId('chat-composer-input')).toBeDisabled();
+    expect(screen.getByTestId('chat-composer-skill')).toBeDisabled();
+    expect(screen.getByTestId('chat-model-picker-button')).toBeDisabled();
+  });
+
+  it('shows starting status while gateway is running but not yet ready', () => {
+    gatewayState.status = { state: 'running', port: 18789, gatewayReady: false };
+    agentsState.agents = [
+      {
+        id: 'main',
+        name: 'Main',
+        isDefault: true,
+        modelDisplay: 'MiniMax',
+        inheritedModel: true,
+        workspace: '~/.openclaw/workspace',
+        agentDir: '~/.openclaw/agents/main/agent',
+        mainSessionKey: 'agent:main:main',
+        channelTypes: [],
+      },
+    ];
+
+    renderChatInput();
+
+    expect(screen.getByText(/gateway starting \| port: 18789/i)).toBeInTheDocument();
   });
 
   it('renders the skill trigger after the @ agent picker', () => {
@@ -449,5 +556,87 @@ describe('ChatInput agent targeting', () => {
 
     expect(textbox).toHaveValue('/create-rule  /create-rule  ');
     expect(screen.getAllByTestId('chat-composer-skill-token')).toHaveLength(2);
+  });
+
+  it('opens the artifact preview panel when the inline skill token is clicked', async () => {
+    agentsState.agents = [
+      {
+        id: 'main',
+        name: 'Main',
+        isDefault: true,
+        modelDisplay: 'MiniMax',
+        inheritedModel: true,
+        workspace: '~/.openclaw/workspace',
+        agentDir: '~/.openclaw/agents/main/agent',
+        mainSessionKey: 'agent:main:main',
+        channelTypes: [],
+      },
+    ];
+    vi.mocked(hostApiFetch).mockResolvedValue({
+      success: true,
+      skills: [
+        {
+          name: 'create-skill',
+          description: 'Create and refine reusable skills.',
+          source: 'workspace',
+          sourceLabel: 'Workspace',
+          manifestPath: '/tmp/workspace/skill/create-skill/SKILL.md',
+          baseDir: '/tmp/workspace/skill/create-skill',
+        },
+      ],
+    });
+
+    renderChatInput();
+
+    const textbox = screen.getByRole('textbox') as HTMLTextAreaElement;
+    fireEvent.change(textbox, { target: { value: 'Draft a new helper' } });
+    textbox.focus();
+    textbox.setSelectionRange('Draft '.length, 'Draft '.length);
+
+    fireEvent.click(screen.getByTitle('Choose skill'));
+    fireEvent.click(await screen.findByText('/create-skill'));
+
+    fireEvent.click(screen.getByTestId('chat-composer-skill-token'));
+
+    expect(artifactPanelMocks.openPreview).toHaveBeenCalledWith(
+      expect.objectContaining({
+        filePath: '/tmp/workspace/skill/create-skill/SKILL.md',
+        fileName: 'SKILL.md',
+      }),
+    );
+  });
+
+  it('stages dropped folders via disk path instead of buffer upload', async () => {
+    vi.mocked(hostApiFetch).mockResolvedValueOnce([{
+      id: 'folder-id',
+      fileName: 'Archive',
+      mimeType: 'application/x-directory',
+      fileSize: 0,
+      stagedPath: '/tmp/project-folder',
+      preview: null,
+    }]);
+
+    const folderFile = new File([new Uint8Array(192)], 'Archive', { type: 'application/zip' });
+    Object.defineProperty(folderFile, 'path', { value: '/tmp/project-folder' });
+
+    const { container } = renderChatInput();
+    fireEvent.drop(container.firstElementChild as Element, {
+      dataTransfer: {
+        items: [{
+          kind: 'file',
+          getAsFile: () => folderFile,
+          webkitGetAsEntry: () => ({ isDirectory: true, isFile: false }),
+        }],
+        files: [folderFile],
+      },
+    });
+
+    await waitFor(() => {
+      expect(hostApiFetch).toHaveBeenCalledWith('/api/files/stage-paths', {
+        method: 'POST',
+        body: JSON.stringify({ filePaths: ['/tmp/project-folder'] }),
+      });
+    });
+    expect(await screen.findByText('Archive')).toBeInTheDocument();
   });
 });

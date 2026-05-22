@@ -5,29 +5,40 @@
  * are in the toolbar; messages render with markdown + streaming.
  */
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AlertCircle, Loader2, Sparkles } from 'lucide-react';
+import { AlertCircle, ArrowDownToLine, Loader2, Sparkles } from 'lucide-react';
 import { useChatStore, type RawMessage } from '@/stores/chat';
 import { buildBaselineRunKey, getBaseline } from '@/stores/baseline-cache';
 import { useGatewayStore } from '@/stores/gateway';
 import { useAgentsStore } from '@/stores/agents';
 import { useArtifactPanel } from '@/stores/artifact-panel';
 import { hostApiFetch } from '@/lib/host-api';
+import { invokeIpc } from '@/lib/api-client';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { ChatMessage } from './ChatMessage';
 import { ChatInput } from './ChatInput';
 import { ExecutionGraphCard } from './ExecutionGraphCard';
 import { ChatToolbar } from './ChatToolbar';
-import { extractImages, extractText, extractThinking, extractToolUse, stripProcessMessagePrefix } from './message-utils';
-import { deriveTaskSteps, findReplyMessageIndex, parseSubagentCompletionInfo, type TaskStep } from './task-visualization';
+import { extractImages, extractText, extractThinking, extractToolUse, normalizeMessageRole, stripProcessMessagePrefix } from './message-utils';
+import {
+  buildRunSegmentMessageIndices,
+  deriveTaskSteps,
+  findReplyMessageIndex,
+  getPostTriggerSegmentMessages,
+  getRunSegmentMessages,
+  hasActiveStreamingReplyInRun,
+  parseSubagentCompletionInfo,
+  type TaskStep,
+} from './task-visualization';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 import { useStickToBottomInstant } from '@/hooks/use-stick-to-bottom-instant';
 import { useMinLoading } from '@/hooks/use-min-loading';
-import { extractGeneratedFiles, generatedFileHasDiffPayload, type GeneratedFile } from '@/lib/generated-files';
+import { extractGeneratedFiles, generatedFileHasDiffPayload, isHtmlPreviewExt, type GeneratedFile } from '@/lib/generated-files';
 import { GeneratedFilesPanel } from '@/components/file-preview/GeneratedFilesPanel';
 import type { FilePreviewTarget } from '@/components/file-preview/types';
 import { buildPreviewTarget } from '@/components/file-preview/build-preview-target';
 import type { AttachedFileMeta } from '@/stores/chat/types';
+import { toast } from 'sonner';
 
 const ArtifactPanelLazy = lazy(() =>
   import('@/components/file-preview/ArtifactPanel').then((m) => ({ default: m.ArtifactPanel })),
@@ -69,10 +80,34 @@ type UserRunCard = {
   suppressThinking: boolean;
 };
 
+type QuestionDirectoryItem = {
+  index: number;
+  ordinal: number;
+  title: string;
+};
+
+const QUESTION_DIRECTORY_RENDER_LIMIT = 300;
+
 function getPrimaryMessageStepTexts(steps: TaskStep[]): string[] {
   return steps
     .filter((step) => step.kind === 'message' && step.parentId === 'agent-run' && !!step.detail)
     .map((step) => step.detail!);
+}
+
+function buildQuestionDirectoryTitle(message: RawMessage, fallback: string): string {
+  const normalized = extractText(message).replace(/\s+/g, ' ').trim();
+  if (!normalized) return fallback;
+  return normalized.length > 64 ? `${normalized.slice(0, 64)}…` : normalized;
+}
+
+function isRealUserMessage(msg: RawMessage): boolean {
+  if (normalizeMessageRole(msg.role) !== 'user') return false;
+  const content = msg.content;
+  if (!Array.isArray(content)) return true;
+  // If every block in the content is a tool_result, this is a Gateway
+  // tool-result wrapper, not a real user message.
+  const blocks = content as Array<{ type?: string }>;
+  return blocks.length === 0 || !blocks.every((b) => b.type === 'tool_result' || b.type === 'toolResult');
 }
 
 function generatedFileToTarget(file: GeneratedFile): FilePreviewTarget {
@@ -105,6 +140,9 @@ export function Chat() {
   const currentAgentId = useChatStore((s) => s.currentAgentId);
   const sessionLabels = useChatStore((s) => s.sessionLabels);
   const loading = useChatStore((s) => s.loading);
+  const loadingMoreHistory = useChatStore((s) => s.loadingMoreHistory);
+  const hasMoreHistory = useChatStore((s) => s.hasMoreHistory);
+  const loadMoreHistory = useChatStore((s) => s.loadMoreHistory);
   const sending = useChatStore((s) => s.sending);
   const error = useChatStore((s) => s.error);
   const runError = useChatStore((s) => s.runError);
@@ -137,14 +175,27 @@ export function Chat() {
     closeArtifactPanel();
   }, [currentSessionKey, closeArtifactPanel]);
   const [childTranscripts, setChildTranscripts] = useState<Record<string, RawMessage[]>>({});
+  const [questionDirectoryOpenSessionKey, setQuestionDirectoryOpenSessionKey] = useState<string | null>(null);
 
   // Callback for file cards in chat messages — opens the in-app preview
   // panel instead of the system default editor.
   const handleOpenAttachedFile = useCallback((file: AttachedFileMeta) => {
     if (!file.filePath) return;
-    const target = buildPreviewTarget(file.filePath, file.fileName);
+    if (file.mimeType === 'application/x-directory') {
+      void invokeIpc('shell:openPath', file.filePath)
+        .then((error) => {
+          if (typeof error === 'string' && error) {
+            toast.error(error);
+          }
+        })
+        .catch(() => {
+          toast.error(t('filePreview.errors.openInFinderFailed', '无法在文件管理器中显示'));
+        });
+      return;
+    }
+    const target = buildPreviewTarget(file.filePath, file.fileName, file.fileSize);
     openPreview(target);
-  }, [openPreview]);
+  }, [openPreview, t]);
   // Persistent per-run override for the Execution Graph's expanded/collapsed
   // state. Keyed by a stable run id (trigger message id, or a fallback of
   // `${sessionKey}:${triggerIdx}`) so user toggles survive the `loadHistory`
@@ -154,7 +205,7 @@ export function Chat() {
   const [graphExpandedOverrides, setGraphExpandedOverrides] = useState<Record<string, boolean>>({});
   const graphStepCache: Record<string, GraphStepCacheEntry> = graphStepCacheStore.get(currentSessionKey) ?? {};
   const minLoading = useMinLoading(loading && messages.length > 0);
-  const { contentRef, scrollRef } = useStickToBottomInstant(currentSessionKey);
+  const { contentRef, scrollRef, scrollToBottom, isAtBottom } = useStickToBottomInstant(currentSessionKey);
 
   // Load data when gateway is running.
   // When the store already holds messages for this session (i.e. the user
@@ -260,21 +311,16 @@ export function Chat() {
   const hasAnyStreamContent = hasStreamText || hasStreamThinking || hasStreamTools || hasStreamImages || hasStreamToolStatus;
 
   const isEmpty = messages.length === 0 && !sending;
-  const subagentCompletionInfos = messages.map((message) => parseSubagentCompletionInfo(message));
+  const showScrollToLatest = !isEmpty && !isAtBottom;
+  const subagentCompletionInfos = useMemo(
+    () => messages.map((message) => parseSubagentCompletionInfo(message)),
+    [messages],
+  );
   // Build an index of the *next* real user message after each position.
   // Gateway history may contain `role: 'user'` messages that are actually
   // tool-result wrappers (Anthropic API format).  These must NOT split
   // the run into multiple segments — only genuine user-authored messages
   // should act as run boundaries.
-  const isRealUserMessage = (msg: RawMessage): boolean => {
-    if (msg.role !== 'user') return false;
-    const content = msg.content;
-    if (!Array.isArray(content)) return true;
-    // If every block in the content is a tool_result, this is a Gateway
-    // tool-result wrapper, not a real user message.
-    const blocks = content as Array<{ type?: string }>;
-    return blocks.length === 0 || !blocks.every((b) => b.type === 'tool_result');
-  };
   const nextUserMessageIndexes = new Array<number>(messages.length).fill(-1);
   let nextUserMessageIndex = -1;
   for (let idx = messages.length - 1; idx >= 0; idx -= 1) {
@@ -283,6 +329,33 @@ export function Chat() {
       nextUserMessageIndex = idx;
     }
   }
+
+  const questionDirectoryItems = useMemo<QuestionDirectoryItem[]>(() => {
+    const items: QuestionDirectoryItem[] = [];
+    let questionOrdinal = 0;
+    messages.forEach((message, index) => {
+      if (!isRealUserMessage(message) || subagentCompletionInfos[index]) return;
+      questionOrdinal += 1;
+      items.push({
+        index,
+        ordinal: questionOrdinal,
+        title: buildQuestionDirectoryTitle(message, t('questionDirectory.fallback', { number: questionOrdinal })),
+      });
+    });
+    return items;
+  }, [messages, subagentCompletionInfos, t]);
+
+  const questionDirectoryVisible = questionDirectoryOpenSessionKey === currentSessionKey && questionDirectoryItems.length > 1;
+
+  const isRunTrigger = useCallback(
+    (message: RawMessage, index: number) => isRealUserMessage(message) && !subagentCompletionInfos[index],
+    [subagentCompletionInfos],
+  );
+
+  const runSegmentMessageIndices = useMemo(
+    () => buildRunSegmentMessageIndices(messages, nextUserMessageIndexes, isRunTrigger),
+    [messages, nextUserMessageIndexes, isRunTrigger],
+  );
 
   // Indices of intermediate assistant process messages that are represented
   // in the ExecutionGraphCard (narration text and/or thinking). We suppress
@@ -297,7 +370,11 @@ export function Chat() {
       : `${currentSessionKey}:trigger-${idx}`;
     const nextUserIndex = nextUserMessageIndexes[idx];
     const segmentEnd = nextUserIndex === -1 ? messages.length : nextUserIndex;
-    const segmentMessages = messages.slice(idx + 1, segmentEnd);
+    // Orphans from paginated history are folded into the graph only — they must
+    // not participate in run lifecycle (hasFinalReply / replyIndex) or a prior
+    // turn's assistant reply is mistaken for the current run's answer (#1048).
+    const postTriggerMessages = getPostTriggerSegmentMessages(messages, idx, nextUserIndex);
+    const segmentMessages = getRunSegmentMessages(messages, idx, nextUserIndex, isRunTrigger);
     const completionInfos = subagentCompletionInfos
       .slice(idx + 1, segmentEnd)
       .filter((value): value is NonNullable<typeof value> => value != null);
@@ -307,7 +384,7 @@ export function Chat() {
     //  - segment has tool calls but no pure-text final reply yet (server-side
     //    tool execution — Gateway fires phase "end" per tool round which
     //    briefly clears sending, but the run is still in progress)
-    const hasToolActivity = segmentMessages.some((m) =>
+    const hasToolActivity = postTriggerMessages.some((m) =>
       m.role === 'assistant' && extractToolUse(m).length > 0,
     );
     // Locate the last tool-use message so we only count text messages that
@@ -317,14 +394,14 @@ export function Chat() {
     // flips to false between tool rounds, collapsing the trailing
     // "Thinking..." indicator during the brief gap before the next stream chunk.
     let lastToolUseOffset = -1;
-    for (let i = segmentMessages.length - 1; i >= 0; i -= 1) {
-      const m = segmentMessages[i];
+    for (let i = postTriggerMessages.length - 1; i >= 0; i -= 1) {
+      const m = postTriggerMessages[i];
       if (m.role === 'assistant' && extractToolUse(m).length > 0) {
         lastToolUseOffset = i;
         break;
       }
     }
-    const hasFinalReply = segmentMessages.some((m, i) => {
+    const hasFinalReply = postTriggerMessages.some((m, i) => {
       if (i <= lastToolUseOffset) return false;
       if (m.role !== 'assistant') return false;
       if (extractText(m).trim().length === 0) return false;
@@ -344,8 +421,6 @@ export function Chat() {
     const isLatestOpenRun = isLatestRunSegment
       && !runError
       && (sending || pendingFinal || hasAnyStreamContent || (runStillExecutingTools && !!activeRunId));
-    const replyIndexOffset = findReplyMessageIndex(segmentMessages, isLatestOpenRun);
-    const replyIndex = replyIndexOffset === -1 ? null : idx + 1 + replyIndexOffset;
 
     const buildSteps = (omitLastStreamingMessageSegment: boolean): TaskStep[] => {
       let builtSteps = deriveTaskSteps({
@@ -403,6 +478,7 @@ export function Chat() {
     //      `completed` state.
     //   3. `hasToolActivity`    — at least one prior tool_use exists in the
     //      segment, i.e. we're past the first tool round.
+    //   4. No tool activity yet — plain Q&A; any stream text is the reply.
     //
     // Demotion happens the moment a tool_use block appears in the streaming
     // message (`streamTools.length > 0`) OR a tool transitions back to
@@ -417,8 +493,12 @@ export function Chat() {
     // fixed, the three-signal gate gives the correct bubble placement for
     // both narration and final reply.
     const allToolsCompleted = streamingTools.length > 0 && !hasRunningStreamToolStatus;
+    const canPromoteStreamToBubble = pendingFinal
+      || allToolsCompleted
+      || hasToolActivity
+      || (!hasToolActivity && (hasStreamText || hasStreamImages));
     const rawStreamingReplyCandidate = isLatestOpenRun
-      && (pendingFinal || allToolsCompleted || hasToolActivity)
+      && canPromoteStreamToBubble
       && (hasStreamText || hasStreamImages)
       && streamTools.length === 0
       && !hasRunningStreamToolStatus;
@@ -435,12 +515,27 @@ export function Chat() {
       }
     }
 
+    const hasActiveStreamingReply = hasActiveStreamingReplyInRun(
+      isLatestOpenRun,
+      hasAnyStreamContent,
+      streamingReplyText,
+    );
+    const replyIndexOffset = findReplyMessageIndex(postTriggerMessages, hasActiveStreamingReply);
+    const replyIndex = replyIndexOffset === -1 ? null : idx + 1 + replyIndexOffset;
+
     const segmentAgentId = currentAgentId;
     const segmentAgentLabel = agents.find((agent) => agent.id === segmentAgentId)?.name || segmentAgentId;
     const segmentSessionLabel = sessionLabels[currentSessionKey] || currentSessionKey;
 
     if (steps.length === 0) {
       if (isLatestOpenRun && streamingReplyText == null) {
+        const historyReplyOffset = findReplyMessageIndex(postTriggerMessages, false);
+        // History can contain the final answer while `sending` is still true
+        // (blocked chat.send RPC, slow provider). Do not show an empty graph
+        // that hides the reply behind "Thinking..." (#1048).
+        if (historyReplyOffset >= 0 && !hasActiveStreamingReply) {
+          return [];
+        }
         return [{
           triggerIndex: idx,
           replyIndex,
@@ -484,15 +579,13 @@ export function Chat() {
     // tool call). This prevents orphan narration bubbles from leaking into
     // the chat stream once the graph is collapsed.
     //
-    // When the run is still streaming (`isLatestOpenRun`) the final reply is
-    // not yet part of `segmentMessages`, so every assistant message in the
-    // segment counts as intermediate. For completed runs, we preserve the
-    // final reply bubble by skipping the message that `findReplyMessageIndex`
-    // identifies as the answer.
-    const segmentReplyOffset = findReplyMessageIndex(segmentMessages, isLatestOpenRun);
-    for (let offset = 0; offset < segmentMessages.length; offset += 1) {
+    // While the live stream carries the answer, fold assistant history into the
+    // graph. If the reply is already in history but not streaming, keep it in
+    // the chat stream (do not pass `isLatestOpenRun` alone — that folds all).
+    const segmentReplyOffset = findReplyMessageIndex(postTriggerMessages, hasActiveStreamingReply);
+    for (let offset = 0; offset < postTriggerMessages.length; offset += 1) {
       if (offset === segmentReplyOffset) continue;
-      const candidate = segmentMessages[offset];
+      const candidate = postTriggerMessages[offset];
       if (!candidate || candidate.role !== 'assistant') continue;
       const hasNarrationText = extractText(candidate).trim().length > 0;
       const hasThinking = !!extractThinking(candidate);
@@ -536,7 +629,7 @@ export function Chat() {
       streamingReplyText,
       suppressThinking,
     }];
-  }, [messages, subagentCompletionInfos, currentSessionKey, streamingMessage, streamingTools, pendingFinal, sending, hasAnyStreamContent, hasStreamText, hasStreamImages, streamText, streamTools.length, hasRunningStreamToolStatus, childTranscripts, currentAgentId, agents, sessionLabels, graphStepCache, runError]);
+  }, [messages, subagentCompletionInfos, currentSessionKey, streamingMessage, streamingTools, pendingFinal, sending, hasAnyStreamContent, hasStreamText, hasStreamImages, streamText, streamTools.length, hasRunningStreamToolStatus, childTranscripts, currentAgentId, agents, sessionLabels, graphStepCache, runError, isRunTrigger]);
   const hasActiveExecutionGraph = userRunCards.some((card) => card.active);
   const replyTextOverrides = useMemo(() => {
     const map = new Map<number, string>();
@@ -657,23 +750,44 @@ export function Chat() {
     }
   }, [userRunCards, messages, currentSessionKey]);
 
+  const platform = window.electron?.platform;
+  const isMac = platform === 'darwin';
+  const isWindows = platform === 'win32';
+
   return (
     <div
       ref={splitContainerRef}
-      className={cn('relative flex min-h-0 -m-6 transition-colors duration-500 dark:bg-background')}
-      style={{ height: 'calc(100vh - 2.5rem)' }}
+      data-testid="chat-page"
+      className={cn(
+        'relative flex min-h-0 -m-6 overflow-hidden transition-colors duration-500',
+        'bg-background',
+        isMac && 'rounded-tl-2xl shadow-[inset_1px_1px_0_hsl(var(--border)/0.55)]',
+        isWindows && 'rounded-tl-2xl',
+      )}
+      style={{ height: isMac ? '100vh' : 'calc(100vh - 2.5rem)' }}
     >
       {/* Left column: chat */}
       <div className="flex min-w-0 flex-1 flex-col">
       {/* Toolbar */}
-      <div className="flex shrink-0 items-center justify-end px-4 py-2">
-        <ChatToolbar />
+      <div className="relative flex shrink-0 items-center justify-end px-4 py-2">
+        <div data-testid="chat-toolbar-drag-region" className="drag-region absolute inset-0 z-0" aria-hidden="true" />
+        <div data-testid="chat-toolbar-actions" className="no-drag relative z-10">
+          <ChatToolbar
+            questionDirectoryOpen={questionDirectoryVisible}
+            questionDirectoryCount={questionDirectoryItems.length}
+            onToggleQuestionDirectory={() =>
+              setQuestionDirectoryOpenSessionKey((openSessionKey) =>
+                openSessionKey === currentSessionKey ? null : currentSessionKey,
+              )
+            }
+          />
+        </div>
       </div>
 
       {/* Messages Area */}
-      <div className="min-h-0 flex-1 overflow-hidden px-4 py-4">
-        <div className="mx-auto flex h-full min-h-0 max-w-6xl flex-col gap-4 lg:flex-row lg:items-stretch">
-          <div ref={scrollRef} className="min-h-0 min-w-0 flex-1 overflow-y-auto">
+      <div className="relative min-h-0 flex-1 overflow-hidden px-4 py-4">
+        <div className="mx-auto flex h-full min-h-0 w-full max-w-7xl flex-col gap-4 lg:flex-row lg:items-stretch">
+          <div ref={scrollRef} className="min-h-0 min-w-0 flex-1 overflow-y-auto" data-testid="chat-scroll-container">
             <div
               ref={contentRef}
               className={cn(
@@ -685,11 +799,30 @@ export function Chat() {
                 <WelcomeScreen />
               ) : (
                 <>
+                  {hasMoreHistory && (
+                    <div className="flex justify-center pt-2">
+                      <button
+                        type="button"
+                        onClick={() => void loadMoreHistory()}
+                        disabled={loadingMoreHistory}
+                        className="inline-flex items-center gap-2 rounded-full border border-border bg-background/80 px-3 py-1.5 text-xs text-muted-foreground shadow-sm transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60"
+                        data-testid="chat-load-more-history"
+                      >
+                        {loadingMoreHistory && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                        {loadingMoreHistory ? t('loadingMoreHistory', '加载更多中...') : t('loadMoreHistory', '加载更早的消息')}
+                      </button>
+                    </div>
+                  )}
                   {messages.map((msg, idx) => {
                     if (foldedNarrationIndices.has(idx)) return null;
-                    const suppressToolCards = userRunCards.some((card) =>
-                      idx > card.triggerIndex && idx <= card.segmentEnd,
-                    );
+                    const suppressToolCards = runSegmentMessageIndices.has(idx);
+                    const isToolOnlyAssistant = normalizeMessageRole(msg.role) === 'assistant'
+                      && extractToolUse(msg).length > 0
+                      && extractText(msg).trim().length === 0
+                      && !extractThinking(msg);
+                    if (suppressToolCards && isToolOnlyAssistant && !(msg._attachedFiles?.length)) {
+                      return null;
+                    }
                     return (
                     <div
                       key={msg.id || `msg-${idx}`}
@@ -738,7 +871,14 @@ export function Chat() {
                               {generatedFiles.length > 0 && (
                                 <GeneratedFilesPanel
                                   files={generatedFiles}
-                                  onOpen={(file) => openChanges(generatedFileToTarget(file))}
+                                  onOpen={(file) => {
+                                    const target = generatedFileToTarget(file);
+                                    if (isHtmlPreviewExt(file.ext)) {
+                                      openPreview(target);
+                                      return;
+                                    }
+                                    openChanges(target);
+                                  }}
                                 />
                               )}
                             </div>
@@ -750,8 +890,13 @@ export function Chat() {
 
                   {/* Streaming message — render when reply text is separated from graph,
                       OR when there's streaming content without an active graph */}
-                  {shouldRenderStreaming && (streamingReplyText != null || !hasActiveExecutionGraph) && (
+                  {shouldRenderStreaming && (
+                    streamingReplyText != null
+                    || !hasActiveExecutionGraph
+                    || (hasStreamText && streamTools.length === 0)
+                  ) && (
                     <ChatMessage
+                      suppressToolCards={hasActiveExecutionGraph || runSegmentMessageIndices.size > 0}
                       message={(() => {
                         const base = streamMsg
                           ? {
@@ -799,6 +944,23 @@ export function Chat() {
               )}
             </div>
           </div>
+          {showScrollToLatest && (
+            <button
+              type="button"
+              onClick={() => void scrollToBottom({ animation: 'smooth', ignoreEscapes: true })}
+              className="absolute bottom-4 right-4 z-20 inline-flex items-center gap-2 rounded-full border border-border bg-background/95 px-3 py-1.5 text-xs font-medium text-foreground shadow-lg shadow-black/10 backdrop-blur transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 dark:shadow-black/30"
+              aria-label={t('scrollToLatest', '跳转到最新对话')}
+              title={t('scrollToLatest', '跳转到最新对话')}
+              data-testid="chat-scroll-to-latest"
+            >
+              <ArrowDownToLine className="h-3.5 w-3.5" />
+              <span>{t('scrollToLatest', '跳转到最新对话')}</span>
+            </button>
+          )}
+
+          {!isEmpty && questionDirectoryVisible && (
+            <QuestionDirectory items={questionDirectoryItems} />
+          )}
 
         </div>
       </div>
@@ -853,7 +1015,7 @@ export function Chat() {
             <PanelResizeDividerLazy containerRef={splitContainerRef} />
           </Suspense>
           <aside
-            className="hidden shrink-0 border-l border-black/5 dark:border-white/10 lg:flex lg:flex-col"
+            className="relative z-20 hidden shrink-0 border-l border-black/5 dark:border-white/10 lg:flex lg:flex-col"
             style={{ width: `${panelWidthPct}%` }}
           >
             <Suspense
@@ -883,6 +1045,71 @@ export function Chat() {
         </div>
       )}
     </div>
+  );
+}
+
+// ── Question Directory ─────────────────────────────────────────
+
+function QuestionDirectory({ items }: { items: QuestionDirectoryItem[] }) {
+  const { t } = useTranslation('chat');
+  const scrollRef = useRef<HTMLElement | null>(null);
+  const visibleItems = items.slice(0, QUESTION_DIRECTORY_RENDER_LIMIT);
+  const hiddenCount = Math.max(0, items.length - visibleItems.length);
+
+  useEffect(() => {
+    const scrollEl = scrollRef.current;
+    if (!scrollEl) return;
+    scrollEl.scrollTop = scrollEl.scrollHeight;
+  }, [visibleItems.length]);
+
+  const handleJumpToMessage = (index: number) => {
+    document.getElementById(`chat-message-${index}`)?.scrollIntoView({
+      behavior: 'smooth',
+      block: 'start',
+    });
+  };
+
+  return (
+    <aside
+      data-testid="chat-question-directory"
+      className="w-full shrink-0 lg:w-64 xl:w-72"
+      aria-label={t('questionDirectory.title')}
+    >
+      <div className="sticky top-2 max-h-full overflow-hidden rounded-2xl border border-black/5 bg-black/[0.02] p-3 shadow-sm dark:border-white/10 dark:bg-white/[0.03]">
+        <div className="mb-2 flex items-center justify-between gap-2 px-1">
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            {t('questionDirectory.title')}
+          </h2>
+          <span className="rounded-full bg-black/5 px-2 py-0.5 text-2xs font-medium text-muted-foreground dark:bg-white/10">
+            {items.length}
+          </span>
+        </div>
+        <nav ref={scrollRef} className="max-h-[calc(100vh-13rem)] space-y-1 overflow-y-auto pr-1">
+          {visibleItems.map((item) => (
+            <button
+              key={item.index}
+              type="button"
+              data-testid={`chat-question-directory-item-${item.index}`}
+              onClick={() => handleJumpToMessage(item.index)}
+              className={cn(
+                'group flex w-full items-start gap-2 rounded-xl px-2 py-2 text-left transition-colors',
+                'text-foreground/70 hover:bg-black/5 hover:text-foreground dark:hover:bg-white/10',
+              )}
+              title={item.title}
+            >
+              <span className="line-clamp-2 min-w-0 text-xs leading-5">
+                {item.title}
+              </span>
+            </button>
+          ))}
+          {hiddenCount > 0 && (
+            <div className="px-2 py-2 text-xs leading-5 text-muted-foreground">
+              {t('questionDirectory.moreHint', { count: hiddenCount })}
+            </div>
+          )}
+        </nav>
+      </div>
+    </aside>
   );
 }
 

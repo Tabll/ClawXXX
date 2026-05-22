@@ -5,9 +5,11 @@ import {
   clearHistoryPoll,
   getLastAbortedRunId,
   getLastChatEventAt,
+  hasAssistantProgressSinceSend,
   setHistoryPollTimer,
   setLastChatEventAt,
   setLastAbortedRunId,
+  rememberPendingOptimisticUserMessage,
   takeBlockedRunEvents,
   upsertImageCacheEntry,
 } from './helpers';
@@ -56,6 +58,11 @@ export function createRuntimeSendActions(set: ChatSet, get: ChatGet): Pick<Runti
       const currentSendGeneration = ++sendGeneration;
 
       const targetSessionKey = resolveMainSessionKeyForAgent(targetAgentId) ?? get().currentSessionKey;
+
+      if (get().sending && targetSessionKey === get().currentSessionKey) {
+        return;
+      }
+
       if (targetSessionKey !== get().currentSessionKey) {
         const current = get();
         const leavingEmpty = !current.currentSessionKey.endsWith(':main') && current.messages.length === 0;
@@ -103,6 +110,7 @@ export function createRuntimeSendActions(set: ChatSet, get: ChatGet): Pick<Runti
           source: 'user-upload',
         })),
       };
+      rememberPendingOptimisticUserMessage(currentSessionKey, userMsg, nowMs);
       set((s) => ({
         messages: [...s.messages, userMsg],
         sending: true,
@@ -152,6 +160,14 @@ export function createRuntimeSendActions(set: ChatSet, get: ChatGet): Pick<Runti
         if (!state.sending) return;
         if (state.streamingMessage || state.streamingText) return;
         if (state.pendingFinal) {
+          setTimeout(checkStuck, 10_000);
+          return;
+        }
+        if (hasAssistantProgressSinceSend(state.messages, state.lastUserMessageAt)) {
+          setLastChatEventAt(Date.now());
+          if (state.error) {
+            set({ error: null });
+          }
           setTimeout(checkStuck, 10_000);
           return;
         }

@@ -55,8 +55,8 @@ import { useSettingsStore } from '@/stores/settings';
 import { hostApiFetch } from '@/lib/host-api';
 import { subscribeHostEvent } from '@/lib/host-events';
 
-const inputClasses = 'h-[44px] rounded-xl font-mono text-[13px] bg-white dark:bg-card border-black/10 dark:border-white/10 focus-visible:ring-2 focus-visible:ring-blue-500/50 focus-visible:border-blue-500 shadow-sm transition-all text-foreground placeholder:text-foreground/40';
-const labelClasses = 'text-[14px] text-foreground/80 font-bold';
+const inputClasses = 'h-[44px] rounded-xl font-mono text-meta bg-transparent border-black/10 dark:border-white/10 focus-visible:ring-2 focus-visible:ring-blue-500/50 focus-visible:border-blue-500 shadow-sm transition-all text-foreground placeholder:text-foreground/40';
+const labelClasses = 'text-sm text-foreground/80 font-bold';
 type ArkMode = 'apikey' | 'codeplan';
 
 function normalizeFallbackProviderIds(ids?: string[]): string[] {
@@ -272,7 +272,7 @@ export function ProvidersSettings() {
   return (
     <div data-testid="providers-settings" className="space-y-6">
       <div className="flex items-center justify-between">
-        <h2 data-testid="providers-settings-title" className="section-title text-2xl text-foreground title-decoration">
+        <h2 data-testid="providers-settings-title" className="text-3xl font-serif text-foreground font-normal tracking-tight">
           {t('aiProviders.title', 'AI Providers')}
         </h2>
         <Button data-testid="providers-add-button" onClick={() => setShowAddDialog(true)} className="rounded-full px-5 h-9 shadow-none font-medium text-meta">
@@ -282,11 +282,11 @@ export function ProvidersSettings() {
       </div>
 
       {loading ? (
-        <div className="flex items-center justify-center py-12 text-muted-foreground bg-surface rounded-3xl border border-transparent border-dashed">
+        <div className="flex items-center justify-center py-12 text-muted-foreground bg-black/5 dark:bg-white/5 rounded-3xl border border-transparent border-dashed">
           <Loader2 className="h-6 w-6 animate-spin" />
         </div>
       ) : displayProviders.length === 0 ? (
-        <div data-testid="providers-empty-state" className="flex flex-col items-center justify-center py-20 text-muted-foreground bg-surface rounded-3xl border border-transparent border-dashed">
+        <div data-testid="providers-empty-state" className="flex flex-col items-center justify-center py-20 text-muted-foreground bg-black/5 dark:bg-white/5 rounded-3xl border border-transparent border-dashed">
           <Key className="h-12 w-12 mb-4 opacity-50" />
           <h3 className="text-sm font-medium mb-1 text-foreground">{t('aiProviders.empty.title')}</h3>
           <p className="text-meta text-center mb-6 max-w-sm">
@@ -401,6 +401,7 @@ function ProviderCard({
   const [validating, setValidating] = useState(false);
   const [saving, setSaving] = useState(false);
   const [arkMode, setArkMode] = useState<ArkMode>('apikey');
+  const [validationError, setValidationError] = useState<string | null>(null);
 
   const typeInfo = PROVIDER_TYPE_INFO.find((t) => t.id === account.vendorId);
   const providerDocsUrl = getProviderDocsUrl(typeInfo, i18n.language);
@@ -427,6 +428,7 @@ function ProviderCard({
       setModelId(account.model || '');
       setFallbackModelsText(normalizeFallbackModels(account.fallbackModels).join('\n'));
       setFallbackProviderIds(normalizeFallbackProviderIds(account.fallbackAccountIds));
+      setValidationError(null);
       setArkMode(
         isArkCodePlanMode(
           account.vendorId,
@@ -451,6 +453,7 @@ function ProviderCard({
 
   const handleSaveEdits = async () => {
     setSaving(true);
+    setValidationError(null);
     try {
       const payload: { newApiKey?: string; updates?: Partial<ProviderConfig> } = {};
       const normalizedFallbackModels = normalizeFallbackModels(fallbackModelsText.split('\n'));
@@ -464,7 +467,7 @@ function ProviderCard({
         });
         setValidating(false);
         if (!result.valid) {
-          toast.error(result.error || t('aiProviders.toast.invalidKey'));
+          setValidationError(result.error || t('aiProviders.toast.invalidKey'));
           setSaving(false);
           return;
         }
@@ -473,7 +476,7 @@ function ProviderCard({
 
       {
         if (showModelIdField && !modelId.trim()) {
-          toast.error(t('aiProviders.toast.modelRequired'));
+          setValidationError(t('aiProviders.toast.modelRequired'));
           setSaving(false);
           return;
         }
@@ -538,15 +541,15 @@ function ProviderCard({
     <div
       data-testid={`provider-card-${account.id}`}
       className={cn(
-        "group flex flex-col p-4 rounded-2xl transition-all relative overflow-hidden hover:bg-surface",
+        "group flex flex-col p-4 rounded-2xl transition-all relative overflow-hidden hover:bg-black/5 dark:hover:bg-white/5",
         isDefault
-          ? "bg-surface/80 border border-transparent"
+          ? "bg-black/[0.04] dark:bg-white/[0.06] border border-transparent"
           : "bg-transparent border border-transparent"
       )}
     >
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
-          <div className="h-[42px] w-[42px] shrink-0 flex items-center justify-center text-foreground border border-black/5 dark:border-white/10 rounded-full bg-surface shadow-sm group-hover:scale-105 transition-transform">
+          <div className="h-[42px] w-[42px] shrink-0 flex items-center justify-center text-foreground border border-black/5 dark:border-white/10 rounded-full bg-black/5 dark:bg-white/5 shadow-sm group-hover:scale-105 transition-transform">
             {getProviderIconUrl(account.vendorId) ? (
               <img src={getProviderIconUrl(account.vendorId)} alt={typeInfo?.name || account.vendorId} className={cn('h-5 w-5', shouldInvertInDark(account.vendorId) && 'dark:invert')} />
             ) : (
@@ -557,7 +560,7 @@ function ProviderCard({
             <div className="flex items-center gap-2">
               <span className="font-semibold text-sm">{account.label}</span>
               {isDefault && (
-                <span className="flex items-center gap-1 font-mono text-[10px] font-medium px-2 py-0.5 rounded-full bg-surface/80 border-0 shadow-none text-foreground/70">
+                <span className="flex items-center gap-1 font-mono text-2xs font-medium px-2 py-0.5 rounded-full bg-black/[0.04] dark:bg-white/[0.08] border-0 shadow-none text-foreground/70">
                   <Check className="h-3 w-3" />
                   {t('aiProviders.card.default')}
                 </span>
@@ -670,7 +673,10 @@ function ProviderCard({
                   <Label className={currentLabelClasses}>{t('aiProviders.dialog.modelId')}</Label>
                   <Input
                     value={modelId}
-                    onChange={(e) => setModelId(e.target.value)}
+                    onChange={(e) => {
+                      setModelId(e.target.value);
+                      setValidationError(null);
+                    }}
                     placeholder={typeInfo?.modelIdPlaceholder || 'provider/model-id'}
                     className={currentInputClasses}
                   />
@@ -702,7 +708,7 @@ function ProviderCard({
                           setModelId(typeInfo?.defaultModelId || '');
                         }
                       }}
-                      className={cn("flex-1 py-1.5 px-3 rounded-lg border transition-colors", arkMode === 'apikey' ? "bg-white dark:bg-card border-black/20 dark:border-white/20 shadow-sm font-medium" : "border-transparent bg-surface text-muted-foreground hover:bg-surface/80")}
+                      className={cn("flex-1 py-1.5 px-3 rounded-lg border transition-colors", arkMode === 'apikey' ? "bg-white dark:bg-card border-black/20 dark:border-white/20 shadow-sm font-medium" : "border-transparent bg-black/5 dark:bg-white/5 text-muted-foreground hover:bg-black/10 dark:hover:bg-white/10")}
                     >
                       {t('aiProviders.authModes.apiKey')}
                     </button>
@@ -713,7 +719,7 @@ function ProviderCard({
                         setBaseUrl(codePlanPreset.baseUrl);
                         setModelId(codePlanPreset.modelId);
                       }}
-                      className={cn("flex-1 py-1.5 px-3 rounded-lg border transition-colors", arkMode === 'codeplan' ? "bg-white dark:bg-card border-black/20 dark:border-white/20 shadow-sm font-medium" : "border-transparent bg-surface text-muted-foreground hover:bg-surface/80")}
+                      className={cn("flex-1 py-1.5 px-3 rounded-lg border transition-colors", arkMode === 'codeplan' ? "bg-white dark:bg-card border-black/20 dark:border-white/20 shadow-sm font-medium" : "border-transparent bg-black/5 dark:bg-white/5 text-muted-foreground hover:bg-black/10 dark:hover:bg-white/10")}
                     >
                       {t('aiProviders.dialog.codePlanMode')}
                     </button>
@@ -732,21 +738,21 @@ function ProviderCard({
                     <button
                       type="button"
                       onClick={() => setApiProtocol('openai-completions')}
-                      className={cn("flex-1 py-1.5 px-3 rounded-lg border transition-colors", apiProtocol === 'openai-completions' ? "bg-white dark:bg-card border-black/20 dark:border-white/20 shadow-sm font-medium" : "border-transparent bg-surface text-muted-foreground hover:bg-surface/80")}
+                      className={cn("flex-1 py-1.5 px-3 rounded-lg border transition-colors", apiProtocol === 'openai-completions' ? "bg-white dark:bg-card border-black/20 dark:border-white/20 shadow-sm font-medium" : "border-transparent bg-black/5 dark:bg-white/5 text-muted-foreground hover:bg-black/10 dark:hover:bg-white/10")}
                     >
                       {t('aiProviders.protocols.openaiCompletions', 'OpenAI Completions')}
                     </button>
                     <button
                       type="button"
                       onClick={() => setApiProtocol('openai-responses')}
-                      className={cn("flex-1 py-1.5 px-3 rounded-lg border transition-colors", apiProtocol === 'openai-responses' ? "bg-white dark:bg-card border-black/20 dark:border-white/20 shadow-sm font-medium" : "border-transparent bg-surface text-muted-foreground hover:bg-surface/80")}
+                      className={cn("flex-1 py-1.5 px-3 rounded-lg border transition-colors", apiProtocol === 'openai-responses' ? "bg-white dark:bg-card border-black/20 dark:border-white/20 shadow-sm font-medium" : "border-transparent bg-black/5 dark:bg-white/5 text-muted-foreground hover:bg-black/10 dark:hover:bg-white/10")}
                     >
                       {t('aiProviders.protocols.openaiResponses', 'OpenAI Responses')}
                     </button>
                     <button
                       type="button"
                       onClick={() => setApiProtocol('anthropic-messages')}
-                      className={cn("flex-1 py-1.5 px-3 rounded-lg border transition-colors", apiProtocol === 'anthropic-messages' ? "bg-white dark:bg-card border-black/20 dark:border-white/20 shadow-sm font-medium" : "border-transparent bg-surface text-muted-foreground hover:bg-surface/80")}
+                      className={cn("flex-1 py-1.5 px-3 rounded-lg border transition-colors", apiProtocol === 'anthropic-messages' ? "bg-white dark:bg-card border-black/20 dark:border-white/20 shadow-sm font-medium" : "border-transparent bg-black/5 dark:bg-white/5 text-muted-foreground hover:bg-black/10 dark:hover:bg-white/10")}
                     >
                       {t('aiProviders.protocols.anthropic', 'Anthropic')}
                     </button>
@@ -783,8 +789,8 @@ function ProviderCard({
                     onChange={(e) => setFallbackModelsText(e.target.value)}
                     placeholder={t('aiProviders.dialog.fallbackModelIdsPlaceholder')}
                     className={isDefault
-                      ? "min-h-24 w-full rounded-xl border border-black/10 dark:border-white/10 bg-white dark:bg-card px-3 py-2 text-[13px] font-mono outline-none focus-visible:ring-2 focus-visible:ring-blue-500/50 shadow-sm"
-                      : "min-h-24 w-full rounded-xl border border-black/10 dark:border-white/10 bg-white dark:bg-card px-3 py-2 text-[13px] font-mono outline-none focus-visible:ring-2 focus-visible:ring-blue-500/50 focus-visible:border-blue-500 shadow-sm transition-all text-foreground placeholder:text-foreground/40"}
+                      ? "min-h-24 w-full rounded-xl border border-black/10 dark:border-white/10 bg-white dark:bg-card px-3 py-2 text-meta font-mono outline-none focus-visible:ring-2 focus-visible:ring-blue-500/50 shadow-sm"
+                      : "min-h-24 w-full rounded-xl border border-black/10 dark:border-white/10 bg-transparent px-3 py-2 text-meta font-mono outline-none focus-visible:ring-2 focus-visible:ring-blue-500/50 focus-visible:border-blue-500 shadow-sm transition-all text-foreground placeholder:text-foreground/40"}
                   />
                   <p className="text-xs text-muted-foreground">
                     {t('aiProviders.dialog.fallbackModelIdsHelp')}
@@ -795,7 +801,7 @@ function ProviderCard({
                   {fallbackOptions.length === 0 ? (
                     <p className="text-meta text-muted-foreground">{t('aiProviders.dialog.noFallbackOptions')}</p>
                   ) : (
-                    <div className={cn("space-y-2 rounded-xl border border-black/10 dark:border-white/10 p-3 shadow-sm", isDefault ? "bg-white dark:bg-card" : "bg-white dark:bg-card")}>
+                    <div className={cn("space-y-2 rounded-xl border border-black/10 dark:border-white/10 p-3 shadow-sm", isDefault ? "bg-white dark:bg-card" : "bg-transparent")}>
                       {fallbackOptions.map((candidate) => (
                         <label key={candidate.account.id} className="flex items-center gap-3 text-meta cursor-pointer group/label">
                           <input
@@ -851,10 +857,14 @@ function ProviderCard({
               <div className="flex gap-2">
                 <div className="relative flex-1">
                   <Input
+                    data-testid={`provider-edit-key-input-${account.id}`}
                     type={showKey ? 'text' : 'password'}
                     placeholder={typeInfo?.requiresApiKey ? typeInfo?.placeholder : (typeInfo?.id === 'ollama' ? t('aiProviders.notRequired') : t('aiProviders.card.editKey'))}
                     value={newKey}
-                    onChange={(e) => setNewKey(e.target.value)}
+                    onChange={(e) => {
+                      setNewKey(e.target.value);
+                      setValidationError(null);
+                    }}
                     className={cn(currentInputClasses, 'pr-10')}
                   />
                   <button
@@ -866,13 +876,14 @@ function ProviderCard({
                   </button>
                 </div>
                 <Button
+                  data-testid={`provider-edit-save-${account.id}`}
                   variant="outline"
                   onClick={handleSaveEdits}
                   className={cn(
                     "rounded-xl px-4 border-black/10 dark:border-white/10",
                     isDefault
                       ? "h-[40px] bg-white dark:bg-card hover:bg-black/5 dark:hover:bg-white/10"
-                      : "h-[44px] bg-white dark:bg-card hover:bg-black/5 dark:hover:bg-white/10 shadow-sm"
+                      : "h-[44px] bg-transparent hover:bg-black/5 dark:hover:bg-white/10 shadow-sm"
                   )}
                   disabled={
                     validating
@@ -895,18 +906,29 @@ function ProviderCard({
                   )}
                 </Button>
                 <Button
+                  data-testid={`provider-edit-cancel-${account.id}`}
                   variant="ghost"
                   onClick={onCancelEdit}
                   className={cn(
                     "p-0 rounded-xl",
                     isDefault
                       ? "h-[40px] w-[40px] hover:bg-black/5 dark:hover:bg-white/10"
-                      : "h-[44px] w-[44px] bg-white dark:bg-card border border-black/10 dark:border-white/10 hover:bg-black/5 dark:hover:bg-white/10 shadow-sm text-muted-foreground hover:text-foreground"
+                      : "h-[44px] w-[44px] bg-transparent border border-black/10 dark:border-white/10 hover:bg-black/5 dark:hover:bg-white/10 shadow-sm text-muted-foreground hover:text-foreground"
                   )}
                 >
                   <X className="h-4 w-4" />
                 </Button>
               </div>
+              {validationError && (
+                <p
+                  data-testid={`provider-edit-validation-error-${account.id}`}
+                  className="text-xs text-red-500 flex items-center gap-1 mt-1"
+                >
+                  <XCircle className="h-3 w-3 shrink-0" />
+                  <span className="font-medium">{t('aiProviders.dialog.failed')}:</span>
+                  <span>{validationError}</span>
+                </p>
+              )}
               <p className="text-xs text-muted-foreground">
                 {t('aiProviders.dialog.replaceApiKeyHelp')}
               </p>
@@ -996,6 +1018,7 @@ function AddProviderDialog({
     : providerDocsUrl;
   const isOAuth = typeInfo?.isOAuth ?? false;
   const supportsApiKey = typeInfo?.supportsApiKey ?? false;
+  const oauthUiHidden = typeInfo?.hideOAuthUi ?? false;
   const vendorMap = new Map(vendors.map((vendor) => [vendor.id, vendor]));
   const selectedVendor = selectedType ? vendorMap.get(selectedType) : undefined;
   const showUserAgentInAddDialog = shouldShowUserAgentFieldForNewProvider(selectedType);
@@ -1003,16 +1026,20 @@ function AddProviderDialog({
     ? 'oauth_browser'
     : (selectedVendor?.supportedAuthModes.includes('oauth_device')
       ? 'oauth_device'
-      : (selectedType === 'google' ? 'oauth_browser' : null));
+      : null);
   // Effective OAuth mode: pure OAuth providers, or dual-mode with oauth selected
-  const useOAuthFlow = isOAuth && (!supportsApiKey || authMode === 'oauth');
+  const useOAuthFlow = isOAuth && !oauthUiHidden && (!supportsApiKey || authMode === 'oauth');
 
   useEffect(() => {
     if (!selectedVendor || !isOAuth || !supportsApiKey) {
       return;
     }
+    if (oauthUiHidden) {
+      setAuthMode('apikey');
+      return;
+    }
     setAuthMode(selectedVendor.defaultAuthMode === 'api_key' ? 'apikey' : 'oauth');
-  }, [selectedVendor, isOAuth, supportsApiKey]);
+  }, [selectedVendor, isOAuth, supportsApiKey, oauthUiHidden]);
 
   useEffect(() => {
     if (selectedType !== 'ark') {
@@ -1245,10 +1272,10 @@ function AddProviderDialog({
 
   return (
     <div data-testid="add-provider-dialog" className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
-      <Card className="w-full max-w-2xl max-h-[90vh] flex flex-col rounded-3xl border-0 shadow-2xl bg-card overflow-hidden">
+      <Card className="w-full max-w-2xl max-h-[90vh] flex flex-col rounded-3xl border-0 shadow-2xl bg-surface-modal overflow-hidden">
         <CardHeader className="relative pb-2 shrink-0">
-          <CardTitle className="text-2xl font-semibold">{t('aiProviders.dialog.title')}</CardTitle>
-          <CardDescription className="text-[15px] mt-1 text-foreground/70">
+          <CardTitle className="text-2xl font-serif font-normal">{t('aiProviders.dialog.title')}</CardTitle>
+          <CardDescription className="text-sm mt-1 text-foreground/70">
             {t('aiProviders.dialog.desc')}
           </CardDescription>
           <Button
@@ -1277,9 +1304,9 @@ function AddProviderDialog({
                     setShowAdvancedConfig(false);
                     setArkMode('apikey');
                   }}
-                  className="p-4 rounded-2xl border border-black/5 dark:border-white/5 hover:bg-surface transition-colors text-center group"
+                  className="p-4 rounded-2xl border border-black/5 dark:border-white/5 hover:bg-black/5 dark:hover:bg-white/5 transition-colors text-center group"
                 >
-                  <div className="h-12 w-12 mx-auto mb-3 flex items-center justify-center bg-surface rounded-xl shadow-sm border border-black/5 dark:border-white/5 group-hover:scale-105 transition-transform">
+                  <div className="h-12 w-12 mx-auto mb-3 flex items-center justify-center bg-black/5 dark:bg-white/5 rounded-xl shadow-sm border border-black/5 dark:border-white/5 group-hover:scale-105 transition-transform">
                     {getProviderIconUrl(type.id) ? (
                       <img src={getProviderIconUrl(type.id)} alt={type.name} className={cn('h-6 w-6', shouldInvertInDark(type.id) && 'dark:invert')} />
                     ) : (
@@ -1292,8 +1319,8 @@ function AddProviderDialog({
             </div>
           ) : (
             <div className="space-y-6">
-              <div className="flex items-center gap-3 p-4 rounded-2xl bg-white dark:bg-card border border-black/5 dark:border-white/5 shadow-sm">
-                <div className="h-10 w-10 shrink-0 flex items-center justify-center bg-surface rounded-xl">
+              <div className="flex items-center gap-3 p-4 rounded-2xl bg-transparent border border-black/5 dark:border-white/5 shadow-sm">
+                <div className="h-10 w-10 shrink-0 flex items-center justify-center bg-black/5 dark:bg-white/5 rounded-xl">
                   {getProviderIconUrl(selectedType!) ? (
                     <img src={getProviderIconUrl(selectedType!)} alt={typeInfo?.name} className={cn('h-6 w-6', shouldInvertInDark(selectedType!) && 'dark:invert')} />
                   ) : (
@@ -1347,13 +1374,13 @@ function AddProviderDialog({
                 </div>
 
                 {/* Auth mode toggle for providers supporting both */}
-                {isOAuth && supportsApiKey && (
-                  <div className="flex rounded-xl border border-black/10 dark:border-white/10 overflow-hidden text-[13px] font-medium shadow-sm bg-white dark:bg-card p-1 gap-1">
+                {isOAuth && supportsApiKey && !oauthUiHidden && (
+                  <div className="flex rounded-xl border border-black/10 dark:border-white/10 overflow-hidden text-meta font-medium shadow-sm bg-transparent p-1 gap-1">
                     <button
                       onClick={() => setAuthMode('oauth')}
                       className={cn(
                         'flex-1 py-2 px-3 rounded-lg transition-colors',
-                        authMode === 'oauth' ? 'bg-surface text-foreground' : 'text-muted-foreground hover:bg-surface/60'
+                        authMode === 'oauth' ? 'bg-black/5 dark:bg-white/10 text-foreground' : 'text-muted-foreground hover:bg-black/5 dark:hover:bg-white/5'
                       )}
                     >
                       {t('aiProviders.oauth.loginMode')}
@@ -1362,7 +1389,7 @@ function AddProviderDialog({
                       onClick={() => setAuthMode('apikey')}
                       className={cn(
                         'flex-1 py-2 px-3 rounded-lg transition-colors',
-                        authMode === 'apikey' ? 'bg-surface text-foreground' : 'text-muted-foreground hover:bg-surface/60'
+                        authMode === 'apikey' ? 'bg-black/5 dark:bg-white/10 text-foreground' : 'text-muted-foreground hover:bg-black/5 dark:hover:bg-white/5'
                       )}
                     >
                       {t('aiProviders.oauth.apikeyMode')}
@@ -1475,7 +1502,7 @@ function AddProviderDialog({
                           }
                           setValidationError(null);
                         }}
-                        className={cn("flex-1 py-1.5 px-3 rounded-lg border transition-colors", arkMode === 'apikey' ? "bg-white dark:bg-card border-black/20 dark:border-white/20 shadow-sm font-medium" : "border-transparent bg-surface text-muted-foreground hover:bg-surface/80")}
+                        className={cn("flex-1 py-1.5 px-3 rounded-lg border transition-colors", arkMode === 'apikey' ? "bg-white dark:bg-card border-black/20 dark:border-white/20 shadow-sm font-medium" : "border-transparent bg-black/5 dark:bg-white/5 text-muted-foreground hover:bg-black/10 dark:hover:bg-white/10")}
                       >
                         {t('aiProviders.authModes.apiKey')}
                       </button>
@@ -1487,7 +1514,7 @@ function AddProviderDialog({
                           setModelId(codePlanPreset.modelId);
                           setValidationError(null);
                         }}
-                        className={cn("flex-1 py-1.5 px-3 rounded-lg border transition-colors", arkMode === 'codeplan' ? "bg-white dark:bg-card border-black/20 dark:border-white/20 shadow-sm font-medium" : "border-transparent bg-surface text-muted-foreground hover:bg-surface/80")}
+                        className={cn("flex-1 py-1.5 px-3 rounded-lg border transition-colors", arkMode === 'codeplan' ? "bg-white dark:bg-card border-black/20 dark:border-white/20 shadow-sm font-medium" : "border-transparent bg-black/5 dark:bg-white/5 text-muted-foreground hover:bg-black/10 dark:hover:bg-white/10")}
                       >
                         {t('aiProviders.dialog.codePlanMode')}
                       </button>
@@ -1506,21 +1533,21 @@ function AddProviderDialog({
                     <button
                       type="button"
                         onClick={() => setApiProtocol('openai-completions')}
-                        className={cn("flex-1 py-1.5 px-3 rounded-lg border transition-colors", apiProtocol === 'openai-completions' ? "bg-white dark:bg-card border-black/20 dark:border-white/20 shadow-sm font-medium" : "border-transparent bg-surface text-muted-foreground hover:bg-surface/80")}
+                        className={cn("flex-1 py-1.5 px-3 rounded-lg border transition-colors", apiProtocol === 'openai-completions' ? "bg-white dark:bg-card border-black/20 dark:border-white/20 shadow-sm font-medium" : "border-transparent bg-black/5 dark:bg-white/5 text-muted-foreground hover:bg-black/10 dark:hover:bg-white/10")}
                     >
                       {t('aiProviders.protocols.openaiCompletions', 'OpenAI Completions')}
                     </button>
                     <button
                       type="button"
                       onClick={() => setApiProtocol('openai-responses')}
-                      className={cn("flex-1 py-1.5 px-3 rounded-lg border transition-colors", apiProtocol === 'openai-responses' ? "bg-white dark:bg-card border-black/20 dark:border-white/20 shadow-sm font-medium" : "border-transparent bg-surface text-muted-foreground hover:bg-surface/80")}
+                      className={cn("flex-1 py-1.5 px-3 rounded-lg border transition-colors", apiProtocol === 'openai-responses' ? "bg-white dark:bg-card border-black/20 dark:border-white/20 shadow-sm font-medium" : "border-transparent bg-black/5 dark:bg-white/5 text-muted-foreground hover:bg-black/10 dark:hover:bg-white/10")}
                     >
                       {t('aiProviders.protocols.openaiResponses', 'OpenAI Responses')}
                     </button>
                     <button
                       type="button"
                       onClick={() => setApiProtocol('anthropic-messages')}
-                      className={cn("flex-1 py-1.5 px-3 rounded-lg border transition-colors", apiProtocol === 'anthropic-messages' ? "bg-white dark:bg-card border-black/20 dark:border-white/20 shadow-sm font-medium" : "border-transparent bg-surface text-muted-foreground hover:bg-surface/80")}
+                      className={cn("flex-1 py-1.5 px-3 rounded-lg border transition-colors", apiProtocol === 'anthropic-messages' ? "bg-white dark:bg-card border-black/20 dark:border-white/20 shadow-sm font-medium" : "border-transparent bg-black/5 dark:bg-white/5 text-muted-foreground hover:bg-black/10 dark:hover:bg-white/10")}
                       >
                         {t('aiProviders.protocols.anthropic', 'Anthropic')}
                       </button>
@@ -1640,7 +1667,7 @@ function AddProviderDialog({
                                 </div>
                               </div>
 
-                              <div className="flex items-center justify-center gap-3 p-4 bg-white dark:bg-card border border-black/5 dark:border-white/5 rounded-xl shadow-inner">
+                              <div className="flex items-center justify-center gap-3 p-4 bg-transparent border border-black/5 dark:border-white/5 rounded-xl shadow-inner">
                                 <code className="text-3xl font-mono tracking-[0.2em] font-bold text-foreground">
                                   {oauthData.userCode}
                                 </code>

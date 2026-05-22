@@ -5,6 +5,9 @@ import type { ProviderConfig } from '../../utils/secure-storage';
 import { getAllProviders, getApiKey, getDefaultProvider, getProvider } from '../../utils/secure-storage';
 import { getProviderConfig, getProviderDefaultModel } from '../../utils/provider-registry';
 import {
+  ensureAnthropicMessagesModelMaxTokens,
+  ensureOpenClawProviderAgentRuntimePins,
+  pruneInvalidApiProviderEntries,
   removeProviderFromOpenClaw,
   removeProviderKeyFromOpenClaw,
   saveOAuthTokenToOpenClaw,
@@ -15,13 +18,15 @@ import {
   updateAgentModelProvider,
   updateSingleAgentModelProvider,
 } from '../../utils/openclaw-auth';
+import {
+  piAiModelsJsonModelEntry,
+  type PiAiModelCostRates,
+} from '../../shared/pi-ai-model-cost';
 import { logger } from '../../utils/logger';
 import { listAgentsSnapshot } from '../../utils/agent-config';
 
-const GOOGLE_OAUTH_RUNTIME_PROVIDER = 'google-gemini-cli';
-const GOOGLE_OAUTH_DEFAULT_MODEL_REF = `${GOOGLE_OAUTH_RUNTIME_PROVIDER}/gemini-3-pro-preview`;
 const OPENAI_OAUTH_RUNTIME_PROVIDER = 'openai-codex';
-const OPENAI_OAUTH_DEFAULT_MODEL_REF = `${OPENAI_OAUTH_RUNTIME_PROVIDER}/gpt-5.4`;
+const OPENAI_OAUTH_DEFAULT_MODEL_REF = `${OPENAI_OAUTH_RUNTIME_PROVIDER}/gpt-5.5`;
 
 /**
  * Provider types that are not in the built-in provider registry (no `providerConfig.api`).
@@ -94,13 +99,8 @@ export function getOpenClawProviderKey(type: string, providerId: string): string
 
 async function resolveRuntimeProviderKey(config: ProviderConfig): Promise<string> {
   const account = await getProviderAccount(config.id);
-  if (account?.authMode === 'oauth_browser') {
-    if (config.type === 'google') {
-      return GOOGLE_OAUTH_RUNTIME_PROVIDER;
-    }
-    if (config.type === 'openai') {
-      return OPENAI_OAUTH_RUNTIME_PROVIDER;
-    }
+  if (account?.authMode === 'oauth_browser' && config.type === 'openai') {
+    return OPENAI_OAUTH_RUNTIME_PROVIDER;
   }
   return getOpenClawProviderKey(config.type, config.id);
 }
@@ -116,9 +116,6 @@ async function getBrowserOAuthRuntimeProvider(config: ProviderConfig): Promise<s
     return null;
   }
 
-  if (config.type === 'google') {
-    return GOOGLE_OAUTH_RUNTIME_PROVIDER;
-  }
   if (config.type === 'openai') {
     return OPENAI_OAUTH_RUNTIME_PROVIDER;
   }
@@ -342,7 +339,7 @@ async function syncCustomProviderAgentModel(
   await updateAgentModelProvider(runtimeProviderKey, {
     baseUrl: normalizeProviderBaseUrl(config, config.baseUrl, config.apiProtocol || 'openai-completions'),
     api: config.apiProtocol || 'openai-completions',
-    models: modelId ? [{ id: modelId, name: modelId }] : [],
+    models: modelId ? [piAiModelsJsonModelEntry(modelId)] : [],
     apiKey: resolvedKey,
   });
 }
@@ -411,7 +408,7 @@ async function buildAgentModelProviderEntry(
 ): Promise<{
   baseUrl?: string;
   api?: string;
-  models?: Array<{ id: string; name: string }>;
+  models?: Array<{ id: string; name: string; cost: PiAiModelCostRates }>;
   apiKey?: string;
   authHeader?: boolean;
 } | null> {
@@ -440,7 +437,7 @@ async function buildAgentModelProviderEntry(
   return {
     baseUrl,
     api,
-    models: [{ id: modelId, name: modelId }],
+    models: [piAiModelsJsonModelEntry(modelId)],
     apiKey,
     authHeader,
   };
@@ -595,6 +592,48 @@ export async function syncDefaultProviderToRuntime(
     return;
   }
 
+  // Self-heal: opportunistically remove any pre-existing models.providers
+  // entries with an invalid `api` field so a switch to a healthy provider
+  // can rescue the user from a previously broken config (e.g. the historical
+  // openrouter `api: 'openrouter'` bug).  Covers both OAuth and non-OAuth
+  // branches below.
+  try {
+    const removed = await pruneInvalidApiProviderEntries();
+    if (removed.length > 0) {
+      logger.warn(
+        `[provider-runtime] Pruned invalid models.providers entries before switch: ${removed.join(', ')}`,
+      );
+    }
+  } catch (err) {
+    logger.warn('[provider-runtime] Failed to prune invalid provider entries before switch:', err);
+  }
+
+  // Self-heal: pin the embedded agent runtime for legacy OpenAI provider entries
+  // (`openai`, `openai-codex`) that would otherwise be auto-routed to the
+  // unbundled `codex` harness. Running this before every default-provider switch
+  // repairs on-disk config written by earlier ClawX builds.
+  try {
+    const pinned = await ensureOpenClawProviderAgentRuntimePins();
+    if (pinned.length > 0) {
+      logger.warn(
+        `[provider-runtime] Pinned embedded agent runtime for models.providers entries before switch: ${pinned.join(', ')}`,
+      );
+    }
+  } catch (err) {
+    logger.warn('[provider-runtime] Failed to pin embedded agent runtime for provider entries before switch:', err);
+  }
+
+  try {
+    const healed = await ensureAnthropicMessagesModelMaxTokens();
+    if (healed.length > 0) {
+      logger.warn(
+        `[provider-runtime] Ensured anthropic-messages maxTokens for models.providers entries before switch: ${healed.join(', ')}`,
+      );
+    }
+  } catch (err) {
+    logger.warn('[provider-runtime] Failed to ensure anthropic-messages maxTokens before switch:', err);
+  }
+
   const ock = await resolveRuntimeProviderKey(provider);
   const providerKey = await getApiKey(providerId);
   const fallbackModels = await getProviderFallbackModelRefs(provider);
@@ -644,9 +683,7 @@ export async function syncDefaultProviderToRuntime(
         });
       }
 
-      const defaultModelRef = browserOAuthRuntimeProvider === GOOGLE_OAUTH_RUNTIME_PROVIDER
-        ? GOOGLE_OAUTH_DEFAULT_MODEL_REF
-        : OPENAI_OAUTH_DEFAULT_MODEL_REF;
+      const defaultModelRef = OPENAI_OAUTH_DEFAULT_MODEL_REF;
       const modelOverride = provider.model
         ? (provider.model.startsWith(`${browserOAuthRuntimeProvider}/`)
           ? provider.model
@@ -695,7 +732,7 @@ export async function syncDefaultProviderToRuntime(
         api,
         authHeader: targetProviderKey === 'minimax-portal' ? true : undefined,
         apiKey: targetProviderKey === 'minimax-portal' ? 'minimax-oauth' : 'qwen-oauth',
-        models: defaultModelId ? [{ id: defaultModelId, name: defaultModelId }] : [],
+        models: defaultModelId ? [piAiModelsJsonModelEntry(defaultModelId)] : [],
       });
     } catch (err) {
       logger.warn(`Failed to update models.json for OAuth provider "${targetProviderKey}":`, err);
@@ -711,7 +748,7 @@ export async function syncDefaultProviderToRuntime(
     await updateAgentModelProvider(ock, {
       baseUrl: normalizeProviderBaseUrl(provider, provider.baseUrl, provider.apiProtocol || 'openai-completions'),
       api: provider.apiProtocol || 'openai-completions',
-      models: modelId ? [{ id: modelId, name: modelId }] : [],
+      models: modelId ? [piAiModelsJsonModelEntry(modelId)] : [],
       apiKey: providerKey,
     });
   }

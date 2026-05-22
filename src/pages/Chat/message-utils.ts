@@ -16,12 +16,46 @@ function cleanUserText(text: string): string {
     .replace(/\s*\[media attached:[^\]]*\]/g, '')
     // Remove [message_id: uuid]
     .replace(/\s*\[message_id:\s*[^\]]+\]/g, '')
+    // Remove Gateway-injected sender metadata block.  Some transcripts use
+    // "Sender (untrusted metadata):" instead of the older "Sender (untrusted):".
+    .replace(/^Sender\s*\([^)]*\)\s*:\s*```[a-z]*\n[\s\S]*?```\s*/i, '')
+    .replace(/^Sender\s*\([^)]*\)\s*:\s*\{[\s\S]*?\}\s*/i, '')
+    .replace(/^Sender\s*\([^)]*\)\s*:\s*[^\n]*(?:\n\s*)*/i, '')
+    .replace(/^Sender\s*:\s*```[a-z]*\n[\s\S]*?```\s*/i, '')
+    .replace(/^Sender\s*:\s*\{[\s\S]*?\}\s*/i, '')
+    .replace(/^Sender\s*:\s*[^\n]*(?:\n\s*)*/i, '')
     // Remove Gateway-injected "Conversation info (untrusted metadata): ```json...```" block
     .replace(/^Conversation info\s*\([^)]*\):\s*```[a-z]*\n[\s\S]*?```\s*/i, '')
     // Fallback: remove "Conversation info (...): {...}" without code block wrapper
     .replace(/^Conversation info\s*\([^)]*\):\s*\{[\s\S]*?\}\s*/i, '')
     // Remove Gateway timestamp prefix like [Fri 2026-02-13 22:39 GMT+8]
     .replace(/^\[(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)\s+\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}\s+[^\]]+\]\s*/i, '')
+    .trim();
+}
+
+/**
+ * Strip `MEDIA:/path/to/file.ext` artifact markers from assistant text so
+ * the chat bubble doesn't duplicate the file already surfaced as a card.
+ *
+ * Mirrors the regex in `chat/helpers.ts::extractRawFilePaths` (tagged
+ * variant) so anything we promote to `_attachedFiles` is also removed
+ * from the visible bubble.  Whitespace around the marker is normalised
+ * so the bubble doesn't end with a dangling blank line.
+ */
+function stripAssistantMediaTags(text: string): string {
+  if (!text) return text;
+  const exts = 'png|jpe?g|gif|webp|bmp|avif|svg|pdf|docx?|xlsx?|pptx?|txt|csv|md|rtf|epub|zip|tar|gz|rar|7z|mp3|wav|ogg|aac|flac|m4a|mp4|mov|avi|mkv|webm|m4v';
+  // Mirror the relaxed character class in `chat/helpers.ts::extractRawFilePaths`
+  // so paths with ASCII spaces (e.g. macOS' "截屏 2026-05-06 17.46.51.png")
+  // are also stripped from the visible bubble. Without this, the bubble
+  // would still leak the literal `MEDIA:/.../截屏 2026-05-06 17.46.51.png`
+  // to the user when the underlying path detection succeeds.
+  const tagged = new RegExp(`(^|[\\s(\\[{>])(?:MEDIA|media):(?:\\/|~\\/)[^\\n"'()\\[\\],<>]*?\\.(?:${exts})(?=$|[\\s\\n"'()\\[\\],<>]|[，。；;,.!?])`, 'g');
+  return text
+    .replace(tagged, (_, lead: string) => lead)
+    // Collapse the empty lines / orphan whitespace the strip leaves behind.
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
     .trim();
 }
 
@@ -143,6 +177,12 @@ export function extractText(message: RawMessage | unknown): string {
   // Strip Gateway metadata from user messages for clean display
   if (isUser && result) {
     result = cleanUserText(result);
+  } else if (!isUser && result) {
+    // Assistant-side cleanup: keep the bubble free of `MEDIA:/path` tags
+    // that the runtime emits to point at produced artifacts.  The same
+    // path is surfaced as a clickable file card via `_attachedFiles`,
+    // so leaving it inline would duplicate the artifact.
+    result = stripAssistantMediaTags(result);
   }
 
   return result;
@@ -172,7 +212,11 @@ export function extractTextSegments(message: RawMessage | unknown): string[] {
     segments = cleaned ? [cleaned] : [];
   }
 
-  if (!isUser) return segments;
+  if (!isUser) {
+    return segments
+      .map((segment) => stripAssistantMediaTags(segment))
+      .filter((segment) => segment.length > 0);
+  }
 
   return segments
     .map((segment) => cleanUserText(segment))
@@ -271,34 +315,58 @@ export function extractMediaRefs(message: RawMessage | unknown): Array<{ filePat
 }
 
 /**
- * Extract image attachments from a message.
- * Returns array of { mimeType, data } for base64 images.
+ * Extract inline image attachments from a message.
+ *
+ * Returns either:
+ *   - `{ mimeType, data }`   — base64 bytes inline (Anthropic / Gateway tool-result)
+ *   - `{ mimeType, url }`    — Anthropic source-wrapped remote URL form
+ *
+ * Note: the Gateway-injected `assistant-media` shape — flat
+ * `{ type:'image', url:'/api/chat/media/outgoing/...', mimeType, ... }` —
+ * is intentionally NOT extracted here because the URL is a Gateway-relative
+ * path the renderer cannot fetch directly (CORS / env drift). That shape
+ * is surfaced through `_attachedFiles` instead (see
+ * `extractImagesAsAttachedFiles` and `enrichWithGatewayMediaBlocks` in
+ * `src/stores/chat/helpers.ts`), and resolved to a local preview by
+ * `loadMissingPreviews` -> Main `media:getThumbnails`.
  */
-export function extractImages(message: RawMessage | unknown): Array<{ mimeType: string; data: string }> {
+export function extractImages(
+  message: RawMessage | unknown,
+): Array<{ mimeType: string; data?: string; url?: string }> {
   if (!message || typeof message !== 'object') return [];
   const msg = message as Record<string, unknown>;
   const content = msg.content;
 
   if (!Array.isArray(content)) return [];
 
-  const images: Array<{ mimeType: string; data: string }> = [];
+  const images: Array<{ mimeType: string; data?: string; url?: string }> = [];
   for (const block of content as ContentBlock[]) {
-    if (block.type === 'image') {
-      // Path 1: Anthropic source-wrapped format
-      if (block.source) {
-        const src = block.source;
-        if (src.type === 'base64' && src.media_type && src.data) {
-          images.push({ mimeType: src.media_type, data: src.data });
-        }
+    if (block.type !== 'image') continue;
+
+    // Path 1: Anthropic source-wrapped format
+    if (block.source) {
+      const src = block.source;
+      if (src.type === 'base64' && src.media_type && src.data) {
+        images.push({ mimeType: src.media_type, data: src.data });
+      } else if (src.type === 'url' && src.url) {
+        images.push({ mimeType: src.media_type || 'image/jpeg', url: src.url });
       }
-      // Path 2: Flat format from Gateway tool results {data, mimeType}
-      else if (block.data) {
-        images.push({ mimeType: block.mimeType || 'image/jpeg', data: block.data });
-      }
+      continue;
     }
+
+    // Path 2: Flat format from Gateway tool results {data, mimeType}
+    if (block.data) {
+      images.push({ mimeType: block.mimeType || 'image/jpeg', data: block.data });
+    }
+    // Flat `block.url` is intentionally NOT handled here; see comment above.
   }
 
   return images;
+}
+
+/** Normalize Gateway/OpenClaw message roles for comparisons. */
+export function normalizeMessageRole(role: unknown): string {
+  return typeof role === 'string' ? role.trim().toLowerCase() : '';
 }
 
 /**

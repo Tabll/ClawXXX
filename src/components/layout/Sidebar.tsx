@@ -3,7 +3,7 @@
  * Navigation sidebar with menu items.
  * No longer fixed - sits inside the flex layout below the title bar.
  */
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import {
   Network,
@@ -17,9 +17,13 @@ import {
   Terminal,
   ExternalLink,
   Trash2,
+  Pencil,
+  Check,
+  X,
   Cpu,
-  FolderTree,
   Moon,
+  FolderTree,
+  ChevronRight,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { rendererExtensionRegistry } from '@/extensions/registry';
@@ -27,20 +31,14 @@ import { useSettingsStore } from '@/stores/settings';
 import { useChatStore } from '@/stores/chat';
 import { useGatewayStore } from '@/stores/gateway';
 import { useAgentsStore } from '@/stores/agents';
+import { getSessionActivityMs, getSessionBucket, type SessionBucketKey } from './session-buckets';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { hostApiFetch } from '@/lib/host-api';
 import { useTranslation } from 'react-i18next';
 import logoSvg from '@/assets/logo.svg';
-
-type SessionBucketKey =
-  | 'today'
-  | 'yesterday'
-  | 'withinWeek'
-  | 'withinTwoWeeks'
-  | 'withinMonth'
-  | 'older';
 
 interface NavItemProps {
   to: string;
@@ -60,8 +58,8 @@ function NavItem({ to, icon, label, badge, collapsed, onClick, testId }: NavItem
       data-testid={testId}
       className={({ isActive }) =>
         cn(
-          'flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-[14px] font-medium transition-colors',
-          'hover:bg-surface text-foreground/80',
+          'sidebar-nav-text flex items-center gap-2 rounded-lg px-2.5 py-1.5 transition-colors',
+          'hover:bg-black/5 dark:hover:bg-white/5 text-foreground/80',
           isActive
             ? 'bg-black/5 dark:bg-white/10 text-foreground'
             : '',
@@ -69,45 +67,32 @@ function NavItem({ to, icon, label, badge, collapsed, onClick, testId }: NavItem
         )
       }
     >
-      {({ isActive }) => (
-        <>
-          <div className={cn("flex shrink-0 items-center justify-center", isActive ? "text-foreground" : "text-muted-foreground")}>
-            {icon}
-          </div>
-          {!collapsed && (
-            <>
-              <span className="flex-1 overflow-hidden text-ellipsis whitespace-nowrap">{label}</span>
-              {badge && (
-                <Badge variant="secondary" className="ml-auto shrink-0">
-                  {badge}
-                </Badge>
-              )}
-            </>
-          )}
-        </>
-      )}
+      <>
+        <div className="flex shrink-0 items-center justify-center text-current [&_svg]:size-4">
+          {icon}
+        </div>
+        {!collapsed && (
+          <>
+            <span className="flex-1 overflow-hidden text-ellipsis whitespace-nowrap">{label}</span>
+            {badge && (
+              <Badge variant="secondary" className="ml-auto shrink-0">
+                {badge}
+              </Badge>
+            )}
+          </>
+        )}
+      </>
     </NavLink>
   );
 }
 
-function getSessionBucket(activityMs: number, nowMs: number): SessionBucketKey {
-  if (!activityMs || activityMs <= 0) return 'older';
-
-  const now = new Date(nowMs);
-  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-  const startOfYesterday = startOfToday - 24 * 60 * 60 * 1000;
-
-  if (activityMs >= startOfToday) return 'today';
-  if (activityMs >= startOfYesterday) return 'yesterday';
-
-  const daysAgo = (startOfToday - activityMs) / (24 * 60 * 60 * 1000);
-  if (daysAgo <= 7) return 'withinWeek';
-  if (daysAgo <= 14) return 'withinTwoWeeks';
-  if (daysAgo <= 30) return 'withinMonth';
-  return 'older';
-}
-
 const INITIAL_NOW_MS = Date.now();
+const DEFAULT_EXPANDED_SESSION_BUCKETS: Record<SessionBucketKey, boolean> = {
+  today: true,
+  withinWeek: true,
+  withinMonth: false,
+  older: false,
+};
 
 function getAgentIdFromSessionKey(sessionKey: string): string {
   if (!sessionKey.startsWith('agent:')) return 'main';
@@ -116,8 +101,14 @@ function getAgentIdFromSessionKey(sessionKey: string): string {
 }
 
 export function Sidebar() {
+  const isMac = window.electron?.platform === 'darwin';
   const sidebarCollapsed = useSettingsStore((state) => state.sidebarCollapsed);
   const setSidebarCollapsed = useSettingsStore((state) => state.setSidebarCollapsed);
+  const sidebarWidth = useSettingsStore((state) => state.sidebarWidth);
+  const setSidebarWidth = useSettingsStore((state) => state.setSidebarWidth);
+  const devModeUnlocked = useSettingsStore((state) => state.devModeUnlocked);
+  const [isResizing, setIsResizing] = useState(false);
+  const stopResizeRef = useRef<(() => void) | null>(null);
 
   const sessions = useChatStore((s) => s.sessions);
   const currentSessionKey = useChatStore((s) => s.currentSessionKey);
@@ -126,28 +117,35 @@ export function Sidebar() {
   const switchSession = useChatStore((s) => s.switchSession);
   const newSession = useChatStore((s) => s.newSession);
   const deleteSession = useChatStore((s) => s.deleteSession);
+  const renameSession = useChatStore((s) => s.renameSession);
   const loadSessions = useChatStore((s) => s.loadSessions);
   const loadHistory = useChatStore((s) => s.loadHistory);
 
   const gatewayStatus = useGatewayStore((s) => s.status);
   const isGatewayRunning = gatewayStatus.state === 'running';
   const isGatewayReady = isGatewayRunning && gatewayStatus.gatewayReady !== false;
+  const gatewayRuntimeKey = `${gatewayStatus.pid ?? 'none'}:${gatewayStatus.connectedAt ?? 'none'}:${gatewayStatus.port}`;
+
+  const hasLoadedCurrentRuntimeRef = useRef(false);
+
+  useEffect(() => {
+    hasLoadedCurrentRuntimeRef.current = false;
+  }, [gatewayRuntimeKey]);
 
   useEffect(() => {
     if (!isGatewayReady) return;
     let cancelled = false;
-    const hasExistingMessages = useChatStore.getState().messages.length > 0;
     (async () => {
-      await Promise.allSettled([
-        loadSessions(),
-        loadHistory(hasExistingMessages),
-      ]);
+      await loadSessions();
       if (cancelled) return;
+      if (hasLoadedCurrentRuntimeRef.current) return;
+      hasLoadedCurrentRuntimeRef.current = true;
+      await loadHistory(false);
     })();
     return () => {
       cancelled = true;
     };
-  }, [isGatewayReady, loadHistory, loadSessions]);
+  }, [gatewayRuntimeKey, isGatewayReady, loadHistory, loadSessions]);
   const agents = useAgentsStore((s) => s.agents);
   const fetchAgents = useAgentsStore((s) => s.fetchAgents);
 
@@ -180,7 +178,12 @@ export function Sidebar() {
 
   const { t } = useTranslation(['common', 'chat']);
   const [sessionToDelete, setSessionToDelete] = useState<{ key: string; label: string } | null>(null);
+  const [editingSessionKey, setEditingSessionKey] = useState<string | null>(null);
+  const [editingLabel, setEditingLabel] = useState('');
   const [nowMs, setNowMs] = useState(INITIAL_NOW_MS);
+  const [expandedSessionBuckets, setExpandedSessionBuckets] = useState<Record<SessionBucketKey, boolean>>(
+    () => ({ ...DEFAULT_EXPANDED_SESSION_BUCKETS }),
+  );
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -193,15 +196,90 @@ export function Sidebar() {
     void fetchAgents();
   }, [fetchAgents]);
 
+  const handleStartRename = (key: string, currentLabel: string) => {
+    setEditingSessionKey(key);
+    setEditingLabel(currentLabel);
+  };
+
+  const handleRenameSubmit = async () => {
+    if (!editingSessionKey || !editingLabel.trim()) {
+      setEditingSessionKey(null);
+      return;
+    }
+    try {
+      await renameSession(editingSessionKey, editingLabel.trim());
+    } catch (err) {
+      console.error('Failed to rename session:', err);
+    }
+    setEditingSessionKey(null);
+  };
+
+  const handleRenameCancel = () => {
+    setEditingSessionKey(null);
+  };
+
+  const handleRenameKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      void handleRenameSubmit();
+    } else if (e.key === 'Escape') {
+      handleRenameCancel();
+    }
+  };
+
+  const toggleSessionBucket = (bucketKey: SessionBucketKey) => {
+    setExpandedSessionBuckets((current) => ({
+      ...current,
+      [bucketKey]: !current[bucketKey],
+    }));
+  };
+
+  const stopResizing = useCallback(() => {
+    stopResizeRef.current?.();
+    stopResizeRef.current = null;
+    setIsResizing(false);
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+  }, []);
+
+  const handleResizePointerDown = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      if (sidebarCollapsed) return;
+      event.preventDefault();
+      event.stopPropagation();
+      try {
+        event.currentTarget.setPointerCapture(event.pointerId);
+      } catch {
+        // Window listeners below keep dragging reliable even if capture is unavailable.
+      }
+
+      const onMove = (moveEvent: PointerEvent) => {
+        setSidebarWidth(moveEvent.clientX);
+      };
+      const onUp = () => stopResizing();
+
+      stopResizeRef.current = () => {
+        window.removeEventListener('pointermove', onMove);
+        window.removeEventListener('pointerup', onUp);
+      };
+      window.addEventListener('pointermove', onMove);
+      window.addEventListener('pointerup', onUp);
+      setIsResizing(true);
+      document.body.style.cursor = 'col-resize';
+      document.body.style.userSelect = 'none';
+    },
+    [setSidebarWidth, sidebarCollapsed, stopResizing],
+  );
+
+  useEffect(() => stopResizing, [stopResizing]);
+
   const agentNameById = useMemo(
     () => Object.fromEntries((agents ?? []).map((agent) => [agent.id, agent.name])),
     [agents],
   );
   const sessionBuckets: Array<{ key: SessionBucketKey; label: string; sessions: typeof sessions }> = [
     { key: 'today', label: t('chat:historyBuckets.today'), sessions: [] },
-    { key: 'yesterday', label: t('chat:historyBuckets.yesterday'), sessions: [] },
     { key: 'withinWeek', label: t('chat:historyBuckets.withinWeek'), sessions: [] },
-    { key: 'withinTwoWeeks', label: t('chat:historyBuckets.withinTwoWeeks'), sessions: [] },
     { key: 'withinMonth', label: t('chat:historyBuckets.withinMonth'), sessions: [] },
     { key: 'older', label: t('chat:historyBuckets.older'), sessions: [] },
   ];
@@ -210,10 +288,13 @@ export function Sidebar() {
     (typeof sessionBuckets)[number]
   >;
 
-  for (const session of [...sessions].sort((a, b) =>
-    (sessionLastActivity[b.key] ?? 0) - (sessionLastActivity[a.key] ?? 0)
-  )) {
-    const bucketKey = getSessionBucket(sessionLastActivity[session.key] ?? 0, nowMs);
+  for (const { session, activityMs } of sessions
+    .map((session) => ({
+      session,
+      activityMs: getSessionActivityMs(session, sessionLastActivity),
+    }))
+    .sort((a, b) => b.activityMs - a.activityMs)) {
+    const bucketKey = getSessionBucket(activityMs, nowMs);
     sessionBucketMap[bucketKey].sessions.push(session);
   }
 
@@ -221,20 +302,20 @@ export function Sidebar() {
   const extraNavItems = rendererExtensionRegistry.getExtraNavItems();
 
   const coreNavItems = [
-    { to: '/models', icon: <Cpu className="h-[18px] w-[18px]" strokeWidth={2} />, label: t('sidebar.models'), testId: 'sidebar-nav-models' },
-    { to: '/agents', icon: <Bot className="h-[18px] w-[18px]" strokeWidth={2} />, label: t('sidebar.agents'), testId: 'sidebar-nav-agents' },
-    { to: '/channels', icon: <Network className="h-[18px] w-[18px]" strokeWidth={2} />, label: t('sidebar.channels'), testId: 'sidebar-nav-channels' },
-    { to: '/skills', icon: <Puzzle className="h-[18px] w-[18px]" strokeWidth={2} />, label: t('sidebar.skills'), testId: 'sidebar-nav-skills' },
-    { to: '/cron', icon: <Clock className="h-[18px] w-[18px]" strokeWidth={2} />, label: t('sidebar.cronTasks'), testId: 'sidebar-nav-cron' },
-    { to: '/workspace', icon: <FolderTree className="h-[18px] w-[18px]" strokeWidth={2} />, label: t('sidebar.workspace'), testId: 'sidebar-nav-workspace' },
-    { to: '/dreams', icon: <Moon className="h-[18px] w-[18px]" strokeWidth={2} />, label: t('sidebar.dreams'), testId: 'sidebar-nav-dreams' },
+    { to: '/models', icon: <Cpu className="h-4 w-4" strokeWidth={2} />, label: t('sidebar.models'), testId: 'sidebar-nav-models' },
+    { to: '/agents', icon: <Bot className="h-4 w-4" strokeWidth={2} />, label: t('sidebar.agents'), testId: 'sidebar-nav-agents' },
+    { to: '/channels', icon: <Network className="h-4 w-4" strokeWidth={2} />, label: t('sidebar.channels'), testId: 'sidebar-nav-channels' },
+    { to: '/skills', icon: <Puzzle className="h-4 w-4" strokeWidth={2} />, label: t('sidebar.skills'), testId: 'sidebar-nav-skills' },
+    { to: '/cron', icon: <Clock className="h-4 w-4" strokeWidth={2} />, label: t('sidebar.cronTasks'), testId: 'sidebar-nav-cron' },
+    { to: '/workspace', icon: <FolderTree className="h-4 w-4" strokeWidth={2} />, label: t('sidebar.workspace'), testId: 'sidebar-nav-workspace' },
+    { to: '/dreams', icon: <Moon className="h-4 w-4" strokeWidth={2} />, label: t('sidebar.dreams'), testId: 'sidebar-nav-dreams' },
   ];
 
   const navItems = [
     ...coreNavItems.filter((item) => !hiddenRoutes.has(item.to)),
     ...extraNavItems.map((item) => ({
       to: item.to,
-      icon: <item.icon className="h-[18px] w-[18px]" strokeWidth={2} />,
+      icon: <item.icon className="h-4 w-4" strokeWidth={2} />,
       label: item.labelI18nKey ? t(item.labelI18nKey) : item.label,
       testId: item.testId,
     })),
@@ -244,12 +325,19 @@ export function Sidebar() {
     <aside
       data-testid="sidebar"
       className={cn(
-        'flex min-h-0 shrink-0 flex-col overflow-hidden border-r bg-surface dark:bg-background transition-all duration-300',
-        sidebarCollapsed ? 'w-16' : 'w-64'
+        'relative flex min-h-0 shrink-0 flex-col overflow-hidden bg-surface-sidebar',
+        isResizing ? 'transition-none' : 'transition-[width] duration-300',
       )}
+      style={{ width: sidebarCollapsed ? 64 : sidebarWidth }}
     >
       {/* Top Header Toggle */}
-      <div className={cn("flex items-center p-2 h-12", sidebarCollapsed ? "justify-center" : "justify-between")}>
+      <div
+        className={cn(
+          'flex items-center p-2 h-12',
+          isMac && 'drag-region h-[4.75rem] items-end pt-10',
+          sidebarCollapsed ? 'justify-center' : 'justify-between',
+        )}
+      >
         {!sidebarCollapsed && (
           <div className="flex items-center gap-2 px-2 overflow-hidden">
             <img src={logoSvg} alt="ClawX" className="h-5 w-auto shrink-0" />
@@ -261,7 +349,10 @@ export function Sidebar() {
         <Button
           variant="ghost"
           size="icon"
-          className="h-8 w-8 shrink-0 text-muted-foreground hover:bg-black/5 dark:hover:bg-white/10"
+          className={cn(
+            'no-drag h-8 w-8 shrink-0 rounded-lg text-foreground/80',
+            'hover:bg-black/5 hover:text-foreground/80 dark:hover:bg-white/5',
+          )}
           onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
         >
           {sidebarCollapsed ? (
@@ -273,8 +364,9 @@ export function Sidebar() {
       </div>
 
       {/* Navigation */}
-      <nav className="flex flex-col px-2 gap-0.5">
+      <nav className="flex flex-col gap-1 px-2">
         <button
+          type="button"
           data-testid="sidebar-new-chat"
           onClick={() => {
             const { messages } = useChatStore.getState();
@@ -282,13 +374,13 @@ export function Sidebar() {
             navigate('/');
           }}
           className={cn(
-            'flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-[14px] font-medium transition-colors mb-2',
-            'bg-white/60 dark:bg-accent shadow-none border border-transparent text-foreground',
+            'sidebar-nav-text flex items-center gap-2 rounded-lg px-2.5 py-2 transition-colors',
+            'hover:bg-black/5 dark:hover:bg-white/5 text-foreground/80',
             sidebarCollapsed && 'justify-center px-0',
           )}
         >
-          <div className="flex shrink-0 items-center justify-center text-foreground/80">
-            <Plus className="h-[18px] w-[18px]" strokeWidth={2} />
+          <div className="flex shrink-0 items-center justify-center text-current [&_svg]:size-4">
+            <Plus className="h-4 w-4" strokeWidth={2} />
           </div>
           {!sidebarCollapsed && <span className="flex-1 text-left overflow-hidden text-ellipsis whitespace-nowrap">{t('sidebar.newChat')}</span>}
         </button>
@@ -304,106 +396,193 @@ export function Sidebar() {
 
       {/* Session list — below Settings, only when expanded */}
       {!sidebarCollapsed && sessions.length > 0 && (
-        <div className="mt-4 flex-1 overflow-y-auto overflow-x-hidden px-2 pb-2 space-y-0.5">
-          {sessionBuckets.map((bucket) => (
-            bucket.sessions.length > 0 ? (
-              <div key={bucket.key} className="pt-2">
-                <div className="px-2.5 pb-1 text-[11px] font-medium text-muted-foreground/60 tracking-tight">
-                  {bucket.label}
-                </div>
-                {bucket.sessions.map((s) => {
+        <div className="mt-4 flex-1 overflow-y-auto overflow-x-hidden px-2 pb-2 space-y-1">
+          {sessionBuckets.map((bucket) => {
+            const isBucketExpanded = expandedSessionBuckets[bucket.key] ?? false;
+            return (
+              <div key={bucket.key} data-testid={`session-bucket-${bucket.key}`} className="pt-2">
+                <button
+                  type="button"
+                  data-testid={`session-bucket-toggle-${bucket.key}`}
+                  aria-expanded={isBucketExpanded}
+                  onClick={() => toggleSessionBucket(bucket.key)}
+                  className={cn(
+                    'flex w-full items-center gap-1 rounded-md px-2.5 py-1 text-left text-tiny font-medium',
+                    'text-muted-foreground/60 tracking-tight transition-colors',
+                    'hover:bg-black/5 hover:text-muted-foreground dark:hover:bg-white/5',
+                  )}
+                >
+                  <ChevronRight
+                    className={cn(
+                      'h-3 w-3 shrink-0 transition-transform',
+                      isBucketExpanded && 'rotate-90',
+                    )}
+                  />
+                  <span>{bucket.label}</span>
+                </button>
+                {isBucketExpanded && bucket.sessions.map((s) => {
                   const agentId = getAgentIdFromSessionKey(s.key);
                   const agentName = agentNameById[agentId] || agentId;
+                  const isEditing = editingSessionKey === s.key;
+                  const sessionLabel = getSessionLabel(s.key, s.displayName, s.label);
                   return (
                     <div key={s.key} className="group relative flex items-center">
-                      <button
-                        onClick={() => { switchSession(s.key); navigate('/'); }}
-                        className={cn(
-                          'w-full text-left rounded-lg px-2.5 py-1.5 text-[13px] transition-colors pr-7',
-                          'hover:bg-surface',
-                          isOnChat && currentSessionKey === s.key
-                            ? 'bg-black/5 dark:bg-white/10 text-foreground font-medium'
-                            : 'text-foreground/75',
-                        )}
-                      >
-                        <div className="flex min-w-0 items-center gap-2">
-                          <span className="shrink-0 rounded-full bg-surface px-2 py-0.5 text-[10px] font-medium text-foreground/70 dark:bg-white/[0.08]">
-                            {agentName}
-                          </span>
-                          <span className="truncate">{getSessionLabel(s.key, s.displayName, s.label)}</span>
+                      {isEditing ? (
+                        <div className="flex w-full items-center gap-1 px-1.5 py-1">
+                          <Input
+                            autoFocus
+                            value={editingLabel}
+                            onChange={(e) => setEditingLabel(e.target.value)}
+                            onKeyDown={handleRenameKeyDown}
+                            onBlur={() => void handleRenameSubmit()}
+                            className="h-7 min-w-0 flex-1 text-meta"
+                            aria-label={t('common:sidebar.renameSessionPlaceholder')}
+                          />
+                          <button
+                            aria-label={t('common:sidebar.saveSessionRename')}
+                            onMouseDown={(e) => { e.preventDefault(); void handleRenameSubmit(); }}
+                            className="flex shrink-0 items-center justify-center rounded p-0.5 text-muted-foreground hover:text-foreground"
+                          >
+                            <Check className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            aria-label={t('common:sidebar.cancelSessionRename')}
+                            onMouseDown={(e) => { e.preventDefault(); handleRenameCancel(); }}
+                            className="flex shrink-0 items-center justify-center rounded p-0.5 text-muted-foreground hover:text-destructive"
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </button>
                         </div>
-                      </button>
-                      <button
-                        aria-label="Delete session"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setSessionToDelete({
-                            key: s.key,
-                            label: getSessionLabel(s.key, s.displayName, s.label),
-                          });
-                        }}
-                        className={cn(
-                          'absolute right-1 flex items-center justify-center rounded p-0.5 transition-opacity',
-                          'opacity-0 group-hover:opacity-100',
-                          'text-muted-foreground hover:text-destructive hover:bg-destructive/10',
-                        )}
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
+                      ) : (
+                        <>
+                          <button
+                            onClick={() => {
+                              if (currentSessionKey === s.key) {
+                                void loadHistory(false);
+                              } else {
+                                switchSession(s.key);
+                              }
+                              navigate('/');
+                            }}
+                            onDoubleClick={() => handleStartRename(s.key, sessionLabel)}
+                            className={cn(
+                              'w-full text-left rounded-lg px-2.5 py-1.5 text-meta transition-colors pr-16',
+                              'hover:bg-black/5 dark:hover:bg-white/5',
+                              isOnChat && currentSessionKey === s.key
+                                ? 'bg-black/5 dark:bg-white/10 text-foreground font-medium'
+                                : 'text-foreground/75',
+                            )}
+                          >
+                            <div className="flex min-w-0 items-center gap-2">
+                              <span className="shrink-0 rounded-full bg-black/[0.04] px-2 py-0.5 text-2xs font-medium text-foreground/70 dark:bg-white/[0.08]">
+                                {agentName}
+                              </span>
+                              <span className="truncate">{sessionLabel}</span>
+                            </div>
+                          </button>
+                          <div className={cn(
+                            'absolute right-1 flex items-center gap-0.5 transition-opacity',
+                            'opacity-0 group-hover:opacity-100',
+                          )}>
+                            <button
+                              aria-label={t('common:sidebar.renameSession')}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleStartRename(s.key, sessionLabel);
+                              }}
+                              className="flex items-center justify-center rounded p-0.5 text-muted-foreground hover:text-foreground hover:bg-black/5 dark:hover:bg-white/10"
+                            >
+                              <Pencil className="h-3.5 w-3.5" />
+                            </button>
+                            <button
+                              aria-label={t('common:sidebar.deleteSession')}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSessionToDelete({
+                                  key: s.key,
+                                  label: sessionLabel,
+                                });
+                              }}
+                              className="flex items-center justify-center rounded p-0.5 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                        </>
+                      )}
                     </div>
                   );
                 })}
               </div>
-            ) : null
-          ))}
+            );
+          })}
         </div>
       )}
 
       {/* Footer */}
-      <div className="p-2 mt-auto">
+      <div className="mt-auto flex flex-col gap-1 p-2">
         <NavLink
             to="/settings"
             data-testid="sidebar-nav-settings"
             className={({ isActive }) =>
               cn(
-                'flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-[14px] font-medium transition-colors',
-                'hover:bg-surface text-foreground/80',
+                'sidebar-nav-text flex items-center gap-2 rounded-lg px-2.5 py-1.5 transition-colors',
+                'hover:bg-black/5 dark:hover:bg-white/5 text-foreground/80',
                 isActive && 'bg-black/5 dark:bg-white/10 text-foreground',
                 sidebarCollapsed ? 'justify-center px-0' : ''
               )
             }
           >
-          {({ isActive }) => (
-            <>
-              <div className={cn("flex shrink-0 items-center justify-center", isActive ? "text-foreground" : "text-muted-foreground")}>
-                <SettingsIcon className="h-[18px] w-[18px]" strokeWidth={2} />
-              </div>
-              {!sidebarCollapsed && <span className="flex-1 overflow-hidden text-ellipsis whitespace-nowrap">{t('sidebar.settings')}</span>}
-            </>
-          )}
+          <>
+            <div className="flex shrink-0 items-center justify-center text-current [&_svg]:size-4">
+              <SettingsIcon className="h-4 w-4" strokeWidth={2} />
+            </div>
+            {!sidebarCollapsed && <span className="flex-1 overflow-hidden text-ellipsis whitespace-nowrap">{t('sidebar.settings')}</span>}
+          </>
         </NavLink>
 
-        <Button
-          data-testid="sidebar-open-dev-console"
-          variant="ghost"
-          className={cn(
-            'flex items-center gap-2.5 rounded-lg px-2.5 py-2 h-auto text-[14px] font-medium transition-colors w-full mt-1',
-            'hover:bg-surface text-foreground/80',
-            sidebarCollapsed ? 'justify-center px-0' : 'justify-start'
-          )}
-          onClick={openDevConsole}
-        >
-          <div className="flex shrink-0 items-center justify-center text-muted-foreground">
-            <Terminal className="h-[18px] w-[18px]" strokeWidth={2} />
-          </div>
-          {!sidebarCollapsed && (
-            <>
-              <span className="flex-1 text-left overflow-hidden text-ellipsis whitespace-nowrap">{t('common:sidebar.openClawPage')}</span>
-              <ExternalLink className="h-3 w-3 shrink-0 ml-auto opacity-50 text-muted-foreground" />
-            </>
-          )}
-        </Button>
+        {devModeUnlocked && (
+          <Button
+            data-testid="sidebar-open-dev-console"
+            variant="ghost"
+            className={cn(
+              'sidebar-nav-text flex h-auto w-full items-center gap-2 rounded-lg px-2.5 py-1.5 transition-colors',
+              'hover:bg-black/5 dark:hover:bg-white/5 text-foreground/80',
+              sidebarCollapsed ? 'justify-center px-0' : 'justify-start'
+            )}
+            onClick={openDevConsole}
+          >
+            <div className="flex shrink-0 items-center justify-center text-current [&_svg]:size-4">
+              <Terminal className="h-4 w-4" strokeWidth={2} />
+            </div>
+            {!sidebarCollapsed && (
+              <>
+                <span className="flex-1 text-left overflow-hidden text-ellipsis whitespace-nowrap">{t('common:sidebar.openClawPage')}</span>
+                <ExternalLink className="ml-auto h-3 w-3 shrink-0 opacity-50 text-current" />
+              </>
+            )}
+          </Button>
+        )}
       </div>
+
+      {!sidebarCollapsed && (
+        <div
+          data-testid="sidebar-resize-handle"
+          role="separator"
+          aria-orientation="vertical"
+          aria-valuemin={220}
+          aria-valuemax={420}
+          aria-valuenow={sidebarWidth}
+          title="Drag to resize sidebar"
+          onPointerDown={handleResizePointerDown}
+          className="no-drag group absolute inset-y-0 right-0 z-20 w-2 translate-x-1/2 cursor-col-resize select-none"
+        >
+          <span
+            aria-hidden
+            className="pointer-events-none absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-transparent transition-colors group-hover:bg-primary/40"
+          />
+        </div>
+      )}
 
       <ConfirmDialog
         open={!!sessionToDelete}

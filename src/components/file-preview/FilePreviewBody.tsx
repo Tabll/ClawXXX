@@ -9,8 +9,8 @@
  * intentionally removed — path / size are visible in the header bar.
  *
  * The `mode` prop narrows the tab set for callers that want a single,
- * fixed view (e.g. the artifact panel's 预览 tab forces `preview`, and
- * the 变更 tab's right pane forces `diff`).
+ * fixed view (e.g. the artifact panel's preview tab forces `preview`, and
+ * the changes tab's right pane forces `diff`).
  *
  * Used by:
  *   - `FilePreviewOverlay` for the Skills detail Sheet (read-only).
@@ -27,16 +27,36 @@ import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { cn } from '@/lib/utils';
-import { invokeIpc, readTextFile, writeTextFile } from '@/lib/api-client';
+import { invokeIpc, readTextFile, statFile, writeTextFile } from '@/lib/api-client';
 import type { FilePreviewTarget } from './types';
-import { supportsInlineDiff, supportsInlineDocumentPreview } from '@/lib/generated-files';
+import {
+  isHtmlPreviewExt,
+  isPdfPreviewExt,
+  isSheetPreviewExt,
+  supportsInlineDiff,
+  supportsInlineDocumentPreview,
+  supportsRichDocumentPreview,
+} from '@/lib/generated-files';
 import { FilePreviewIcon } from './file-card-utils';
 import { formatFileSize } from './format';
+import {
+  confirmAndOpenFile,
+  shouldOfferDirectOpenFallback,
+} from './open-file-utils';
 import MarkdownPreview from './MarkdownPreview';
+import HtmlPreview from './HtmlPreview';
 import ImageViewer from './ImageViewer';
 
 const MonacoViewerLazy = lazy(() => import('./MonacoViewer'));
 const MonacoDiffViewerLazy = lazy(() => import('./MonacoDiffViewer'));
+const PdfViewerLazy = lazy(() => import('./PdfViewer'));
+const SheetViewerLazy = lazy(() => import('./SheetViewer'));
+
+/**
+ * Files past this ceiling get the direct-open fallback instead of the
+ * inline PDF / spreadsheet viewer.  Mirrors the main-process binary cap.
+ */
+const RICH_PREVIEW_MAX_BYTES = 50 * 1024 * 1024;
 
 /**
  * Tab set for the body.
@@ -75,7 +95,7 @@ type LoadState =
 type Tab = 'source' | 'preview' | 'diff';
 
 function tabsForFile(file: FilePreviewTarget, mode: FilePreviewBodyMode): Tab[] {
-  // Diff-only mode short-circuits. Callers (e.g. the 变更 tab's right
+  // Diff-only mode short-circuits. Callers (e.g. the changes tab's right
   // pane) want a pure git-style diff with no tab strip — but only for
   // formats where inline diff is actually supported.
   if (mode === 'diff') return supportsInlineDiff(file) ? ['diff'] : [];
@@ -85,8 +105,11 @@ function tabsForFile(file: FilePreviewTarget, mode: FilePreviewBodyMode): Tab[] 
     if (!supportsInlineDocumentPreview(file.ext)) {
       return [];
     }
-    // Markdown / plain-text style documents: rendered preview only.
+    // Markdown / HTML / rich documents: rendered preview first.
     tabs.push('preview');
+    if (isHtmlPreviewExt(file.ext)) {
+      tabs.push('source');
+    }
   } else if (file.contentType === 'snapshot') {
     tabs.push('preview');
   } else if (file.contentType === 'video' || file.contentType === 'audio') {
@@ -191,7 +214,7 @@ export function FilePreviewBody({
   const [draft, setDraft] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [tab, setTab] = useState<Tab>('source');
-  const [size, setSize] = useState<number | undefined>(undefined);
+  const [size, setSize] = useState<number | undefined>(file.size);
 
   // Preview / diff modes are read-only by definition — those views are
   // for inspecting content, not editing it.
@@ -199,31 +222,85 @@ export function FilePreviewBody({
   const tabs = useMemo(() => tabsForFile(file, mode), [file, mode]);
   const unsupportedPreviewFormat = file.contentType === 'document' && !supportsInlineDocumentPreview(file.ext);
   const unsupportedDiffFormat = mode === 'diff' && !supportsInlineDiff(file);
+  // Binary document previews (PDF, spreadsheet) own their own loading
+  // pipeline — we must not pipe them through `readTextFile` (which would
+  // reject them as binary) and the diff tab is intentionally hidden.
+  const isRichDocumentPreview = file.contentType === 'document' && supportsRichDocumentPreview(file.ext);
 
   useEffect(() => {
+    let cancelled = false;
     setTab(pickInitialTab(tabs, file));
+    setSize(file.size);
 
     // Diff-only mode renders entirely from the captured tool payload —
     // no disk read needed, so we can mark the body "ready" immediately.
     if (mode === 'diff') {
       setState({ status: 'ready', content: '', readOnly: enforcedReadOnly });
       setDraft(null);
-      return;
+      return () => {
+        cancelled = true;
+      };
     }
 
     if (unsupportedPreviewFormat) {
       setState({ status: 'ready', content: '', readOnly: enforcedReadOnly });
       setDraft(null);
-      return;
+      void statFile(file.filePath)
+        .then((res) => {
+          if (cancelled || !res.ok) return;
+          setSize(res.size);
+        })
+        .catch(() => {
+          // Ignore stat failures — unsupported preview still renders.
+        });
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    if (isRichDocumentPreview) {
+      // PdfViewer / SheetViewer load bytes themselves through the binary
+      // IPC channel; the body just needs to hand off control. For files
+      // beyond the inline-preview ceiling we keep the existing
+      // "direct open" fallback so users still have a way out.
+      if (typeof file.size === 'number' && file.size > RICH_PREVIEW_MAX_BYTES) {
+        setSize(file.size);
+        setState({ status: 'tooLarge', size: file.size });
+        setDraft(null);
+        return () => {
+          cancelled = true;
+        };
+      }
+      setState({ status: 'loading' });
+      setDraft(null);
+      void statFile(file.filePath)
+        .then((res) => {
+          if (cancelled) return;
+          if (res.ok && typeof res.size === 'number' && res.size > RICH_PREVIEW_MAX_BYTES) {
+            setSize(res.size);
+            setState({ status: 'tooLarge', size: res.size });
+            return;
+          }
+          if (res.ok) setSize(res.size);
+          setState({ status: 'ready', content: '', readOnly: enforcedReadOnly });
+        })
+        .catch(() => {
+          if (cancelled) return;
+          setState({ status: 'ready', content: '', readOnly: enforcedReadOnly });
+        });
+      return () => {
+        cancelled = true;
+      };
     }
 
     if (file.contentType === 'snapshot' || file.contentType === 'video' || file.contentType === 'audio') {
       setState({ status: 'ready', content: '', readOnly: enforcedReadOnly });
       setDraft(null);
-      return;
+      return () => {
+        cancelled = true;
+      };
     }
 
-    let cancelled = false;
     setState({ status: 'loading' });
     readTextFile(file.filePath)
       .then((res) => {
@@ -260,7 +337,7 @@ export function FilePreviewBody({
     return () => {
       cancelled = true;
     };
-  }, [file, enforcedReadOnly, mode, tabs, unsupportedPreviewFormat]);
+  }, [file, enforcedReadOnly, mode, tabs, unsupportedPreviewFormat, isRichDocumentPreview]);
 
   const effectiveReadOnly = state.status === 'ready' ? state.readOnly : true;
   const dirty =
@@ -273,15 +350,15 @@ export function FilePreviewBody({
       const res = await writeTextFile(file.filePath, draft);
       if (!res.ok) throw new Error(res.error ?? 'unknown');
       setState({ status: 'ready', content: draft, size, readOnly: false });
-      toast.success(t('filePreview.toast.saved', '已保存到磁盘'));
+      toast.success(t('filePreview.toast.saved', 'Saved to disk'));
     } catch (err) {
       const code = err instanceof Error ? err.message : String(err);
       const localized =
         code === 'outsideSandbox'
-          ? t('filePreview.errors.outsideSandbox', '路径越界，已拒绝写入')
+          ? t('filePreview.errors.outsideSandbox', 'Path is outside the workspace; write denied')
           : code === 'readOnlyRoot'
-            ? t('filePreview.errors.readOnlyRoot', '该文件位于只读位置（如内置技能），无法修改')
-            : t('filePreview.toast.saveFailed', { defaultValue: '保存失败：{{error}}', error: code });
+            ? t('filePreview.errors.readOnlyRoot', 'This file is in a read-only location (such as a built-in skill) and cannot be edited')
+            : t('filePreview.toast.saveFailed', { defaultValue: 'Save failed: {{error}}', error: code });
       toast.error(localized);
     } finally {
       setSaving(false);
@@ -295,29 +372,55 @@ export function FilePreviewBody({
 
   const handleOpenInFinder = useCallback(() => {
     invokeIpc('shell:showItemInFolder', file.filePath).catch(() => {
-      toast.error(t('filePreview.errors.openInFinderFailed', '无法在 Finder 中显示'));
+      toast.error(t('filePreview.errors.openInFinderFailed', 'Could not reveal in file manager'));
     });
   }, [file, t]);
 
-  const renderUnsupportedFormat = () => (
+  const handleOpenDirectly = useCallback(async () => {
+    try {
+      await confirmAndOpenFile({ filePath: file.filePath, fileName: file.fileName, size, t });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      toast.error(t('filePreview.errors.openFailed', { defaultValue: 'Open failed: {{error}}', error: message }));
+    }
+  }, [file, size, t]);
+
+  const renderUnsupportedFormat = () => {
+    const directOpen = shouldOfferDirectOpenFallback(file.ext, size);
+    return (
     <div className="flex h-full flex-col items-center justify-center gap-4 px-8 text-center">
       <div className="space-y-1.5">
         <p className="text-sm font-medium text-foreground">
-          {t('filePreview.errors.unsupportedFormatTitle', '此文件格式暂不支持内置预览或变更')}
+          {directOpen
+            ? t('filePreview.errors.largeBinaryOpenTitle', 'This file is too large for inline preview')
+            : t('filePreview.errors.unsupportedFormatTitle', 'This file format is not supported for inline preview or diff')}
         </p>
         <p className="max-w-md text-xs leading-relaxed text-muted-foreground">
-          {t(
-            'filePreview.errors.unsupportedFormatHint',
-            '当前仅支持文本/Markdown 等可直接读取的文件进行内置预览与变更对比。请在 Finder 中打开该文件。',
-          )}
+          {directOpen
+            ? t('filePreview.errors.largeBinaryOpenHint', {
+              defaultValue: 'This file is {{size}}. ClawX does not provide an inline preview for it. You can confirm to open it directly in your system default app.',
+              size: formatFileSize(size ?? 0) || '> 2MB',
+            })
+            : t(
+              'filePreview.errors.unsupportedFormatHint',
+              'Only directly readable files such as text and Markdown support inline preview and diff. Please open this file in your file manager.',
+            )}
         </p>
       </div>
-      <Button variant="outline" size="sm" onClick={handleOpenInFinder}>
-        <FolderOpen className="mr-2 h-4 w-4" />
-        {t('filePreview.actions.openInFinder', '在 Finder 中显示')}
-      </Button>
+      <div className="flex flex-wrap items-center justify-center gap-2">
+        {directOpen && (
+          <Button size="sm" onClick={handleOpenDirectly}>
+            {t('filePreview.actions.openDirectly', 'Open directly')}
+          </Button>
+        )}
+        <Button variant="outline" size="sm" onClick={handleOpenInFinder}>
+          <FolderOpen className="mr-2 h-4 w-4" />
+          {t('filePreview.actions.openInFinder', 'Show in file manager')}
+        </Button>
+      </div>
     </div>
   );
+  };
 
   const renderBody = () => {
     if (unsupportedPreviewFormat || unsupportedDiffFormat) {
@@ -331,28 +434,41 @@ export function FilePreviewBody({
       );
     }
     if (state.status === 'tooLarge') {
+      const directOpen = shouldOfferDirectOpenFallback(file.ext, state.size ?? size);
       return (
         <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center text-sm text-muted-foreground">
           <p>
-            {t('filePreview.errors.tooLarge', {
-              defaultValue: '文件过大（{{size}}），已禁用预览',
-              size: formatFileSize(state.size ?? 0) || '> 2MB',
-            })}
+            {directOpen
+              ? t('filePreview.errors.largeBinaryOpenHint', {
+                defaultValue: 'This file is {{size}}. ClawX does not provide an inline preview for it. You can confirm to open it directly in your system default app.',
+                size: formatFileSize(state.size ?? size ?? 0) || '> 2MB',
+              })
+              : t('filePreview.errors.tooLarge', {
+                defaultValue: 'File is too large ({{size}}); preview disabled',
+                size: formatFileSize(state.size ?? 0) || '> 2MB',
+              })}
           </p>
-          <Button variant="outline" size="sm" onClick={handleOpenInFinder}>
-            <FolderOpen className="mr-2 h-4 w-4" />
-            {t('filePreview.actions.openInFinder', '在 Finder 中显示')}
-          </Button>
+          <div className="flex flex-wrap items-center justify-center gap-2">
+            {directOpen && (
+              <Button size="sm" onClick={handleOpenDirectly}>
+                {t('filePreview.actions.openDirectly', 'Open directly')}
+              </Button>
+            )}
+            <Button variant="outline" size="sm" onClick={handleOpenInFinder}>
+              <FolderOpen className="mr-2 h-4 w-4" />
+              {t('filePreview.actions.openInFinder', 'Show in file manager')}
+            </Button>
+          </div>
         </div>
       );
     }
     if (state.status === 'binary') {
       return (
         <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center text-sm text-muted-foreground">
-          <p>{t('filePreview.errors.binary', '二进制文件不支持文本预览')}</p>
+          <p>{t('filePreview.errors.binary', 'Binary files do not support text preview')}</p>
           <Button variant="outline" size="sm" onClick={handleOpenInFinder}>
             <FolderOpen className="mr-2 h-4 w-4" />
-            {t('filePreview.actions.openInFinder', '在 Finder 中显示')}
+            {t('filePreview.actions.openInFinder', 'Show in file manager')}
           </Button>
         </div>
       );
@@ -365,18 +481,18 @@ export function FilePreviewBody({
           </div>
           <div className="space-y-1.5">
             <p className="text-sm font-medium text-foreground">
-              {t('filePreview.errors.outsideSandboxTitle', '此文件位于沙盒外')}
+              {t('filePreview.errors.outsideSandboxTitle', 'Unable to read this file')}
             </p>
             <p className="max-w-md text-xs leading-relaxed text-muted-foreground">
               {t(
                 'filePreview.errors.outsideSandboxHint',
-                '出于安全考虑，ClawX 仅允许预览 ~/.openclaw、应用资源以及内置技能目录中的文件。可在 Finder 中查看。',
+                'ClawX cannot read this path. The file may have been moved, deleted, or may not be accessible to the current account. You can inspect it in your file manager.',
               )}
             </p>
           </div>
           <Button variant="outline" size="sm" onClick={handleOpenInFinder}>
             <FolderOpen className="mr-2 h-4 w-4" />
-            {t('filePreview.actions.openInFinder', '在 Finder 中显示')}
+            {t('filePreview.actions.openInFinder', 'Show in file manager')}
           </Button>
         </div>
       );
@@ -385,14 +501,14 @@ export function FilePreviewBody({
       const errMsg = state.message;
       const hint =
         errMsg === 'notFound'
-          ? t('filePreview.errors.notFound', '文件不存在')
-          : t('filePreview.errors.loadFailed', { defaultValue: '加载失败：{{error}}', error: errMsg });
+          ? t('filePreview.errors.notFound', 'File not found')
+          : t('filePreview.errors.loadFailed', { defaultValue: 'Load failed: {{error}}', error: errMsg });
       return (
         <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center text-sm text-muted-foreground">
           <p>{hint}</p>
           <Button variant="outline" size="sm" onClick={handleOpenInFinder}>
             <FolderOpen className="mr-2 h-4 w-4" />
-            {t('filePreview.actions.openInFinder', '在 Finder 中显示')}
+            {t('filePreview.actions.openInFinder', 'Show in file manager')}
           </Button>
         </div>
       );
@@ -406,9 +522,9 @@ export function FilePreviewBody({
           <TabsList className="m-3 self-start">
             {tabs.map((id) => (
               <TabsTrigger key={id} value={id}>
-                {id === 'source' && t('filePreview.tabs.source', '源码')}
-                {id === 'preview' && t('filePreview.tabs.preview', '预览')}
-                {id === 'diff' && t('filePreview.tabs.changes', '变更')}
+                {id === 'source' && t('filePreview.tabs.source', 'Source')}
+                {id === 'preview' && t('filePreview.tabs.preview', 'Preview')}
+                {id === 'diff' && t('filePreview.tabs.changes', 'Changes')}
               </TabsTrigger>
             ))}
           </TabsList>
@@ -445,11 +561,39 @@ export function FilePreviewBody({
             <TabsContent value="preview" className="m-0 h-full overflow-auto">
               {file.contentType === 'snapshot' ? (
                 <ImageViewer filePath={file.filePath} fileName={file.fileName} />
+              ) : isPdfPreviewExt(file.ext) ? (
+                <Suspense
+                  fallback={
+                    <div className="flex h-full items-center justify-center">
+                      <LoadingSpinner />
+                    </div>
+                  }
+                >
+                  <PdfViewerLazy filePath={file.filePath} fileName={file.fileName} />
+                </Suspense>
+              ) : isSheetPreviewExt(file.ext) ? (
+                <Suspense
+                  fallback={
+                    <div className="flex h-full items-center justify-center">
+                      <LoadingSpinner />
+                    </div>
+                  }
+                >
+                  <SheetViewerLazy filePath={file.filePath} fileName={file.fileName} />
+                </Suspense>
               ) : file.contentType === 'document' ? (
-                <MarkdownPreview source={draft ?? state.content} />
+                isHtmlPreviewExt(file.ext) ? (
+                  <HtmlPreview
+                    source={draft ?? state.content}
+                    filePath={file.filePath}
+                    fileName={file.fileName}
+                  />
+                ) : (
+                  <MarkdownPreview source={draft ?? state.content} />
+                )
               ) : (
                 <div className="p-4 text-sm text-muted-foreground">
-                  {t('filePreview.errors.noPreview', '该文件没有预览')}
+                  {t('filePreview.errors.noPreview', 'No preview available for this file')}
                 </div>
               )}
             </TabsContent>
@@ -471,13 +615,13 @@ export function FilePreviewBody({
                         <p className="max-w-md text-sm text-muted-foreground">
                           {t(
                             'filePreview.diff.unavailable',
-                            '本会话没有抓到这个文件的精确变更基线，无法生成 diff。',
+                            'This session did not capture an exact baseline for this file, so a diff cannot be generated.',
                           )}
                         </p>
                         <p className="max-w-md text-2xs text-muted-foreground/90">
                           {t(
                             'filePreview.diff.unavailableHint',
-                            '可点击顶部「预览」查看当前文件内容；若需精确差异，请在 Git 等工具中对比版本。',
+                            'Use the Preview tab above to view the current file contents. For an exact diff, compare versions in Git or another external tool.',
                           )}
                         </p>
                       </div>
@@ -527,11 +671,11 @@ export function FilePreviewBody({
             <>
               <Button variant="ghost" size="sm" onClick={handleRevert} disabled={!dirty || saving}>
                 <Undo2 className="mr-1 h-3.5 w-3.5" />
-                {t('filePreview.actions.revert', '撤销')}
+                {t('filePreview.actions.revert', 'Revert')}
               </Button>
               <Button size="sm" onClick={handleSave} disabled={!dirty || saving}>
                 <Save className="mr-1 h-3.5 w-3.5" />
-                {saving ? t('filePreview.actions.saving', '保存中...') : t('filePreview.actions.save', '保存')}
+                {saving ? t('filePreview.actions.saving', 'Saving...') : t('filePreview.actions.save', 'Save')}
               </Button>
             </>
           )}

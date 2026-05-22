@@ -14,12 +14,12 @@ describe('TitleBar platform behavior', () => {
     invokeIpcMock.mockResolvedValue(false);
   });
 
-  it('renders macOS drag region', () => {
+  it('does not render a standalone title bar on macOS', () => {
     window.electron.platform = 'darwin';
 
     const { container } = render(<TitleBar />);
 
-    expect(container.querySelector('.drag-region')).toBeInTheDocument();
+    expect(container.firstChild).toBeNull();
     expect(screen.queryByTitle('Minimize')).not.toBeInTheDocument();
     expect(invokeIpcMock).not.toHaveBeenCalled();
   });
@@ -32,6 +32,9 @@ describe('TitleBar platform behavior', () => {
     expect(screen.getByTitle('Minimize')).toBeInTheDocument();
     expect(screen.getByTitle('Maximize')).toBeInTheDocument();
     expect(screen.getByTitle('Close')).toBeInTheDocument();
+    const bar = screen.getByTestId('windows-titlebar');
+    expect(bar).toHaveClass('bg-surface-sidebar');
+    expect(bar).not.toHaveClass('border-b');
 
     await waitFor(() => {
       expect(invokeIpcMock).toHaveBeenCalledWith('window:isMaximized');

@@ -42,11 +42,54 @@ function pruneGatewayEventDedupe(now: number): void {
   }
 }
 
+function stableGatewayEventFingerprint(value: unknown): string {
+  let hash = 2166136261;
+  let length = 0;
+
+  const add = (part: string): void => {
+    length += part.length;
+    for (let i = 0; i < part.length; i += 1) {
+      hash ^= part.charCodeAt(i);
+      hash = Math.imul(hash, 16777619) >>> 0;
+    }
+  };
+
+  const visit = (entry: unknown): void => {
+    if (entry === undefined) {
+      add('u:');
+      return;
+    }
+    if (entry === null || typeof entry !== 'object') {
+      add(`${typeof entry}:${JSON.stringify(entry)};`);
+      return;
+    }
+    if (Array.isArray(entry)) {
+      add('[');
+      for (const item of entry) visit(item);
+      add(']');
+      return;
+    }
+
+    add('{');
+    for (const [key, child] of Object.entries(entry as Record<string, unknown>).sort(([left], [right]) => left.localeCompare(right))) {
+      add(`${JSON.stringify(key)}:`);
+      visit(child);
+    }
+    add('}');
+  };
+
+  visit(value);
+  return `${hash.toString(36)}:${length.toString(36)}`;
+}
+
 function buildGatewayEventDedupeKey(event: Record<string, unknown>): string | null {
   const runId = event.runId != null ? String(event.runId) : '';
   const sessionKey = event.sessionKey != null ? String(event.sessionKey) : '';
   const seq = event.seq != null ? String(event.seq) : '';
   const state = event.state != null ? String(event.state) : '';
+  if (state === 'delta' && !seq) {
+    return ['delta-nosq', runId, sessionKey, stableGatewayEventFingerprint(event.message ?? event)].join('|');
+  }
   if (runId || sessionKey || seq || state) {
     return [runId, sessionKey, seq, state].join('|');
   }
@@ -110,6 +153,21 @@ function maybeLoadHistory(
   void state.loadHistory(true);
 }
 
+/** Bump sidebar ordering when any session receives gateway traffic (e.g. Feishu DM). */
+function touchSessionActivity(sessionKey: string | null | undefined, activityMs = Date.now()): void {
+  if (!sessionKey) return;
+  import('./chat')
+    .then(({ useChatStore }) => {
+      useChatStore.setState((state) => ({
+        sessionLastActivity: {
+          ...state.sessionLastActivity,
+          [sessionKey]: Math.max(state.sessionLastActivity[sessionKey] ?? 0, activityMs),
+        },
+      }));
+    })
+    .catch(() => {});
+}
+
 function handleGatewayNotification(notification: { method?: string; params?: Record<string, unknown> } | undefined): void {
   const payload = notification;
   if (!payload || payload.method !== 'agent' || !payload.params || typeof payload.params !== 'object') {
@@ -142,6 +200,10 @@ function handleGatewayNotification(notification: { method?: string; params?: Rec
 
   const runId = p.runId ?? data.runId;
   const sessionKey = p.sessionKey ?? data.sessionKey;
+  const resolvedSessionKeyForActivity = sessionKey != null ? String(sessionKey) : null;
+  if (resolvedSessionKeyForActivity) {
+    touchSessionActivity(resolvedSessionKeyForActivity);
+  }
   if (phase === 'started' && runId != null && sessionKey != null) {
     import('./chat')
       .then(({ useChatStore }) => {
@@ -163,9 +225,19 @@ function handleGatewayNotification(notification: { method?: string; params?: Rec
       .catch(() => {});
   }
 
-  if (phase === 'completed' || phase === 'done' || phase === 'finished' || phase === 'end') {
+  // `phase: 'end'` fires per streaming message (including intermediate tool
+  // rounds), NOT per-run, so it must not clear lifecycle state — otherwise the
+  // first `[thinking, toolCall]` round tears down `sending` / `activeRunId` /
+  // `pendingFinal` and the Thinking… indicator vanishes mid-chain. Only
+  // `completed` / `done` / `finished` are actual run terminators. We still
+  // honour `'end'` as a hint to refresh history opportunistically.
+  const isPerMessageEnd = phase === 'end';
+  const isRunCompletion = phase === 'completed' || phase === 'done' || phase === 'finished';
+  const isRunFailure = phase === 'error' || phase === 'failed' || phase === 'aborted' || phase === 'cancelled';
+  const isRunTerminal = isRunCompletion || isRunFailure;
+  if (isPerMessageEnd || isRunTerminal) {
     import('./chat')
-      .then(({ useChatStore }) => {
+      .then(({ useChatStore, syncCachedSessionRunIdle }) => {
         const state = useChatStore.getState();
         const resolvedSessionKey = sessionKey != null ? String(sessionKey) : null;
         const shouldRefreshSessions = resolvedSessionKey != null && (
@@ -180,16 +252,37 @@ function handleGatewayNotification(notification: { method?: string; params?: Rec
         const matchesActiveRun = runId != null && state.activeRunId != null && String(runId) === state.activeRunId;
 
         if (matchesCurrentSession || matchesActiveRun) {
-          maybeLoadHistory(state);
+          maybeLoadHistory(state, isRunTerminal);
         }
-        if ((matchesCurrentSession || matchesActiveRun) && state.sending) {
+        if (isRunTerminal && resolvedSessionKey && !matchesCurrentSession) {
+          syncCachedSessionRunIdle(resolvedSessionKey);
+        }
+
+        if (isRunFailure && (matchesCurrentSession || matchesActiveRun)) {
+          const errorMessage = String(
+            data.errorMessage ?? p.errorMessage ?? data.error ?? p.error ?? '',
+          ).trim();
+          if (errorMessage) {
+            state.handleChatEvent({
+              state: 'error',
+              errorMessage,
+              runId,
+              sessionKey: resolvedSessionKey ?? undefined,
+            });
+          }
+        }
+
+        if (isRunTerminal && (matchesCurrentSession || matchesActiveRun) && state.sending) {
           useChatStore.setState({
             sending: false,
             activeRunId: null,
             pendingFinal: false,
             lastUserMessageAt: null,
-            error: null,
+            error: isRunFailure ? state.error : null,
           });
+          if (resolvedSessionKey) {
+            syncCachedSessionRunIdle(resolvedSessionKey);
+          }
         }
       })
       .catch(() => {});

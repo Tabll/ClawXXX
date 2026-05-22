@@ -28,12 +28,42 @@ let _errorRecoveryTimer: ReturnType<typeof setTimeout> | null = null;
 // the sending state after abortRun clears it.
 let _lastAbortedRunId: string | null = null;
 const _blockedRunEvents = new Map<string, Record<string, unknown>[]>();
+const OPTIMISTIC_USER_MESSAGE_TTL_MS = 30 * 60 * 1000;
+/** Max skew between the renderer optimistic send time and Gateway transcript timestamps. */
+const OPTIMISTIC_USER_TIMESTAMP_MATCH_MS = 120_000;
+/** Grace period before surfacing mid-run Gateway errors that often self-recover. */
+const ERROR_RECOVERY_DELAY_MS = 12_000;
+
+type PendingOptimisticUserMessage = {
+  message: RawMessage;
+  timestampMs: number;
+  createdAtMs: number;
+};
+
+const _pendingOptimisticUserMessages = new Map<string, PendingOptimisticUserMessage[]>();
 
 function clearErrorRecoveryTimer(): void {
   if (_errorRecoveryTimer) {
     clearTimeout(_errorRecoveryTimer);
     _errorRecoveryTimer = null;
   }
+}
+
+function isRecoverableRuntimeError(errorMessage: string): boolean {
+  const normalized = errorMessage.trim().toLowerCase();
+  if (!normalized) return false;
+  return /\bterminated\b/.test(normalized)
+    || /\baborted\b/.test(normalized)
+    || normalized.includes('econnreset')
+    || normalized.includes('connection reset');
+}
+
+function scheduleRecoverableRuntimeError(commit: () => void): void {
+  clearErrorRecoveryTimer();
+  _errorRecoveryTimer = setTimeout(() => {
+    _errorRecoveryTimer = null;
+    commit();
+  }, ERROR_RECOVERY_DELAY_MS);
 }
 
 function clearHistoryPoll(): void {
@@ -137,6 +167,7 @@ function normalizeStreamingMessage(message: unknown): unknown {
 /**
  * Strip Gateway-injected metadata that does NOT exist on the renderer's
  * optimistic user message but is echoed back when the Gateway persists it:
+ *   - leading sender metadata `Sender (untrusted metadata): ...`
  *   - leading timestamp `[Wed 2026-04-22 10:30 GMT+8] `
  *   - `[message_id: uuid]` tags sprinkled throughout the text
  *   - `[media attached: path (mime) | path]` references appended when the
@@ -147,14 +178,27 @@ function normalizeStreamingMessage(message: unknown): unknown {
  * is important: the user bubble renders the cleaned text, so the comparison
  * used to dedupe optimistic vs server echoes must operate on the same
  * cleaned form — otherwise the same visible message renders twice.
+ *
+ * Order matters: the `[media attached: ...]` lines are commonly emitted
+ * BETWEEN the Sender block and the `[Mon ... GMT+8]` timestamp prefix.
+ * If we strip the timestamp before the media-attached lines, the timestamp
+ * regex (`^\s*\[(?:Mon|...)]`) can never match because the leading `[` is
+ * `[media attached:` instead — leaving the timestamp in the normalized
+ * comparison text and breaking optimistic-vs-echo dedupe.
  */
 function stripGatewayUserMetadata(text: string): string {
   return text
-    .replace(/^\s*\[(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)\s+\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}\s+[^\]]+\]\s*/i, '')
     .replace(/\s*\[media attached:[^\]]*\]/g, '')
     .replace(/\s*\[message_id:\s*[^\]]+\]/g, '')
+    .replace(/^Sender\s*\([^)]*\)\s*:\s*```[a-z]*\n[\s\S]*?```\s*/i, '')
+    .replace(/^Sender\s*\([^)]*\)\s*:\s*\{[\s\S]*?\}\s*/i, '')
+    .replace(/^Sender\s*\([^)]*\)\s*:\s*[^\n]*(?:\n\s*)*/i, '')
+    .replace(/^Sender\s*:\s*```[a-z]*\n[\s\S]*?```\s*/i, '')
+    .replace(/^Sender\s*:\s*\{[\s\S]*?\}\s*/i, '')
+    .replace(/^Sender\s*:\s*[^\n]*(?:\n\s*)*/i, '')
     .replace(/^Conversation info\s*\([^)]*\):\s*```[a-z]*\n[\s\S]*?```\s*/i, '')
-    .replace(/^Conversation info\s*\([^)]*\):\s*\{[\s\S]*?\}\s*/i, '');
+    .replace(/^Conversation info\s*\([^)]*\):\s*\{[\s\S]*?\}\s*/i, '')
+    .replace(/^\s*\[(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)\s+\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}\s+[^\]]+\]\s*/i, '');
 }
 
 function normalizeComparableUserText(content: unknown): string {
@@ -189,13 +233,67 @@ function matchesOptimisticUserMessage(
   const hasOptimisticTimestamp = Number.isFinite(optimisticTimestampMs) && optimisticTimestampMs > 0;
   const hasCandidateTimestamp = candidate.timestamp != null;
   const timestampMatches = hasOptimisticTimestamp && hasCandidateTimestamp
-    ? Math.abs(toMs(candidate.timestamp as number) - optimisticTimestampMs) < 5000
+    ? Math.abs(toMs(candidate.timestamp as number) - optimisticTimestampMs) < OPTIMISTIC_USER_TIMESTAMP_MATCH_MS
     : false;
 
   if (sameText && sameAttachments) return true;
   if (sameText && (!optimisticAttachments || !candidateAttachments) && (timestampMatches || !hasCandidateTimestamp)) return true;
   if (sameAttachments && (!optimisticText || !candidateText) && (timestampMatches || !hasCandidateTimestamp)) return true;
   return false;
+}
+
+function rememberPendingOptimisticUserMessage(sessionKey: string, message: RawMessage, timestampMs: number): void {
+  const now = Date.now();
+  const existing = (_pendingOptimisticUserMessages.get(sessionKey) || [])
+    .filter((entry) => now - entry.createdAtMs <= OPTIMISTIC_USER_MESSAGE_TTL_MS);
+  existing.push({ message, timestampMs, createdAtMs: now });
+  _pendingOptimisticUserMessages.set(sessionKey, existing);
+}
+
+function clearPendingOptimisticUserMessages(sessionKey: string): void {
+  _pendingOptimisticUserMessages.delete(sessionKey);
+}
+
+function mergePendingOptimisticUserMessages(sessionKey: string, loadedMessages: RawMessage[]): RawMessage[] {
+  const pending = _pendingOptimisticUserMessages.get(sessionKey);
+  if (!pending || pending.length === 0) return loadedMessages;
+
+  const now = Date.now();
+  let merged = loadedMessages;
+  const stillPending: PendingOptimisticUserMessage[] = [];
+
+  for (const entry of pending) {
+    if (now - entry.createdAtMs > OPTIMISTIC_USER_MESSAGE_TTL_MS) {
+      continue;
+    }
+
+    const hasServerEcho = hasOptimisticServerEcho(loadedMessages, entry.message, entry.timestampMs);
+    if (hasServerEcho) {
+      continue;
+    }
+
+    const alreadyRendered = merged.some((message) =>
+      message.id === entry.message.id || matchesOptimisticUserMessage(message, entry.message, entry.timestampMs),
+    );
+    if (!alreadyRendered) {
+      const insertAt = merged.findIndex((message) =>
+        typeof message.timestamp === 'number' && toMs(message.timestamp) > entry.timestampMs,
+      );
+      merged = insertAt === -1
+        ? [...merged, entry.message]
+        : [...merged.slice(0, insertAt), entry.message, ...merged.slice(insertAt)];
+    }
+
+    stillPending.push(entry);
+  }
+
+  if (stillPending.length > 0) {
+    _pendingOptimisticUserMessages.set(sessionKey, stillPending);
+  } else {
+    _pendingOptimisticUserMessages.delete(sessionKey);
+  }
+
+  return merged;
 }
 
 function snapshotStreamingAssistantMessage(
@@ -221,8 +319,60 @@ function snapshotStreamingAssistantMessage(
 
 function getLatestOptimisticUserMessage(messages: RawMessage[], userTimestampMs: number): RawMessage | undefined {
   return [...messages].reverse().find(
-    (message) => message.role === 'user' && (!message.timestamp || Math.abs(toMs(message.timestamp) - userTimestampMs) < 5000),
+    (message) => message.role === 'user'
+      && (!message.timestamp || Math.abs(toMs(message.timestamp) - userTimestampMs) < OPTIMISTIC_USER_TIMESTAMP_MATCH_MS),
   );
+}
+
+function hasOptimisticServerEcho(
+  loadedMessages: RawMessage[],
+  optimistic: RawMessage,
+  optimisticTimestampMs: number,
+): boolean {
+  if (loadedMessages.some((message) =>
+    matchesOptimisticUserMessage(message, optimistic, optimisticTimestampMs),
+  )) {
+    return true;
+  }
+
+  const optimisticText = normalizeComparableUserText(optimistic.content);
+  if (!optimisticText) return false;
+
+  const matchingUsers = loadedMessages.filter(
+    (message) => message.role === 'user'
+      && normalizeComparableUserText(message.content) === optimisticText,
+  );
+  if (matchingUsers.length !== 1) return false;
+
+  const candidate = matchingUsers[0]!;
+  if (candidate.timestamp == null) return true;
+
+  return Math.abs(toMs(candidate.timestamp as number) - optimisticTimestampMs) < OPTIMISTIC_USER_TIMESTAMP_MATCH_MS;
+}
+
+function dropRedundantOptimisticUserMessages(sessionKey: string, messages: RawMessage[]): RawMessage[] {
+  const pending = _pendingOptimisticUserMessages.get(sessionKey);
+  if (!pending?.length) return messages;
+
+  const pendingIds = new Set(
+    pending
+      .map((entry) => entry.message.id)
+      .filter((id): id is string => typeof id === 'string' && id.length > 0),
+  );
+  if (pendingIds.size === 0) return messages;
+
+  return messages.filter((message) => {
+    if (message.role !== 'user' || !message.id || !pendingIds.has(message.id)) {
+      return true;
+    }
+    const entry = pending.find((candidate) => candidate.message.id === message.id);
+    if (!entry) return true;
+    return !hasOptimisticServerEcho(
+      messages.filter((candidate) => candidate !== message),
+      entry.message,
+      entry.timestampMs,
+    );
+  });
 }
 
 function upsertImageCacheEntry(filePath: string, file: Omit<AttachedFileMeta, 'filePath'>): void {
@@ -307,6 +457,8 @@ function mimeFromExtension(filePath: string): string {
     'pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
     'txt': 'text/plain',
     'csv': 'text/csv',
+    'html': 'text/html',
+    'htm': 'text/html',
     'md': 'text/markdown',
     'rtf': 'application/rtf',
     'epub': 'application/epub+zip',
@@ -334,27 +486,78 @@ function mimeFromExtension(filePath: string): string {
   return map[ext] || 'application/octet-stream';
 }
 
+const DIRECTORY_MIME_TYPE = 'application/x-directory';
+
+function trimPathTerminators(filePath: string): string {
+  return filePath.replace(/[，。；;,.!?]+$/u, '');
+}
+
 /**
  * Extract raw file paths from message text.
  * Detects absolute paths (Unix: / or ~/, Windows: C:\ etc.) ending with common file extensions.
  * Handles both image and non-image files, consistent with channel push message behavior.
+ *
+ * Also recognises the `MEDIA:` / `media:` prefix the OpenClaw runtime
+ * emits for produced artifacts (e.g.
+ * `MEDIA:/Users/me/.openclaw/media/outbound/report.xlsx`) — without this
+ * the leading colon trips the URL guard below and the file goes unsurfaced.
  */
 function extractRawFilePaths(text: string): Array<{ filePath: string; mimeType: string }> {
   const refs: Array<{ filePath: string; mimeType: string }> = [];
   const seen = new Set<string>();
-  const exts = 'png|jpe?g|gif|webp|bmp|avif|svg|pdf|docx?|xlsx?|pptx?|txt|csv|md|rtf|epub|zip|tar|gz|rar|7z|mp3|wav|ogg|aac|flac|m4a|mp4|mov|avi|mkv|webm|m4v';
+  const exts = 'png|jpe?g|gif|webp|bmp|avif|svg|pdf|docx?|xlsx?|pptx?|html?|txt|csv|md|rtf|epub|zip|tar|gz|rar|7z|mp3|wav|ogg|aac|flac|m4a|mp4|mov|avi|mkv|webm|m4v';
+  // Tagged media references (MEDIA:/path, media:~/path, ...).  The agent
+  // runtime uses this prefix as an explicit "this is an artifact" marker,
+  // so we want them recognised even though the leading colon would
+  // normally look like a URL scheme.  After matching we punch the entire
+  // `MEDIA:<path>` span out of the working text so the generic unix
+  // regex below doesn't double-count the bare `/path` suffix.
+  // The character class deliberately allows ASCII spaces inside the path so
+  // that macOS' default screenshot filename ("截屏 2026-05-06 17.46.51.png")
+  // and other space-containing paths the agent emits with the explicit
+  // `MEDIA:` marker still resolve. Newline and quote characters remain
+  // path terminators so we don't accidentally swallow trailing prose.
+  // The non-greedy `*?` anchored to `\.<ext>` keeps the match minimal so
+  // multiple `MEDIA:` markers in one paragraph still match independently.
+  const taggedRegex = new RegExp(`(?:^|[\\s(\\[{>])(?:MEDIA|media):((?:\\/|~\\/)[^\\n"'()\\[\\],<>` + '`' + `]*?\\.(?:${exts}))(?=$|[\\s\\n"'()\\[\\],<>` + '`' + `]|[，。；;,.!?])`, 'g');
+  let workingText = text;
+  let taggedMatch: RegExpExecArray | null;
+  while ((taggedMatch = taggedRegex.exec(text)) !== null) {
+    const p = taggedMatch[1];
+    if (p && !seen.has(p)) {
+      seen.add(p);
+      refs.push({ filePath: p, mimeType: mimeFromExtension(p) });
+    }
+    // Mask the matched span so subsequent regexes can't re-discover the
+    // same path (e.g. `/two.xlsx` from `MEDIA:~/two.xlsx`).
+    const start = taggedMatch.index;
+    const end = start + taggedMatch[0].length;
+    workingText = workingText.slice(0, start) + ' '.repeat(end - start) + workingText.slice(end);
+  }
   // Unix absolute paths (/... or ~/...) — lookbehind rejects mid-token slashes
   // (e.g. "path/to/file.mp4", "https://example.com/file.mp4")
-  const unixRegex = new RegExp(`(?<![\\w./:])((?:\\/|~\\/)[^\\s\\n"'()\\[\\],<>]*?\\.(?:${exts}))`, 'gi');
+  const unixRegex = new RegExp(`(?<![\\w./:])((?:\\/|~\\/)[^\\s\\n"'()\`\\[\\],<>]*?\\.(?:${exts}))`, 'gi');
   // Windows absolute paths (C:\... D:\...) — lookbehind rejects drive letter glued to a word
-  const winRegex = new RegExp(`(?<![\\w])([A-Za-z]:\\\\[^\\s\\n"'()\\[\\],<>]*?\\.(?:${exts}))`, 'gi');
-  for (const regex of [unixRegex, winRegex]) {
+  const winRegex = new RegExp(`(?<![\\w])([A-Za-z]:\\\\[^\\s\\n"'()\`\\[\\],<>]*?\\.(?:${exts}))`, 'gi');
+  // OpenClaw skill directories do not have file extensions, but they are
+  // user-facing artifacts that should render as clickable folder cards.
+  const skillPathBoundary = '(?=$|\\s|[\\x5b\\x5d"\'`(),<>，。；;,.!?])';
+  const skillPathPart = '[^\\\\/\\s\\n"\'`()\\x5b\\x5d,<>]+';
+  const skillPathTail = '[^\\s\\n"\'`()\\x5b\\x5d,<>]*?';
+  const skillDirRegex = new RegExp(
+    `(?<![\\w./:])((?:~[\\\\/]\\.openclaw[\\\\/]skills[\\\\/]${skillPathPart})|(?:(?:\\/|[A-Za-z]:\\\\)${skillPathTail}[\\\\/]\\.openclaw[\\\\/]skills[\\\\/]${skillPathPart}))${skillPathBoundary}`,
+    'gi',
+  );
+  for (const regex of [unixRegex, winRegex, skillDirRegex]) {
     let match;
-    while ((match = regex.exec(text)) !== null) {
-      const p = match[1];
+    while ((match = regex.exec(workingText)) !== null) {
+      const p = trimPathTerminators(match[1]);
       if (p && !seen.has(p)) {
         seen.add(p);
-        refs.push({ filePath: p, mimeType: mimeFromExtension(p) });
+        refs.push({
+          filePath: p,
+          mimeType: regex === skillDirRegex ? DIRECTORY_MIME_TYPE : mimeFromExtension(p),
+        });
       }
     }
   }
@@ -400,6 +603,26 @@ function extractImagesAsAttachedFiles(content: unknown): AttachedFileMeta[] {
           mimeType,
           fileSize: 0,
           preview: `data:${mimeType};base64,${block.data}`,
+        });
+      }
+      // Path 3: Flat URL form from Gateway-injected assistant-media messages.
+      // Shape: `{ type:'image', url:'/api/chat/media/outgoing/<sessionKey>/<id>/full',
+      //          mimeType, width, height, alt, openUrl }`. The URL is relative
+      // to the Gateway HTTP server which the renderer cannot reach directly
+      // (CORS / env drift). We surface it as an `_attachedFiles` entry whose
+      // preview is filled in later by `loadMissingPreviews` -> Main proxy.
+      else if (block.url) {
+        const mimeType = block.mimeType || 'image/jpeg';
+        const fileName = typeof block.alt === 'string' && block.alt
+          ? block.alt
+          : 'image';
+        files.push({
+          fileName,
+          mimeType,
+          fileSize: 0,
+          preview: null,
+          gatewayUrl: block.url,
+          source: 'gateway-media',
         });
       }
     }
@@ -524,8 +747,14 @@ function enrichWithToolResultFiles(messages: RawMessage[]): RawMessage[] {
       // Resolve file path from the matching tool call
       const matchedPath = msg.toolCallId ? toolCallPaths.get(msg.toolCallId) : undefined;
 
-      // 1. Image/file content blocks in the structured content array
-      const imageFiles = extractImagesAsAttachedFiles(msg.content);
+      // 1. Image/file content blocks in the structured content array.
+      //    Images embedded inside a tool result are the model's vision data
+      //    (e.g. `read /tmp/foo.png` re-encoded as JPEG so the model can
+      //    "see" the file) — they are NOT user-facing artifacts. The agent
+      //    surfaces user-facing images through `MEDIA:/path` text + the
+      //    Gateway's `assistant-media` injection.
+      const imageFiles = extractImagesAsAttachedFiles(msg.content)
+        .filter(file => !file.mimeType.startsWith('image/'));
       if (matchedPath) {
         for (const f of imageFiles) {
           if (!f.filePath) {
@@ -544,11 +773,14 @@ function enrichWithToolResultFiles(messages: RawMessage[]): RawMessage[] {
         for (const ref of mediaRefs) {
           pending.push(makeAttachedFile(ref, 'tool-result'));
         }
-        // 3. Raw file paths in tool result text (documents, audio, video, etc.)
+        // 3. Raw NON-image file paths in tool result text (documents,
+        //    audio, video, ...). Image paths from intermediate tool stdout
+        //    (`ls -la *.png`, `sips ... && ls`, `file /tmp/x.png`, etc.)
+        //    are deliberately ignored — see comment on Path 1.
         for (const ref of extractRawFilePaths(text)) {
-          if (!mediaRefPaths.has(ref.filePath)) {
-            pending.push(makeAttachedFile(ref, 'tool-result'));
-          }
+          if (mediaRefPaths.has(ref.filePath)) continue;
+          if (ref.mimeType.startsWith('image/')) continue;
+          pending.push(makeAttachedFile(ref, 'tool-result'));
         }
       }
 
@@ -581,10 +813,35 @@ function enrichWithToolResultFiles(messages: RawMessage[]): RawMessage[] {
  * Uses local cache for previews when available; missing previews are loaded async.
  */
 function enrichWithCachedImages(messages: RawMessage[]): RawMessage[] {
+  // Pre-compute, per index, whether the *next* assistant message is a
+  // Gateway-injected `assistant-media` bubble (i.e. has at least one
+  // `image` content block carrying a flat URL). When that bubble exists,
+  // the canonical user-facing rendering of the artifact is the bubble
+  // itself — anything the agent emitted via `MEDIA:/path` in its prior
+  // text turn would just duplicate the same image, so image-typed raw
+  // refs on that prior message are dropped here.
+  const nextHasGatewayMediaBubble = messages.map((_, idx) => {
+    const next = messages[idx + 1];
+    if (!next || next.role !== 'assistant') return false;
+    return extractImagesAsAttachedFiles(next.content).some(f => f.gatewayUrl);
+  });
+
   return messages.map((msg, idx) => {
-    // Only process user and assistant messages; skip if already enriched
-    if ((msg.role !== 'user' && msg.role !== 'assistant') || msg._attachedFiles) return msg;
+    // Only process user and assistant messages. Messages may already carry
+    // attachments from tool-result enrichment; still merge in raw paths from
+    // the visible assistant text so `/path/to/report.xlsx` becomes a card.
+    if (msg.role !== 'user' && msg.role !== 'assistant') return msg;
     const text = getMessageText(msg.content);
+
+    // Path 0: Gateway-injected outgoing media — `image` content blocks with
+    // a flat `url` field (e.g. `/api/chat/media/outgoing/<sessionKey>/<id>/full`).
+    // The renderer cannot fetch the URL directly, so we surface it as an
+    // `_attachedFiles` entry whose preview is filled in later by
+    // `loadMissingPreviews` -> Main `media:getThumbnails` (which dereferences
+    // the URL to the original file in `~/.openclaw/media/outgoing/`).
+    const gatewayMediaFiles: AttachedFileMeta[] = msg.role === 'assistant'
+      ? extractImagesAsAttachedFiles(msg.content).filter(file => file.gatewayUrl)
+      : [];
 
     // Path 1: [media attached: path (mime) | path] — guaranteed format from attachment button
     const mediaRefs = extractMediaRefs(text);
@@ -619,16 +876,34 @@ function enrichWithCachedImages(messages: RawMessage[]): RawMessage[] {
       }
     }
 
-    const allRefs = [...mediaRefs, ...rawRefs];
-    if (allRefs.length === 0) return msg;
+    // Dedup vs Gateway-injected bubble: when the very next assistant
+    // message is an `assistant-media` bubble, drop image-typed raw refs
+    // on *this* message — the bubble already covers the artifact.
+    if (msg.role === 'assistant' && nextHasGatewayMediaBubble[idx]) {
+      rawRefs = rawRefs.filter(r => !r.mimeType.startsWith('image/'));
+    }
 
-    const files: AttachedFileMeta[] = allRefs.map(ref => {
+    const allRefs = [...mediaRefs, ...rawRefs];
+    if (allRefs.length === 0 && gatewayMediaFiles.length === 0) return msg;
+
+    const existingFiles = msg._attachedFiles || [];
+    const existingPaths = new Set(existingFiles.map(file => file.filePath).filter(Boolean));
+    const existingGatewayUrls = new Set(
+      existingFiles.map(file => file.gatewayUrl).filter(Boolean) as string[],
+    );
+    const files: AttachedFileMeta[] = allRefs
+      .filter(ref => !existingPaths.has(ref.filePath))
+      .map(ref => {
       const cached = _imageCache.get(ref.filePath);
       if (cached) return { ...cached, filePath: ref.filePath, source: 'message-ref' };
       const fileName = ref.filePath.split(/[\\/]/).pop() || 'file';
       return { fileName, mimeType: ref.mimeType, fileSize: 0, preview: null, filePath: ref.filePath, source: 'message-ref' };
     });
-    return { ...msg, _attachedFiles: files };
+    const dedupedGatewayMedia = gatewayMediaFiles.filter(
+      file => file.gatewayUrl && !existingGatewayUrls.has(file.gatewayUrl),
+    );
+    if (files.length === 0 && dedupedGatewayMedia.length === 0) return msg;
+    return { ...msg, _attachedFiles: [...existingFiles, ...files, ...dedupedGatewayMedia] };
   });
 }
 
@@ -638,24 +913,34 @@ function enrichWithCachedImages(messages: RawMessage[]): RawMessage[] {
  * Handles both [media attached: ...] patterns and raw filePath entries.
  */
 async function loadMissingPreviews(messages: RawMessage[]): Promise<boolean> {
-  // Collect all image paths that need previews
-  const needPreview: Array<{ filePath: string; mimeType: string }> = [];
-  const seenPaths = new Set<string>();
+  // Collect all image refs that need previews. The IPC handler accepts:
+  //   - { filePath, mimeType }   — local on-disk files
+  //   - { gatewayUrl, mimeType } — Gateway-injected outgoing media; the
+  //                                handler resolves the URL to a local file
+  //                                via `~/.openclaw/media/outgoing/records/`.
+  // We use `filePath || gatewayUrl` as the dedupe / lookup key on the way
+  // back; a file always carries at most one of the two.
+  type PreviewRef = { filePath?: string; gatewayUrl?: string; mimeType: string };
+  const needPreview: PreviewRef[] = [];
+  const seenKeys = new Set<string>();
 
   for (const msg of messages) {
     if (!msg._attachedFiles) continue;
 
-    // Path 1: files with explicit filePath field (raw path detection or enriched refs)
+    // Path 1: files with explicit filePath OR gatewayUrl
     for (const file of msg._attachedFiles) {
-      const fp = file.filePath;
-      if (!fp || seenPaths.has(fp)) continue;
+      const key = file.filePath || file.gatewayUrl;
+      if (!key || seenKeys.has(key)) continue;
       // Images: need preview. Non-images: need file size (for FileCard display).
       const needsLoad = file.mimeType.startsWith('image/')
         ? !file.preview
         : file.fileSize === 0;
-      if (needsLoad) {
-        seenPaths.add(fp);
-        needPreview.push({ filePath: fp, mimeType: file.mimeType });
+      if (!needsLoad) continue;
+      seenKeys.add(key);
+      if (file.filePath) {
+        needPreview.push({ filePath: file.filePath, mimeType: file.mimeType });
+      } else if (file.gatewayUrl) {
+        needPreview.push({ gatewayUrl: file.gatewayUrl, mimeType: file.mimeType });
       }
     }
 
@@ -666,11 +951,11 @@ async function loadMissingPreviews(messages: RawMessage[]): Promise<boolean> {
       for (let i = 0; i < refs.length; i++) {
         const file = msg._attachedFiles[i];
         const ref = refs[i];
-        if (!file || !ref || seenPaths.has(ref.filePath)) continue;
+        if (!file || !ref || seenKeys.has(ref.filePath)) continue;
         const needsLoad = ref.mimeType.startsWith('image/') ? !file.preview : file.fileSize === 0;
         if (needsLoad) {
-          seenPaths.add(ref.filePath);
-          needPreview.push(ref);
+          seenKeys.add(ref.filePath);
+          needPreview.push({ filePath: ref.filePath, mimeType: ref.mimeType });
         }
       }
     }
@@ -688,15 +973,20 @@ async function loadMissingPreviews(messages: RawMessage[]): Promise<boolean> {
     for (const msg of messages) {
       if (!msg._attachedFiles) continue;
 
-      // Update files that have filePath
+      // Update files that have filePath OR gatewayUrl
       for (const file of msg._attachedFiles) {
-        const fp = file.filePath;
-        if (!fp) continue;
-        const thumb = thumbnails[fp];
+        const key = file.filePath || file.gatewayUrl;
+        if (!key) continue;
+        const thumb = thumbnails[key];
         if (thumb && (thumb.preview || thumb.fileSize)) {
           if (thumb.preview) file.preview = thumb.preview;
           if (thumb.fileSize) file.fileSize = thumb.fileSize;
-          _imageCache.set(fp, { ...file });
+          // Only persist local-path entries to the localStorage cache.
+          // Gateway outgoing URLs are tied to a specific session/attachment
+          // id and can be stale across runs, so caching is harmful.
+          if (file.filePath) {
+            _imageCache.set(file.filePath, { ...file });
+          }
           updated = true;
         }
       }
@@ -794,6 +1084,7 @@ function isInternalMessage(msg: { role?: unknown; content?: unknown }): boolean 
   if (msg.role === 'assistant') {
     if (/^(HEARTBEAT_OK|NO_REPLY)\s*$/.test(text)) return true;
   }
+  if (msg.role === 'user' && /^\[OpenClaw heartbeat poll\]\s*$/i.test(text.trim())) return true;
   // Runtime system injections: these arrive as user or assistant-role messages
   // but are internal plumbing (exec results, async-command notices, time pings, etc.)
   if ((msg.role === 'user' || msg.role === 'assistant') && isRuntimeSystemInjection(text)) return true;
@@ -1011,6 +1302,16 @@ function collectToolUpdates(message: unknown, eventState: string): ToolStatus[] 
   return updates;
 }
 
+/**
+ * True when an assistant message carries user-visible final output (text or
+ * image). NOTE: `thinking` blocks are intentionally excluded — they are the
+ * model's internal monologue and frequently precede tool calls in models like
+ * MiniMax-M2.7 and gpt-5.5. Treating thinking as "final content" causes the
+ * history-poll closer in applyLoadedMessages and the runtime final handler to
+ * misclassify intermediate `[thinking, toolCall]` turns as completed replies,
+ * which prematurely tears down the `sending` / `activeRunId` / `pendingFinal`
+ * lifecycle flags and makes the Thinking… indicator vanish mid-tool-chain.
+ */
 function hasNonToolAssistantContent(message: RawMessage | undefined): boolean {
   if (!message) return false;
   if (typeof message.content === 'string' && message.content.trim()) return true;
@@ -1019,7 +1320,6 @@ function hasNonToolAssistantContent(message: RawMessage | undefined): boolean {
   if (Array.isArray(content)) {
     for (const block of content as ContentBlock[]) {
       if (block.type === 'text' && block.text && block.text.trim()) return true;
-      if (block.type === 'thinking' && block.thinking && block.thinking.trim()) return true;
       if (block.type === 'image') return true;
     }
   }
@@ -1030,16 +1330,41 @@ function hasNonToolAssistantContent(message: RawMessage | undefined): boolean {
   return false;
 }
 
+/**
+ * True when an assistant message is still waiting on a tool result, i.e. it
+ * represents an intermediate tool-use turn rather than a finished reply.
+ * Detected via:
+ *   - explicit stop_reason = "tool_use" / "toolUse"
+ *   - any tool_use / toolCall block in `content`
+ *   - OpenAI-format `tool_calls` array
+ * Used by applyLoadedMessages and the runtime `final` handler to keep the
+ * `sending` / `activeRunId` / `pendingFinal` flags armed across tool rounds.
+ */
+function hasPendingToolUse(message: RawMessage | undefined): boolean {
+  if (!message) return false;
+  const reason = getMessageStopReason(message);
+  if (reason === 'tool_use' || reason === 'tooluse') return true;
+
+  const content = message.content;
+  if (Array.isArray(content)) {
+    for (const block of content as ContentBlock[]) {
+      if (block.type === 'tool_use' || block.type === 'toolCall') return true;
+    }
+  }
+
+  const msg = message as unknown as Record<string, unknown>;
+  const toolCalls = msg.tool_calls ?? msg.toolCalls;
+  if (Array.isArray(toolCalls) && toolCalls.length > 0) return true;
+
+  return false;
+}
+
 function setHistoryPollTimer(timer: ReturnType<typeof setTimeout> | null): void {
   _historyPollTimer = timer;
 }
 
 function hasErrorRecoveryTimer(): boolean {
   return _errorRecoveryTimer != null;
-}
-
-function setErrorRecoveryTimer(timer: ReturnType<typeof setTimeout> | null): void {
-  _errorRecoveryTimer = timer;
 }
 
 function setLastChatEventAt(value: number): void {
@@ -1063,6 +1388,36 @@ function queueBlockedRunEvent(runId: string, event: Record<string, unknown>): vo
   events.push({ ...event });
   if (events.length > 100) events.shift();
   _blockedRunEvents.set(runId, events);
+}
+
+function isRealUserBoundaryMessage(msg: RawMessage): boolean {
+  if (msg.role !== 'user') return false;
+  if (!Array.isArray(msg.content)) return true;
+  const blocks = msg.content as ContentBlock[];
+  return blocks.length === 0 || !blocks.every((block) => block.type === 'tool_result' || block.type === 'toolResult');
+}
+
+function hasAssistantAfterLastRealUser(messages: RawMessage[]): boolean {
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    if (isRealUserBoundaryMessage(messages[i])) {
+      return messages.slice(i + 1).some((m) => m.role === 'assistant');
+    }
+  }
+  return false;
+}
+
+function hasAssistantProgressSinceSend(messages: RawMessage[], lastUserMessageAt: number | null): boolean {
+  if (!lastUserMessageAt) return false;
+  const normalized = [...messages];
+  while (normalized.length > 0) {
+    const last = normalized[normalized.length - 1];
+    if (last.role === 'user' && !last.timestamp) {
+      normalized.pop();
+      continue;
+    }
+    break;
+  }
+  return hasAssistantAfterLastRealUser(normalized);
 }
 
 function takeBlockedRunEvents(runId: string): Record<string, unknown>[] {
@@ -1094,14 +1449,23 @@ export {
   collectToolUpdates,
   upsertToolStatuses,
   hasNonToolAssistantContent,
+  hasPendingToolUse,
+  hasAssistantAfterLastRealUser,
+  hasAssistantProgressSinceSend,
   isToolOnlyMessage,
   normalizeStreamingMessage,
   matchesOptimisticUserMessage,
+  rememberPendingOptimisticUserMessage,
+  clearPendingOptimisticUserMessages,
+  mergePendingOptimisticUserMessages,
   snapshotStreamingAssistantMessage,
   getLatestOptimisticUserMessage,
+  hasOptimisticServerEcho,
+  dropRedundantOptimisticUserMessages,
   setHistoryPollTimer,
   hasErrorRecoveryTimer,
-  setErrorRecoveryTimer,
+  scheduleRecoverableRuntimeError,
+  isRecoverableRuntimeError,
   setLastChatEventAt,
   getLastChatEventAt,
   setLastAbortedRunId,

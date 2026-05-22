@@ -221,7 +221,50 @@ module.exports = {
           DEFAULT: 'hsl(var(--card))',
           foreground: 'hsl(var(--card-foreground))',
         },
-        surface: 'hsl(var(--surface))',
+
+        // ── B. ClawX brand tokens ────────────────────────────────────
+        // Apple-system blue used for primary CTAs. The same pixel value
+        // works in both themes (sufficient WCAG-AA contrast in light
+        // mode and stays vivid in dark mode), so no CSS variable needed.
+        // Pair with `brand-hover` for the hover state.
+        brand: {
+          DEFAULT: '#0a84ff',
+          hover: '#007aff',
+        },
+
+        // Highlight blue for inline /skill chips in the chat input.
+        // The chip combines bg + text + text-shadow to produce a glow
+        // effect, so we expose three separate tokens (bg, light fg,
+        // dark fg) instead of a 50/100/.../900 ramp — this palette is
+        // intentionally not extensible.
+        skill: {
+          bg: '#2F6BFF',          // chip backdrop (used at /14 or /18)
+          fg: '#1D4ED8',          // chip text (light mode)
+          'fg-dark': '#2563EB',   // chip text (dark mode)
+        },
+
+        // ── C. ClawX cream surfaces ──────────────────────────────────
+        // We use `<alpha-value>` placeholders so Tailwind auto-emits
+        // `bg-surface-xxx/{alpha}` rules. Concrete pixel values live in
+        // globals.css; in dark mode the same CSS variables redirect to
+        // shadcn's existing dark tokens to avoid maintaining a second
+        // (dark) cream palette.
+        surface: {
+          modal: 'hsl(var(--surface-modal) / <alpha-value>)',
+          input: 'hsl(var(--surface-input) / <alpha-value>)',
+          sidebar: 'hsl(var(--surface-sidebar) / <alpha-value>)',
+        },
+
+        // ── D. ClawX usage accents ──────────────────────────────────
+        // Semantic chart palette shared by the Models token-usage
+        // visualisation and any future input/output/cache indicator.
+        // Mirrors Cron's stat-tile palette (blue / green / yellow).
+        // Values live in globals.css; dark mode brightens each one.
+        usage: {
+          input: 'hsl(var(--usage-input) / <alpha-value>)',
+          output: 'hsl(var(--usage-output) / <alpha-value>)',
+          cache: 'hsl(var(--usage-cache) / <alpha-value>)',
+        },
       },
       borderRadius: {
         lg: 'var(--radius)',

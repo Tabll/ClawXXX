@@ -10,10 +10,15 @@
         "settings": "Настройки",
         "devConsole": "Консоль разработчика",
         "models": "Модели",
-        "deleteSessionConfirm": "Вы уверены, что хотите удалить сессию \"{{label}}\"?",
+        "deleteSessionConfirm": "Удалить \"{{label}}\"?",
         "openClawPage": "Страница OpenClaw",
         "dreams": "Сновидения",
-                "openClawDreams": "Dreams"
+        "openClawDreams": "Dreams",
+        "renameSession": "Переименовать",
+        "deleteSession": "Удалить",
+        "renameSessionPlaceholder": "Название сессии",
+        "saveSessionRename": "Сохранить название",
+        "cancelSessionRename": "Отменить переименование"
     },
     "actions": {
         "save": "Сохранить",

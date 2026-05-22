@@ -1,5 +1,3 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
-
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -34,53 +32,69 @@
 
 @layer base {
   :root {
-    /* Refined blue-gray light theme */
-    --background: 220 14% 98.5%;
+    /* ── shadcn semantic tokens (light) ─────────────────────────── */
+    /* Lightened ClawX cream page background; gentler than pure white
+     *           for long sessions in front of the editor. */
+    --background: 45 30% 96.6%;
     --foreground: 222.2 84% 4.9%;
     --card: 0 0% 100%;
     --card-foreground: 222.2 84% 4.9%;
     --popover: 0 0% 100%;
     --popover-foreground: 222.2 84% 4.9%;
     --primary: 221.2 83.2% 53.3%;
-    --primary-foreground: 0 0% 100%;
-    --secondary: 216 20% 95.5%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
-    --muted: 216 16% 95%;
-    --muted-foreground: 218 12% 46%;
-    --accent: 216 20% 95.5%;
-    --accent-foreground: 222.2 47.4% 11.2%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 0 0% 100%;
-    --border: 218 16% 91%;
-    --input: 218 16% 91%;
-    --ring: 221.2 83.2% 53.3%;
-    --radius: 0.5rem;
-    --surface: 216 18% 96.5%;
-  }
-
-  /* Warm eye-care palette (#f1ede1 background) */
-  .eye-care {
-    --background: 45 36.4% 91.4%;
-    --foreground: 222.2 84% 4.9%;
-    --card: 42 30% 96%;
-    --card-foreground: 222.2 84% 4.9%;
-    --popover: 42 30% 96%;
-    --popover-foreground: 222.2 84% 4.9%;
-    --primary: 221.2 83.2% 53.3%;
     --primary-foreground: 210 40% 98%;
-    --secondary: 40 25% 93%;
+    --secondary: 210 40% 96.1%;
     --secondary-foreground: 222.2 47.4% 11.2%;
-    --muted: 40 25% 93%;
+    --muted: 210 40% 96.1%;
     --muted-foreground: 215.4 16.3% 46.9%;
-    --accent: 40 25% 93%;
+    --accent: 210 40% 96.1%;
     --accent-foreground: 222.2 47.4% 11.2%;
     --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 210 40% 98%;
-    --border: 40 20% 87%;
-    --input: 40 20% 87%;
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
     --ring: 221.2 83.2% 53.3%;
     --radius: 0.5rem;
-    --surface: 40 22% 94%;
+
+    /* ── ClawX cream surfaces (light) ────────────────────────────
+     *
+     * Three stacked cream layers — think "a cream paper laid on top
+     * of a slightly paler cream paper". The contrast between layers
+     * is deliberately low so we can suggest hierarchy without using
+     * heavy shadows. Pixel values are extracted from the hex literals
+     * that used to be sprinkled across components.
+     *
+     *   --surface-modal   = lifted cream   large rounded modal panels (top);
+     *                                      slightly lighter than --background
+     *                                      so dialogs feel raised
+     *   --surface-input   = recessed cream inputs / selects / code panes;
+     *                                      slightly darker than --background
+     *                                      so fields feel inset
+     *   --surface-sidebar = sidebar cream  left navigation rail (often /60)
+     * ─────────────────────────────────────────────────────────── */
+    --surface-modal: 45 30% 97.6%;
+    --surface-input: 45 22% 94%;
+    --surface-sidebar: 45 16% 94%;
+
+    /* ── ClawX usage accents (light) ─────────────────────────────
+     *
+     * Three semantic accents reused everywhere that we visualise
+     * token usage / activity. Mirrors the Cron page convention so
+     * the Models bar chart, legend dots, and any future "input /
+     * output / cache" indicator pulls from the same palette:
+     *
+     *   --usage-input  = blue   (matches Cron "Total" tile / primary)
+     *   --usage-output = green  (matches Cron "Active" tile / `bg-green-500`)
+     *   --usage-cache  = yellow (matches Cron "Paused" tile)
+     *
+     * Anchored to Tailwind's *-500 shades so chart bars read at the
+     * same brightness as the `bg-green-500` "configured" status dot
+     * and the Cron stat-tile icon halos. Going darker (*-600/*-700)
+     * makes the bars look duller than the dots they sit next to.
+     * ─────────────────────────────────────────────────────────── */
+    --usage-input: 217 91% 60%;
+    --usage-output: 142 71% 45%;
+    --usage-cache: 48 96% 53%;
   }
 
   /* Neutral deep-gray dark palette */
@@ -104,7 +118,25 @@
     --border: 240 3% 24%;
     --input: 240 3% 18%;
     --ring: 217.2 91.2% 59.8%;
-    --surface: 240 3% 15%;
+
+    /* In dark mode the three cream surfaces collapse onto existing
+     * shadcn tokens:
+     *     modal   → card
+     *     input   → muted
+     *     sidebar → background
+     * This way every `bg-surface-*` utility resolves correctly in
+     * both themes, and components no longer need `dark:bg-card`-style
+     * companion classes for theme switching. */
+    --surface-modal: 240 3% 14%;
+    --surface-input: 240 3% 18%;
+    --surface-sidebar: 240 4% 11%;
+
+    /* Usage accents — lifted *-400-ish shades so bars stay vivid
+     * against the deep-gray dark surfaces (see light block above
+     * for semantic mapping). */
+    --usage-input: 217 91% 65%;
+    --usage-output: 142 71% 52%;
+    --usage-cache: 48 96% 60%;
   }
 }
 
@@ -115,15 +147,26 @@
 
   body {
     @apply bg-background text-foreground;
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial,
-      'Noto Sans SC', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
     font-feature-settings: "rlig" 1, "calt" 1;
-    -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
   }
 }
 
-/* Custom scrollbar */
+@layer components {
+  .sidebar-nav-text.sidebar-nav-text {
+    @apply text-sm font-normal leading-4;
+  }
+}
+
+/* Custom scrollbar: keep scrollbars visually quiet until the user hovers a scroll area. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+
+*:hover {
+  scrollbar-color: hsl(var(--border)) transparent;
+}
+
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
@@ -134,11 +177,25 @@
 }
 
 ::-webkit-scrollbar-thumb {
-  @apply bg-border rounded-full;
+  @apply bg-transparent rounded-full;
 }
 
-::-webkit-scrollbar-thumb:hover {
+*:hover::-webkit-scrollbar-thumb {
+  @apply bg-border;
+}
+
+*:hover::-webkit-scrollbar-thumb:hover {
   @apply bg-muted-foreground/30;
+}
+
+/* Monaco's default light diff theme is pure white; keep it aligned with ClawX's cream app background. */
+:root:not(.dark) .clawx-diff-editor .monaco-diff-editor,
+:root:not(.dark) .clawx-diff-editor .monaco-editor,
+:root:not(.dark) .clawx-diff-editor .monaco-editor-background,
+:root:not(.dark) .clawx-diff-editor .monaco-editor .margin,
+:root:not(.dark) .clawx-diff-editor .monaco-editor .gutter,
+:root:not(.dark) .clawx-diff-editor .diffOverview {
+  background-color: hsl(var(--background)) !important;
 }
 
 /* macOS traffic light spacing */
@@ -231,176 +288,3 @@
     transform: translateY(-4px);
   }
 }
-
-/* Premium page title styles */
-.page-title {
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  font-weight: 600;
-  letter-spacing: -0.025em;
-  line-height: 1.15;
-}
-
-.page-subtitle {
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  font-weight: 400;
-  letter-spacing: -0.005em;
-  line-height: 1.5;
-}
-
-.section-title {
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  font-weight: 600;
-  letter-spacing: -0.02em;
-  line-height: 1.25;
-}
-
-/* Page entrance animation */
-@keyframes page-fade-in {
-  from {
-    opacity: 0;
-    transform: translateY(8px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-@keyframes title-slide-in {
-  from {
-    opacity: 0;
-    transform: translateY(10px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-@keyframes subtitle-slide-in {
-  from {
-    opacity: 0;
-    transform: translateY(8px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-@keyframes content-fade-in {
-  from {
-    opacity: 0;
-    transform: translateY(6px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-@keyframes shimmer {
-  0% {
-    background-position: -200% 0;
-  }
-  100% {
-    background-position: 200% 0;
-  }
-}
-
-.animate-page-in {
-  animation: page-fade-in 0.4s ease-out both;
-}
-
-.animate-title-in {
-  animation: title-slide-in 0.45s cubic-bezier(0.16, 1, 0.3, 1) both;
-}
-
-.animate-subtitle-in {
-  animation: subtitle-slide-in 0.4s cubic-bezier(0.16, 1, 0.3, 1) 0.08s both;
-}
-
-.animate-content-in {
-  animation: content-fade-in 0.4s ease-out 0.15s both;
-}
-
-.title-decoration {
-  position: relative;
-}
-
-.title-decoration::after {
-  content: '';
-  position: absolute;
-  bottom: -6px;
-  left: 0;
-  width: 32px;
-  height: 2px;
-  border-radius: 1px;
-  background: linear-gradient(90deg, hsl(var(--primary)), hsl(var(--primary) / 0.2));
-  animation: subtitle-slide-in 0.4s cubic-bezier(0.16, 1, 0.3, 1) 0.15s both;
-}
-
-/* ------------------------------------------------------------------ */
-/*  Dream page animations                                             */
-/* ------------------------------------------------------------------ */
-
-@keyframes dream-breathe {
-  0%, 100% { transform: scale(1) translateY(0); }
-  50% { transform: scale(1.06) translateY(-6px); }
-}
-
-@keyframes dream-blink {
-  0%, 90%, 100% { opacity: 1; }
-  95% { opacity: 0; }
-}
-
-@keyframes dream-float-z {
-  0% { opacity: 0; transform: translate(0) rotate(-10deg); }
-  20% { opacity: 0.6; }
-  100% { opacity: 0; transform: translate(20px, -40px) rotate(10deg); }
-}
-
-@keyframes dream-twinkle {
-  0% { opacity: 0.15; transform: scale(0.8); }
-  100% { opacity: 0.5; transform: scale(1.2); }
-}
-
-@keyframes dream-bubble-float {
-  0%, 100% { opacity: 0.8; transform: translateY(0); }
-  50% { opacity: 1; transform: translateY(-8px); }
-}
-
-@keyframes dream-moon-glow {
-  0% { opacity: 0.6; box-shadow: 0 0 40px rgba(251,191,36,0.2), 0 0 80px rgba(251,191,36,0.08); }
-  100% { opacity: 0.8; box-shadow: 0 0 60px rgba(251,191,36,0.3), 0 0 120px rgba(251,191,36,0.12); }
-}
-
-@keyframes dream-glow-pulse {
-  0%, 100% { opacity: 0.6; }
-  50% { opacity: 1; }
-}
-
-@keyframes dream-dot-pulse {
-  0%, 100% { opacity: 1; box-shadow: 0 0 0 rgba(34,197,94,0.4); }
-  50% { opacity: 0.6; box-shadow: 0 0 8px rgba(34,197,94,0.4); }
-}
-
-@keyframes dream-diary-entry {
-  0% { opacity: 0; transform: translateY(12px); }
-  100% { opacity: 1; transform: translateY(0); }
-}
-
-@keyframes dream-diary-glow {
-  0% { opacity: 0.5; }
-  100% { opacity: 1; }
-}
-
-.animate-dream-breathe { animation: dream-breathe 4s ease-in-out infinite; }
-.animate-dream-blink { animation: dream-blink 6s ease-in-out infinite; }
-.animate-dream-float-z { animation: dream-float-z 4s ease-out infinite; }
-.animate-dream-twinkle { animation: dream-twinkle 3s ease-in-out infinite alternate; }
-.animate-dream-bubble-float { animation: dream-bubble-float 6s ease-in-out infinite; }
-.animate-dream-moon-glow { animation: dream-moon-glow 8s ease-in-out infinite alternate; }
-.animate-dream-glow-pulse { animation: dream-glow-pulse 4s ease-in-out infinite; }
-.animate-dream-diary-entry { animation: dream-diary-entry 1.4s cubic-bezier(0.22,1,0.36,1) both; }
-.animate-dream-diary-glow { animation: dream-diary-glow 6s ease-in-out infinite alternate; }

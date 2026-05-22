@@ -20,11 +20,13 @@ import { Workspace } from './pages/Workspace';
 import { Dream } from './pages/Dream';
 import { Setup } from './pages/Setup';
 import { useSettingsStore } from './stores/settings';
+import { useUpdateStore } from './stores/update';
 import { useGatewayStore } from './stores/gateway';
 import { useProviderStore } from './stores/providers';
 import { applyGatewayTransportPreference } from './lib/api-client';
 import { rendererExtensionRegistry } from './extensions/registry';
 import { loadExternalRendererExtensions } from './extensions/_ext-bridge.generated';
+import { UpdateNotifier } from './components/update/UpdateNotifier';
 
 
 /**
@@ -101,11 +103,22 @@ function App() {
   const language = useSettingsStore((state) => state.language);
   const setupComplete = useSettingsStore((state) => state.setupComplete);
   const initGateway = useGatewayStore((state) => state.init);
+  const initUpdate = useUpdateStore((state) => state.init);
   const initProviders = useProviderStore((state) => state.init);
 
   useEffect(() => {
-    initSettings();
-  }, [initSettings]);
+    let cancelled = false;
+
+    void initSettings().finally(() => {
+      if (!cancelled) {
+        void initUpdate();
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [initSettings, initUpdate]);
 
   // Sync i18n language with persisted settings on mount
   useEffect(() => {
@@ -201,6 +214,8 @@ function App() {
             ))}
           </Route>
         </Routes>
+
+        <UpdateNotifier />
 
         {/* Global toast notifications */}
         <Toaster

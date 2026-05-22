@@ -9,6 +9,7 @@ import { GatewayManager } from '../gateway/manager';
 import { registerIpcHandlers } from './ipc-handlers';
 import { createTray } from './tray';
 import { createMenu } from './menu';
+import { registerZoomShortcuts } from './zoom-shortcuts';
 
 import { appUpdater, registerUpdateHandlers } from './updater';
 import { logger } from '../utils/logger';
@@ -20,7 +21,11 @@ import { extensionRegistry } from '../extensions/registry';
 import { loadExtensionsFromManifest } from '../extensions/loader';
 import { registerAllBuiltinExtensions } from '../extensions/builtin';
 import { loadExternalMainExtensions } from '../extensions/_ext-bridge.generated';
-import { ensureClawXContext, repairClawXOnlyBootstrapFiles } from '../utils/openclaw-workspace';
+import {
+  ensureClawXContext,
+  ensureClawXDefaultIdentity,
+  repairClawXOnlyBootstrapFiles,
+} from '../utils/openclaw-workspace';
 import { autoInstallCliIfNeeded, generateCompletionCache, installCompletionToProfile } from '../utils/openclaw-cli';
 import { isQuitting, setQuitting } from './app-state';
 import { applyProxySettings } from './proxy';
@@ -181,6 +186,8 @@ function createWindow(): BrowserWindow {
     frame: isMac || !useCustomTitleBar,
     show: false,
   });
+
+  registerZoomShortcuts(win);
 
   // Handle external links — only allow safe protocols to prevent arbitrary
   // command execution via shell.openExternal() (e.g. file://, ms-msdt:, etc.)
@@ -362,6 +369,14 @@ async function initialize(): Promise<void> {
 
   // Note: Auto-check for updates is driven by the renderer (update store init)
   // so it respects the user's "Auto-check for updates" setting.
+
+  // Seed a stable default IDENTITY.md before the Gateway initializes the
+  // workspace so ClawX desktop sessions skip OpenClaw's chat-first bootstrap.
+  if (!isE2EMode) {
+    void ensureClawXDefaultIdentity().catch((error) => {
+      logger.warn('Failed to seed default ClawX identity:', error);
+    });
+  }
 
   // Repair any bootstrap files that only contain ClawX markers (no OpenClaw
   // template content). This fixes a race condition where ensureClawXContext()

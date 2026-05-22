@@ -186,7 +186,7 @@ describe('provider-runtime-sync refresh strategy', () => {
     expect(gateway.debouncedRestart).not.toHaveBeenCalled();
   });
 
-  it('uses gpt-5.4 as the browser OAuth default model for OpenAI', async () => {
+  it('uses gpt-5.5 as the browser OAuth default model for OpenAI', async () => {
     mocks.getProvider.mockResolvedValue(
       createProvider({
         id: 'openai-personal',
@@ -209,7 +209,7 @@ describe('provider-runtime-sync refresh strategy', () => {
 
     expect(mocks.setOpenClawDefaultModel).toHaveBeenCalledWith(
       'openai-codex',
-      'openai-codex/gpt-5.4',
+      'openai-codex/gpt-5.5',
       expect.any(Array),
     );
   });
@@ -253,7 +253,7 @@ describe('provider-runtime-sync refresh strategy', () => {
       expect.objectContaining({
         baseUrl: 'https://ark.cn-beijing.volces.com/api/v3',
         api: 'openai-completions',
-        models: [{ id: 'ark-code-latest', name: 'ark-code-latest' }],
+        models: [{ id: 'ark-code-latest', name: 'ark-code-latest', cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } }],
       }),
     );
   });

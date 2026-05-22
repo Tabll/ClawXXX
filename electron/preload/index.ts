@@ -2,7 +2,7 @@
  * Preload Script
  * Exposes safe APIs to the renderer process via contextBridge
  */
-import { contextBridge, ipcRenderer } from 'electron';
+import { contextBridge, ipcRenderer, webUtils } from 'electron';
 
 /**
  * IPC renderer methods exposed to the renderer process
@@ -130,6 +130,7 @@ const electronAPI = {
         'media:saveImage',
         // File preview (sandboxed read/write/list/tree)
         'file:readText',
+        'file:readBinary',
         'file:writeText',
         'file:stat',
         'file:listDir',
@@ -138,6 +139,7 @@ const electronAPI = {
         'chat:sendWithMedia',
         // Session management
         'session:delete',
+        'session:rename',
         // OpenClaw extras
         'openclaw:getDir',
         'openclaw:getConfigDir',
@@ -264,6 +266,11 @@ const electronAPI = {
   openExternal: (url: string) => {
     return ipcRenderer.invoke('shell:openExternal', url);
   },
+
+  /**
+   * Resolve the on-disk path for a native drag/drop or <input type="file"> File.
+   */
+  getPathForFile: (file: File) => webUtils.getPathForFile(file),
 
   /**
    * Get current platform

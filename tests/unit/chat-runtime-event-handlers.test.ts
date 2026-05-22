@@ -12,6 +12,7 @@ const getMessageErrorMessage = vi.fn((message: { errorMessage?: string; error_me
 const getToolCallFilePath = vi.fn(() => undefined);
 const hasErrorRecoveryTimer = vi.fn(() => false);
 const hasNonToolAssistantContent = vi.fn(() => true);
+const hasPendingToolUse = vi.fn(() => false);
 const isInternalMessage = vi.fn(() => false);
 const isTerminalAssistantErrorMessage = vi.fn((message: { role?: string; stopReason?: string; stop_reason?: string } | undefined) => {
   const stopReason = message?.stopReason ?? message?.stop_reason;
@@ -28,7 +29,8 @@ const makeAttachedFile = vi.fn((ref: { filePath: string; mimeType: string }, sou
   source,
 }));
 const normalizeStreamingMessage = vi.fn((message: unknown) => message);
-const setErrorRecoveryTimer = vi.fn();
+const scheduleRecoverableRuntimeError = vi.fn((commit: () => void) => commit());
+const isRecoverableRuntimeError = vi.fn((message: string) => /\bterminated\b/i.test(message));
 const snapshotStreamingAssistantMessage = vi.fn((currentStream: unknown) => currentStream ? [currentStream] : []);
 const upsertToolStatuses = vi.fn((_current, updates) => updates);
 
@@ -44,13 +46,15 @@ vi.mock('@/stores/chat/helpers', () => ({
   getToolCallFilePath: (...args: unknown[]) => getToolCallFilePath(...args),
   hasErrorRecoveryTimer: (...args: unknown[]) => hasErrorRecoveryTimer(...args),
   hasNonToolAssistantContent: (...args: unknown[]) => hasNonToolAssistantContent(...args),
+  hasPendingToolUse: (...args: unknown[]) => hasPendingToolUse(...args),
   isInternalMessage: (...args: unknown[]) => isInternalMessage(...args),
   isTerminalAssistantErrorMessage: (...args: unknown[]) => isTerminalAssistantErrorMessage(...args),
   isToolOnlyMessage: (...args: unknown[]) => isToolOnlyMessage(...args),
   isToolResultRole: (...args: unknown[]) => isToolResultRole(...args),
   makeAttachedFile: (...args: unknown[]) => makeAttachedFile(...args),
+  isRecoverableRuntimeError: (...args: unknown[]) => isRecoverableRuntimeError(...args),
   normalizeStreamingMessage: (...args: unknown[]) => normalizeStreamingMessage(...args),
-  setErrorRecoveryTimer: (...args: unknown[]) => setErrorRecoveryTimer(...args),
+  scheduleRecoverableRuntimeError: (...args: unknown[]) => scheduleRecoverableRuntimeError(...args),
   snapshotStreamingAssistantMessage: (...args: unknown[]) => snapshotStreamingAssistantMessage(...args),
   upsertToolStatuses: (...args: unknown[]) => upsertToolStatuses(...args),
 }));
@@ -99,6 +103,8 @@ describe('chat runtime event handlers', () => {
   beforeEach(() => {
     vi.resetAllMocks();
     hasErrorRecoveryTimer.mockReturnValue(false);
+    isRecoverableRuntimeError.mockImplementation((message: string) => /\bterminated\b/i.test(message));
+    scheduleRecoverableRuntimeError.mockImplementation((commit: () => void) => commit());
     collectToolUpdates.mockReturnValue([]);
     normalizeStreamingMessage.mockImplementation((message: unknown) => message);
     snapshotStreamingAssistantMessage.mockImplementation((currentStream: unknown) => currentStream ? [currentStream as Record<string, unknown>] : []);
@@ -208,6 +214,22 @@ describe('chat runtime event handlers', () => {
     expect(next.streamingTools).toEqual([]);
   });
 
+  it('defers recoverable terminated errors while the run is still active', async () => {
+    scheduleRecoverableRuntimeError.mockImplementation(() => {});
+    const { handleRuntimeEventState } = await import('@/stores/chat/runtime-event-handlers');
+    const h = makeHarness({ sending: true, activeRunId: 'run-term', lastUserMessageAt: 123, error: null });
+
+    handleRuntimeEventState(h.set as never, h.get as never, { errorMessage: 'terminated' }, 'error', 'run-term');
+
+    const next = h.read();
+    expect(scheduleRecoverableRuntimeError).toHaveBeenCalledTimes(1);
+    expect(next.error).toBeNull();
+    expect(next.runError).toBeNull();
+    expect(next.sending).toBe(true);
+    expect(next.activeRunId).toBe('run-term');
+    expect(clearHistoryPoll).not.toHaveBeenCalled();
+  });
+
   it('treats stopReason=error assistant finals as runtime errors', async () => {
     const { handleRuntimeEventState } = await import('@/stores/chat/runtime-event-handlers');
     const h = makeHarness({ sending: true, activeRunId: 'run-err', lastUserMessageAt: 123 });
@@ -228,7 +250,7 @@ describe('chat runtime event handlers', () => {
     expect(next.pendingFinal).toBe(false);
     expect(next.streamingMessage).toBeNull();
     expect(clearHistoryPoll).toHaveBeenCalledTimes(1);
-    expect(setErrorRecoveryTimer).not.toHaveBeenCalled();
+    expect(scheduleRecoverableRuntimeError).not.toHaveBeenCalled();
   });
 
   it('delta with empty object does not overwrite existing streamingMessage', async () => {

@@ -23,7 +23,6 @@ import {
   Bot,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { PageHeader } from '@/components/ui/page-header';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
 import { Input } from '@/components/ui/input';
@@ -424,11 +423,11 @@ function TaskDialog({ job, configuredChannels, onClose, onSave }: TaskDialogProp
 
   return (
     <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onClick={onClose}>
-      <Card className="w-full max-w-lg max-h-[90vh] flex flex-col rounded-3xl border-0 shadow-2xl bg-card overflow-hidden" onClick={(e) => e.stopPropagation()}>
+      <Card className="w-full max-w-lg max-h-[90vh] flex flex-col rounded-3xl border-0 shadow-2xl bg-surface-modal overflow-hidden" onClick={(e) => e.stopPropagation()}>
         <CardHeader className="flex flex-row items-start justify-between pb-2 shrink-0">
           <div>
-            <CardTitle className="text-2xl font-semibold tracking-tight">{job ? t('dialog.editTitle') : t('dialog.createTitle')}</CardTitle>
-            <CardDescription className="text-[15px] mt-1 text-foreground/70">{t('dialog.description')}</CardDescription>
+            <CardTitle className="text-2xl font-serif font-normal">{job ? t('dialog.editTitle') : t('dialog.createTitle')}</CardTitle>
+            <CardDescription className="text-sm mt-1 text-foreground/70">{t('dialog.description')}</CardDescription>
           </div>
           <Button variant="ghost" size="icon" onClick={onClose} className="rounded-full h-8 w-8 -mr-2 -mt-2 text-muted-foreground hover:text-foreground hover:bg-black/5 dark:hover:bg-white/5">
             <X className="h-4 w-4" />
@@ -443,7 +442,7 @@ function TaskDialog({ job, configuredChannels, onClose, onSave }: TaskDialogProp
               placeholder={t('dialog.taskNamePlaceholder')}
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className="h-[44px] rounded-xl font-mono text-[13px] bg-white dark:bg-card border-black/10 dark:border-white/10 focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:border-primary shadow-sm transition-all text-foreground placeholder:text-foreground/40"
+              className="h-[44px] rounded-xl font-mono text-meta bg-transparent border-black/10 dark:border-white/10 focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:border-primary shadow-sm transition-all text-foreground placeholder:text-foreground/40"
             />
           </div>
 
@@ -456,7 +455,7 @@ function TaskDialog({ job, configuredChannels, onClose, onSave }: TaskDialogProp
               value={message}
               onChange={(e) => setMessage(e.target.value)}
               rows={3}
-              className="rounded-xl font-mono text-[13px] bg-white dark:bg-card border-black/10 dark:border-white/10 focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:border-primary shadow-sm transition-all text-foreground placeholder:text-foreground/40 resize-none"
+              className="rounded-xl font-mono text-meta bg-transparent border-black/10 dark:border-white/10 focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:border-primary shadow-sm transition-all text-foreground placeholder:text-foreground/40 resize-none"
             />
           </div>
 
@@ -469,7 +468,7 @@ function TaskDialog({ job, configuredChannels, onClose, onSave }: TaskDialogProp
               onChange={(e) => {
                 setSelectedAgentId(e.target.value);
               }}
-              className="h-[44px] rounded-xl border-black/10 dark:border-white/10 bg-surface-input text-meta"
+              className="h-[44px] rounded-xl border-black/10 dark:border-white/10 bg-transparent text-meta"
             >
               {agents.map((agent) => (
                 <option key={agent.id} value={agent.id}>
@@ -495,7 +494,7 @@ function TaskDialog({ job, configuredChannels, onClose, onSave }: TaskDialogProp
                       "justify-start h-10 rounded-xl font-medium text-meta transition-all",
                       schedule === preset.value
                         ? "bg-primary hover:bg-primary/90 text-primary-foreground shadow-sm border-transparent"
-                        : "bg-white dark:bg-card border-black/10 dark:border-white/10 hover:bg-black/5 dark:hover:bg-white/5 text-foreground/80 hover:text-foreground"
+                        : "bg-transparent border-black/10 dark:border-white/10 hover:bg-black/5 dark:hover:bg-white/5 text-foreground/80 hover:text-foreground"
                     )}
                   >
                     <Timer className="h-4 w-4 mr-2 opacity-70" />
@@ -508,7 +507,7 @@ function TaskDialog({ job, configuredChannels, onClose, onSave }: TaskDialogProp
                 placeholder={t('dialog.cronPlaceholder')}
                 value={customSchedule}
                 onChange={(e) => setCustomSchedule(e.target.value)}
-                className="h-[44px] rounded-xl font-mono text-[13px] bg-white dark:bg-card border-black/10 dark:border-white/10 focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:border-primary shadow-sm transition-all text-foreground placeholder:text-foreground/40"
+                className="h-[44px] rounded-xl font-mono text-meta bg-transparent border-black/10 dark:border-white/10 focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:border-primary shadow-sm transition-all text-foreground placeholder:text-foreground/40"
               />
             )}
             <div className="flex items-center justify-between mt-2">
@@ -544,7 +543,7 @@ function TaskDialog({ job, configuredChannels, onClose, onSave }: TaskDialogProp
                   'justify-start h-auto min-h-12 rounded-xl px-4 py-3 text-left whitespace-normal',
                   deliveryMode === 'none'
                     ? 'bg-primary hover:bg-primary/90 text-primary-foreground border-transparent'
-                    : 'bg-surface-input border-black/10 dark:border-white/10 hover:bg-black/5 dark:hover:bg-white/5 text-foreground/80 hover:text-foreground',
+                    : 'bg-transparent border-black/10 dark:border-white/10 hover:bg-black/5 dark:hover:bg-white/5 text-foreground/80 hover:text-foreground',
                 )}
               >
                 <div>
@@ -561,7 +560,7 @@ function TaskDialog({ job, configuredChannels, onClose, onSave }: TaskDialogProp
                   'justify-start h-auto min-h-12 rounded-xl px-4 py-3 text-left whitespace-normal',
                   deliveryMode === 'announce'
                     ? 'bg-primary hover:bg-primary/90 text-primary-foreground border-transparent'
-                    : 'bg-surface-input border-black/10 dark:border-white/10 hover:bg-black/5 dark:hover:bg-white/5 text-foreground/80 hover:text-foreground',
+                    : 'bg-transparent border-black/10 dark:border-white/10 hover:bg-black/5 dark:hover:bg-white/5 text-foreground/80 hover:text-foreground',
                 )}
               >
                 <div>
@@ -572,7 +571,7 @@ function TaskDialog({ job, configuredChannels, onClose, onSave }: TaskDialogProp
             </div>
 
             {deliveryMode === 'announce' && (
-              <div className="space-y-3 rounded-2xl border border-black/5 dark:border-white/5 bg-surface-input p-4 shadow-sm">
+              <div className="space-y-3 rounded-2xl border border-black/5 dark:border-white/5 bg-transparent p-4 shadow-sm">
                 <div className="space-y-2">
                   <Label htmlFor="delivery-channel" className="text-meta text-foreground/80 font-bold">
                     {t('dialog.deliveryChannel')}
@@ -663,7 +662,7 @@ function TaskDialog({ job, configuredChannels, onClose, onSave }: TaskDialogProp
           </div>
 
           {/* Enabled */}
-          <div className="flex items-center justify-between bg-white dark:bg-card p-4 rounded-2xl shadow-sm border border-black/5 dark:border-white/5">
+          <div className="flex items-center justify-between bg-transparent p-4 rounded-2xl shadow-sm border border-black/5 dark:border-white/5">
             <div>
               <Label className="text-sm text-foreground/80 font-bold">{t('dialog.enableImmediately')}</Label>
               <p className="text-meta text-muted-foreground mt-0.5">
@@ -741,17 +740,18 @@ function CronJobCard({ job, deliveryAccountName, onToggle, onEdit, onDelete, onT
 
   return (
     <div
-      className="group flex flex-col p-5 rounded-2xl bg-transparent border border-transparent hover:bg-surface transition-all relative overflow-hidden cursor-pointer"
+      data-testid={`cron-job-card-${job.id}`}
+      className="group flex flex-col p-5 rounded-2xl bg-transparent border border-transparent hover:bg-black/5 dark:hover:bg-white/5 transition-all relative overflow-hidden cursor-pointer"
       onClick={onEdit}
     >
-      <div className="flex items-start justify-between mb-4">
-        <div className="flex items-center gap-4">
-          <div className="h-[46px] w-[46px] shrink-0 flex items-center justify-center text-foreground bg-surface border border-black/5 dark:border-white/10 rounded-full shadow-sm group-hover:scale-105 transition-transform">
+      <div className="flex items-start justify-between gap-3 mb-4">
+        <div className="flex items-center gap-4 min-w-0 flex-1">
+          <div className="h-[46px] w-[46px] shrink-0 flex items-center justify-center text-foreground bg-black/5 dark:bg-white/5 border border-black/5 dark:border-white/10 rounded-full shadow-sm group-hover:scale-105 transition-transform">
             <Clock className={cn("h-5 w-5", job.enabled ? "text-foreground" : "text-muted-foreground")} />
           </div>
-          <div className="flex flex-col min-w-0">
-            <div className="flex items-center gap-2 mb-1">
-              <h3 className="text-base font-semibold text-foreground truncate">{job.name}</h3>
+          <div className="flex flex-col min-w-0 flex-1">
+            <div className="flex items-center gap-2 mb-1 min-w-0">
+              <h3 data-testid={`cron-job-card-title-${job.id}`} className="text-base font-semibold text-foreground truncate min-w-0">{job.name}</h3>
               <div
                 className={cn(
                   "w-2 h-2 rounded-full shrink-0",
@@ -760,14 +760,14 @@ function CronJobCard({ job, deliveryAccountName, onToggle, onEdit, onDelete, onT
                 title={job.enabled ? t('stats.active') : t('stats.paused')}
               />
             </div>
-            <p className="text-meta text-muted-foreground flex items-center gap-1.5">
-              <Timer className="h-3.5 w-3.5" />
-              {parseCronSchedule(job.schedule, t)}
+            <p className="text-meta text-muted-foreground flex items-center gap-1.5 min-w-0">
+              <Timer className="h-3.5 w-3.5 shrink-0" />
+              <span className="truncate">{parseCronSchedule(job.schedule, t)}</span>
             </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-2" onClick={e => e.stopPropagation()}>
+        <div data-testid={`cron-job-card-switch-${job.id}`} className="flex items-center gap-2 shrink-0" onClick={e => e.stopPropagation()}>
           <Switch
             checked={job.enabled}
             onCheckedChange={onToggle}
@@ -775,10 +775,10 @@ function CronJobCard({ job, deliveryAccountName, onToggle, onEdit, onDelete, onT
         </div>
       </div>
 
-      <div className="flex-1 flex flex-col justify-end mt-2 pl-[62px]">
-        <div className="flex items-start gap-2 mb-3">
+      <div className="flex-1 flex flex-col justify-end mt-2 pl-[62px] min-w-0">
+        <div className="flex items-start gap-2 mb-3 min-w-0">
           <MessageSquare className="h-3.5 w-3.5 mt-0.5 text-muted-foreground shrink-0" />
-          <p className="text-sm text-muted-foreground line-clamp-2 leading-[1.5]">
+          <p className="text-sm text-muted-foreground line-clamp-2 leading-[1.5] min-w-0 flex-1 break-all">
             {job.message}
           </p>
         </div>
@@ -935,40 +935,44 @@ export function Cron() {
     <div className="flex flex-col -m-6 dark:bg-background h-[calc(100vh-2.5rem)] overflow-hidden">
       <div className="w-full max-w-5xl mx-auto flex flex-col h-full p-10 pt-16">
         {/* Header */}
-        <PageHeader
-          title={t('title')}
-          subtitle={t('subtitle')}
-          actions={
-            <>
-              <Button
-                variant="outline"
-                onClick={() => {
-                  void fetchJobs();
-                  void fetchConfiguredChannels();
-                }}
-                disabled={!isGatewayRunning}
-                className="h-9 text-[13px] font-medium rounded-full px-4 border-black/10 dark:border-white/10 bg-transparent hover:bg-black/5 dark:hover:bg-white/5 shadow-none text-foreground/80 hover:text-foreground transition-colors"
-              >
-                <RefreshCw className="h-3.5 w-3.5 mr-2" />
-                {t('refresh')}
-              </Button>
-              <Button
-                onClick={() => {
-                  setEditingJob(undefined);
-                  setShowDialog(true);
-                }}
-                disabled={!isGatewayRunning}
-                className="h-9 text-[13px] font-medium rounded-full px-4 shadow-none"
-              >
-                <Plus className="h-3.5 w-3.5 mr-2" />
-                {t('newTask')}
-              </Button>
-            </>
-          }
-        />
+        <div className="flex flex-col md:flex-row md:items-start justify-between mb-12 shrink-0 gap-4">
+          <div>
+            <h1 className="text-5xl md:text-6xl font-serif text-foreground mb-3 font-normal tracking-tight">
+              {t('title')}
+            </h1>
+            <p className="text-subtitle text-foreground/70 font-medium">
+              {t('subtitle')}
+            </p>
+          </div>
+          <div className="flex items-center gap-3 md:mt-2">
+            <Button
+              variant="outline"
+              onClick={() => {
+                void fetchJobs();
+                void fetchConfiguredChannels();
+              }}
+              disabled={!isGatewayRunning}
+              className="h-9 text-meta font-medium rounded-full px-4 border-black/10 dark:border-white/10 bg-transparent hover:bg-black/5 dark:hover:bg-white/5 shadow-none text-foreground/80 hover:text-foreground transition-colors"
+            >
+              <RefreshCw className="h-3.5 w-3.5 mr-2" />
+              {t('refresh')}
+            </Button>
+            <Button
+              onClick={() => {
+                setEditingJob(undefined);
+                setShowDialog(true);
+              }}
+              disabled={!isGatewayRunning}
+              className="h-9 text-meta font-medium rounded-full px-4 shadow-none"
+            >
+              <Plus className="h-3.5 w-3.5 mr-2" />
+              {t('newTask')}
+            </Button>
+          </div>
+        </div>
 
         {/* Content Area */}
-        <div className="flex-1 overflow-y-auto pr-2 pb-10 min-h-0 -mr-2 animate-content-in">
+        <div className="flex-1 overflow-y-auto pr-2 pb-10 min-h-0 -mr-2">
           {/* Gateway Warning */}
           {!isGatewayRunning && (
             <div className="mb-8 p-4 rounded-xl border border-yellow-500/50 bg-yellow-500/10 flex items-center gap-3">
@@ -990,107 +994,59 @@ export function Cron() {
           )}
 
           {/* Statistics */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-8">
-            {/* Total */}
-            <div className="relative group rounded-2xl p-[1px] bg-gradient-to-br from-primary/30 via-primary/10 to-transparent hover:from-primary/50 hover:via-primary/20 transition-all duration-500">
-              <div className="relative rounded-2xl bg-background/80 dark:bg-background/60 backdrop-blur-xl p-5 h-full overflow-hidden">
-                {/* Decorative grid dot */}
-                <div className="absolute top-3 right-3 grid grid-cols-3 gap-[3px] opacity-20 group-hover:opacity-40 transition-opacity">
-                  {Array.from({ length: 9 }).map((_, i) => (
-                    <div key={i} className="w-[3px] h-[3px] rounded-full bg-primary" />
-                  ))}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+            <div className="p-5 rounded-[24px] bg-black/5 dark:bg-white/5 border border-transparent flex flex-col justify-between min-h-[130px] relative overflow-hidden group hover:bg-black/10 dark:hover:bg-white/10 transition-colors">
+              <div className="flex items-center justify-between">
+                <div className="h-11 w-11 rounded-full bg-primary/10 flex items-center justify-center">
+                  <Clock className="h-5 w-5 text-primary" />
                 </div>
-                {/* Glow */}
-                <div className="absolute -top-8 -right-8 w-24 h-24 rounded-full bg-primary/10 blur-2xl group-hover:bg-primary/20 transition-colors duration-500" />
-                <p className="text-[11px] uppercase tracking-[0.15em] font-semibold text-muted-foreground/70 mb-4">{t('stats.total')}</p>
-                <div className="flex items-end justify-between">
-                  <p className="text-[36px] leading-none font-bold tracking-tight text-foreground tabular-nums">{safeJobs.length}</p>
-                  <div className="h-9 w-9 rounded-xl bg-primary/10 flex items-center justify-center border border-primary/20 group-hover:scale-110 group-hover:bg-primary/15 transition-all duration-300">
-                    <Clock className="h-4 w-4 text-primary" />
-                  </div>
-                </div>
-                {/* Bottom accent line */}
-                <div className="absolute bottom-0 left-5 right-5 h-[2px] rounded-full bg-gradient-to-r from-transparent via-primary/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+              </div>
+              <div className="mt-4 flex items-baseline gap-3">
+                <p className="text-stat font-serif text-foreground">{safeJobs.length}</p>
+                <p className="text-sm font-medium text-muted-foreground">{t('stats.total')}</p>
               </div>
             </div>
 
-            {/* Active */}
-            <div className="relative group rounded-2xl p-[1px] bg-gradient-to-br from-emerald-500/30 via-emerald-500/10 to-transparent hover:from-emerald-500/50 hover:via-emerald-500/20 transition-all duration-500">
-              <div className="relative rounded-2xl bg-background/80 dark:bg-background/60 backdrop-blur-xl p-5 h-full overflow-hidden">
-                <div className="absolute top-3 right-3 grid grid-cols-3 gap-[3px] opacity-20 group-hover:opacity-40 transition-opacity">
-                  {Array.from({ length: 9 }).map((_, i) => (
-                    <div key={i} className="w-[3px] h-[3px] rounded-full bg-emerald-500" />
-                  ))}
+            <div className="p-5 rounded-[24px] bg-black/5 dark:bg-white/5 border border-transparent flex flex-col justify-between min-h-[130px] relative overflow-hidden group hover:bg-black/10 dark:hover:bg-white/10 transition-colors">
+              <div className="flex items-center justify-between">
+                <div className="h-11 w-11 rounded-full bg-green-500/10 flex items-center justify-center">
+                  <Play className="h-5 w-5 text-green-600 dark:text-green-500 ml-0.5" />
                 </div>
-                <div className="absolute -top-8 -right-8 w-24 h-24 rounded-full bg-emerald-500/10 blur-2xl group-hover:bg-emerald-500/20 transition-colors duration-500" />
-                <div className="flex items-center gap-2 mb-4">
-                  <p className="text-[11px] uppercase tracking-[0.15em] font-semibold text-muted-foreground/70">{t('stats.active')}</p>
-                  {activeJobs.length > 0 && (
-                    <span className="relative flex h-2 w-2">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
-                      <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
-                    </span>
-                  )}
-                </div>
-                <div className="flex items-end justify-between">
-                  <p className="text-[36px] leading-none font-bold tracking-tight text-foreground tabular-nums">{activeJobs.length}</p>
-                  <div className="h-9 w-9 rounded-xl bg-emerald-500/10 flex items-center justify-center border border-emerald-500/20 group-hover:scale-110 group-hover:bg-emerald-500/15 transition-all duration-300">
-                    <Play className="h-4 w-4 text-emerald-600 dark:text-emerald-400 ml-0.5" />
-                  </div>
-                </div>
-                <div className="absolute bottom-0 left-5 right-5 h-[2px] rounded-full bg-gradient-to-r from-transparent via-emerald-500/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+              </div>
+              <div className="mt-4 flex items-baseline gap-3">
+                <p className="text-stat font-serif text-foreground">{activeJobs.length}</p>
+                <p className="text-sm font-medium text-muted-foreground">{t('stats.active')}</p>
               </div>
             </div>
 
-            {/* Paused */}
-            <div className="relative group rounded-2xl p-[1px] bg-gradient-to-br from-amber-500/30 via-amber-500/10 to-transparent hover:from-amber-500/50 hover:via-amber-500/20 transition-all duration-500">
-              <div className="relative rounded-2xl bg-background/80 dark:bg-background/60 backdrop-blur-xl p-5 h-full overflow-hidden">
-                <div className="absolute top-3 right-3 grid grid-cols-3 gap-[3px] opacity-20 group-hover:opacity-40 transition-opacity">
-                  {Array.from({ length: 9 }).map((_, i) => (
-                    <div key={i} className="w-[3px] h-[3px] rounded-full bg-amber-500" />
-                  ))}
+            <div className="p-5 rounded-[24px] bg-black/5 dark:bg-white/5 border border-transparent flex flex-col justify-between min-h-[130px] relative overflow-hidden group hover:bg-black/10 dark:hover:bg-white/10 transition-colors">
+              <div className="flex items-center justify-between">
+                <div className="h-11 w-11 rounded-full bg-yellow-500/10 flex items-center justify-center">
+                  <Pause className="h-5 w-5 text-yellow-600 dark:text-yellow-500" />
                 </div>
-                <div className="absolute -top-8 -right-8 w-24 h-24 rounded-full bg-amber-500/10 blur-2xl group-hover:bg-amber-500/20 transition-colors duration-500" />
-                <p className="text-[11px] uppercase tracking-[0.15em] font-semibold text-muted-foreground/70 mb-4">{t('stats.paused')}</p>
-                <div className="flex items-end justify-between">
-                  <p className="text-[36px] leading-none font-bold tracking-tight text-foreground tabular-nums">{pausedJobs.length}</p>
-                  <div className="h-9 w-9 rounded-xl bg-amber-500/10 flex items-center justify-center border border-amber-500/20 group-hover:scale-110 group-hover:bg-amber-500/15 transition-all duration-300">
-                    <Pause className="h-4 w-4 text-amber-600 dark:text-amber-400" />
-                  </div>
-                </div>
-                <div className="absolute bottom-0 left-5 right-5 h-[2px] rounded-full bg-gradient-to-r from-transparent via-amber-500/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+              </div>
+              <div className="mt-4 flex items-baseline gap-3">
+                <p className="text-stat font-serif text-foreground">{pausedJobs.length}</p>
+                <p className="text-sm font-medium text-muted-foreground">{t('stats.paused')}</p>
               </div>
             </div>
 
-            {/* Failed */}
-            <div className="relative group rounded-2xl p-[1px] bg-gradient-to-br from-red-500/30 via-red-500/10 to-transparent hover:from-red-500/50 hover:via-red-500/20 transition-all duration-500">
-              <div className="relative rounded-2xl bg-background/80 dark:bg-background/60 backdrop-blur-xl p-5 h-full overflow-hidden">
-                <div className="absolute top-3 right-3 grid grid-cols-3 gap-[3px] opacity-20 group-hover:opacity-40 transition-opacity">
-                  {Array.from({ length: 9 }).map((_, i) => (
-                    <div key={i} className="w-[3px] h-[3px] rounded-full bg-red-500" />
-                  ))}
+            <div className="p-5 rounded-[24px] bg-black/5 dark:bg-white/5 border border-transparent flex flex-col justify-between min-h-[130px] relative overflow-hidden group hover:bg-black/10 dark:hover:bg-white/10 transition-colors">
+              <div className="flex items-center justify-between">
+                <div className="h-11 w-11 rounded-full bg-destructive/10 flex items-center justify-center">
+                  <XCircle className="h-5 w-5 text-destructive" />
                 </div>
-                <div className="absolute -top-8 -right-8 w-24 h-24 rounded-full bg-red-500/10 blur-2xl group-hover:bg-red-500/20 transition-colors duration-500" />
-                <div className="flex items-center gap-2 mb-4">
-                  <p className="text-[11px] uppercase tracking-[0.15em] font-semibold text-muted-foreground/70">{t('stats.failed')}</p>
-                  {failedJobs.length > 0 && (
-                    <AlertCircle className="h-3 w-3 text-red-500 animate-pulse" />
-                  )}
-                </div>
-                <div className="flex items-end justify-between">
-                  <p className={cn("text-[36px] leading-none font-bold tracking-tight tabular-nums", failedJobs.length > 0 ? "text-red-600 dark:text-red-400" : "text-foreground")}>{failedJobs.length}</p>
-                  <div className="h-9 w-9 rounded-xl bg-red-500/10 flex items-center justify-center border border-red-500/20 group-hover:scale-110 group-hover:bg-red-500/15 transition-all duration-300">
-                    <XCircle className="h-4 w-4 text-red-600 dark:text-red-400" />
-                  </div>
-                </div>
-                <div className="absolute bottom-0 left-5 right-5 h-[2px] rounded-full bg-gradient-to-r from-transparent via-red-500/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+              </div>
+              <div className="mt-4 flex items-baseline gap-3">
+                <p className="text-stat font-serif text-foreground">{failedJobs.length}</p>
+                <p className="text-sm font-medium text-muted-foreground">{t('stats.failed')}</p>
               </div>
             </div>
           </div>
 
           {/* Jobs List */}
           {safeJobs.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-20 text-muted-foreground bg-surface rounded-3xl border border-transparent border-dashed">
+            <div className="flex flex-col items-center justify-center py-20 text-muted-foreground bg-black/5 dark:bg-white/5 rounded-3xl border border-transparent border-dashed">
               <Clock className="h-10 w-10 mb-4 opacity-50" />
               <h3 className="text-lg font-medium mb-2 text-foreground">{t('empty.title')}</h3>
               <p className="text-sm text-center mb-6 max-w-md">

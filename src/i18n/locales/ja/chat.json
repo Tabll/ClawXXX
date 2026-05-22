@@ -14,6 +14,7 @@
         "brainstorming": "マルチエージェント並列実行"
     },
     "noLogs": "（ログはまだありません）",
+    "scrollToLatest": "最新の会話へ移動",
     "toolbar": {
         "refresh": "チャットを更新",
         "currentAgent": "現在の会話相手: {{agent}}",
@@ -23,6 +24,7 @@
         "title": "ファイルの変更（{{count}} 件）",
         "created": "新規",
         "modified": "更新",
+        "openFolder": "フォルダーを開く",
         "viewAll": "ファイル変更を見る"
     },
     "runError": {
@@ -58,7 +60,8 @@
             "save": "保存",
             "saving": "保存中...",
             "revert": "元に戻す",
-            "openInFinder": "Finder で表示",
+            "openInFinder": "ファイルマネージャーで表示",
+            "openDirectly": "直接開く",
             "close": "閉じる"
         },
         "info": {
@@ -72,8 +75,8 @@
         },
         "errors": {
             "outsideSandbox": "サンドボックス外のパスのため拒否しました",
-            "outsideSandboxTitle": "このファイルはサンドボックス外にあります",
-            "outsideSandboxHint": "安全のため、ClawX は ~/.openclaw、アプリ内リソース、内蔵スキルのディレクトリにあるファイルだけをプレビューします。Finder では引き続き開けます。",
+            "outsideSandboxTitle": "このファイルを読み取れません",
+            "outsideSandboxHint": "ClawX はこのパスを読み取れませんでした。ファイルが移動または削除されたか、現在のアカウントにアクセス権がない可能性があります。ファイルマネージャーで表示できます。",
             "readOnlyRoot": "このファイルは読み取り専用領域（内蔵スキルなど）にあり、変更できません",
             "tooLarge": "ファイルが大きすぎます（{{size}}）。プレビューを無効化しました",
             "binary": "バイナリファイルのためテキストプレビューはできません",
@@ -81,8 +84,11 @@
             "loadFailed": "読み込みに失敗しました: {{error}}",
             "noPreview": "このファイルにはプレビューがありません",
             "unsupportedFormatTitle": "このファイル形式は内蔵プレビューまたは差分表示に未対応です",
-            "unsupportedFormatHint": "現在、内蔵プレビューと差分表示は直接読み取れるテキスト/Markdown 系ファイルのみ対応しています。Finder で開いてください。",
-            "openInFinderFailed": "Finder で表示できません"
+            "unsupportedFormatHint": "現在、内蔵プレビューと差分表示は直接読み取れるテキスト/Markdown 系ファイルのみ対応しています。ファイルマネージャーで開いてください。",
+            "largeBinaryOpenTitle": "このファイルは大きいため内蔵プレビューできません",
+            "largeBinaryOpenHint": "このファイルは {{size}} です。ClawX では内蔵プレビューできませんが、確認後にシステム既定のアプリで開けます。",
+            "openInFinderFailed": "ファイルマネージャーで表示できません",
+            "openFailed": "開けませんでした: {{error}}"
         },
         "diff": {
             "noChanges": "表示する変更はありません",
@@ -90,6 +96,32 @@
             "tooLarge": "ファイルが大きすぎるため diff ビューは無効化されました。完全な内容は「ソース」タブで確認してください",
             "unavailable": "この会話ではこのファイルの正確な変更ベースラインを取得できなかったため、差分を生成できません。", 
             "unavailableHint": "「プレビュー」で現在の内容を確認するか、Git などで正確な差分を参照してください。"
+        },
+        "confirmOpen": {
+            "title": "ファイルを開く",
+            "message": "「{{fileName}}」をシステム既定のアプリで開きますか？",
+            "detail": "このファイルはシステム既定のアプリで開かれます。",
+            "size": "ファイルサイズ: {{size}}",
+            "cancel": "キャンセル"
+        },
+        "pdf": {
+            "loadFailed": "PDF の読み込みに失敗しました: {{error}}",
+            "prev": "前のページ",
+            "next": "次のページ",
+            "zoomIn": "拡大",
+            "zoomOut": "縮小",
+            "zoomReset": "幅に合わせる",
+            "pageInputAria": "現在のページ",
+            "singlePageHint": "ツールバーから {{total}} ページを切り替えできます"
+        },
+        "sheet": {
+            "loadFailed": "スプレッドシートの読み込みに失敗しました: {{error}}",
+            "empty": "表示できるワークシートがありません",
+            "emptySheet": "このワークシートは空です",
+            "unnamedSheet": "シート {{idx}}",
+            "rowRange": "行 {{from}}-{{to}} / {{total}}",
+            "prevPage": "前のページ",
+            "nextPage": "次のページ"
         }
     },
     "workspace": {
@@ -100,7 +132,7 @@
         "truncated": "ディレクトリが大きいため、5000 件までで切り詰めました",
         "actions": {
             "refresh": "更新",
-            "openRootInFinder": "ルートを Finder で表示",
+            "openRootInFinder": "ルートをファイルマネージャーで表示",
             "toggleHidden": "隠しファイル表示切替",
             "showHidden": "隠しファイルを表示",
             "hideHidden": "隠しファイルを隠す"
@@ -140,6 +172,9 @@
         "skillLoading": "Skill を読み込み中...",
         "skillEmpty": "一致する Skill がありません",
         "pickAgent": "Agent を選択",
+        "pickModel": "モデルを選択",
+        "modelPickerTitle": "モデルを切り替え",
+        "modelSwitchFailed": "モデルの切り替えに失敗しました: {{error}}",
         "clearTarget": "送信先 Agent をクリア",
         "targetChip": "@{{agent}}",
         "agentPickerTitle": "次のメッセージを別の Agent に直接送信します",
@@ -148,14 +183,21 @@
         "stop": "停止",
         "gatewayConnected": "接続済み",
         "gatewayStatus": "ゲートウェイ {{state}} | ポート: {{port}} {{pid}}",
-        "retryFailedAttachments": "失敗した添付を再試行"
+        "retryFailedAttachments": "失敗した添付を再試行",
+        "folderDropUnsupported": "このフォルダを添付できませんでした。もう一度ドラッグするか、メッセージにフォルダパスを貼り付けてください。",
+        "folderAttachment": "フォルダ",
+        "skillPreviewTooltip": "SKILL.md をプレビュー",
+        "skillPreviewNotFound": "この Skill が見つかりません。Skill ピッカーを開いて一覧を更新してください。"
     },
     "historyBuckets": {
         "today": "今日",
-        "yesterday": "昨日",
-        "withinWeek": "1週間以内",
-        "withinTwoWeeks": "2週間以内",
-        "withinMonth": "1か月以内",
-        "older": "1か月より前"
+        "withinWeek": "過去7日間",
+        "withinMonth": "過去30日間",
+        "older": "それ以前"
+    },
+    "questionDirectory": {
+        "title": "質問目次",
+        "fallback": "質問 {{number}}",
+        "moreHint": "さらに {{count}} 件の質問は表示されていません"
     }
 }

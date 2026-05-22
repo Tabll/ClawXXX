@@ -40,6 +40,7 @@ export interface GeneratedFile {
   ext: string;
   mimeType: string;
   contentType: FileContentType;
+  size?: number;
   action: 'created' | 'modified';
   /**
    * Full new content of the file when known (only set by `Write`-family
@@ -111,12 +112,14 @@ const SNAPSHOT_EXTS = new Set([
 const VIDEO_EXTS = new Set(['.mp4', '.webm', '.mov', '.avi', '.mkv']);
 const AUDIO_EXTS = new Set(['.mp3', '.wav', '.ogg', '.flac', '.m4a']);
 const DOCUMENT_EXTS = new Set([
-  '.md', '.markdown', '.txt', '.rst', '.adoc',
+  '.md', '.markdown', '.txt', '.rst', '.adoc', '.html', '.htm',
   '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx',
 ]);
 const TEXT_DOCUMENT_EXTS = new Set([
-  '.md', '.markdown', '.txt', '.rst', '.adoc',
+  '.md', '.markdown', '.txt', '.rst', '.adoc', '.html', '.htm',
 ]);
+const PDF_PREVIEW_EXTS = new Set(['.pdf']);
+const SHEET_PREVIEW_EXTS = new Set(['.xlsx', '.xls']);
 const CODE_EXTS = new Set([
   '.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs',
   '.py', '.rb', '.go', '.rs', '.java', '.kt', '.swift',
@@ -181,11 +184,41 @@ export function classifyFileExt(ext: string): FileContentType {
 }
 
 export function supportsInlineDocumentPreview(ext: string): boolean {
-  return TEXT_DOCUMENT_EXTS.has(ext.toLowerCase());
+  const lower = ext.toLowerCase();
+  return (
+    TEXT_DOCUMENT_EXTS.has(lower)
+    || PDF_PREVIEW_EXTS.has(lower)
+    || SHEET_PREVIEW_EXTS.has(lower)
+  );
+}
+
+/** True for binary documents we render via dedicated viewers (PDF / spreadsheet). */
+export function supportsRichDocumentPreview(ext: string): boolean {
+  const lower = ext.toLowerCase();
+  return PDF_PREVIEW_EXTS.has(lower) || SHEET_PREVIEW_EXTS.has(lower);
+}
+
+export function isHtmlPreviewExt(ext: string | null | undefined): boolean {
+  if (!ext) return false;
+  const lower = ext.toLowerCase();
+  return lower === '.html' || lower === '.htm';
+}
+
+export function isPdfPreviewExt(ext: string | null | undefined): boolean {
+  if (!ext) return false;
+  return PDF_PREVIEW_EXTS.has(ext.toLowerCase());
+}
+
+export function isSheetPreviewExt(ext: string | null | undefined): boolean {
+  if (!ext) return false;
+  return SHEET_PREVIEW_EXTS.has(ext.toLowerCase());
 }
 
 export function supportsInlineDiff(file: Pick<GeneratedFile, 'ext' | 'contentType'>): boolean {
-  if (file.contentType === 'document') return supportsInlineDocumentPreview(file.ext);
+  if (file.contentType === 'document') {
+    if (supportsRichDocumentPreview(file.ext)) return false;
+    return supportsInlineDocumentPreview(file.ext);
+  }
   if (file.contentType === 'snapshot' || file.contentType === 'video' || file.contentType === 'audio') return false;
   return true;
 }

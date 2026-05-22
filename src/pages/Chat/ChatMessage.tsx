@@ -1,11 +1,12 @@
 /**
  * Chat Message Component
  * Renders user / assistant / system / toolresult messages
- * with markdown, images, and tool cards. Thinking output is
+ * with markdown and images. Tool steps render in ExecutionGraphCard;
+ * streaming runs may show a compact ToolStatusBar. Thinking output is
  * surfaced via ExecutionGraphCard, not inside message bubbles.
  */
 import { useState, useCallback, useEffect, memo } from 'react';
-import { Sparkles, Copy, Check, ChevronDown, ChevronRight, Wrench, FileText, Film, Music, FileArchive, File, X, FolderOpen, ZoomIn, Loader2, CheckCircle2, AlertCircle } from 'lucide-react';
+import { Sparkles, Copy, Check, Wrench, FileText, Film, Music, FileArchive, File, X, FolderOpen, ZoomIn, Loader2, CheckCircle2, AlertCircle } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
@@ -13,7 +14,7 @@ import rehypeKatex from 'rehype-katex';
 import { createPortal } from 'react-dom';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { invokeIpc } from '@/lib/api-client';
+import { invokeIpc, statFile } from '@/lib/api-client';
 import type { RawMessage, AttachedFileMeta } from '@/stores/chat';
 import { extractText, extractImages, extractToolUse, formatTimestamp } from './message-utils';
 
@@ -48,6 +49,146 @@ interface ChatMessageProps {
 }
 
 interface ExtractedImage { url?: string; data?: string; mimeType: string; }
+
+const DIRECTORY_MIME_TYPE = 'application/x-directory';
+
+function isChatPreviewDocument(file: AttachedFileMeta): boolean {
+  const name = file.fileName.toLowerCase();
+  const mime = file.mimeType.toLowerCase();
+  return (
+    mime === 'application/pdf'
+    || mime === 'application/vnd.ms-excel'
+    || mime === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    || name.endsWith('.pdf')
+    || name.endsWith('.xls')
+    || name.endsWith('.xlsx')
+  );
+}
+
+function isDirectoryAttachment(file: AttachedFileMeta): boolean {
+  return file.mimeType === DIRECTORY_MIME_TYPE;
+}
+
+function isSkillFileAttachment(file: AttachedFileMeta): boolean {
+  const path = file.filePath ?? '';
+  return (
+    /(?:^|[\\/])\.openclaw[\\/]skills[\\/][^\\/]+[\\/].+\.[A-Za-z0-9]+$/i.test(path)
+    || /(?:^|[\\/])skills[\\/][^\\/]+[\\/]SKILL\.md$/i.test(path)
+  );
+}
+
+function isHtmlOrMarkdownPreview(file: AttachedFileMeta): boolean {
+  const name = file.fileName.toLowerCase();
+  const mime = file.mimeType.toLowerCase();
+  return (
+    mime === 'text/html'
+    || mime === 'text/markdown'
+    || name.endsWith('.html')
+    || name.endsWith('.htm')
+    || name.endsWith('.md')
+    || name.endsWith('.markdown')
+  );
+}
+
+/** User-facing artifacts that must stay visible when process output is folded into the graph. */
+function isUserFacingAttachmentWhenFolded(file: AttachedFileMeta): boolean {
+  if (file.mimeType.startsWith('image/')) return true;
+  if (isDirectoryAttachment(file)) return true;
+  if (isSkillFileAttachment(file)) return true;
+  if (isChatPreviewDocument(file)) return true;
+  // Paths parsed from the assistant reply (e.g. "/workspace/demo.html") are
+  // intentional user-facing links. Generic tool-result markdown attachments
+  // (e.g. CHECKLIST.md emitted mid-run) stay folded into the execution graph.
+  if (file.source === 'message-ref' && isHtmlOrMarkdownPreview(file)) return true;
+  return false;
+}
+
+function validationKindForAttachment(file: AttachedFileMeta): 'file' | 'dir' | null {
+  if (!file.filePath) return null;
+  // User-selected uploads and already enriched attachments are trusted enough
+  // for immediate display. Regex-derived message refs start at size 0/null and
+  // are validated through main-process stat before becoming clickable cards.
+  if (file.source !== 'message-ref' && file.source !== 'tool-result') return null;
+  if (file.fileSize > 0 || file.preview) return null;
+  return isDirectoryAttachment(file) ? 'dir' : 'file';
+}
+
+function previewMimeFromPath(filePath: string): string | null {
+  const lower = filePath.toLowerCase();
+  if (lower.endsWith('.md') || lower.endsWith('.markdown')) return 'text/markdown';
+  if (lower.endsWith('.html') || lower.endsWith('.htm')) return 'text/html';
+  if (lower.endsWith('.pdf')) return 'application/pdf';
+  if (lower.endsWith('.xls')) return 'application/vnd.ms-excel';
+  if (lower.endsWith('.xlsx')) return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+  return null;
+}
+
+function fileNameFromPath(filePath: string): string {
+  return filePath.split(/[\\/]/).pop() || 'file';
+}
+
+function trimPathTerminators(filePath: string): string {
+  return filePath.replace(/[，。；;,.!?]+$/u, '');
+}
+
+function extractPreviewDocumentPaths(text: string): AttachedFileMeta[] {
+  if (!text) return [];
+  const refs: AttachedFileMeta[] = [];
+  const seen = new Set<string>();
+  const pushRef = (filePath: string, mimeType: string) => {
+    const normalizedPath = trimPathTerminators(filePath);
+    if (!normalizedPath || seen.has(normalizedPath)) return;
+    seen.add(normalizedPath);
+    refs.push({
+      fileName: fileNameFromPath(normalizedPath),
+      mimeType,
+      fileSize: 0,
+      preview: null,
+      filePath: normalizedPath,
+      source: 'message-ref',
+    });
+  };
+  // Deliberately narrow this render-layer fallback to user-facing artifacts:
+  // HTML / Markdown / PDF / spreadsheet previews and OpenClaw skill directories.
+  // The store-level extractor still handles broad file categories; this keeps
+  // visible outputs clickable even before history enrichment runs.
+  const exts = 'html?|md|markdown|pdf|xlsx?|HTML?|MD|MARKDOWN|PDF|XLSX?';
+  const taggedRegex = new RegExp(`(?:^|[\\s(\\[{>])(?:MEDIA|media):((?:\\/|~\\/)[^\\s\\n"'()\\[\\],<>]*?\\.(?:${exts}))`, 'g');
+  const unixRegex = new RegExp('(?<![\\w./:])((?:\\/|~\\/)[^\\s\\n"\'`()\\[\\],<>]*?\\.(?:' + exts + '))', 'g');
+  const skillPathBoundary = '(?=$|\\s|[\\x5b\\x5d"\'`(),<>，。；;,.!?])';
+  const skillPathPart = '[^\\\\/\\s\\n"\'`()\\x5b\\x5d,<>]+';
+  const skillPathTail = '[^\\s\\n"\'`()\\x5b\\x5d,<>]*?';
+  const skillDirRegex = new RegExp(
+    `(?<![\\w./:])((?:~[\\\\/]\\.openclaw[\\\\/]skills[\\\\/]${skillPathPart})|(?:(?:\\/|[A-Za-z]:\\\\)${skillPathTail}[\\\\/]\\.openclaw[\\\\/]skills[\\\\/]${skillPathPart}))${skillPathBoundary}`,
+    'gi',
+  );
+  const skillMarkdownRegex = new RegExp(
+    `(?<![\\w./:])((?:~[\\\\/]\\.openclaw[\\\\/]skills[\\\\/]${skillPathTail}\\.md)|(?:(?:\\/|[A-Za-z]:\\\\)${skillPathTail}[\\\\/]\\.openclaw[\\\\/]skills[\\\\/]${skillPathTail}\\.md))${skillPathBoundary}`,
+    'gi',
+  );
+
+  let workingText = text;
+  let taggedMatch: RegExpExecArray | null;
+  while ((taggedMatch = taggedRegex.exec(text)) !== null) {
+    const filePath = taggedMatch[1];
+    const mimeType = previewMimeFromPath(filePath);
+    if (mimeType) pushRef(filePath, mimeType);
+    const start = taggedMatch.index;
+    const end = start + taggedMatch[0].length;
+    workingText = workingText.slice(0, start) + ' '.repeat(end - start) + workingText.slice(end);
+  }
+
+  for (const regex of [unixRegex, skillMarkdownRegex, skillDirRegex]) {
+    let match: RegExpExecArray | null;
+    while ((match = regex.exec(workingText)) !== null) {
+      const filePath = match[1];
+      const mimeType = regex === skillDirRegex ? DIRECTORY_MIME_TYPE : previewMimeFromPath(filePath);
+      if (mimeType) pushRef(filePath, mimeType);
+    }
+  }
+
+  return refs;
+}
 
 /**
  * Normalize LaTeX delimiters so `remark-math` can detect them.
@@ -109,14 +250,80 @@ export const ChatMessage = memo(function ChatMessage({
   const images = extractImages(message);
   const tools = extractToolUse(message);
   const visibleTools = suppressToolCards ? [] : tools;
+  const [validatedPaths, setValidatedPaths] = useState<Record<string, boolean>>({});
   const rawAttachedFiles = message._attachedFiles || [];
-  const filteredProcessAttachments = rawAttachedFiles.filter((file) => file.source !== 'tool-result' && file.source !== 'message-ref');
+  const textPreviewFiles = isUser ? [] : extractPreviewDocumentPaths(text);
+  const rawAttachedPaths = new Set(rawAttachedFiles.map((file) => file.filePath).filter(Boolean));
+  const derivedAttachedFiles = [
+    ...rawAttachedFiles,
+    ...textPreviewFiles.filter((file) => !file.filePath || !rawAttachedPaths.has(file.filePath)),
+  ];
+  const validationTargets = derivedAttachedFiles
+    .map((file) => {
+      const kind = validationKindForAttachment(file);
+      return kind && file.filePath ? { filePath: file.filePath, kind } : null;
+    })
+    .filter((target): target is { filePath: string; kind: 'file' | 'dir' } => !!target);
+  const validationKey = validationTargets
+    .map((target) => `${target.kind}:${target.filePath}`)
+    .sort()
+    .join('\n');
+  useEffect(() => {
+    if (!validationKey) return;
+    const pendingTargets = validationTargets.filter((target) => validatedPaths[target.filePath] === undefined);
+    if (pendingTargets.length === 0) return;
+
+    let cancelled = false;
+    void Promise.all(
+      pendingTargets.map(async (target) => {
+        try {
+          const stat = await statFile(target.filePath);
+          return {
+            filePath: target.filePath,
+            exists: !!stat.ok && (target.kind === 'dir' ? !!stat.isDir : !!stat.isFile),
+          };
+        } catch {
+          return { filePath: target.filePath, exists: false };
+        }
+      }),
+    ).then((results) => {
+      if (cancelled) return;
+      setValidatedPaths((current) => {
+        const next = { ...current };
+        for (const result of results) next[result.filePath] = result.exists;
+        return next;
+      });
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [validationKey, validationTargets, validatedPaths]);
+  const existingDerivedAttachedFiles = derivedAttachedFiles.filter((file) => {
+    const kind = validationKindForAttachment(file);
+    if (!kind || !file.filePath) return true;
+    return validatedPaths[file.filePath] === true;
+  });
+  const filteredProcessAttachments = derivedAttachedFiles.filter((file) => {
+    if (file.source !== 'tool-result' && file.source !== 'message-ref') return true;
+    // Runtime-produced user-facing artifacts (images, HTML/Markdown/PDF/XLSX,
+    // skill directories, ...) must remain visible in the reply bubble even
+    // when generic process attachments are folded into the execution graph.
+    // The graph card itself does not render `_attachedFiles`, so dropping
+    // them here would leave the user with no way to open previews from chat.
+    return isUserFacingAttachmentWhenFolded(file);
+  });
   // When a message is attachment-only, keep those attachments visible even if
   // process attachments are generally suppressed for this run segment —
   // otherwise the reply disappears entirely.
+  const processVisibleAttachments = filteredProcessAttachments.filter((file) => {
+    const kind = validationKindForAttachment(file);
+    if (!kind || !file.filePath) return true;
+    return validatedPaths[file.filePath] === true;
+  });
   const attachedFiles = suppressProcessAttachments && (hasText || images.length > 0 || visibleTools.length > 0)
-    ? filteredProcessAttachments
-    : rawAttachedFiles;
+    ? processVisibleAttachments
+    : existingDerivedAttachedFiles;
   const [lightboxImg, setLightboxImg] = useState<{ src: string; fileName: string; filePath?: string; base64?: string; mimeType?: string } | null>(null);
 
   // Never render tool result messages in chat UI
@@ -134,7 +341,7 @@ export const ChatMessage = memo(function ChatMessage({
     >
       {/* Avatar */}
       {!isUser && (
-        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full mt-1 bg-surface text-foreground">
+        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full mt-1 bg-black/5 dark:bg-white/5 text-foreground">
           <Sparkles className="h-4 w-4" />
         </div>
       )}
@@ -148,15 +355,6 @@ export const ChatMessage = memo(function ChatMessage({
       >
         {isStreaming && !isUser && streamingTools.length > 0 && (
           <ToolStatusBar tools={streamingTools} />
-        )}
-
-        {/* Tool use cards */}
-        {visibleTools.length > 0 && (
-          <div className="space-y-1">
-            {visibleTools.map((tool, i) => (
-              <ToolCard key={tool.id || i} name={tool.name} input={tool.input} />
-            ))}
-          </div>
         )}
 
         {/* Images — rendered ABOVE text bubble for user messages */}
@@ -200,7 +398,7 @@ export const ChatMessage = memo(function ChatMessage({
                 ) : (
                   <div
                     key={`local-${i}`}
-                    className="w-36 h-36 rounded-xl border border-black/10 dark:border-white/10 bg-surface flex items-center justify-center text-muted-foreground"
+                    className="w-36 h-36 rounded-xl border border-black/10 dark:border-white/10 bg-black/5 dark:bg-white/5 flex items-center justify-center text-muted-foreground"
                   >
                     <File className="h-8 w-8" />
                   </div>
@@ -212,13 +410,13 @@ export const ChatMessage = memo(function ChatMessage({
           </div>
         )}
 
-        {/* Main text bubble */}
+        {/* Main text */}
         {hasText && (
-          <MessageBubble
-            text={text}
-            isUser={isUser}
-            isStreaming={isStreaming}
-          />
+          isUser ? (
+            <UserMessageBubble text={text} />
+          ) : (
+            <AssistantMarkdown text={text} isStreaming={isStreaming} />
+          )
         )}
 
         {/* Images from content blocks — assistant messages (below text) */}
@@ -261,7 +459,7 @@ export const ChatMessage = memo(function ChatMessage({
               }
               if (isImage && !file.preview) {
                 return (
-                  <div key={`local-${i}`} className="w-36 h-36 rounded-xl border border-black/10 dark:border-white/10 bg-surface flex items-center justify-center text-muted-foreground">
+                  <div key={`local-${i}`} className="w-36 h-36 rounded-xl border border-black/10 dark:border-white/10 bg-black/5 dark:bg-white/5 flex items-center justify-center text-muted-foreground">
                     <File className="h-8 w-8" />
                   </div>
                 );
@@ -377,70 +575,67 @@ function AssistantHoverBar({ text, timestamp }: { text: string; timestamp?: numb
   );
 }
 
-// ── Message Bubble ──────────────────────────────────────────────
+// ── User Message Bubble ─────────────────────────────────────────
 
-function MessageBubble({
+function UserMessageBubble({
   text,
-  isUser,
+}: {
+  text: string;
+}) {
+  return (
+    <div className="relative rounded-2xl px-4 py-3 bg-brand text-white shadow-sm">
+      <p className="whitespace-pre-wrap break-words text-sm">{text}</p>
+    </div>
+  );
+}
+
+// ── Assistant Markdown ──────────────────────────────────────────
+
+function AssistantMarkdown({
+  text,
   isStreaming,
 }: {
   text: string;
-  isUser: boolean;
   isStreaming: boolean;
 }) {
   return (
-    <div
-      className={cn(
-        'relative rounded-2xl px-4 py-3',
-        !isUser && 'w-full',
-        isUser
-          ? 'bg-[#0a84ff] text-white shadow-sm'
-          : 'bg-surface text-foreground',
+    <div className="prose prose-sm dark:prose-invert w-full max-w-none break-words text-foreground">
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm, remarkMath]}
+        rehypePlugins={[[rehypeKatex, { strict: false, throwOnError: false, output: 'html' }]]}
+        components={{
+          code({ className, children, ...props }) {
+            const match = /language-(\w+)/.exec(className || '');
+            const isInline = !match && !className;
+            if (isInline) {
+              return (
+                <code className="bg-muted px-1.5 py-0.5 rounded text-sm font-mono break-words break-all" {...props}>
+                  {children}
+                </code>
+              );
+            }
+            return (
+              <pre className="bg-muted rounded-lg p-4 overflow-x-auto">
+                <code className={cn('text-sm font-mono', className)} {...props}>
+                  {children}
+                </code>
+              </pre>
+            );
+          },
+          a({ href, children }) {
+            return (
+              <a href={href} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline break-words break-all">
+                {children}
+              </a>
+            );
+          },
+        }}
+      >
+        {normalizeLatexDelimiters(text)}
+      </ReactMarkdown>
+      {isStreaming && (
+        <span className="inline-block w-2 h-4 bg-foreground/50 animate-pulse ml-0.5" />
       )}
-    >
-      {isUser ? (
-        <p className="whitespace-pre-wrap break-words break-all text-sm">{text}</p>
-      ) : (
-        <div className="prose prose-sm dark:prose-invert max-w-none break-words break-all">
-          <ReactMarkdown
-            remarkPlugins={[remarkGfm, remarkMath]}
-            rehypePlugins={[[rehypeKatex, { strict: false, throwOnError: false, output: 'html' }]]}
-            components={{
-              code({ className, children, ...props }) {
-                const match = /language-(\w+)/.exec(className || '');
-                const isInline = !match && !className;
-                if (isInline) {
-                  return (
-                    <code className="bg-background/50 px-1.5 py-0.5 rounded text-sm font-mono break-words break-all" {...props}>
-                      {children}
-                    </code>
-                  );
-                }
-                return (
-                  <pre className="bg-background/50 rounded-lg p-4 overflow-x-auto">
-                    <code className={cn('text-sm font-mono', className)} {...props}>
-                      {children}
-                    </code>
-                  </pre>
-                );
-              },
-              a({ href, children }) {
-                return (
-                  <a href={href} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline break-words break-all">
-                    {children}
-                  </a>
-                );
-              },
-            }}
-          >
-            {normalizeLatexDelimiters(text)}
-          </ReactMarkdown>
-          {isStreaming && (
-            <span className="inline-block w-2 h-4 bg-foreground/50 animate-pulse ml-0.5" />
-          )}
-        </div>
-      )}
-
     </div>
   );
 }
@@ -455,6 +650,7 @@ function formatFileSize(bytes: number): string {
 }
 
 function FileIcon({ mimeType, className }: { mimeType: string; className?: string }) {
+  if (mimeType === DIRECTORY_MIME_TYPE) return <FolderOpen className={className} />;
   if (mimeType.startsWith('video/')) return <Film className={className} />;
   if (mimeType.startsWith('audio/')) return <Music className={className} />;
   if (mimeType.startsWith('text/') || mimeType === 'application/json' || mimeType === 'application/xml') return <FileText className={className} />;
@@ -476,7 +672,7 @@ function FileCard({ file, onOpen }: { file: AttachedFileMeta; onOpen?: (file: At
   return (
     <div 
       className={cn(
-        "flex items-center gap-3 rounded-xl border border-black/10 dark:border-white/10 px-3 py-2.5 bg-surface max-w-[220px]",
+        "flex items-center gap-3 rounded-xl border border-black/10 dark:border-white/10 px-3 py-2.5 bg-black/5 dark:bg-white/5 max-w-[220px]",
         file.filePath && "cursor-pointer hover:bg-black/10 dark:hover:bg-white/10 transition-colors"
       )}
       onClick={handleOpen}
@@ -486,7 +682,7 @@ function FileCard({ file, onOpen }: { file: AttachedFileMeta; onOpen?: (file: At
       <div className="min-w-0 overflow-hidden">
         <p className="text-xs font-medium truncate">{file.fileName}</p>
         <p className="text-2xs text-muted-foreground">
-          {file.fileSize > 0 ? formatFileSize(file.fileSize) : 'File'}
+          {file.mimeType === DIRECTORY_MIME_TYPE ? '文件夹' : file.fileSize > 0 ? formatFileSize(file.fileSize) : 'File'}
         </p>
       </div>
     </div>
@@ -633,27 +829,3 @@ function ImageLightbox({
   );
 }
 
-// ── Tool Card ───────────────────────────────────────────────────
-
-function ToolCard({ name, input }: { name: string; input: unknown }) {
-  const [expanded, setExpanded] = useState(false);
-
-  return (
-    <div className="rounded-xl border border-black/10 dark:border-white/10 bg-black/5 dark:bg-white/5 text-sm">
-      <button
-        className="flex items-center gap-2 w-full px-3 py-1.5 text-muted-foreground hover:text-foreground transition-colors"
-        onClick={() => setExpanded(!expanded)}
-      >
-        <CheckCircle2 className="h-3.5 w-3.5 text-green-500 shrink-0" />
-        <Wrench className="h-3 w-3 shrink-0 opacity-60" />
-        <span className="font-mono text-xs">{name}</span>
-        {expanded ? <ChevronDown className="h-3 w-3 ml-auto" /> : <ChevronRight className="h-3 w-3 ml-auto" />}
-      </button>
-      {expanded && input != null && (
-        <pre className="px-3 pb-2 text-xs text-muted-foreground overflow-x-auto">
-          {typeof input === 'string' ? input : JSON.stringify(input, null, 2) as string}
-        </pre>
-      )}
-    </div>
-  );
-}

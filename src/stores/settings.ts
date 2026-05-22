@@ -32,10 +32,10 @@ interface SettingsState {
   // Update
   updateChannel: UpdateChannel;
   autoCheckUpdate: boolean;
-  autoDownloadUpdate: boolean;
 
   // UI State
   sidebarCollapsed: boolean;
+  sidebarWidth: number;
   devModeUnlocked: boolean;
 
   // Setup
@@ -58,8 +58,8 @@ interface SettingsState {
   setProxyBypassRules: (value: string) => void;
   setUpdateChannel: (channel: UpdateChannel) => void;
   setAutoCheckUpdate: (value: boolean) => void;
-  setAutoDownloadUpdate: (value: boolean) => void;
   setSidebarCollapsed: (value: boolean) => void;
+  setSidebarWidth: (value: number) => void;
   setDevModeUnlocked: (value: boolean) => void;
   markSetupComplete: () => void;
   resetSettings: () => void;
@@ -81,11 +81,13 @@ const defaultSettings = {
   proxyBypassRules: '<local>;localhost;127.0.0.1;::1',
   updateChannel: 'stable' as UpdateChannel,
   autoCheckUpdate: true,
-  autoDownloadUpdate: false,
   sidebarCollapsed: false,
+  sidebarWidth: 280,
   devModeUnlocked: false,
   setupComplete: false,
 };
+
+const clampSidebarWidth = (value: number) => Math.min(420, Math.max(220, Math.round(value)));
 
 export const useSettingsStore = create<SettingsState>()(
   persist(
@@ -102,6 +104,9 @@ export const useSettingsStore = create<SettingsState>()(
             ...state,
             ...settings,
             ...(resolvedLanguage ? { language: resolvedLanguage } : {}),
+            ...(typeof settings.sidebarWidth === 'number'
+              ? { sidebarWidth: clampSidebarWidth(settings.sidebarWidth) }
+              : {}),
           }));
           if (resolvedLanguage) {
             i18n.changeLanguage(resolvedLanguage);
@@ -164,9 +169,16 @@ export const useSettingsStore = create<SettingsState>()(
       setProxyAllServer: (proxyAllServer) => set({ proxyAllServer }),
       setProxyBypassRules: (proxyBypassRules) => set({ proxyBypassRules }),
       setUpdateChannel: (updateChannel) => set({ updateChannel }),
-      setAutoCheckUpdate: (autoCheckUpdate) => set({ autoCheckUpdate }),
-      setAutoDownloadUpdate: (autoDownloadUpdate) => set({ autoDownloadUpdate }),
+      setAutoCheckUpdate: (autoCheckUpdate) => {
+        set({ autoCheckUpdate });
+        void hostApiFetch('/api/settings/autoCheckUpdate', {
+          method: 'PUT',
+          body: JSON.stringify({ value: autoCheckUpdate }),
+        }).catch(() => { });
+      },
+
       setSidebarCollapsed: (sidebarCollapsed) => set({ sidebarCollapsed }),
+      setSidebarWidth: (sidebarWidth) => set({ sidebarWidth: clampSidebarWidth(sidebarWidth) }),
       setDevModeUnlocked: (devModeUnlocked) => {
         set({ devModeUnlocked });
         void hostApiFetch('/api/settings/devModeUnlocked', {
