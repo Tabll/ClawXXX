@@ -129,18 +129,18 @@ function buildDreamingEnabledPatchRaw(enabled: boolean): string {
     },
   });
 }
-const PANEL_CLASS = 'rounded-2xl border-black/10 bg-surface-modal shadow-sm dark:border-white/10';
-const INSET_CLASS = 'rounded-xl border-black/10 bg-transparent dark:border-white/10';
-const QUIET_BUTTON_CLASS = 'border-black/10 bg-transparent text-foreground/80 shadow-none hover:bg-black/5 hover:text-foreground dark:border-white/10 dark:hover:bg-white/5';
-const STATUS_BADGE_CLASS = 'border-black/10 bg-black/5 text-foreground/80 dark:border-white/10 dark:bg-white/10 dark:text-foreground/80';
-const SUCCESS_NOTICE_CLASS = 'border-black/10 bg-black/5 text-foreground/80 dark:border-white/10 dark:bg-white/10';
+const PANEL_CLASS = 'rounded-lg border-border/75 bg-surface-modal shadow-sm shadow-black/5';
+const INSET_CLASS = 'rounded-lg border-border/70 bg-surface-input/70';
+const QUIET_BUTTON_CLASS = 'border-border/80 bg-surface-modal/80 text-foreground/85 shadow-sm hover:bg-surface-modal hover:text-foreground';
+const STATUS_BADGE_CLASS = 'border-border/70 bg-surface-input/80 text-foreground/85';
+const SUCCESS_NOTICE_CLASS = 'border-border/70 bg-surface-input/80 text-foreground/85';
 
 // Header pill buttons — mirrors the Agents/Cron page header style so
 // the top-right action cluster looks consistent across pages. Outline
 // is used for secondary actions (refresh, disable, open-full-UI); the
 // primary is the brand-filled pill (enable / new task / add agent).
-const HEADER_PILL_OUTLINE_CLASS = 'h-9 rounded-full px-4 text-meta font-medium border-black/10 dark:border-white/10 bg-transparent hover:bg-black/5 dark:hover:bg-white/5 shadow-none text-foreground/80 hover:text-foreground transition-colors';
-const HEADER_PILL_PRIMARY_CLASS = 'h-9 rounded-full px-4 text-meta font-medium shadow-none';
+const HEADER_PILL_OUTLINE_CLASS = 'clawx-toolbar-button';
+const HEADER_PILL_PRIMARY_CLASS = 'h-9 rounded-lg px-4 text-meta font-medium shadow-sm';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value != null && typeof value === 'object' && !Array.isArray(value);
@@ -406,8 +406,8 @@ export function Dreams() {
       <header className="flex shrink-0 items-center justify-between gap-4 px-10 pb-6 pt-8">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
-            <Moon className="h-6 w-6 text-foreground/70" />
-            <h1 className="truncate font-serif text-4xl font-normal tracking-tight text-foreground">{t('title')}</h1>
+            <Moon className="h-6 w-6 text-muted-foreground" />
+            <h1 className="truncate text-3xl font-semibold tracking-tight text-foreground">{t('title')}</h1>
             <Badge
               data-testid="dreams-enabled-badge"
               variant="outline"
@@ -454,19 +454,19 @@ export function Dreams() {
 
       <main className="min-h-0 flex-1 overflow-auto px-10 pb-10">
         {!dreamsReady && (
-          <div className="mb-4 rounded-xl border border-black/10 bg-transparent px-4 py-3 text-sm text-foreground/70 dark:border-white/10">
+          <div className="mb-4 rounded-lg border border-border/70 bg-surface-input/70 px-4 py-3 text-sm text-muted-foreground">
             {t('gatewayNotReady')}
           </div>
         )}
 
         {error && (
-          <div data-testid="dreams-error" className="mb-4 rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+          <div data-testid="dreams-error" className="mb-4 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
             {error}
           </div>
         )}
 
         {lastActionMessage && (
-          <div data-testid="dreams-action-message" className={cn('mb-4 rounded-xl border px-4 py-3 text-sm', SUCCESS_NOTICE_CLASS)}>
+          <div data-testid="dreams-action-message" className={cn('mb-4 rounded-lg border px-4 py-3 text-sm', SUCCESS_NOTICE_CLASS)}>
             {lastActionMessage}
           </div>
         )}
@@ -477,7 +477,7 @@ export function Dreams() {
             return (
               <Card key={metric.label} className={PANEL_CLASS}>
                 <CardContent className="flex items-center gap-3 p-4">
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-transparent">
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-surface-input/70">
                     <Icon className="h-4 w-4 text-muted-foreground" />
                   </div>
                   <div className="min-w-0">
@@ -503,7 +503,7 @@ export function Dreams() {
             </CardHeader>
             <CardContent className="space-y-3 p-4 pt-0">
               {diaryEntries.length === 0 ? (
-                <div data-testid="dreams-empty-diary" className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">
+                <div data-testid="dreams-empty-diary" className="rounded-lg border border-dashed border-border/70 bg-surface-input/70 p-6 text-center text-sm text-muted-foreground">
                   {t('diary.empty')}
                 </div>
               ) : (
@@ -617,12 +617,12 @@ export function Dreams() {
             </CardHeader>
             <CardContent className="space-y-2 p-4 pt-0">
               {(dreaming?.storeError || dreaming?.phaseSignalError) && (
-                <div className="rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
                   {dreaming.storeError || dreaming.phaseSignalError}
                 </div>
               )}
               {recentSignals.length === 0 ? (
-                <div className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">
+                <div className="rounded-lg border border-dashed border-border/70 bg-surface-input/70 p-6 text-center text-sm text-muted-foreground">
                   {t('signals.empty')}
                 </div>
               ) : (

@@ -533,7 +533,7 @@ export function FilePreviewBody({
         <div
           className={cn(
             'min-h-0 flex-1',
-            tabs.length > 1 && 'border-t border-black/5 dark:border-white/10',
+            tabs.length > 1 && 'border-t border-border/60',
           )}
         >
           {tabs.includes('source') && (
@@ -650,8 +650,8 @@ export function FilePreviewBody({
       <header
         className={
           compact
-            ? 'flex items-center justify-between gap-3 border-b border-black/5 px-4 py-2 dark:border-white/10'
-            : 'flex items-center justify-between gap-3 border-b border-black/5 px-5 py-3 dark:border-white/10'
+            ? 'flex items-center justify-between gap-3 border-b border-border/60 px-4 py-2 '
+            : 'flex items-center justify-between gap-3 border-b border-border/60 px-5 py-3 '
         }
       >
         <div className="flex min-w-0 items-center gap-3">

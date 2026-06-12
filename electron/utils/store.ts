@@ -28,6 +28,8 @@ export interface AppSettings {
   startMinimized: boolean;
   launchAtStartup: boolean;
   telemetryEnabled: boolean;
+  appFontFamily: string;
+  themeColor: string;
   machineId: string;
   hasReportedInstall: boolean;
 
@@ -79,6 +81,8 @@ function createDefaultSettings(): AppSettings {
     startMinimized: false,
     launchAtStartup: false,
     telemetryEnabled: true,
+    appFontFamily: '',
+    themeColor: '#2563eb',
     machineId: '',
     hasReportedInstall: false,
 

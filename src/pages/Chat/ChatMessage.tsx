@@ -353,7 +353,7 @@ export const ChatMessage = memo(function ChatMessage({
           sit alongside a single line of text. */}
       {!isUser && (
         <div className="flex h-6 shrink-0 items-center">
-          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-black/5 dark:bg-white/5 text-foreground">
+          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-surface-input/70 text-foreground">
             <Sparkles className="h-4 w-4" />
           </div>
         </div>
@@ -631,7 +631,7 @@ function UserMessageBubble({
   text: string;
 }) {
   return (
-    <div className="relative rounded-2xl px-4 py-3 bg-brand text-white shadow-sm">
+    <div className="relative rounded-lg px-4 py-3 bg-brand text-primary-foreground shadow-sm">
       <p className="whitespace-pre-wrap break-words text-sm">{text}</p>
     </div>
   );
@@ -657,7 +657,7 @@ function AssistantMarkdown({
             const isInline = !match && !className;
             if (isInline) {
               return (
-                <code className="bg-black/5 dark:bg-white/5 px-1.5 py-0.5 rounded text-sm font-mono break-words break-all" {...props}>
+                <code className="bg-surface-input/70 px-1.5 py-0.5 rounded text-sm font-mono break-words break-all" {...props}>
                   {children}
                 </code>
               );
@@ -671,7 +671,7 @@ function AssistantMarkdown({
           pre({ children, ...props }) {
             return (
               <pre
-                className="bg-black/5 dark:bg-white/5 rounded-lg p-4 overflow-x-auto whitespace-pre-wrap break-words"
+                className="bg-surface-input/70 rounded-lg p-4 overflow-x-auto whitespace-pre-wrap break-words"
                 {...props}
               >
                 {children}
@@ -734,8 +734,8 @@ function FileCard({ file, onOpen }: { file: AttachedFileMeta; onOpen?: (file: At
   return (
     <div 
       className={cn(
-        "flex items-center gap-3 rounded-xl border border-black/10 dark:border-white/10 px-3 py-2.5 bg-black/5 dark:bg-white/5 max-w-[220px]",
-        file.filePath && "cursor-pointer hover:bg-black/10 dark:hover:bg-white/10 transition-colors"
+        "flex items-center gap-3 rounded-lg border border-border/80 px-3 py-2.5 bg-surface-input/70 max-w-[220px]",
+        file.filePath && "cursor-pointer hover:bg-surface-modal transition-colors"
       )}
       onClick={handleOpen}
       title={file.filePath ? "Open file" : undefined}
@@ -761,7 +761,7 @@ function ImagePreviewPlaceholder({ file }: { file: AttachedFileMeta }) {
   return (
     <div
       className={cn(
-        'flex h-36 w-36 flex-col items-center justify-center gap-2 rounded-xl border border-black/10 bg-black/5 px-3 text-center text-muted-foreground dark:border-white/10 dark:bg-white/5',
+        'flex h-36 w-36 flex-col items-center justify-center gap-2 rounded-lg border border-border/80 bg-surface-input/70 px-3 text-center text-muted-foreground ',
         unavailable && 'border-amber-500/30 bg-amber-500/5 text-amber-700 dark:text-amber-400',
       )}
       data-testid={unavailable ? 'image-preview-unavailable' : 'image-preview-loading'}
@@ -797,7 +797,7 @@ function ImageThumbnail({
   void filePath; void base64; void mimeType;
   return (
     <div
-      className="relative w-36 h-36 rounded-xl border overflow-hidden border-black/10 dark:border-white/10 bg-black/5 dark:bg-white/5 group/img cursor-zoom-in"
+      className="relative w-36 h-36 rounded-lg border overflow-hidden border-border/80 bg-surface-input/70 group/img cursor-zoom-in"
       onClick={onPreview}
     >
       <img src={src} alt={fileName} className="w-full h-full object-cover" />
@@ -828,7 +828,7 @@ function ImagePreviewCard({
   void filePath; void base64; void mimeType;
   return (
     <div
-      className="relative max-w-xs rounded-xl border overflow-hidden border-black/10 dark:border-white/10 bg-black/5 dark:bg-white/5 group/img cursor-zoom-in"
+      className="relative max-w-xs rounded-lg border overflow-hidden border-border/80 bg-surface-input/70 group/img cursor-zoom-in"
       onClick={onPreview}
     >
       <img src={src} alt={fileName} className="block w-full" />

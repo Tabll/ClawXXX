@@ -19,9 +19,9 @@
  *
  *   3. colors — On top of shadcn's semantic tokens (primary / destructive /
  *      ...) we add three ClawX-private groups:
- *        - brand        : Apple-system blue used for primary CTAs
+ *        - brand        : user-selected accent colour used for branded surfaces
  *        - skill        : highlight blue for inline /skill chips in chat
- *        - surface.{modal,input,sidebar}: a 3-layer cream-paper background
+ *        - surface.{modal,input,sidebar}: a 3-layer neutral background
  *                          system in light mode. In dark mode each layer
  *                          collapses to an existing shadcn token through
  *                          CSS variables, so callers don't need to write
@@ -68,13 +68,8 @@ module.exports = {
        *             and finally the four Apple/Segoe/Noto color emoji
        *             fonts so emoji never fall back to a serif.
        *
-       *   - serif : Georgia-first display stack used by all page H1/H2.
-       *             Previously written as inline `style={{ fontFamily }}`
-       *             in 17 places — that's been collapsed to this token,
-       *             so `font-serif` alone now reproduces the original
-       *             rendering exactly. (NOTE: deliberately omits
-       *             `ui-serif` — on macOS that resolves to "New York"
-       *             which we explicitly do not want.)
+       *   - serif : mapped to the same app font variable so legacy
+       *             `font-serif` page headings stay visually unified.
        *
        *   - mono  : standard developer-font stack. Used for IDs, paths,
        *             tokens, timestamps, code blocks, CLI output etc.
@@ -83,25 +78,10 @@ module.exports = {
        * ────────────────────────────────────────────────────────────── */
       fontFamily: {
         sans: [
-          '-apple-system',
-          'BlinkMacSystemFont',
-          '"Segoe UI"',
-          'Roboto',
-          '"Helvetica Neue"',
-          'Arial',
-          '"Noto Sans"',
-          'sans-serif',
-          '"Apple Color Emoji"',
-          '"Segoe UI Emoji"',
-          '"Segoe UI Symbol"',
-          '"Noto Color Emoji"',
+          'var(--app-font-family)',
         ],
         serif: [
-          'Georgia',
-          'Cambria',
-          '"Times New Roman"',
-          'Times',
-          'serif',
+          'var(--app-font-family)',
         ],
         mono: [
           'ui-monospace',
@@ -140,8 +120,8 @@ module.exports = {
        *   │ 3xl   (TW)   │ 30px     │ 36px        │ section H2 (serif)           │
        *   │ 4xl   (TW)   │ 36px     │ 40px        │ Chat empty-state H1          │
        *   │ stat  (new)  │ 40px     │ 1           │ dashboard hero numbers       │
-       *   │ 5xl   (TW)   │ 48px     │ 1           │ page H1 (narrow viewport)    │
-       *   │ 6xl   (TW)   │ 60px     │ 1           │ page H1 (md and up)          │
+       *   │ 5xl   (TW)   │ 48px     │ 1           │ reserved display size        │
+       *   │ 6xl   (TW)   │ 60px     │ 1           │ reserved display size        │
        *   └──────────────┴──────────┴─────────────┴──────────────────────────────┘
        *
        * Tailwind defaults marked (TW) are intentionally untouched so
@@ -223,13 +203,12 @@ module.exports = {
         },
 
         // ── B. ClawX brand tokens ────────────────────────────────────
-        // Apple-system blue used for primary CTAs. The same pixel value
-        // works in both themes (sufficient WCAG-AA contrast in light
-        // mode and stays vivid in dark mode), so no CSS variable needed.
+        // User-selected accent colour for branded surfaces. Values are
+        // backed by CSS variables so Settings can update them live.
         // Pair with `brand-hover` for the hover state.
         brand: {
-          DEFAULT: '#0a84ff',
-          hover: '#007aff',
+          DEFAULT: 'hsl(var(--brand) / <alpha-value>)',
+          hover: 'hsl(var(--brand-hover) / <alpha-value>)',
         },
 
         // Highlight blue for inline /skill chips in the chat input.
@@ -243,12 +222,12 @@ module.exports = {
           'fg-dark': '#2563EB',   // chip text (dark mode)
         },
 
-        // ── C. ClawX cream surfaces ──────────────────────────────────
+        // ── C. ClawX neutral surfaces ────────────────────────────────
         // We use `<alpha-value>` placeholders so Tailwind auto-emits
         // `bg-surface-xxx/{alpha}` rules. Concrete pixel values live in
         // globals.css; in dark mode the same CSS variables redirect to
         // shadcn's existing dark tokens to avoid maintaining a second
-        // (dark) cream palette.
+        // (dark) surface palette.
         surface: {
           modal: 'hsl(var(--surface-modal) / <alpha-value>)',
           input: 'hsl(var(--surface-input) / <alpha-value>)',

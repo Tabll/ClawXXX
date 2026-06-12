@@ -11,6 +11,9 @@ import {
   ExternalLink,
   Copy,
   FileText,
+  Palette,
+  RotateCcw,
+  Type,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -36,6 +39,7 @@ import { SUPPORTED_LANGUAGES } from '@/i18n';
 import { hostApi, type OpenClawDoctorResult } from '@/lib/host-api';
 import { hostEvents } from '@/lib/host-events';
 import { cn } from '@/lib/utils';
+import { DEFAULT_THEME_COLOR, normalizeThemeColor } from '@/lib/app-appearance';
 type ControlUiInfo = {
   url: string;
   token: string;
@@ -71,6 +75,10 @@ export function Settings() {
     setDevModeUnlocked,
     telemetryEnabled,
     setTelemetryEnabled,
+    appFontFamily,
+    setAppFontFamily,
+    themeColor,
+    setThemeColor,
   } = useSettingsStore();
 
   const { status: gatewayStatus, restart: restartGateway } = useGatewayStore();
@@ -94,6 +102,7 @@ export function Settings() {
   const [logContent, setLogContent] = useState('');
   const [doctorRunningMode, setDoctorRunningMode] = useState<'diagnose' | 'fix' | null>(null);
   const [doctorResult, setDoctorResult] = useState<OpenClawDoctorResult | null>(null);
+  const [themeColorDraft, setThemeColorDraft] = useState(themeColor);
 
   const handleShowLogs = async () => {
     try {
@@ -273,6 +282,10 @@ export function Settings() {
     setProxyBypassRulesDraft(proxyBypassRules);
   }, [proxyBypassRules]);
 
+  useEffect(() => {
+    setThemeColorDraft(themeColor);
+  }, [themeColor]);
+
   const proxySettingsDirty = useMemo(() => {
     return (
       proxyEnabledDraft !== proxyEnabled
@@ -418,37 +431,43 @@ export function Settings() {
     toast.success(translateNext('appearance.menuLanguageUpdated'));
   };
 
+  const commitThemeColorDraft = () => {
+    const nextColor = normalizeThemeColor(themeColorDraft);
+    setThemeColor(nextColor);
+    setThemeColorDraft(nextColor);
+  };
+
   return (
-    <div data-testid="settings-page" className="flex flex-col -m-6 dark:bg-background h-[calc(100vh-2.5rem)] overflow-hidden">
-      <div className="w-full max-w-5xl mx-auto flex flex-col h-full p-10 pt-16">
+    <div data-testid="settings-page" className="clawx-page-root">
+      <div className="clawx-page-container">
 
         {/* Header */}
-        <div className="flex flex-col md:flex-row md:items-start justify-between mb-12 shrink-0 gap-4">
+        <div className="clawx-page-header">
           <div>
-            <h1 className="text-5xl md:text-6xl font-serif text-foreground mb-3 font-normal tracking-tight">
+            <h1 className="clawx-page-title mb-2">
               {t('title')}
             </h1>
-            <p className="text-subtitle text-foreground/70 font-medium">
+            <p className="clawx-page-subtitle">
               {t('subtitle')}
             </p>
           </div>
         </div>
 
         {/* Content Area */}
-        <div className="flex-1 overflow-y-auto pr-2 pb-10 min-h-0 -mr-2 space-y-12">
+        <div className="clawx-page-content">
 
           {/* Appearance */}
           <div>
-            <h2 className="text-3xl font-serif text-foreground mb-6 font-normal tracking-tight">
+            <h2 className="clawx-section-title mb-4">
               {t('appearance.title')}
             </h2>
             <div className="space-y-6">
               <div className="space-y-3">
-                <Label className="text-sm font-medium text-foreground/80">{t('appearance.theme')}</Label>
+                <Label className="clawx-form-label">{t('appearance.theme')}</Label>
                 <div className="flex flex-wrap gap-2">
                   <Button
                     variant={theme === 'light' ? 'secondary' : 'outline'}
-                    className={cn("rounded-full px-5 h-10 border-black/10 dark:border-white/10", theme === 'light' ? "bg-black/5 dark:bg-white/10 text-foreground" : "bg-transparent text-muted-foreground hover:bg-black/5 dark:hover:bg-white/5")}
+                    className={cn("rounded-lg px-4 h-9 border-border/80", theme === 'light' ? "border-primary/30 bg-primary/10 text-primary" : "bg-surface-modal/70 text-muted-foreground hover:bg-surface-modal")}
                     onClick={() => setTheme('light')}
                   >
                     <Sun className="h-4 w-4 mr-2" />
@@ -456,7 +475,7 @@ export function Settings() {
                   </Button>
                   <Button
                     variant={theme === 'dark' ? 'secondary' : 'outline'}
-                    className={cn("rounded-full px-5 h-10 border-black/10 dark:border-white/10", theme === 'dark' ? "bg-black/5 dark:bg-white/10 text-foreground" : "bg-transparent text-muted-foreground hover:bg-black/5 dark:hover:bg-white/5")}
+                    className={cn("rounded-lg px-4 h-9 border-border/80", theme === 'dark' ? "border-primary/30 bg-primary/10 text-primary" : "bg-surface-modal/70 text-muted-foreground hover:bg-surface-modal")}
                     onClick={() => setTheme('dark')}
                   >
                     <Moon className="h-4 w-4 mr-2" />
@@ -464,7 +483,7 @@ export function Settings() {
                   </Button>
                   <Button
                     variant={theme === 'system' ? 'secondary' : 'outline'}
-                    className={cn("rounded-full px-5 h-10 border-black/10 dark:border-white/10", theme === 'system' ? "bg-black/5 dark:bg-white/10 text-foreground" : "bg-transparent text-muted-foreground hover:bg-black/5 dark:hover:bg-white/5")}
+                    className={cn("rounded-lg px-4 h-9 border-border/80", theme === 'system' ? "border-primary/30 bg-primary/10 text-primary" : "bg-surface-modal/70 text-muted-foreground hover:bg-surface-modal")}
                     onClick={() => setTheme('system')}
                   >
                     <Monitor className="h-4 w-4 mr-2" />
@@ -472,14 +491,107 @@ export function Settings() {
                   </Button>
                 </div>
               </div>
+              <div className="clawx-settings-row flex-col items-stretch sm:flex-row sm:items-center">
+                <div className="flex min-w-0 items-start gap-3">
+                  <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                    <Type className="h-4 w-4" />
+                  </div>
+                  <div className="min-w-0">
+                    <Label htmlFor="settings-font-input" className="text-sm font-medium text-foreground">
+                      {t('appearance.appFont')}
+                    </Label>
+                    <p className="text-meta text-muted-foreground mt-1">
+                      {t('appearance.appFontDesc')}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex min-w-0 flex-1 flex-col gap-2 sm:max-w-sm">
+                  <div className="flex gap-2">
+                    <Input
+                      id="settings-font-input"
+                      data-testid="settings-font-input"
+                      value={appFontFamily}
+                      onChange={(event) => setAppFontFamily(event.target.value)}
+                      placeholder={t('appearance.appFontPlaceholder')}
+                      className="min-w-0"
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      onClick={() => setAppFontFamily('')}
+                      aria-label={t('appearance.resetFont')}
+                    >
+                      <RotateCcw className="h-4 w-4" />
+                    </Button>
+                  </div>
+                  <p className="truncate text-tiny text-muted-foreground">
+                    {appFontFamily.trim() ? t('appearance.appFontPreview', { font: appFontFamily }) : t('appearance.systemFont')}
+                  </p>
+                </div>
+              </div>
+              <div className="clawx-settings-row flex-col items-stretch sm:flex-row sm:items-center">
+                <div className="flex min-w-0 items-start gap-3">
+                  <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                    <Palette className="h-4 w-4" />
+                  </div>
+                  <div className="min-w-0">
+                    <Label htmlFor="settings-theme-color-text" className="text-sm font-medium text-foreground">
+                      {t('appearance.themeColor')}
+                    </Label>
+                    <p className="text-meta text-muted-foreground mt-1">
+                      {t('appearance.themeColorDesc')}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex min-w-0 flex-1 items-center gap-2 sm:max-w-sm">
+                  <Input
+                    data-testid="settings-theme-color-input"
+                    type="color"
+                    value={normalizeThemeColor(themeColorDraft)}
+                    onChange={(event) => {
+                      setThemeColorDraft(event.target.value);
+                      setThemeColor(event.target.value);
+                    }}
+                    aria-label={t('appearance.themeColor')}
+                    className="h-10 w-12 shrink-0 cursor-pointer p-1"
+                  />
+                  <Input
+                    id="settings-theme-color-text"
+                    data-testid="settings-theme-color-text"
+                    value={themeColorDraft}
+                    onChange={(event) => setThemeColorDraft(event.target.value)}
+                    onBlur={commitThemeColorDraft}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') {
+                        commitThemeColorDraft();
+                      }
+                    }}
+                    placeholder={DEFAULT_THEME_COLOR}
+                    className="min-w-0 font-mono text-meta"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    onClick={() => {
+                      setThemeColor(DEFAULT_THEME_COLOR);
+                      setThemeColorDraft(DEFAULT_THEME_COLOR);
+                    }}
+                    aria-label={t('appearance.resetThemeColor')}
+                  >
+                    <RotateCcw className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
               <div className="space-y-3">
-                <Label className="text-sm font-medium text-foreground/80">{t('appearance.language')}</Label>
+                <Label className="clawx-form-label">{t('appearance.language')}</Label>
                 <div className="flex flex-wrap gap-2">
                   {SUPPORTED_LANGUAGES.map((lang) => (
                     <Button
                       key={lang.code}
                       variant={language === lang.code ? 'secondary' : 'outline'}
-                      className={cn("rounded-full px-5 h-10 border-black/10 dark:border-white/10", language === lang.code ? "bg-black/5 dark:bg-white/10 text-foreground" : "bg-transparent text-muted-foreground hover:bg-black/5 dark:hover:bg-white/5")}
+                      className={cn("rounded-lg px-4 h-9 border-border/80", language === lang.code ? "border-primary/30 bg-primary/10 text-primary" : "bg-surface-modal/70 text-muted-foreground hover:bg-surface-modal")}
                       onClick={() => handleLanguageChange(lang.code)}
                     >
                       {lang.label}
@@ -487,9 +599,9 @@ export function Settings() {
                   ))}
                 </div>
               </div>
-              <div className="flex items-center justify-between">
+              <div className="clawx-settings-row">
                 <div>
-                  <Label className="text-sm font-medium text-foreground/80">{t('appearance.launchAtStartup')}</Label>
+                  <Label className="clawx-form-label">{t('appearance.launchAtStartup')}</Label>
                   <p className="text-meta text-muted-foreground mt-1">
                     {t('appearance.launchAtStartupDesc')}
                   </p>
@@ -502,11 +614,11 @@ export function Settings() {
             </div>
           </div>
 
-          <Separator className="bg-black/5 dark:bg-white/5" />
+          <Separator className="bg-surface-input/70" />
 
           {/* Gateway */}
           <div>
-            <h2 className="text-3xl font-serif text-foreground mb-6 font-normal tracking-tight">
+            <h2 className="clawx-section-title mb-4">
               {t('gateway.title')}
             </h2>
             <div className="space-y-6">
@@ -523,7 +635,7 @@ export function Settings() {
                     gatewayStatus.state === 'running' && gatewayStatus.gatewayReady !== false ? "bg-green-500/10 text-green-600 dark:text-green-500 border-green-500/20" :
                       gatewayStatus.state === 'running' ? "bg-red-500/10 text-red-600 dark:text-red-500 border-red-500/20" :
                         gatewayStatus.state === 'error' ? "bg-red-500/10 text-red-600 dark:text-red-500 border-red-500/20" :
-                          "bg-black/5 dark:bg-white/5 text-muted-foreground border-transparent"
+                          "bg-surface-input/70 text-muted-foreground border-transparent"
                   )}>
                     <div className={cn("w-1.5 h-1.5 rounded-full",
                       gatewayStatus.state === 'running' && gatewayStatus.gatewayReady !== false ? "bg-green-500" :
@@ -532,11 +644,11 @@ export function Settings() {
                     )} />
                     {gatewayStatus.state === 'running' && gatewayStatus.gatewayReady === false ? 'starting' : gatewayStatus.state}
                   </div>
-                  <Button variant="outline" size="sm" onClick={restartGateway} className="rounded-full h-8 px-4 border-black/10 dark:border-white/10 bg-transparent hover:bg-black/5 dark:hover:bg-white/5">
+                  <Button variant="outline" size="sm" onClick={restartGateway} className="clawx-toolbar-button h-8">
                     <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
                     {t('common:actions.restart')}
                   </Button>
-                  <Button variant="outline" size="sm" onClick={handleShowLogs} className="rounded-full h-8 px-4 border-black/10 dark:border-white/10 bg-transparent hover:bg-black/5 dark:hover:bg-white/5">
+                  <Button variant="outline" size="sm" onClick={handleShowLogs} className="clawx-toolbar-button h-8">
                     <FileText className="h-3.5 w-3.5 mr-1.5" />
                     {t('gateway.logs')}
                   </Button>
@@ -544,20 +656,20 @@ export function Settings() {
               </div>
 
               {showLogs && (
-                <div className="p-4 rounded-2xl bg-black/5 dark:bg-white/5 border border-black/5 dark:border-white/5">
+                <div className="p-4 rounded-lg bg-surface-input/70 border border-border/60">
                   <div className="flex items-center justify-between mb-3">
                     <p className="font-medium text-sm">{t('gateway.appLogs')}</p>
                     <div className="flex gap-2">
-                      <Button variant="ghost" size="sm" className="h-7 text-xs rounded-full hover:bg-black/5 dark:hover:bg-white/10" onClick={handleOpenLogDir}>
+                      <Button variant="ghost" size="sm" className="h-7 rounded-lg text-xs hover:bg-surface-input" onClick={handleOpenLogDir}>
                         <ExternalLink className="h-3 w-3 mr-1.5" />
                         {t('gateway.openFolder')}
                       </Button>
-                      <Button variant="ghost" size="sm" className="h-7 text-xs rounded-full hover:bg-black/5 dark:hover:bg-white/10" onClick={() => setShowLogs(false)}>
+                      <Button variant="ghost" size="sm" className="h-7 rounded-lg text-xs hover:bg-surface-input" onClick={() => setShowLogs(false)}>
                         {t('common:actions.close')}
                       </Button>
                     </div>
                   </div>
-                  <pre className="text-xs text-muted-foreground bg-surface-input p-4 rounded-xl max-h-60 overflow-auto whitespace-pre-wrap font-mono border border-black/5 dark:border-white/5 shadow-inner">
+                  <pre className="text-xs text-muted-foreground bg-surface-input p-4 rounded-lg max-h-60 overflow-auto whitespace-pre-wrap font-mono border border-border/60 shadow-inner">
                     {logContent || t('chat:noLogs')}
                   </pre>
                 </div>
@@ -611,9 +723,9 @@ export function Settings() {
           {/* Developer */}
           {devModeUnlocked && (
             <>
-              <Separator className="bg-black/5 dark:bg-white/5" />
+              <Separator className="bg-surface-input/70" />
               <div data-testid="settings-developer-section">
-                <h2 data-testid="settings-developer-title" className="text-3xl font-serif text-foreground mb-6 font-normal tracking-tight">
+                <h2 data-testid="settings-developer-title" className="clawx-section-title mb-4">
                   {t('developer.title')}
                 </h2>
                 <div className="space-y-8">
@@ -621,7 +733,7 @@ export function Settings() {
                   <div className="space-y-4" data-testid="settings-proxy-section">
                     <div className="flex items-center justify-between">
                       <div>
-                        <Label className="text-sm font-medium text-foreground/80">Gateway Proxy</Label>
+                        <Label className="clawx-form-label">Gateway Proxy</Label>
                         <p className="text-meta text-muted-foreground">
                           {t('gateway.proxyDesc')}
                         </p>
@@ -639,7 +751,7 @@ export function Settings() {
                         onClick={handleSaveProxySettings}
                         disabled={savingProxy || !proxySettingsDirty}
                         data-testid="settings-proxy-save-button"
-                        className="rounded-xl h-10 px-5 bg-transparent border-black/10 dark:border-white/10 hover:bg-black/5 dark:hover:bg-white/5"
+                        className="rounded-lg h-10 px-4 bg-surface-modal/70 border-border/80 hover:bg-surface-modal"
                       >
                         <RefreshCw className={`h-4 w-4 mr-2${savingProxy ? ' animate-spin' : ''}`} />
                         {savingProxy ? t('common:status.saving') : t('common:actions.save')}
@@ -653,13 +765,13 @@ export function Settings() {
                       <div className="space-y-4 pt-2">
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                           <div className="space-y-2">
-                            <Label htmlFor="proxy-server" className="text-meta text-foreground/80">{t('gateway.proxyServer')}</Label>
+                            <Label htmlFor="proxy-server" className="clawx-form-label text-meta">{t('gateway.proxyServer')}</Label>
                             <Input
                               id="proxy-server"
                               value={proxyServerDraft}
                               onChange={(event) => setProxyServerDraft(event.target.value)}
                               placeholder="http://127.0.0.1:7890"
-                              className="h-10 rounded-xl bg-black/5 dark:bg-white/5 border-transparent font-mono text-meta"
+                              className="h-10 rounded-lg bg-surface-modal/70 border-border/80 font-mono text-meta"
                             />
                             <p className="text-tiny text-muted-foreground">
                               {t('gateway.proxyServerHelp')}
@@ -667,13 +779,13 @@ export function Settings() {
                           </div>
 
                           <div className="space-y-2">
-                            <Label htmlFor="proxy-http-server" className="text-meta text-foreground/80">{t('gateway.proxyHttpServer')}</Label>
+                            <Label htmlFor="proxy-http-server" className="clawx-form-label text-meta">{t('gateway.proxyHttpServer')}</Label>
                             <Input
                               id="proxy-http-server"
                               value={proxyHttpServerDraft}
                               onChange={(event) => setProxyHttpServerDraft(event.target.value)}
                               placeholder={proxyServerDraft || 'http://127.0.0.1:7890'}
-                              className="h-10 rounded-xl bg-black/5 dark:bg-white/5 border-transparent font-mono text-meta"
+                              className="h-10 rounded-lg bg-surface-modal/70 border-border/80 font-mono text-meta"
                             />
                             <p className="text-tiny text-muted-foreground">
                               {t('gateway.proxyHttpServerHelp')}
@@ -681,13 +793,13 @@ export function Settings() {
                           </div>
 
                           <div className="space-y-2">
-                            <Label htmlFor="proxy-https-server" className="text-meta text-foreground/80">{t('gateway.proxyHttpsServer')}</Label>
+                            <Label htmlFor="proxy-https-server" className="clawx-form-label text-meta">{t('gateway.proxyHttpsServer')}</Label>
                             <Input
                               id="proxy-https-server"
                               value={proxyHttpsServerDraft}
                               onChange={(event) => setProxyHttpsServerDraft(event.target.value)}
                               placeholder={proxyServerDraft || 'http://127.0.0.1:7890'}
-                              className="h-10 rounded-xl bg-black/5 dark:bg-white/5 border-transparent font-mono text-meta"
+                              className="h-10 rounded-lg bg-surface-modal/70 border-border/80 font-mono text-meta"
                             />
                             <p className="text-tiny text-muted-foreground">
                               {t('gateway.proxyHttpsServerHelp')}
@@ -695,13 +807,13 @@ export function Settings() {
                           </div>
 
                           <div className="space-y-2">
-                            <Label htmlFor="proxy-all-server" className="text-meta text-foreground/80">{t('gateway.proxyAllServer')}</Label>
+                            <Label htmlFor="proxy-all-server" className="clawx-form-label text-meta">{t('gateway.proxyAllServer')}</Label>
                             <Input
                               id="proxy-all-server"
                               value={proxyAllServerDraft}
                               onChange={(event) => setProxyAllServerDraft(event.target.value)}
                               placeholder={proxyServerDraft || 'socks5://127.0.0.1:7891'}
-                              className="h-10 rounded-xl bg-black/5 dark:bg-white/5 border-transparent font-mono text-meta"
+                              className="h-10 rounded-lg bg-surface-modal/70 border-border/80 font-mono text-meta"
                             />
                             <p className="text-tiny text-muted-foreground">
                               {t('gateway.proxyAllServerHelp')}
@@ -710,13 +822,13 @@ export function Settings() {
                         </div>
 
                         <div className="space-y-2">
-                          <Label htmlFor="proxy-bypass" className="text-meta text-foreground/80">{t('gateway.proxyBypass')}</Label>
+                          <Label htmlFor="proxy-bypass" className="clawx-form-label text-meta">{t('gateway.proxyBypass')}</Label>
                           <Input
                             id="proxy-bypass"
                             value={proxyBypassRulesDraft}
                             onChange={(event) => setProxyBypassRulesDraft(event.target.value)}
                             placeholder="<local>;localhost;127.0.0.1;::1"
-                            className="h-10 rounded-xl bg-black/5 dark:bg-white/5 border-transparent font-mono text-meta"
+                            className="h-10 rounded-lg bg-surface-modal/70 border-border/80 font-mono text-meta"
                           />
                           <p className="text-tiny text-muted-foreground">
                             {t('gateway.proxyBypassHelp')}
@@ -727,7 +839,7 @@ export function Settings() {
                     )}
                   </div>
                   <div className="space-y-4 pt-4">
-                    <Label className="text-sm font-medium text-foreground/80">{t('developer.gatewayToken')}</Label>
+                    <Label className="clawx-form-label">{t('developer.gatewayToken')}</Label>
                     <p className="text-meta text-muted-foreground">
                       {t('developer.gatewayTokenDesc')}
                     </p>
@@ -737,14 +849,14 @@ export function Settings() {
                         readOnly
                         value={controlUiInfo?.token || ''}
                         placeholder={t('developer.tokenUnavailable')}
-                        className="font-mono text-meta h-10 rounded-xl bg-black/5 dark:bg-white/5 border-transparent flex-1 min-w-[200px]"
+                        className="font-mono text-meta h-10 rounded-lg bg-surface-modal/70 border-border/80 flex-1 min-w-[200px]"
                       />
                       <Button
                         type="button"
                         variant="outline"
                         onClick={refreshControlUiInfo}
                         disabled={!devModeUnlocked}
-                        className="rounded-xl h-10 px-4 bg-transparent border-black/10 dark:border-white/10 hover:bg-black/5 dark:hover:bg-white/5"
+                        className="rounded-lg h-10 px-3 bg-surface-modal/70 border-border/80 hover:bg-surface-modal"
                       >
                         <RefreshCw className="h-4 w-4 mr-2" />
                         {t('common:actions.load')}
@@ -754,7 +866,7 @@ export function Settings() {
                         variant="outline"
                         onClick={handleCopyGatewayToken}
                         disabled={!controlUiInfo?.token}
-                        className="rounded-xl h-10 px-4 bg-transparent border-black/10 dark:border-white/10 hover:bg-black/5 dark:hover:bg-white/5"
+                        className="rounded-lg h-10 px-3 bg-surface-modal/70 border-border/80 hover:bg-surface-modal"
                       >
                         <Copy className="h-4 w-4 mr-2" />
                         {t('common:actions.copy')}
@@ -778,14 +890,14 @@ export function Settings() {
                           readOnly
                           value={openclawCliCommand}
                           placeholder={openclawCliError || t('developer.cmdUnavailable')}
-                          className="font-mono text-meta h-10 rounded-xl bg-black/5 dark:bg-white/5 border-transparent flex-1 min-w-[200px]"
+                          className="font-mono text-meta h-10 rounded-lg bg-surface-modal/70 border-border/80 flex-1 min-w-[200px]"
                         />
                         <Button
                           type="button"
                           variant="outline"
                           onClick={handleCopyCliCommand}
                           disabled={!openclawCliCommand}
-                          className="rounded-xl h-10 px-4 bg-transparent border-black/10 dark:border-white/10 hover:bg-black/5 dark:hover:bg-white/5"
+                          className="rounded-lg h-10 px-3 bg-surface-modal/70 border-border/80 hover:bg-surface-modal"
                         >
                           <Copy className="h-4 w-4 mr-2" />
                           {t('common:actions.copy')}
@@ -808,7 +920,7 @@ export function Settings() {
                           variant="outline"
                           onClick={() => void handleRunOpenClawDoctor('diagnose')}
                           disabled={doctorRunningMode !== null}
-                          className="rounded-xl h-10 px-4 bg-transparent border-black/10 dark:border-white/10 hover:bg-black/5 dark:hover:bg-white/5"
+                          className="rounded-lg h-10 px-3 bg-surface-modal/70 border-border/80 hover:bg-surface-modal"
                         >
                           <RefreshCw className={`h-4 w-4 mr-2${doctorRunningMode === 'diagnose' ? ' animate-spin' : ''}`} />
                           {doctorRunningMode === 'diagnose' ? t('common:status.running') : t('developer.runDoctor')}
@@ -818,7 +930,7 @@ export function Settings() {
                           variant="outline"
                           onClick={() => void handleRunOpenClawDoctor('fix')}
                           disabled={doctorRunningMode !== null}
-                          className="rounded-xl h-10 px-4 bg-transparent border-black/10 dark:border-white/10 hover:bg-black/5 dark:hover:bg-white/5"
+                          className="rounded-lg h-10 px-3 bg-surface-modal/70 border-border/80 hover:bg-surface-modal"
                         >
                           <RefreshCw className={`h-4 w-4 mr-2${doctorRunningMode === 'fix' ? ' animate-spin' : ''}`} />
                           {doctorRunningMode === 'fix' ? t('common:status.running') : t('developer.runDoctorFix')}
@@ -828,7 +940,7 @@ export function Settings() {
                           variant="outline"
                           onClick={handleCopyDoctorOutput}
                           disabled={!doctorResult}
-                          className="rounded-xl h-10 px-4 bg-transparent border-black/10 dark:border-white/10 hover:bg-black/5 dark:hover:bg-white/5"
+                          className="rounded-lg h-10 px-3 bg-surface-modal/70 border-border/80 hover:bg-surface-modal"
                         >
                           <Copy className="h-4 w-4 mr-2" />
                           {t('common:actions.copy')}
@@ -837,7 +949,7 @@ export function Settings() {
                     </div>
 
                     {doctorResult && (
-                      <div className="space-y-3 rounded-2xl border border-black/10 dark:border-white/10 p-5 bg-black/5 dark:bg-white/5">
+                      <div className="space-y-3 rounded-lg border border-border/80 p-5 bg-surface-input/70">
                         <div className="flex flex-wrap gap-2 text-xs">
                           <Badge variant={doctorResult.success ? 'secondary' : 'destructive'} className="rounded-full px-3 py-1">
                             {doctorResult.mode === 'fix'
@@ -858,14 +970,14 @@ export function Settings() {
                         </div>
                         <div className="grid gap-3 md:grid-cols-2">
                           <div className="space-y-2">
-                            <p className="text-xs font-semibold text-foreground/80">{t('developer.doctorStdout')}</p>
-                            <pre className="max-h-72 overflow-auto rounded-xl border border-black/10 dark:border-white/10 bg-surface-input p-3 text-tiny font-mono whitespace-pre-wrap break-words">
+                            <p className="text-xs font-semibold text-foreground/85">{t('developer.doctorStdout')}</p>
+                            <pre className="max-h-72 overflow-auto rounded-lg border border-border/80 bg-surface-input p-3 text-tiny font-mono whitespace-pre-wrap break-words">
                               {doctorResult.stdout.trim() || t('developer.doctorOutputEmpty')}
                             </pre>
                           </div>
                           <div className="space-y-2">
-                            <p className="text-xs font-semibold text-foreground/80">{t('developer.doctorStderr')}</p>
-                            <pre className="max-h-72 overflow-auto rounded-xl border border-black/10 dark:border-white/10 bg-surface-input p-3 text-tiny font-mono whitespace-pre-wrap break-words">
+                            <p className="text-xs font-semibold text-foreground/85">{t('developer.doctorStderr')}</p>
+                            <pre className="max-h-72 overflow-auto rounded-lg border border-border/80 bg-surface-input p-3 text-tiny font-mono whitespace-pre-wrap break-words">
                               {doctorResult.stderr.trim() || t('developer.doctorOutputEmpty')}
                             </pre>
                           </div>
@@ -887,7 +999,7 @@ export function Settings() {
                         variant="outline"
                         size="sm"
                         onClick={() => setShowTelemetryViewer((prev) => !prev)}
-                        className="rounded-full px-5 h-9 bg-transparent border-black/10 dark:border-white/10 hover:bg-black/5 dark:hover:bg-white/5"
+                        className="rounded-lg px-5 h-9 bg-surface-modal/70 border-border/80 hover:bg-surface-modal"
                       >
                         {showTelemetryViewer
                           ? t('common:actions.hide')
@@ -896,29 +1008,29 @@ export function Settings() {
                     </div>
 
                     {showTelemetryViewer && (
-                      <div className="space-y-4 rounded-2xl border border-black/10 dark:border-white/10 p-5 bg-black/5 dark:bg-white/5">
+                      <div className="space-y-4 rounded-lg border border-border/80 p-5 bg-surface-input/70">
                         <div className="flex flex-wrap items-center gap-2">
-                          <Badge variant="secondary" className="rounded-full px-3 py-1 bg-surface-modal border border-black/5 dark:border-white/5">{t('developer.telemetryTotal')}: {telemetryStats.total}</Badge>
-                          <Badge variant={telemetryStats.errorCount > 0 ? 'destructive' : 'secondary'} className={cn("rounded-full px-3 py-1", telemetryStats.errorCount === 0 && "bg-surface-modal border border-black/5 dark:border-white/5")}>
+                          <Badge variant="secondary" className="rounded-full px-3 py-1 bg-surface-modal border border-border/60">{t('developer.telemetryTotal')}: {telemetryStats.total}</Badge>
+                          <Badge variant={telemetryStats.errorCount > 0 ? 'destructive' : 'secondary'} className={cn("rounded-full px-3 py-1", telemetryStats.errorCount === 0 && "bg-surface-modal border border-border/60")}>
                             {t('developer.telemetryErrors')}: {telemetryStats.errorCount}
                           </Badge>
-                          <Badge variant={telemetryStats.slowCount > 0 ? 'secondary' : 'outline'} className={cn("rounded-full px-3 py-1", telemetryStats.slowCount === 0 && "bg-surface-modal border border-black/5 dark:border-white/5")}>
+                          <Badge variant={telemetryStats.slowCount > 0 ? 'secondary' : 'outline'} className={cn("rounded-full px-3 py-1", telemetryStats.slowCount === 0 && "bg-surface-modal border border-border/60")}>
                             {t('developer.telemetrySlow')}: {telemetryStats.slowCount}
                           </Badge>
                           <div className="ml-auto flex gap-2">
-                            <Button type="button" variant="outline" size="sm" onClick={handleCopyTelemetry} className="rounded-full h-8 px-4 bg-surface-modal border-black/5 dark:border-white/5 hover:bg-black/5 dark:hover:bg-white/10">
+                            <Button type="button" variant="outline" size="sm" onClick={handleCopyTelemetry} className="rounded-lg h-8 px-3 bg-surface-modal border-border/60 hover:bg-surface-input">
                               <Copy className="h-3.5 w-3.5 mr-1.5" />
                               {t('common:actions.copy')}
                             </Button>
-                            <Button type="button" variant="outline" size="sm" onClick={handleClearTelemetry} className="rounded-full h-8 px-4 bg-surface-modal border-black/5 dark:border-white/5 hover:bg-black/5 dark:hover:bg-white/10">
+                            <Button type="button" variant="outline" size="sm" onClick={handleClearTelemetry} className="rounded-lg h-8 px-3 bg-surface-modal border-border/60 hover:bg-surface-input">
                               {t('common:actions.clear')}
                             </Button>
                           </div>
                         </div>
 
-                        <div className="max-h-80 overflow-auto rounded-xl border border-black/10 dark:border-white/10 bg-surface-modal shadow-inner">
+                        <div className="max-h-80 overflow-auto rounded-lg border border-border/80 bg-surface-modal shadow-inner">
                           {telemetryByEvent.length > 0 && (
-                            <div className="border-b border-black/5 dark:border-white/5 bg-black/5 dark:bg-white/5 p-3">
+                            <div className="border-b border-border/60 bg-surface-input/70 p-3">
                               <p className="mb-3 text-xs font-semibold text-muted-foreground">
                                 {t('developer.telemetryAggregated')}
                               </p>
@@ -926,7 +1038,7 @@ export function Settings() {
                                 {telemetryByEvent.map((item) => (
                                   <div
                                     key={item.event}
-                                    className="grid grid-cols-[minmax(0,1.6fr)_0.7fr_0.9fr_0.8fr_1fr] gap-2 rounded-lg border border-black/5 dark:border-white/5 bg-surface-modal px-3 py-2"
+                                    className="grid grid-cols-[minmax(0,1.6fr)_0.7fr_0.9fr_0.8fr_1fr] gap-2 rounded-lg border border-border/60 bg-surface-modal px-3 py-2"
                                   >
                                     <span className="truncate font-medium" title={item.event}>{item.event}</span>
                                     <span className="text-muted-foreground">n={item.count}</span>
@@ -948,7 +1060,7 @@ export function Settings() {
                                 .slice()
                                 .reverse()
                                 .map((entry) => (
-                                  <div key={entry.id} className="rounded-lg border border-black/5 dark:border-white/5 bg-black/5 dark:bg-white/5 p-3">
+                                  <div key={entry.id} className="rounded-lg border border-border/60 bg-surface-input/70 p-3">
                                     <div className="flex items-center justify-between gap-3 mb-2">
                                       <span className="font-semibold text-foreground">{entry.event}</span>
                                       <span className="text-muted-foreground text-tiny">{entry.ts}</span>
@@ -969,11 +1081,11 @@ export function Settings() {
             </>
           )}
 
-          <Separator className="bg-black/5 dark:bg-white/5" />
+          <Separator className="bg-surface-input/70" />
 
           {/* Updates */}
           <div>
-            <h2 className="text-3xl font-serif text-foreground mb-6 font-normal tracking-tight">
+            <h2 className="clawx-section-title mb-4">
               {t('updates.title')}
             </h2>
             <div className="space-y-6">
@@ -994,11 +1106,11 @@ export function Settings() {
             </div>
           </div>
 
-          <Separator className="bg-black/5 dark:bg-white/5" />
+          <Separator className="bg-surface-input/70" />
 
           {/* About */}
           <div>
-            <h2 className="text-3xl font-serif text-foreground mb-6 font-normal tracking-tight">
+            <h2 className="clawx-section-title mb-4">
               {t('about.title')}
             </h2>
             <div className="space-y-3 text-sm text-muted-foreground">

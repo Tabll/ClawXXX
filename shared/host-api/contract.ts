@@ -102,6 +102,8 @@ export type SettingsSnapshot = Partial<{
   startMinimized: boolean;
   launchAtStartup: boolean;
   telemetryEnabled: boolean;
+  appFontFamily: string;
+  themeColor: string;
   gatewayAutoStart: boolean;
   gatewayPort: number;
   proxyEnabled: boolean;

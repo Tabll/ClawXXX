@@ -58,7 +58,7 @@ export function UpdateToast({
           className={cn(
             'absolute right-2.5 top-2.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md',
             'text-muted-foreground transition-colors',
-            'hover:bg-black/5 hover:text-foreground dark:hover:bg-white/10',
+            'hover:bg-surface-input hover:text-foreground',
             'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
           )}
         >

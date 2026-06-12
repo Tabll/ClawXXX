@@ -62,10 +62,10 @@ interface ChannelConfigModalProps {
   onChannelSaved?: (channelType: ChannelType) => void | Promise<void>;
 }
 
-const inputClasses = 'h-[44px] rounded-xl font-mono text-meta bg-transparent border-black/10 dark:border-white/10 focus-visible:ring-2 focus-visible:ring-blue-500/50 focus-visible:border-blue-500 shadow-sm transition-all text-foreground placeholder:text-foreground/40';
-const labelClasses = 'text-sm text-foreground/80 font-bold';
-const outlineButtonClasses = 'h-9 text-meta font-medium rounded-full px-4 border-black/10 dark:border-white/10 bg-transparent hover:bg-black/5 dark:hover:bg-white/5 shadow-none text-foreground/80 hover:text-foreground';
-const primaryButtonClasses = 'h-9 text-meta font-medium rounded-full px-4 shadow-none';
+const inputClasses = 'h-10 rounded-lg font-mono text-meta bg-surface-modal/70 border-border/80 focus-visible:ring-2 focus-visible:ring-ring/25 focus-visible:border-ring/60 shadow-sm transition-all text-foreground placeholder:text-muted-foreground/70';
+const labelClasses = 'clawx-form-label';
+const outlineButtonClasses = 'clawx-toolbar-button';
+const primaryButtonClasses = 'h-9 rounded-lg px-3 text-meta font-medium shadow-sm';
 
 export function ChannelConfigModal({
   initialSelectedType = null,
@@ -455,20 +455,20 @@ export function ChannelConfigModal({
       }}
     >
       <Card
-        className="w-full max-w-3xl max-h-[90vh] flex flex-col rounded-3xl border-0 shadow-2xl bg-surface-modal overflow-hidden"
+        className="w-full max-w-3xl max-h-[90vh] flex flex-col rounded-lg border-0 shadow-2xl bg-surface-modal overflow-hidden"
         onMouseDown={(event) => event.stopPropagation()}
         onClick={(event) => event.stopPropagation()}
       >
         <CardHeader className="flex flex-row items-start justify-between pb-2 shrink-0">
           <div>
-            <CardTitle className="text-2xl font-serif font-normal tracking-tight">
+            <CardTitle className="text-xl font-semibold tracking-tight">
               {selectedType
                 ? isExistingConfig
                   ? t('dialog.updateTitle', { name: CHANNEL_NAMES[selectedType] })
                   : t('dialog.configureTitle', { name: CHANNEL_NAMES[selectedType] })
                 : t('dialog.addTitle')}
             </CardTitle>
-            <CardDescription className="text-sm mt-1 text-foreground/70">
+            <CardDescription className="text-sm mt-1 text-muted-foreground">
               {selectedType && isExistingConfig
                 ? t('dialog.existingDesc')
                 : meta ? t(meta.description.replace('channels:', '')) : t('dialog.selectDesc')}
@@ -478,7 +478,7 @@ export function ChannelConfigModal({
             variant="ghost"
             size="icon"
             onClick={onClose}
-            className="rounded-full h-8 w-8 -mr-2 -mt-2 text-muted-foreground hover:text-foreground hover:bg-black/5 dark:hover:bg-white/5"
+            className="rounded-lg h-8 w-8 -mr-2 -mt-2 text-muted-foreground hover:text-foreground hover:bg-surface-input"
           >
             <X className="h-4 w-4" />
           </Button>
@@ -494,13 +494,13 @@ export function ChannelConfigModal({
                     key={type}
                     onClick={() => setSelectedType(type)}
                     className={cn(
-                      'group flex items-start gap-4 p-4 rounded-2xl transition-all text-left border relative overflow-hidden bg-transparent shadow-sm',
+                      'group flex items-start gap-4 p-4 clawx-list-item relative overflow-hidden shadow-sm',
                       isConfigured
                         ? 'border-green-500/40 bg-green-500/5 dark:bg-green-500/10'
-                        : 'border-black/5 dark:border-white/10 hover:bg-black/5 dark:hover:bg-white/5'
+                        : 'border-border/60 hover:bg-surface-modal'
                     )}
                   >
-                    <div className="h-[46px] w-[46px] shrink-0 flex items-center justify-center text-foreground bg-black/5 dark:bg-white/5 border border-black/5 dark:border-white/10 rounded-full shadow-sm">
+                    <div className="h-[46px] w-[46px] shrink-0 flex items-center justify-center text-foreground bg-surface-input/70 border border-border/60 rounded-lg shadow-sm">
                       <ChannelLogo type={type} />
                     </div>
                     <div className="flex flex-col flex-1 min-w-0 py-0.5 mt-1">
@@ -509,7 +509,7 @@ export function ChannelConfigModal({
                         {channelMeta.isPlugin && (
                           <Badge
                             variant="secondary"
-                            className="font-mono text-2xs font-medium px-2 py-0.5 rounded-full bg-black/[0.04] dark:bg-white/[0.08] border-0 shadow-none text-foreground/70"
+                            className="font-mono text-2xs font-medium px-2 py-0.5 rounded-full bg-black/[0.04] dark:bg-white/[0.08] border-0 shadow-none text-muted-foreground"
                           >
                             {t('pluginBadge')}
                           </Badge>
@@ -533,11 +533,11 @@ export function ChannelConfigModal({
             </div>
           ) : qrCode ? (
             <div className="text-center space-y-6">
-              <div className="bg-transparent p-4 rounded-3xl inline-block shadow-sm border border-black/10 dark:border-white/10">
+              <div className="clawx-panel inline-block p-4">
                 {qrCode.startsWith('data:image') || qrCode.startsWith('http://') || qrCode.startsWith('https://') ? (
-                  <img src={qrCode} alt="Scan QR Code" className="w-64 h-64 object-contain rounded-2xl" />
+                  <img src={qrCode} alt="Scan QR Code" className="w-64 h-64 object-contain rounded-lg" />
                 ) : (
-                  <div className="w-64 h-64 bg-surface-modal rounded-2xl flex items-center justify-center">
+                  <div className="w-64 h-64 bg-surface-modal rounded-lg flex items-center justify-center">
                     <QrCode className="h-32 w-32 text-muted-foreground" />
                   </div>
                 )}
@@ -559,20 +559,20 @@ export function ChannelConfigModal({
               </div>
             </div>
           ) : loadingConfig ? (
-            <div className="flex items-center justify-center py-10 rounded-2xl bg-transparent border border-black/10 dark:border-white/10">
+            <div className="flex items-center justify-center py-10 clawx-panel-muted">
               <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
               <span className="ml-2 text-sm text-muted-foreground">{t('dialog.loadingConfig')}</span>
             </div>
           ) : (
             <div className="space-y-6">
               {isExistingConfig && (
-                <div className="bg-blue-500/10 text-blue-600 dark:text-blue-400 p-4 rounded-2xl text-sm flex items-center gap-2 border border-blue-500/20">
+                <div className="bg-blue-500/10 text-blue-600 dark:text-blue-400 p-4 rounded-lg text-sm flex items-center gap-2 border border-blue-500/20">
                   <CheckCircle className="h-4 w-4 shrink-0" />
                   <span>{t('dialog.existingHint')}</span>
                 </div>
               )}
 
-              <div className="bg-transparent p-4 rounded-2xl space-y-4 shadow-sm border border-black/10 dark:border-white/10">
+              <div className="clawx-panel p-4 space-y-4">
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <p className={labelClasses}>{t('dialog.howToConnect')}</p>
@@ -650,7 +650,7 @@ export function ChannelConfigModal({
               {validationResult && (
                 <div
                   className={cn(
-                    'p-4 rounded-2xl text-sm border',
+                    'p-4 rounded-lg text-sm border',
                     validationResult.valid
                       ? 'bg-green-500/10 text-green-700 dark:text-green-400 border-green-500/20'
                       : 'bg-destructive/10 text-destructive border-destructive/20'
@@ -695,7 +695,7 @@ export function ChannelConfigModal({
                 </div>
               )}
 
-              <Separator className="bg-black/10 dark:bg-white/10" />
+              <Separator className="bg-border/80" />
 
               <div className="flex flex-col sm:flex-row sm:justify-end gap-3 pt-2">
                 <div className="flex flex-col sm:flex-row gap-2">
@@ -806,7 +806,7 @@ function ConfigField({ field, value, onChange, showSecret, onToggleSecret }: Con
             variant="outline"
             size="icon"
             onClick={onToggleSecret}
-            className="h-[44px] w-[44px] rounded-xl bg-transparent border-black/10 dark:border-white/10 text-muted-foreground hover:text-foreground shrink-0 shadow-sm"
+            className="h-10 w-10 rounded-lg bg-surface-modal/80 border-border/80 text-muted-foreground hover:text-foreground shrink-0 shadow-sm"
           >
             {showSecret ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
           </Button>

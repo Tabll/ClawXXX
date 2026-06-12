@@ -69,7 +69,7 @@ export function SkillFileSections({ baseDir, onOpen, className }: SkillFileSecti
 
   if (error) {
     return (
-      <div className={cn('rounded-xl border border-destructive/20 bg-destructive/10 px-4 py-3 text-xs text-destructive', className)}>
+      <div className={cn('rounded-lg border border-destructive/20 bg-destructive/10 px-4 py-3 text-xs text-destructive', className)}>
         {t('detail.sections.scanFailed', { defaultValue: 'Failed to scan skill directory' })}
       </div>
     );
@@ -77,7 +77,7 @@ export function SkillFileSections({ baseDir, onOpen, className }: SkillFileSecti
 
   if (isSkillFileGroupsEmpty(groups)) {
     return (
-      <div className={cn('rounded-xl border border-black/10 bg-black/5 px-4 py-3 text-xs text-muted-foreground dark:border-white/10 dark:bg-white/5', className)}>
+      <div className={cn('rounded-lg border border-border/70 bg-surface-input/80 px-4 py-3 text-xs text-muted-foreground', className)}>
         {t('detail.sections.empty', { defaultValue: 'This skill does not contain any previewable files.' })}
       </div>
     );
@@ -125,7 +125,7 @@ function SkillFileSection({ title, description, files, onOpen }: SkillFileSectio
   return (
     <div className="space-y-2">
       <div className="flex items-baseline justify-between gap-3">
-        <h4 className="text-meta font-bold text-foreground/80">
+        <h4 className="text-meta font-bold text-foreground/85">
           {title}
           <span className="ml-2 text-2xs font-medium text-muted-foreground">{files.length}</span>
         </h4>
@@ -138,9 +138,9 @@ function SkillFileSection({ title, description, files, onOpen }: SkillFileSectio
             type="button"
             onClick={() => onOpen(file)}
             className={cn(
-              'flex items-center gap-2 rounded-xl border border-black/5 bg-transparent px-3 py-2 text-left transition-colors',
+              'flex items-center gap-2 rounded-lg border border-border/60 bg-surface-modal/60 px-3 py-2 text-left transition-colors',
               'hover:border-primary/40 hover:bg-primary/5',
-              'dark:border-white/5 dark:hover:bg-white/10',
+              '',
             )}
             title={file.filePath}
           >

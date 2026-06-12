@@ -199,12 +199,12 @@ export function Setup() {
             className="mx-auto max-w-2xl p-8"
           >
             <div className="text-center mb-8">
-              <h1 className="text-3xl font-serif font-normal tracking-tight mb-2">{t(`steps.${step.id}.title`)}</h1>
+              <h1 className="text-2xl font-semibold tracking-tight mb-2">{t(`steps.${step.id}.title`)}</h1>
               <p className="text-muted-foreground">{t(`steps.${step.id}.description`)}</p>
             </div>
 
             {/* Step-specific content */}
-            <div className="rounded-xl bg-card text-card-foreground border shadow-sm p-8 mb-8">
+            <div className="rounded-lg bg-surface-modal text-card-foreground border border-border/75 shadow-sm shadow-black/5 p-8 mb-8">
               {safeStepIndex === STEP.WELCOME && <WelcomeContent />}
               {safeStepIndex === STEP.RUNTIME && <RuntimeContent onStatusChange={setRuntimeChecksPassed} />}
               {safeStepIndex === STEP.INSTALLING && (
@@ -269,7 +269,7 @@ function WelcomeContent() {
       <div className="mb-4 flex justify-center">
         <img src={clawxIcon} alt="ClawX" className="h-16 w-16" />
       </div>
-      <h2 className="text-xl font-serif font-normal tracking-tight">{t('welcome.title')}</h2>
+      <h2 className="text-lg font-semibold tracking-tight">{t('welcome.title')}</h2>
       <p className="text-muted-foreground">
         {t('welcome.description')}
       </p>
@@ -285,8 +285,8 @@ function WelcomeContent() {
             className={cn(
               'h-7 text-xs',
               language === lang.code
-                ? 'bg-black/5 dark:bg-white/10 text-foreground'
-                : 'text-muted-foreground hover:bg-black/5 dark:hover:bg-white/5',
+                ? 'bg-primary/10 text-primary'
+                : 'text-muted-foreground hover:bg-surface-input',
             )}
           >
             {lang.label}
@@ -554,7 +554,7 @@ function RuntimeContent({ onStatusChange }: RuntimeContentProps) {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between mb-4">
-        <h2 className="text-xl font-serif font-normal tracking-tight">{t('runtime.title')}</h2>
+        <h2 className="text-lg font-semibold tracking-tight">{t('runtime.title')}</h2>
         <div className="flex gap-2">
           <Button variant="ghost" size="sm" onClick={handleShowLogs}>
             {t('runtime.viewLogs')}
@@ -629,7 +629,7 @@ function RuntimeContent({ onStatusChange }: RuntimeContentProps) {
               </Button>
             </div>
           </div>
-          <pre className="text-xs text-foreground/80 bg-black/5 dark:bg-white/10 p-3 rounded max-h-60 overflow-auto whitespace-pre-wrap font-mono">
+          <pre className="text-xs text-foreground/85 bg-surface-input p-3 rounded max-h-60 overflow-auto whitespace-pre-wrap font-mono">
             {logContent || t('runtime.logs.noLogs')}
           </pre>
         </div>
@@ -731,7 +731,7 @@ function InstallingContent({ skills, onComplete, onSkip }: InstallingContentProp
     <div className="space-y-6">
       <div className="text-center">
         <div className="text-4xl mb-4">⚙️</div>
-        <h2 className="text-xl font-serif font-normal tracking-tight mb-2">{t('installing.title')}</h2>
+        <h2 className="text-lg font-semibold tracking-tight mb-2">{t('installing.title')}</h2>
         <p className="text-muted-foreground">
           {t('installing.subtitle')}
         </p>
@@ -788,7 +788,7 @@ function InstallingContent({ skills, onComplete, onSkip }: InstallingContentProp
             <AlertCircle className="h-5 w-5 text-red-700 dark:text-red-400 shrink-0 mt-0.5" />
             <div className="space-y-1">
               <p className="font-semibold">{t('installing.error')}</p>
-              <pre className="text-xs bg-black/5 dark:bg-white/5 p-2 rounded overflow-x-auto whitespace-pre-wrap font-mono">
+              <pre className="text-xs bg-surface-input/70 p-2 rounded overflow-x-auto whitespace-pre-wrap font-mono">
                 {errorMessage}
               </pre>
               <Button
@@ -835,8 +835,8 @@ function CompleteContent({ installedSkills }: CompleteContentProps) {
 
   return (
     <div className="text-center space-y-6">
-      <div className="text-6xl mb-4">🎉</div>
-      <h2 className="text-xl font-serif font-normal tracking-tight">{t('complete.title')}</h2>
+      <div className="text-4xl mb-4">🎉</div>
+      <h2 className="text-lg font-semibold tracking-tight">{t('complete.title')}</h2>
       <p className="text-muted-foreground">
         {t('complete.subtitle')}
       </p>

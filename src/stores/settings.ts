@@ -18,6 +18,8 @@ interface SettingsState {
   startMinimized: boolean;
   launchAtStartup: boolean;
   telemetryEnabled: boolean;
+  appFontFamily: string;
+  themeColor: string;
 
   // Gateway
   gatewayAutoStart: boolean;
@@ -48,6 +50,8 @@ interface SettingsState {
   setStartMinimized: (value: boolean) => void;
   setLaunchAtStartup: (value: boolean) => void;
   setTelemetryEnabled: (value: boolean) => void;
+  setAppFontFamily: (value: string) => void;
+  setThemeColor: (value: string) => void;
   setGatewayAutoStart: (value: boolean) => void;
   setGatewayPort: (port: number) => void;
   setProxyEnabled: (value: boolean) => void;
@@ -71,6 +75,8 @@ const defaultSettings = {
   startMinimized: false,
   launchAtStartup: false,
   telemetryEnabled: true,
+  appFontFamily: '',
+  themeColor: '#2563eb',
   gatewayAutoStart: true,
   gatewayPort: 18789,
   proxyEnabled: false,
@@ -135,6 +141,14 @@ export const useSettingsStore = create<SettingsState>()(
       setTelemetryEnabled: (telemetryEnabled) => {
         set({ telemetryEnabled });
         void hostApi.settings.set('telemetryEnabled', telemetryEnabled).catch(() => { });
+      },
+      setAppFontFamily: (appFontFamily) => {
+        set({ appFontFamily });
+        void hostApi.settings.set('appFontFamily', appFontFamily).catch(() => { });
+      },
+      setThemeColor: (themeColor) => {
+        set({ themeColor });
+        void hostApi.settings.set('themeColor', themeColor).catch(() => { });
       },
       setGatewayAutoStart: (gatewayAutoStart) => {
         set({ gatewayAutoStart });

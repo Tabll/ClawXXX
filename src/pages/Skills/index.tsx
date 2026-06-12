@@ -121,30 +121,30 @@ function SkillDetailDialog({ skill, isOpen, onClose, onToggle, onUninstall, onOp
         />
       </Suspense>
       <SheetContent
-        className="w-full sm:max-w-[450px] p-0 flex flex-col border-l border-black/10 dark:border-white/10 bg-surface-modal shadow-[0_0_40px_rgba(0,0,0,0.2)]"
+        className="w-full sm:max-w-[450px] p-0 flex flex-col border-l border-border/80 bg-surface-modal shadow-[0_0_40px_rgba(0,0,0,0.2)]"
         side="right"
       >
         {/* Scrollable Content */}
         <div className="flex-1 overflow-y-auto px-8 py-10">
           <div className="flex flex-col items-center mb-8">
-            <div className="w-16 h-16 flex items-center justify-center rounded-full bg-surface-modal border border-black/5 dark:border-white/5 shrink-0 mb-4 relative shadow-sm">
+            <div className="w-16 h-16 flex items-center justify-center rounded-lg bg-surface-input/70 border border-border/60 shrink-0 mb-4 relative shadow-sm">
               <span className="text-3xl">{skill.icon || '🔧'}</span>
               {skill.isCore && (
-                <div className="absolute -bottom-1 -right-1 bg-surface-modal rounded-full p-1 shadow-sm border border-black/5 dark:border-white/5">
+                <div className="absolute -bottom-1 -right-1 bg-surface-modal rounded-lg p-1 shadow-sm border border-border/60">
                   <Lock className="h-3 w-3 text-muted-foreground shrink-0" />
                 </div>
               )}
             </div>
-            <h2 className="text-3xl font-serif text-foreground font-normal mb-3 text-center tracking-tight">
+            <h2 className="text-xl font-semibold text-foreground mb-3 text-center tracking-tight">
               {skill.name}
             </h2>
             <div data-skill-detail-meta-row="1" className="flex items-center justify-center flex-wrap gap-2.5 mb-6 opacity-80">
               {skill.version && (
-                <Badge variant="secondary" className="shrink-0 whitespace-nowrap font-mono text-tiny font-medium px-3 py-0.5 rounded-full bg-black/[0.04] dark:bg-white/[0.08] hover:bg-black/[0.08] dark:hover:bg-white/[0.12] border-0 shadow-none text-foreground/70 transition-colors">
+                <Badge variant="secondary" className="shrink-0 whitespace-nowrap font-mono text-tiny font-medium px-3 py-0.5 rounded-full bg-surface-input/80 hover:bg-surface-input border-0 shadow-none text-muted-foreground transition-colors">
                   v{skill.version}
                 </Badge>
               )}
-              <Badge variant="secondary" className="shrink-0 whitespace-nowrap font-mono text-tiny font-medium px-3 py-0.5 rounded-full bg-black/[0.04] dark:bg-white/[0.08] hover:bg-black/[0.08] dark:hover:bg-white/[0.12] border-0 shadow-none text-foreground/70 transition-colors">
+              <Badge variant="secondary" className="shrink-0 whitespace-nowrap font-mono text-tiny font-medium px-3 py-0.5 rounded-full bg-surface-input/80 hover:bg-surface-input border-0 shadow-none text-muted-foreground transition-colors">
                 {skill.isCore ? t('detail.coreSystem') : skill.isBundled ? t('detail.bundled') : t('detail.userInstalled')}
               </Badge>
               {detailMetaComponents.map((DetailMetaComponent, index) => (
@@ -153,7 +153,7 @@ function SkillDetailDialog({ skill, isOpen, onClose, onToggle, onUninstall, onOp
             </div>
 
             {skill.description && (
-              <p className="text-sm text-foreground/70 font-medium leading-[1.6] text-center px-4">
+              <p className="text-sm text-muted-foreground font-medium leading-[1.6] text-center px-4">
                 {skill.description}
               </p>
             )}
@@ -161,9 +161,9 @@ function SkillDetailDialog({ skill, isOpen, onClose, onToggle, onUninstall, onOp
 
           <div className="space-y-7 px-1">
             <div className="space-y-2">
-              <h3 className="text-meta font-bold text-foreground/80">{t('detail.source')}</h3>
+              <h3 className="text-meta font-bold text-foreground/85">{t('detail.source')}</h3>
               <div className="flex items-center gap-2 flex-wrap">
-                <Badge variant="secondary" className="shrink-0 whitespace-nowrap font-mono text-tiny font-medium px-3 py-0.5 rounded-full bg-black/[0.04] dark:bg-white/[0.08] border-0 shadow-none text-foreground/70">
+                <Badge variant="secondary" className="shrink-0 whitespace-nowrap font-mono text-tiny font-medium px-3 py-0.5 rounded-full bg-black/[0.04] dark:bg-white/[0.08] border-0 shadow-none text-muted-foreground">
                   {resolveSkillSourceLabel(skill, t)}
                 </Badge>
               </div>
@@ -171,12 +171,12 @@ function SkillDetailDialog({ skill, isOpen, onClose, onToggle, onUninstall, onOp
                 <Input
                   value={skill.baseDir || t('detail.pathUnavailable')}
                   readOnly
-                  className="h-[38px] font-mono text-xs bg-transparent border-black/10 dark:border-white/10 rounded-xl text-foreground/70"
+                  className="h-[38px] font-mono text-xs bg-surface-modal/70 border-border/80 rounded-lg text-muted-foreground"
                 />
                 <Button
                   variant="outline"
                   size="icon"
-                  className="h-[38px] w-[38px] border-black/10 dark:border-white/10"
+                  className="h-[38px] w-[38px] border-border/80"
                   disabled={!skill.baseDir}
                   onClick={handleCopyPath}
                   title={t('detail.copyPath')}
@@ -186,7 +186,7 @@ function SkillDetailDialog({ skill, isOpen, onClose, onToggle, onUninstall, onOp
                 <Button
                   variant="outline"
                   size="icon"
-                  className="h-[38px] w-[38px] border-black/10 dark:border-white/10"
+                  className="h-[38px] w-[38px] border-border/80"
                   disabled={!skill.baseDir}
                   onClick={() => onOpenFolder?.(skill)}
                   title={t('detail.openActualFolder')}
@@ -199,7 +199,7 @@ function SkillDetailDialog({ skill, isOpen, onClose, onToggle, onUninstall, onOp
             {/* File Sections — read-only preview of skill content */}
             {skill.baseDir && (
               <div className="space-y-3">
-                <h3 className="text-meta font-bold text-foreground/80">
+                <h3 className="text-meta font-bold text-foreground/85">
                   {t('detail.sections.title', { defaultValue: '内容' })}
                 </h3>
                 <SkillFileSections
@@ -216,7 +216,7 @@ function SkillDetailDialog({ skill, isOpen, onClose, onToggle, onUninstall, onOp
             <div className="pt-8 pb-4 flex items-center justify-center w-full px-2 max-w-[340px] mx-auto">
               <Button
                 variant="outline"
-                className="w-full h-[42px] text-meta rounded-full font-semibold shadow-sm bg-transparent border-black/20 dark:border-white/20 hover:bg-black/5 dark:hover:bg-white/5 transition-colors text-foreground/80 hover:text-foreground"
+                className="w-full h-10 text-meta rounded-lg font-semibold shadow-sm bg-surface-modal/80 border-border/80 hover:bg-surface-modal transition-colors text-foreground/85 hover:text-foreground"
                 onClick={() => {
                   if (uninstallable && onUninstall && skill.slug) {
                     onUninstall(skill.slug);
@@ -460,16 +460,16 @@ export function Skills() {
   }
 
   return (
-    <div data-testid="skills-page" className="flex flex-col -m-6 dark:bg-background h-[calc(100vh-2.5rem)] overflow-hidden">
-      <div className="w-full max-w-5xl mx-auto flex flex-col h-full p-10 pt-16">
+    <div data-testid="skills-page" className="clawx-page-root">
+      <div className="clawx-page-container">
 
         {/* Header */}
-        <div className="flex flex-col md:flex-row md:items-start justify-between mb-6 shrink-0 gap-4">
+        <div className="clawx-page-header">
           <div>
-            <h1 className="text-5xl md:text-6xl font-serif text-foreground mb-3 font-normal tracking-tight">
+            <h1 className="clawx-page-title mb-2">
               {t('title')}
             </h1>
-            <p className="text-subtitle text-foreground/70 font-medium">
+            <p className="clawx-page-subtitle">
               {t('subtitle')}
             </p>
           </div>
@@ -478,7 +478,7 @@ export function Skills() {
             {hasInstalledSkills && (
               <button
                 onClick={handleOpenSkillsFolder}
-                className="hover:bg-black/5 dark:hover:bg-white/5 transition-colors shrink-0 text-meta font-medium px-4 h-8 rounded-full border border-black/10 dark:border-white/10 flex items-center justify-center text-foreground/80 hover:text-foreground"
+                className="clawx-toolbar-button h-8"
               >
                 <FolderOpen className="h-4 w-4 mr-2" />
                 {t('openFolder')}
@@ -492,7 +492,7 @@ export function Skills() {
           <div
             data-testid="skills-gateway-banner"
             data-state={gatewayBannerState}
-            className="mb-6 p-4 rounded-xl border border-yellow-500/50 bg-yellow-500/10 flex items-center gap-3"
+            className="mb-6 p-4 rounded-lg border border-yellow-500/50 bg-yellow-500/10 flex items-center gap-3"
           >
             <AlertCircle className="h-5 w-5 text-yellow-600 dark:text-yellow-400" />
             <span className="text-sm font-medium text-yellow-700 dark:text-yellow-400">
@@ -502,9 +502,9 @@ export function Skills() {
         )}
 
         {/* Sub Navigation and Actions */}
-        <div className="flex flex-col md:flex-row md:items-center justify-between border-b border-black/10 dark:border-white/10 pb-4 mb-4 shrink-0 gap-4">
+        <div className="flex flex-col md:flex-row md:items-center justify-between border-b border-border/80 pb-4 mb-4 shrink-0 gap-4">
           <div className="flex items-center flex-wrap gap-2 text-sm">
-            <div className="relative group flex items-center bg-black/5 dark:bg-white/5 rounded-full px-3 py-1.5 focus-within:bg-black/10 transition-colors border border-transparent focus-within:border-black/10 dark:focus-within:border-white/10 mr-2">
+            <div className="relative group flex h-9 items-center rounded-lg border border-border/80 bg-surface-modal/80 px-3 shadow-sm transition-colors focus-within:border-ring/60 focus-within:ring-2 focus-within:ring-ring/20 mr-2">
               <Search className="h-4 w-4 shrink-0 text-muted-foreground" />
               <input
                 placeholder={t('search')}
@@ -529,10 +529,10 @@ export function Skills() {
               data-testid="skills-filter-enabled"
               onClick={() => handleStatusFilterClick('enabled')}
               className={cn(
-                'h-8 rounded-full px-3 text-meta font-medium border shadow-none',
+                'h-8 rounded-lg px-3 text-meta font-medium border shadow-none',
                 statusFilter === 'enabled'
-                  ? 'bg-black/5 dark:bg-white/10 border-black/10 dark:border-white/10 text-foreground'
-                  : 'bg-transparent border-transparent text-muted-foreground hover:text-foreground hover:bg-black/5 dark:hover:bg-white/5',
+                  ? 'bg-primary/10 border-primary/25 text-primary'
+                  : 'bg-transparent border-transparent text-muted-foreground hover:text-foreground hover:bg-surface-input',
               )}
             >
               {t('filter.enabledList', { count: enabledSkillsCount })}
@@ -544,10 +544,10 @@ export function Skills() {
               data-testid="skills-filter-disabled"
               onClick={() => handleStatusFilterClick('disabled')}
               className={cn(
-                'h-8 rounded-full px-3 text-meta font-medium border shadow-none',
+                'h-8 rounded-lg px-3 text-meta font-medium border shadow-none',
                 statusFilter === 'disabled'
-                  ? 'bg-black/5 dark:bg-white/10 border-black/10 dark:border-white/10 text-foreground'
-                  : 'bg-transparent border-transparent text-muted-foreground hover:text-foreground hover:bg-black/5 dark:hover:bg-white/5',
+                  ? 'bg-primary/10 border-primary/25 text-primary'
+                  : 'bg-transparent border-transparent text-muted-foreground hover:text-foreground hover:bg-surface-input',
               )}
             >
               {t('filter.disabledList', { count: disabledSkillsCount })}
@@ -563,7 +563,7 @@ export function Skills() {
                   setInstallQuery('');
                   setInstallSheetOpen(true);
                 }}
-                className="h-8 text-meta font-medium rounded-md px-3 border-black/10 dark:border-white/10 bg-transparent hover:bg-black/5 dark:hover:bg-white/5 shadow-none"
+                className="clawx-toolbar-button h-8"
               >
                 {t('actions.installSkill')}
               </Button>
@@ -572,9 +572,9 @@ export function Skills() {
         </div>
 
         {/* Content Area */}
-        <div className="flex-1 overflow-y-auto pr-2 pb-10 min-h-0 -mr-2">
+        <div className="clawx-page-content">
           {error && (
-            <div className="mb-4 p-4 rounded-xl border border-destructive/50 bg-destructive/10 text-destructive text-sm font-medium flex items-center gap-2">
+            <div className="mb-4 p-4 rounded-lg border border-destructive/50 bg-destructive/10 text-destructive text-sm font-medium flex items-center gap-2">
               <AlertCircle className="h-5 w-5 shrink-0" />
               <span>
                 {FETCH_ERROR_CODES.has(error)
@@ -586,7 +586,7 @@ export function Skills() {
 
           <div className="flex flex-col gap-1">
             {filteredSkills.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
+              <div className="clawx-panel-muted flex flex-col items-center justify-center border-dashed py-20 text-muted-foreground">
                 <Puzzle className="h-10 w-10 mb-4 opacity-50" />
                 <p>{searchQuery ? t('noSkillsSearch') : t('noSkillsAvailable')}</p>
               </div>
@@ -594,11 +594,11 @@ export function Skills() {
               filteredSkills.map((skill) => (
                 <div
                   key={skill.id}
-                  className="group flex flex-row items-center justify-between py-3.5 px-3 rounded-xl hover:bg-black/5 dark:hover:bg-white/5 transition-colors cursor-pointer border-b border-black/5 dark:border-white/5 last:border-0"
+                  className="group flex flex-row items-center justify-between py-3.5 px-3 clawx-list-item cursor-pointer"
                   onClick={() => setSelectedSkill(skill)}
                 >
                   <div className="flex items-start gap-4 flex-1 overflow-hidden pr-4">
-                    <div className="h-10 w-10 shrink-0 flex items-center justify-center text-2xl bg-black/5 dark:bg-white/5 border border-black/5 dark:border-white/10 rounded-xl overflow-hidden">
+                    <div className="h-10 w-10 shrink-0 flex items-center justify-center text-2xl bg-surface-input/70 border border-border/60 rounded-lg overflow-hidden">
                       {skill.icon || '🧩'}
                     </div>
                     <div className="flex flex-col overflow-hidden">
@@ -612,7 +612,7 @@ export function Skills() {
                         {skill.description}
                       </p>
                       <div className="mt-1 flex items-center gap-2 text-tiny text-foreground/55 min-w-0">
-                        <Badge variant="secondary" className="shrink-0 whitespace-nowrap px-1.5 py-0 h-5 text-2xs font-medium bg-black/5 dark:bg-white/10 border-0 shadow-none">
+                        <Badge variant="secondary" className="shrink-0 whitespace-nowrap px-1.5 py-0 h-5 text-2xs font-medium bg-surface-input/80 border-0 shadow-none">
                           {resolveSkillSourceLabel(skill, t)}
                         </Badge>
                         <span className="truncate font-mono min-w-0">
@@ -642,14 +642,14 @@ export function Skills() {
 
       <Sheet open={installSheetOpen && marketplaceAvailable} onOpenChange={setInstallSheetOpen}>
         <SheetContent
-          className="w-full sm:max-w-[560px] p-0 flex flex-col border-l border-black/10 dark:border-white/10 bg-surface-modal shadow-[0_0_40px_rgba(0,0,0,0.2)]"
+          className="w-full sm:max-w-[560px] p-0 flex flex-col border-l border-border/80 bg-surface-modal shadow-[0_0_40px_rgba(0,0,0,0.2)]"
           side="right"
         >
-          <div className="px-7 py-6 border-b border-black/10 dark:border-white/10">
-            <h2 className="text-2xl font-serif text-foreground font-normal tracking-tight">{t('marketplace.installDialogTitle')}</h2>
-            <p className="mt-1 text-meta text-foreground/70">{t('marketplace.installDialogSubtitle')}</p>
+          <div className="px-7 py-6 border-b border-border/80">
+            <h2 className="text-xl font-semibold text-foreground tracking-tight">{t('marketplace.installDialogTitle')}</h2>
+            <p className="mt-1 text-meta text-muted-foreground">{t('marketplace.installDialogSubtitle')}</p>
             <div className="mt-4 flex flex-col md:flex-row gap-2">
-              <div className="relative flex items-center bg-black/5 dark:bg-white/5 rounded-xl px-3 py-2 border border-black/10 dark:border-white/10 flex-1">
+              <div className="relative flex items-center bg-surface-modal/80 rounded-lg px-3 py-2 border border-border/80 flex-1 shadow-sm focus-within:border-ring/60 focus-within:ring-2 focus-within:ring-ring/20">
                 <Search className="h-4 w-4 shrink-0 text-muted-foreground" />
                 <Input
                   placeholder={t('searchMarketplace')}
@@ -670,7 +670,7 @@ export function Skills() {
               <Button
                 variant="outline"
                 disabled
-                className="h-10 rounded-xl border-black/10 dark:border-white/10 bg-transparent text-muted-foreground"
+                className="h-10 rounded-lg border-border/80 bg-surface-modal/80 text-muted-foreground"
               >
                 {t('marketplace.sourceLabel')}: {t('marketplace.sourceClawHub')}
               </Button>
@@ -679,7 +679,7 @@ export function Skills() {
 
           <div className="flex-1 overflow-y-auto px-6 py-4">
             {searchError && (
-              <div className="mb-4 p-4 rounded-xl border border-destructive/50 bg-destructive/10 text-destructive text-sm font-medium flex items-center gap-2">
+              <div className="mb-4 p-4 rounded-lg border border-destructive/50 bg-destructive/10 text-destructive text-sm font-medium flex items-center gap-2">
                 <AlertCircle className="h-5 w-5 shrink-0" />
                 <span>
                   {SEARCH_ERROR_CODES.has(searchError.replace('Error: ', ''))
@@ -705,11 +705,11 @@ export function Skills() {
                   return (
                     <div
                       key={skill.slug}
-                      className="group flex flex-row items-center justify-between py-3.5 px-3 rounded-xl hover:bg-black/5 dark:hover:bg-white/5 transition-colors cursor-pointer border-b border-black/5 dark:border-white/5 last:border-0"
+                      className="group flex flex-row items-center justify-between py-3.5 px-3 clawx-list-item cursor-pointer"
                       onClick={() => hostApi.shell.openExternal(`https://clawhub.ai/s/${skill.slug}`)}
                     >
                       <div className="flex items-start gap-4 flex-1 overflow-hidden pr-4">
-                        <div className="h-10 w-10 shrink-0 flex items-center justify-center text-xl bg-black/5 dark:bg-white/5 border border-black/5 dark:border-white/10 rounded-xl overflow-hidden">
+                        <div className="h-10 w-10 shrink-0 flex items-center justify-center text-xl bg-surface-input/70 border border-border/60 rounded-lg overflow-hidden">
                           📦
                         </div>
                         <div className="flex flex-col overflow-hidden">
@@ -746,7 +746,7 @@ export function Skills() {
                             size="sm"
                             onClick={() => handleInstall(skill.slug)}
                             disabled={isInstallLoading}
-                            className="h-8 px-4 rounded-full shadow-none font-medium text-xs"
+                            className="h-8 px-4 rounded-lg shadow-none font-medium text-xs"
                           >
                             {isInstallLoading ? <LoadingSpinner size="sm" /> : t('marketplace.install', 'Install')}
                           </Button>

@@ -9,25 +9,25 @@ import { cva, type VariantProps } from 'class-variance-authority';
 import { cn } from '@/lib/utils';
 
 const buttonVariants = cva(
-  'inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50',
+  'inline-flex items-center justify-center whitespace-nowrap rounded-lg text-sm font-medium ring-offset-background transition-[background-color,border-color,color,box-shadow,transform] duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:ring-offset-0 disabled:pointer-events-none disabled:opacity-50 active:scale-[0.99]',
   {
     variants: {
       variant: {
-        default: 'bg-primary text-primary-foreground hover:bg-primary/90',
+        default: 'border border-transparent bg-primary text-primary-foreground shadow-sm shadow-primary/15 hover:bg-primary/90',
         destructive:
-          'bg-destructive text-destructive-foreground hover:bg-destructive/90',
+          'border border-transparent bg-destructive text-destructive-foreground shadow-sm hover:bg-destructive/90',
         outline:
-          'border border-input bg-background hover:bg-black/5 hover:text-foreground dark:hover:bg-white/10',
+          'border border-border/80 bg-surface-modal/80 text-foreground/85 shadow-sm shadow-black/5 hover:border-border hover:bg-surface-modal hover:text-foreground',
         secondary:
-          'bg-secondary text-secondary-foreground hover:bg-secondary/80',
-        ghost: 'hover:bg-black/5 hover:text-foreground dark:hover:bg-white/10',
+          'border border-border/60 bg-surface-input text-secondary-foreground hover:bg-surface-modal',
+        ghost: 'text-foreground/75 hover:bg-surface-input hover:text-foreground',
         link: 'text-primary underline-offset-4 hover:underline',
       },
       size: {
         default: 'h-10 px-4 py-2',
-        sm: 'h-9 rounded-md px-3',
-        lg: 'h-11 rounded-md px-8',
-        icon: 'h-10 w-10',
+        sm: 'h-8 rounded-lg px-3 text-meta',
+        lg: 'h-11 rounded-lg px-6',
+        icon: 'h-9 w-9',
       },
     },
     defaultVariants: {

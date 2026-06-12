@@ -212,7 +212,7 @@ function SelectField({ className, children, ...props }: SelectFieldProps) {
     <div className="relative">
       <Select
         className={cn(
-          'h-[44px] rounded-xl border-black/10 dark:border-white/10 bg-background text-meta pr-10 [background-image:none] appearance-none',
+          'h-10 rounded-lg border-border/80 bg-surface-modal/70 text-meta pr-10 [background-image:none] appearance-none',
           className,
         )}
         {...props}
@@ -431,57 +431,57 @@ function TaskDialog({ open, job, configuredChannels, onClose, onSave }: TaskDial
 
   return (
     <Dialog open={open} onOpenChange={(nextOpen) => !nextOpen && onClose()}>
-      <DialogContent asChild className="w-[calc(100%-2rem)] max-w-lg max-h-[90vh] flex flex-col rounded-3xl border-0 shadow-2xl bg-surface-modal overflow-hidden">
+      <DialogContent asChild className="w-[calc(100%-2rem)] max-w-lg max-h-[90vh] flex flex-col rounded-lg border-0 shadow-2xl bg-surface-modal overflow-hidden">
         <Card data-testid="cron-task-dialog">
         <CardHeader className="flex flex-row items-start justify-between pb-2 shrink-0">
           <div>
             <DialogTitle asChild>
-              <CardTitle className="text-2xl font-serif font-normal">{job ? t('dialog.editTitle') : t('dialog.createTitle')}</CardTitle>
+              <CardTitle className="text-xl font-semibold">{job ? t('dialog.editTitle') : t('dialog.createTitle')}</CardTitle>
             </DialogTitle>
             <DialogDescription asChild>
-              <CardDescription className="text-sm mt-1 text-foreground/70">{t('dialog.description')}</CardDescription>
+              <CardDescription className="text-sm mt-1 text-muted-foreground">{t('dialog.description')}</CardDescription>
             </DialogDescription>
           </div>
-          <Button variant="ghost" size="icon" onClick={onClose} className="rounded-full h-8 w-8 -mr-2 -mt-2 text-muted-foreground hover:text-foreground hover:bg-black/5 dark:hover:bg-white/5">
+          <Button variant="ghost" size="icon" onClick={onClose} className="h-8 w-8 -mr-2 -mt-2 text-muted-foreground hover:text-foreground">
             <X className="h-4 w-4" />
           </Button>
         </CardHeader>
         <CardContent className="space-y-6 pt-4 overflow-y-auto flex-1 p-6">
           {/* Name */}
           <div className="space-y-2.5">
-            <Label htmlFor="name" className="text-sm text-foreground/80 font-bold">{t('dialog.taskName')}</Label>
+            <Label htmlFor="name" className="clawx-form-label">{t('dialog.taskName')}</Label>
             <Input
               id="name"
               placeholder={t('dialog.taskNamePlaceholder')}
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className="h-[44px] rounded-xl font-mono text-meta bg-transparent border-black/10 dark:border-white/10 focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:border-primary shadow-sm transition-all text-foreground placeholder:text-foreground/40"
+              className="h-10 font-mono text-meta"
             />
           </div>
 
           {/* Message */}
           <div className="space-y-2.5">
-            <Label htmlFor="message" className="text-sm text-foreground/80 font-bold">{t('dialog.message')}</Label>
+            <Label htmlFor="message" className="clawx-form-label">{t('dialog.message')}</Label>
             <Textarea
               id="message"
               placeholder={t('dialog.messagePlaceholder')}
               value={message}
               onChange={(e) => setMessage(e.target.value)}
               rows={3}
-              className="rounded-xl font-mono text-meta bg-transparent border-black/10 dark:border-white/10 focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:border-primary shadow-sm transition-all text-foreground placeholder:text-foreground/40 resize-none"
+              className="font-mono text-meta resize-none"
             />
           </div>
 
           {/* Agent */}
           <div className="space-y-2.5">
-            <Label htmlFor="agent" className="text-sm text-foreground/80 font-bold">{t('dialog.agent')}</Label>
+            <Label htmlFor="agent" className="clawx-form-label">{t('dialog.agent')}</Label>
             <SelectField
               id="agent"
               value={selectedAgentId}
               onChange={(e) => {
                 setSelectedAgentId(e.target.value);
               }}
-              className="h-[44px] rounded-xl border-black/10 dark:border-white/10 bg-transparent text-meta"
+              className="h-10 text-meta"
             >
               {agents.map((agent) => (
                 <option key={agent.id} value={agent.id}>
@@ -493,7 +493,7 @@ function TaskDialog({ open, job, configuredChannels, onClose, onSave }: TaskDial
 
           {/* Schedule */}
           <div className="space-y-2.5">
-            <Label className="text-sm text-foreground/80 font-bold">{t('dialog.schedule')}</Label>
+            <Label className="clawx-form-label">{t('dialog.schedule')}</Label>
             {!useCustom ? (
               <div className="grid grid-cols-2 gap-2">
                 {schedulePresets.map((preset) => (
@@ -504,10 +504,10 @@ function TaskDialog({ open, job, configuredChannels, onClose, onSave }: TaskDial
                     size="sm"
                     onClick={() => setSchedule(preset.value)}
                     className={cn(
-                      "justify-start h-10 rounded-xl font-medium text-meta transition-all",
+                      "justify-start h-10 rounded-lg font-medium text-meta transition-all",
                       schedule === preset.value
                         ? "bg-primary hover:bg-primary/90 text-primary-foreground shadow-sm border-transparent"
-                        : "bg-transparent border-black/10 dark:border-white/10 hover:bg-black/5 dark:hover:bg-white/5 text-foreground/80 hover:text-foreground"
+                        : "border-border/80 bg-surface-modal/70 text-foreground/85 hover:bg-surface-modal hover:text-foreground"
                     )}
                   >
                     <Timer className="h-4 w-4 mr-2 opacity-70" />
@@ -520,7 +520,7 @@ function TaskDialog({ open, job, configuredChannels, onClose, onSave }: TaskDial
                 placeholder={t('dialog.cronPlaceholder')}
                 value={customSchedule}
                 onChange={(e) => setCustomSchedule(e.target.value)}
-                className="h-[44px] rounded-xl font-mono text-meta bg-transparent border-black/10 dark:border-white/10 focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:border-primary shadow-sm transition-all text-foreground placeholder:text-foreground/40"
+                className="h-10 font-mono text-meta"
               />
             )}
             <div className="flex items-center justify-between mt-2">
@@ -532,7 +532,7 @@ function TaskDialog({ open, job, configuredChannels, onClose, onSave }: TaskDial
                 variant="ghost"
                 size="sm"
                 onClick={() => setUseCustom(!useCustom)}
-                className="text-xs h-7 px-2 text-foreground/60 hover:text-foreground hover:bg-black/5 dark:hover:bg-white/5 rounded-lg"
+                className="text-xs h-7 px-2 text-foreground/60 hover:text-foreground hover:bg-surface-input rounded-lg"
               >
                 {useCustom ? t('dialog.usePresets') : t('dialog.useCustomCron')}
               </Button>
@@ -542,7 +542,7 @@ function TaskDialog({ open, job, configuredChannels, onClose, onSave }: TaskDial
           {/* Delivery */}
           <div className="space-y-3">
             <div className="space-y-1">
-              <Label className="text-sm text-foreground/80 font-bold">{t('dialog.deliveryTitle')}</Label>
+              <Label className="clawx-form-label">{t('dialog.deliveryTitle')}</Label>
               <p className="text-xs text-muted-foreground">{t('dialog.deliveryDescription')}</p>
             </div>
 
@@ -553,10 +553,10 @@ function TaskDialog({ open, job, configuredChannels, onClose, onSave }: TaskDial
                 size="sm"
                 onClick={() => setDeliveryMode('none')}
                 className={cn(
-                  'justify-start h-auto min-h-12 rounded-xl px-4 py-3 text-left whitespace-normal',
+                  'justify-start h-auto min-h-12 rounded-lg px-4 py-3 text-left whitespace-normal',
                   deliveryMode === 'none'
                     ? 'bg-primary hover:bg-primary/90 text-primary-foreground border-transparent'
-                    : 'bg-transparent border-black/10 dark:border-white/10 hover:bg-black/5 dark:hover:bg-white/5 text-foreground/80 hover:text-foreground',
+                    : 'border-border/80 bg-surface-modal/70 text-foreground/85 hover:bg-surface-modal hover:text-foreground',
                 )}
               >
                 <div>
@@ -570,10 +570,10 @@ function TaskDialog({ open, job, configuredChannels, onClose, onSave }: TaskDial
                 size="sm"
                 onClick={() => setDeliveryMode('announce')}
                 className={cn(
-                  'justify-start h-auto min-h-12 rounded-xl px-4 py-3 text-left whitespace-normal',
+                  'justify-start h-auto min-h-12 rounded-lg px-4 py-3 text-left whitespace-normal',
                   deliveryMode === 'announce'
                     ? 'bg-primary hover:bg-primary/90 text-primary-foreground border-transparent'
-                    : 'bg-transparent border-black/10 dark:border-white/10 hover:bg-black/5 dark:hover:bg-white/5 text-foreground/80 hover:text-foreground',
+                    : 'border-border/80 bg-surface-modal/70 text-foreground/85 hover:bg-surface-modal hover:text-foreground',
                 )}
               >
                 <div>
@@ -584,9 +584,9 @@ function TaskDialog({ open, job, configuredChannels, onClose, onSave }: TaskDial
             </div>
 
             {deliveryMode === 'announce' && (
-              <div className="space-y-3 rounded-2xl border border-black/5 dark:border-white/5 bg-transparent p-4 shadow-sm">
+              <div className="clawx-panel-muted space-y-3 p-4">
                 <div className="space-y-2">
-                  <Label htmlFor="delivery-channel" className="text-meta text-foreground/80 font-bold">
+                  <Label htmlFor="delivery-channel" className="clawx-form-label text-meta">
                     {t('dialog.deliveryChannel')}
                   </Label>
                   <SelectField
@@ -622,7 +622,7 @@ function TaskDialog({ open, job, configuredChannels, onClose, onSave }: TaskDial
 
                 {showsAccountSelector && (
                   <div className="space-y-2">
-                    <Label htmlFor="delivery-account" className="text-meta text-foreground/80 font-bold">
+                    <Label htmlFor="delivery-account" className="clawx-form-label text-meta">
                       {t('dialog.deliveryAccount')}
                     </Label>
                     <SelectField
@@ -648,7 +648,7 @@ function TaskDialog({ open, job, configuredChannels, onClose, onSave }: TaskDial
                 )}
 
                 <div className="space-y-2">
-                  <Label htmlFor="delivery-target-select" className="text-meta text-foreground/80 font-bold">
+                  <Label htmlFor="delivery-target-select" className="clawx-form-label text-meta">
                     {t('dialog.deliveryTarget')}
                   </Label>
                   <SelectField
@@ -675,9 +675,9 @@ function TaskDialog({ open, job, configuredChannels, onClose, onSave }: TaskDial
           </div>
 
           {/* Enabled */}
-          <div className="flex items-center justify-between bg-transparent p-4 rounded-2xl shadow-sm border border-black/5 dark:border-white/5">
+          <div className="clawx-settings-row">
             <div>
-              <Label className="text-sm text-foreground/80 font-bold">{t('dialog.enableImmediately')}</Label>
+              <Label className="clawx-form-label">{t('dialog.enableImmediately')}</Label>
               <p className="text-meta text-muted-foreground mt-0.5">
                 {t('dialog.enableImmediatelyDesc')}
               </p>
@@ -687,10 +687,10 @@ function TaskDialog({ open, job, configuredChannels, onClose, onSave }: TaskDial
 
           {/* Actions */}
           <div className="flex justify-end gap-3 pt-4">
-            <Button variant="outline" onClick={onClose} className="rounded-full px-6 h-[42px] text-meta font-semibold border-black/20 dark:border-white/20 bg-transparent hover:bg-black/5 dark:hover:bg-white/5 text-foreground/80 hover:text-foreground shadow-sm">
+            <Button variant="outline" onClick={onClose} className="h-10 rounded-lg px-4 text-meta font-semibold">
               {t('common:actions.cancel', 'Cancel')}
             </Button>
-            <Button onClick={handleSubmit} disabled={saving} className="rounded-full px-6 h-[42px] text-meta font-semibold shadow-sm border border-transparent transition-all">
+            <Button onClick={handleSubmit} disabled={saving} className="h-10 rounded-lg px-4 text-meta font-semibold">
               {saving ? (
                 <>
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
@@ -755,12 +755,12 @@ function CronJobCard({ job, deliveryAccountName, onToggle, onEdit, onDelete, onT
   return (
     <div
       data-testid={`cron-job-card-${job.id}`}
-      className="group flex flex-col p-5 rounded-2xl bg-transparent border border-transparent hover:bg-black/5 dark:hover:bg-white/5 transition-all relative overflow-hidden cursor-pointer"
+      className="group flex flex-col p-5 clawx-list-item transition-all relative overflow-hidden cursor-pointer"
       onClick={onEdit}
     >
       <div className="flex items-start justify-between gap-3 mb-4">
         <div className="flex items-center gap-4 min-w-0 flex-1">
-          <div className="h-[46px] w-[46px] shrink-0 flex items-center justify-center text-foreground bg-black/5 dark:bg-white/5 border border-black/5 dark:border-white/10 rounded-full shadow-sm group-hover:scale-105 transition-transform">
+          <div className="h-[46px] w-[46px] shrink-0 flex items-center justify-center text-foreground bg-surface-input/70 border border-border/60 rounded-lg shadow-sm group-hover:scale-105 transition-transform">
             <Clock className={cn("h-5 w-5", job.enabled ? "text-foreground" : "text-muted-foreground")} />
           </div>
           <div className="flex flex-col min-w-0 flex-1">
@@ -838,7 +838,7 @@ function CronJobCard({ job, deliveryAccountName, onToggle, onEdit, onDelete, onT
 
         {/* Last Run Error */}
         {job.lastRun && !job.lastRun.success && job.lastRun.error && (
-          <div className="flex items-start gap-2 p-2.5 mb-3 rounded-xl bg-destructive/10 border border-destructive/20 text-meta text-destructive">
+          <div className="flex items-start gap-2 p-2.5 mb-3 rounded-lg bg-destructive/10 border border-destructive/20 text-meta text-destructive">
             <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
             <span className="line-clamp-2">{job.lastRun.error}</span>
           </div>
@@ -851,7 +851,7 @@ function CronJobCard({ job, deliveryAccountName, onToggle, onEdit, onDelete, onT
             size="sm"
             onClick={handleTrigger}
             disabled={triggering}
-            className="h-8 px-3 text-foreground/70 hover:text-foreground hover:bg-black/5 dark:hover:bg-white/5 rounded-lg text-meta font-medium transition-colors"
+            className="h-8 px-3 text-muted-foreground hover:text-foreground hover:bg-surface-input rounded-lg text-meta font-medium transition-colors"
           >
             {triggering ? (
               <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />
@@ -945,15 +945,15 @@ export function Cron() {
   }
 
   return (
-    <div data-testid="cron-page" className="flex flex-col -m-6 dark:bg-background h-[calc(100vh-2.5rem)] overflow-hidden">
-      <div className="w-full max-w-5xl mx-auto flex flex-col h-full p-10 pt-16">
+    <div data-testid="cron-page" className="clawx-page-root">
+      <div className="clawx-page-container">
         {/* Header */}
-        <div className="flex flex-col md:flex-row md:items-start justify-between mb-12 shrink-0 gap-4">
+        <div className="clawx-page-header">
           <div>
-            <h1 className="text-5xl md:text-6xl font-serif text-foreground mb-3 font-normal tracking-tight">
+            <h1 className="clawx-page-title mb-2">
               {t('title')}
             </h1>
-            <p className="text-subtitle text-foreground/70 font-medium">
+            <p className="clawx-page-subtitle">
               {t('subtitle')}
             </p>
           </div>
@@ -965,7 +965,7 @@ export function Cron() {
                 void fetchConfiguredChannels();
               }}
               disabled={!isGatewayRunning}
-              className="h-9 text-meta font-medium rounded-full px-4 border-black/10 dark:border-white/10 bg-transparent hover:bg-black/5 dark:hover:bg-white/5 shadow-none text-foreground/80 hover:text-foreground transition-colors"
+              className="clawx-toolbar-button"
             >
               <RefreshCw className="h-3.5 w-3.5 mr-2" />
               {t('refresh')}
@@ -977,7 +977,7 @@ export function Cron() {
                 setShowDialog(true);
               }}
               disabled={!isGatewayRunning}
-              className="h-9 text-meta font-medium rounded-full px-4 shadow-none"
+              className="h-9 rounded-lg px-3 text-meta font-medium shadow-sm"
             >
               <Plus className="h-3.5 w-3.5 mr-2" />
               {t('newTask')}
@@ -986,10 +986,10 @@ export function Cron() {
         </div>
 
         {/* Content Area */}
-        <div className="flex-1 overflow-y-auto pr-2 pb-10 min-h-0 -mr-2">
+        <div className="clawx-page-content">
           {/* Gateway Warning */}
           {showGatewayUnavailableWarning && (
-            <div className="mb-8 p-4 rounded-xl border border-yellow-500/50 bg-yellow-500/10 flex items-center gap-3">
+            <div className="mb-8 p-4 rounded-lg border border-yellow-500/50 bg-yellow-500/10 flex items-center gap-3">
               <AlertCircle className="h-5 w-5 text-yellow-600 dark:text-yellow-400" />
               <span className="text-yellow-700 dark:text-yellow-400 text-sm font-medium">
                 {t('gatewayWarning')}
@@ -999,7 +999,7 @@ export function Cron() {
 
           {/* Error Display */}
           {error && (
-            <div className="mb-8 p-4 rounded-xl border border-destructive/50 bg-destructive/10 flex items-center gap-3">
+            <div className="mb-8 p-4 rounded-lg border border-destructive/50 bg-destructive/10 flex items-center gap-3">
               <AlertCircle className="h-5 w-5 text-destructive" />
               <span className="text-destructive text-sm font-medium">
                 {error}
@@ -1009,50 +1009,50 @@ export function Cron() {
 
           {/* Statistics */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-            <div className="p-5 rounded-[24px] bg-black/5 dark:bg-white/5 border border-transparent flex flex-col justify-between min-h-[130px] relative overflow-hidden group hover:bg-black/10 dark:hover:bg-white/10 transition-colors">
+            <div className="clawx-panel p-5 flex flex-col justify-between min-h-[130px] relative overflow-hidden group transition-colors">
               <div className="flex items-center justify-between">
-                <div className="h-11 w-11 rounded-full bg-primary/10 flex items-center justify-center">
+                <div className="h-11 w-11 rounded-lg bg-primary/10 flex items-center justify-center">
                   <Clock className="h-5 w-5 text-primary" />
                 </div>
               </div>
               <div className="mt-4 flex items-baseline gap-3">
-                <p className="text-stat font-serif text-foreground">{safeJobs.length}</p>
+                <p className="text-stat font-semibold text-foreground">{safeJobs.length}</p>
                 <p className="text-sm font-medium text-muted-foreground">{t('stats.total')}</p>
               </div>
             </div>
 
-            <div className="p-5 rounded-[24px] bg-black/5 dark:bg-white/5 border border-transparent flex flex-col justify-between min-h-[130px] relative overflow-hidden group hover:bg-black/10 dark:hover:bg-white/10 transition-colors">
+            <div className="clawx-panel p-5 flex flex-col justify-between min-h-[130px] relative overflow-hidden group transition-colors">
               <div className="flex items-center justify-between">
-                <div className="h-11 w-11 rounded-full bg-green-500/10 flex items-center justify-center">
+                <div className="h-11 w-11 rounded-lg bg-green-500/10 flex items-center justify-center">
                   <Play className="h-5 w-5 text-green-600 dark:text-green-500 ml-0.5" />
                 </div>
               </div>
               <div className="mt-4 flex items-baseline gap-3">
-                <p className="text-stat font-serif text-foreground">{activeJobs.length}</p>
+                <p className="text-stat font-semibold text-foreground">{activeJobs.length}</p>
                 <p className="text-sm font-medium text-muted-foreground">{t('stats.active')}</p>
               </div>
             </div>
 
-            <div className="p-5 rounded-[24px] bg-black/5 dark:bg-white/5 border border-transparent flex flex-col justify-between min-h-[130px] relative overflow-hidden group hover:bg-black/10 dark:hover:bg-white/10 transition-colors">
+            <div className="clawx-panel p-5 flex flex-col justify-between min-h-[130px] relative overflow-hidden group transition-colors">
               <div className="flex items-center justify-between">
-                <div className="h-11 w-11 rounded-full bg-yellow-500/10 flex items-center justify-center">
+                <div className="h-11 w-11 rounded-lg bg-yellow-500/10 flex items-center justify-center">
                   <Pause className="h-5 w-5 text-yellow-600 dark:text-yellow-500" />
                 </div>
               </div>
               <div className="mt-4 flex items-baseline gap-3">
-                <p className="text-stat font-serif text-foreground">{pausedJobs.length}</p>
+                <p className="text-stat font-semibold text-foreground">{pausedJobs.length}</p>
                 <p className="text-sm font-medium text-muted-foreground">{t('stats.paused')}</p>
               </div>
             </div>
 
-            <div className="p-5 rounded-[24px] bg-black/5 dark:bg-white/5 border border-transparent flex flex-col justify-between min-h-[130px] relative overflow-hidden group hover:bg-black/10 dark:hover:bg-white/10 transition-colors">
+            <div className="clawx-panel p-5 flex flex-col justify-between min-h-[130px] relative overflow-hidden group transition-colors">
               <div className="flex items-center justify-between">
-                <div className="h-11 w-11 rounded-full bg-destructive/10 flex items-center justify-center">
+                <div className="h-11 w-11 rounded-lg bg-destructive/10 flex items-center justify-center">
                   <XCircle className="h-5 w-5 text-destructive" />
                 </div>
               </div>
               <div className="mt-4 flex items-baseline gap-3">
-                <p className="text-stat font-serif text-foreground">{failedJobs.length}</p>
+                <p className="text-stat font-semibold text-foreground">{failedJobs.length}</p>
                 <p className="text-sm font-medium text-muted-foreground">{t('stats.failed')}</p>
               </div>
             </div>
@@ -1060,7 +1060,7 @@ export function Cron() {
 
           {/* Jobs List */}
           {safeJobs.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-20 text-muted-foreground bg-black/5 dark:bg-white/5 rounded-3xl border border-transparent border-dashed">
+            <div className="flex flex-col items-center justify-center py-20 text-muted-foreground clawx-panel-muted border-dashed">
               <Clock className="h-10 w-10 mb-4 opacity-50" />
               <h3 className="text-lg font-medium mb-2 text-foreground">{t('empty.title')}</h3>
               <p className="text-sm text-center mb-6 max-w-md">
@@ -1072,7 +1072,7 @@ export function Cron() {
                   setShowDialog(true);
                 }}
                 disabled={!isGatewayRunning}
-                className="rounded-full px-6 h-10"
+                className="rounded-lg px-4 h-9"
               >
                 <Plus className="h-4 w-4 mr-2" />
                 {t('empty.create')}

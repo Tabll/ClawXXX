@@ -17,10 +17,10 @@
  *      Radix-driven components read these directly.
  *
  *   2. ClawX surface tokens (--surface-modal / --surface-input /
- *      --surface-sidebar). Three light-mode "cream paper" layers added
+ *      --surface-sidebar). Three light-mode neutral layers added
  *      by ClawX. In dark mode each one is redirected to an existing
  *      shadcn token (--card / --muted / --background) so we don't have
- *      to maintain a second dark-cream palette.
+ *      to maintain a second dark surface palette.
  *
  * Usage:
  *   - Application code should always go through Tailwind utilities, e.g.
@@ -49,8 +49,8 @@
  *     bg-muted   (when used as a panel) →  bg-surface-input
  *     bg-[hsl(var(--xxx))] / arbitrary  →  bg-<named-token>
  *
- *     bg-surface-modal = raised cream  panels, popovers, inputs, cards
- *     bg-surface-input = recessed cream  code/log <pre>, segmented track
+ *     bg-surface-modal = raised neutral panels, popovers, inputs, cards
+ *     bg-surface-input = recessed neutral code/log <pre>, segmented track
  *
  *     Never write `dark:bg-card` / `dark:bg-muted` companion classes —
  *     the surface tokens already redirect in dark mode.
@@ -58,9 +58,9 @@
  *   SELECTED / ACTIVE STATE  (sidebar nav, theme & language picker,
  *                             segmented controls, composer chips)
  *   ─────────────────────────────────────────────────────────────────────
- *     selected   :  bg-black/5 dark:bg-white/10 text-foreground
- *     hover      :  hover:bg-black/5 dark:hover:bg-white/5
- *     idle text  :  text-muted-foreground (or text-foreground/80 / 70)
+ *     selected   :  bg-primary/10 text-primary
+ *     hover      :  hover:bg-surface-input
+ *     idle text  :  text-muted-foreground (or text-foreground/85)
  *
  *     Reference: components/layout/Sidebar.tsx, pages/Settings/index.tsx
  *     (theme + language picker).
@@ -81,7 +81,7 @@
  *     status dot          :  bg-{green|yellow|red}-500    (no dark variant)
  *
  *     Avoid `text-X-400` alone — that shade is tuned for dark mode and
- *     washes out against the cream light theme. Same for `bg-red-900/20`
+ *     washes out against the light theme. Same for `bg-red-900/20`
  *     panel backgrounds (a dark-only relic).
  *
  *   NEUTRAL GREYS  (escape hatches → semantic tokens)
@@ -95,7 +95,7 @@
  *   TYPOGRAPHY
  *   ─────────────────────────────────────────────────────────────────────
  *     page H1 / H2     :  font-serif font-normal tracking-tight
- *                         · hero pages   text-5xl md:text-6xl  (Settings,
+ *                         · page H1      text-3xl md:text-4xl  (Settings,
  *                                                               Cron, Models)
  *                         · wizard steps text-3xl / section H2 text-xl
  *                                                              (Setup)
@@ -110,55 +110,54 @@
  *     Use the default <Button> styling (variant="default", which renders
  *     `bg-primary`). Do not hand-apply `bg-brand` to action buttons —
  *     `bg-brand` / `bg-brand-hover` are reserved for branded surfaces
- *     where a divergent Apple-blue is explicitly desired (rare).
+ *     that should follow the user-selected accent colour.
  *     Reference: pages/Models "+ Add Provider" trigger.
  * ────────────────────────────────────────────────────────────────────────── */
 
 @layer base {
   :root {
     /* ── shadcn semantic tokens (light) ─────────────────────────── */
-    /* Lightened ClawX cream page background; gentler than pure white
-     *           for long sessions in front of the editor. */
-    --background: 45 30% 96.6%;
+    --app-font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+    --background: 220 24% 96%;
     --foreground: 222.2 84% 4.9%;
     --card: 0 0% 100%;
     --card-foreground: 222.2 84% 4.9%;
     --popover: 0 0% 100%;
     --popover-foreground: 222.2 84% 4.9%;
-    --primary: 221.2 83.2% 53.3%;
+    --primary: 221 83% 53%;
     --primary-foreground: 210 40% 98%;
-    --secondary: 210 40% 96.1%;
+    --secondary: 220 16% 93%;
     --secondary-foreground: 222.2 47.4% 11.2%;
-    --muted: 210 40% 96.1%;
+    --muted: 220 16% 93%;
     --muted-foreground: 215.4 16.3% 46.9%;
-    --accent: 210 40% 96.1%;
+    --accent: 220 16% 93%;
     --accent-foreground: 222.2 47.4% 11.2%;
     --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 210 40% 98%;
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 221.2 83.2% 53.3%;
+    --border: 220 15% 86%;
+    --input: 220 15% 86%;
+    --ring: 221 83% 53%;
+    --brand: 221 83% 53%;
+    --brand-hover: 221 83% 47%;
     --radius: 0.5rem;
 
-    /* ── ClawX cream surfaces (light) ────────────────────────────
+    /* ── ClawX neutral surfaces (light) ──────────────────────────
      *
-     * Three stacked cream layers — think "a cream paper laid on top
-     * of a slightly paler cream paper". The contrast between layers
-     * is deliberately low so we can suggest hierarchy without using
-     * heavy shadows. Pixel values are extracted from the hex literals
-     * that used to be sprinkled across components.
+     * Three stacked neutral layers. The contrast between layers is
+     * deliberately low so we can suggest hierarchy without using
+     * heavy shadows.
      *
-     *   --surface-modal   = lifted cream   large rounded modal panels (top);
+     *   --surface-modal   = lifted neutral large rounded modal panels (top);
      *                                      slightly lighter than --background
      *                                      so dialogs feel raised
-     *   --surface-input   = recessed cream inputs / selects / code panes;
+     *   --surface-input   = recessed neutral inputs / selects / code panes;
      *                                      slightly darker than --background
      *                                      so fields feel inset
-     *   --surface-sidebar = sidebar cream  left navigation rail (often /60)
+     *   --surface-sidebar = sidebar neutral left navigation rail (often /60)
      * ─────────────────────────────────────────────────────────── */
-    --surface-modal: 45 30% 97.6%;
-    --surface-input: 45 22% 94%;
-    --surface-sidebar: 45 16% 94%;
+    --surface-modal: 0 0% 100%;
+    --surface-input: 220 18% 94%;
+    --surface-sidebar: 220 18% 93%;
 
     /* ── ClawX usage accents (light) ─────────────────────────────
      *
@@ -203,7 +202,7 @@
     --input: 240 3% 18%;
     --ring: 217.2 91.2% 59.8%;
 
-    /* In dark mode the three cream surfaces collapse onto existing
+    /* In dark mode the three neutral surfaces collapse onto existing
      * shadcn tokens:
      *     modal   → card
      *     input   → muted
@@ -231,11 +230,72 @@
 
   body {
     @apply bg-background text-foreground;
+    font-family: var(--app-font-family);
     font-feature-settings: "rlig" 1, "calt" 1;
   }
 }
 
 @layer components {
+  .clawx-page-title {
+    @apply font-serif text-2xl font-semibold tracking-tight text-foreground md:text-3xl;
+  }
+
+  .clawx-page-subtitle {
+    @apply text-sm font-normal text-muted-foreground;
+  }
+
+  .clawx-section-title {
+    @apply text-lg font-semibold tracking-tight text-foreground md:text-xl;
+  }
+
+  .clawx-page-root {
+    @apply -m-6 flex h-[calc(100vh-2.5rem)] flex-col overflow-hidden bg-background;
+  }
+
+  .clawx-page-container {
+    @apply mx-auto flex h-full w-full max-w-6xl flex-col px-8 py-7;
+  }
+
+  .clawx-page-header {
+    @apply mb-6 flex shrink-0 flex-col justify-between gap-4 border-b border-border/70 pb-5 md:flex-row md:items-end;
+  }
+
+  .clawx-page-content {
+    @apply -mr-2 min-h-0 flex-1 space-y-7 overflow-y-auto pb-8 pr-2;
+  }
+
+  .clawx-panel {
+    @apply rounded-lg border border-border/75 bg-surface-modal shadow-sm shadow-black/5;
+  }
+
+  .clawx-panel-muted {
+    @apply rounded-lg border border-border/70 bg-surface-input/70;
+  }
+
+  .clawx-list-item {
+    @apply rounded-lg border border-border/60 bg-surface-modal/65 shadow-sm shadow-black/5 transition-colors hover:border-border hover:bg-surface-modal;
+  }
+
+  .clawx-toolbar {
+    @apply flex flex-wrap items-center gap-2;
+  }
+
+  .clawx-toolbar-button {
+    @apply h-9 rounded-lg border border-border/80 bg-surface-modal/80 px-3 text-meta font-medium text-foreground/85 shadow-sm shadow-black/5 hover:bg-surface-modal hover:text-foreground;
+  }
+
+  .clawx-form-label {
+    @apply text-sm font-medium text-foreground;
+  }
+
+  .clawx-helper-text {
+    @apply text-meta text-muted-foreground;
+  }
+
+  .clawx-settings-row {
+    @apply flex items-center justify-between gap-4 rounded-lg border border-border/60 bg-surface-modal px-4 py-3 shadow-sm shadow-black/5 transition-colors hover:border-border;
+  }
+
   .sidebar-nav-text.sidebar-nav-text {
     @apply text-sm font-normal leading-4;
   }
@@ -350,7 +410,7 @@
   @apply bg-muted-foreground/30;
 }
 
-/* Monaco's default light diff theme is pure white; keep it aligned with ClawX's cream app background. */
+/* Monaco's default light diff theme is pure white; keep it aligned with ClawX's app background. */
 :root:not(.dark) .clawx-diff-editor .monaco-diff-editor,
 :root:not(.dark) .clawx-diff-editor .monaco-editor,
 :root:not(.dark) .clawx-diff-editor .monaco-editor-background,

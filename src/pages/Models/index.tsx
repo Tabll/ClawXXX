@@ -272,50 +272,50 @@ export function Models() {
   const usageRefreshing = isGatewayRunning && fetchState.status === 'loading' && visibleUsageHistory.length > 0;
 
   return (
-    <div data-testid="models-page" className="flex flex-col -m-6 dark:bg-background h-[calc(100vh-2.5rem)] overflow-hidden">
-      <div className="w-full max-w-5xl mx-auto flex flex-col h-full p-10 pt-16">
+    <div data-testid="models-page" className="clawx-page-root">
+      <div className="clawx-page-container">
         
         {/* Header */}
-        <div className="flex flex-col md:flex-row md:items-start justify-between mb-12 shrink-0 gap-4">
+        <div className="clawx-page-header">
           <div>
-            <h1 data-testid="models-page-title" className="text-5xl md:text-6xl font-serif text-foreground mb-3 font-normal tracking-tight">
+            <h1 data-testid="models-page-title" className="clawx-page-title mb-2">
               {t('dashboard:models.title')}
             </h1>
-            <p className="text-subtitle text-foreground/70 font-medium">
+            <p className="clawx-page-subtitle">
               {t('dashboard:models.subtitle')}
             </p>
           </div>
         </div>
 
         {/* Content Area */}
-        <div className="flex-1 overflow-y-auto pr-2 pb-10 min-h-0 -mr-2 space-y-12">
+        <div className="clawx-page-content">
           
           {/* AI Providers Section */}
           <ProvidersSettings />
 
           {/* Token Usage History Section */}
           <div>
-            <h2 className="text-3xl font-serif text-foreground mb-6 font-normal tracking-tight">
+            <h2 className="clawx-section-title mb-4">
               {t('dashboard:recentTokenHistory.title', 'Token Usage History')}
             </h2>
             <div>
               {usageLoading ? (
-                <div className="flex items-center justify-center py-12 text-muted-foreground bg-black/5 dark:bg-white/5 rounded-3xl border border-transparent border-dashed">
+                <div className="flex items-center justify-center py-12 text-muted-foreground clawx-panel-muted border-dashed">
                   <FeedbackState state="loading" title={t('dashboard:recentTokenHistory.loading')} />
                 </div>
               ) : visibleUsageHistory.length === 0 ? (
-                <div className="flex items-center justify-center py-12 text-muted-foreground bg-black/5 dark:bg-white/5 rounded-3xl border border-transparent border-dashed">
+                <div className="flex items-center justify-center py-12 text-muted-foreground clawx-panel-muted border-dashed">
                   <FeedbackState state="empty" title={t('dashboard:recentTokenHistory.empty')} />
                 </div>
               ) : filteredUsageHistory.length === 0 ? (
-                <div className="flex items-center justify-center py-12 text-muted-foreground bg-black/5 dark:bg-white/5 rounded-3xl border border-transparent border-dashed">
+                <div className="flex items-center justify-center py-12 text-muted-foreground clawx-panel-muted border-dashed">
                   <FeedbackState state="empty" title={t('dashboard:recentTokenHistory.emptyForWindow')} />
                 </div>
               ) : (
                 <div className="space-y-6">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div className="flex flex-wrap items-center gap-3">
-                      <div className="flex rounded-xl bg-transparent p-1 border border-black/10 dark:border-white/10">
+                      <div className="flex rounded-lg bg-surface-input/70 p-1 border border-border/80 shadow-sm">
                         <Button
                           variant={usageGroupBy === 'model' ? 'secondary' : 'ghost'}
                           size="sm"
@@ -323,7 +323,7 @@ export function Models() {
                             setUsageGroupBy('model');
                             setUsagePage(1);
                           }}
-                          className={usageGroupBy === 'model' ? "rounded-lg bg-black/5 dark:bg-white/10 text-foreground" : "rounded-lg text-muted-foreground"}
+                          className={usageGroupBy === 'model' ? "rounded-lg bg-primary/10 text-primary" : "rounded-lg text-muted-foreground"}
                         >
                           {t('dashboard:recentTokenHistory.groupByModel')}
                         </Button>
@@ -334,12 +334,12 @@ export function Models() {
                             setUsageGroupBy('day');
                             setUsagePage(1);
                           }}
-                          className={usageGroupBy === 'day' ? "rounded-lg bg-black/5 dark:bg-white/10 text-foreground" : "rounded-lg text-muted-foreground"}
+                          className={usageGroupBy === 'day' ? "rounded-lg bg-primary/10 text-primary" : "rounded-lg text-muted-foreground"}
                         >
                           {t('dashboard:recentTokenHistory.groupByTime')}
                         </Button>
                       </div>
-                      <div className="flex rounded-xl bg-transparent p-1 border border-black/10 dark:border-white/10">
+                      <div className="flex rounded-lg bg-surface-input/70 p-1 border border-border/80 shadow-sm">
                         <Button
                           variant={usageWindow === '7d' ? 'secondary' : 'ghost'}
                           size="sm"
@@ -347,7 +347,7 @@ export function Models() {
                             setUsageWindow('7d');
                             setUsagePage(1);
                           }}
-                          className={usageWindow === '7d' ? "rounded-lg bg-black/5 dark:bg-white/10 text-foreground" : "rounded-lg text-muted-foreground"}
+                          className={usageWindow === '7d' ? "rounded-lg bg-primary/10 text-primary" : "rounded-lg text-muted-foreground"}
                         >
                           {t('dashboard:recentTokenHistory.last7Days')}
                         </Button>
@@ -358,7 +358,7 @@ export function Models() {
                             setUsageWindow('30d');
                             setUsagePage(1);
                           }}
-                          className={usageWindow === '30d' ? "rounded-lg bg-black/5 dark:bg-white/10 text-foreground" : "rounded-lg text-muted-foreground"}
+                          className={usageWindow === '30d' ? "rounded-lg bg-primary/10 text-primary" : "rounded-lg text-muted-foreground"}
                         >
                           {t('dashboard:recentTokenHistory.last30Days')}
                         </Button>
@@ -369,7 +369,7 @@ export function Models() {
                             setUsageWindow('all');
                             setUsagePage(1);
                           }}
-                          className={usageWindow === 'all' ? "rounded-lg bg-black/5 dark:bg-white/10 text-foreground" : "rounded-lg text-muted-foreground"}
+                          className={usageWindow === 'all' ? "rounded-lg bg-primary/10 text-primary" : "rounded-lg text-muted-foreground"}
                         >
                           {t('dashboard:recentTokenHistory.allTime')}
                         </Button>
@@ -396,7 +396,7 @@ export function Models() {
                       <div
                         key={`${entry.sessionId}-${entry.timestamp}`}
                         data-testid="token-usage-entry"
-                        className="rounded-2xl bg-transparent border border-black/10 dark:border-white/10 p-5 hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
+                        className="rounded-lg bg-transparent border border-border/80 p-5 hover:bg-surface-input transition-colors"
                       >
                         <div className="flex items-start justify-between gap-3">
                           <div className="min-w-0">
@@ -446,13 +446,13 @@ export function Models() {
                             </span>
                           )}
                           {typeof entry.costUsd === 'number' && Number.isFinite(entry.costUsd) && (
-                            <span className="flex items-center gap-1.5 ml-auto text-foreground/80 bg-black/5 dark:bg-white/5 px-2 py-0.5 rounded-md">{t('dashboard:recentTokenHistory.cost', { amount: entry.costUsd.toFixed(4) })}</span>
+                            <span className="flex items-center gap-1.5 ml-auto text-foreground/85 bg-surface-input/70 px-2 py-0.5 rounded-md">{t('dashboard:recentTokenHistory.cost', { amount: entry.costUsd.toFixed(4) })}</span>
                           )}
                           {devModeUnlocked && entry.content && (
                             <Button
                               variant="outline"
                               size="sm"
-                              className="h-6 rounded-full px-2.5 text-tiny border-black/10 dark:border-white/10"
+                              className="h-6 rounded-full px-2.5 text-tiny border-border/80"
                               onClick={() => setSelectedUsageEntry(entry)}
                             >
                               {t('dashboard:recentTokenHistory.viewContent')}
@@ -473,7 +473,7 @@ export function Models() {
                         size="sm"
                         onClick={() => setUsagePage((page) => Math.max(1, page - 1))}
                         disabled={safeUsagePage <= 1}
-                        className="rounded-full px-4 h-9 border-black/10 dark:border-white/10 bg-transparent hover:bg-black/5 dark:hover:bg-white/5"
+                        className="rounded-lg px-3 h-9 border-border/80 bg-transparent hover:bg-surface-input"
                       >
                         <ChevronLeft className="h-4 w-4 mr-1" />
                         {t('dashboard:recentTokenHistory.prev')}
@@ -483,7 +483,7 @@ export function Models() {
                         size="sm"
                         onClick={() => setUsagePage((page) => Math.min(usageTotalPages, page + 1))}
                         disabled={safeUsagePage >= usageTotalPages}
-                        className="rounded-full px-4 h-9 border-black/10 dark:border-white/10 bg-transparent hover:bg-black/5 dark:hover:bg-white/5"
+                        className="rounded-lg px-3 h-9 border-border/80 bg-transparent hover:bg-surface-input"
                       >
                         {t('dashboard:recentTokenHistory.next')}
                         <ChevronRight className="h-4 w-4 ml-1" />
@@ -560,7 +560,7 @@ function UsageBarChart({
 }) {
   if (groups.length === 0) {
     return (
-      <div className="rounded-2xl border border-dashed border-black/10 dark:border-white/10 p-8 text-center text-sm font-medium text-muted-foreground">
+      <div className="rounded-lg border border-dashed border-border/80 p-8 text-center text-sm font-medium text-muted-foreground">
         {emptyLabel}
       </div>
     );
@@ -569,7 +569,7 @@ function UsageBarChart({
   const maxTokens = Math.max(...groups.map((group) => group.totalTokens), 1);
 
   return (
-    <div className="space-y-4 bg-transparent p-5 rounded-2xl border border-black/10 dark:border-white/10">
+    <div className="space-y-4 bg-transparent p-5 rounded-lg border border-border/80">
       <div className="flex flex-wrap gap-4 text-meta font-medium text-muted-foreground mb-2">
         <span className="inline-flex items-center gap-2">
           <span className="h-2.5 w-2.5 rounded-full bg-usage-input" />
@@ -592,7 +592,7 @@ function UsageBarChart({
               {totalLabel}: {formatTokenCount(group.totalTokens)}
             </span>
           </div>
-          <div className="h-3.5 overflow-hidden rounded-full bg-black/5 dark:bg-white/5">
+          <div className="h-3.5 overflow-hidden rounded-full bg-surface-input/70">
             <div
               className="flex h-full overflow-hidden rounded-full"
               style={{
@@ -644,8 +644,8 @@ function UsageContentPopup({
 }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4" role="dialog" aria-modal="true">
-      <div className="w-full max-w-3xl rounded-2xl border border-black/10 dark:border-white/10 bg-background shadow-xl">
-        <div className="flex items-start justify-between gap-3 border-b border-black/10 dark:border-white/10 px-5 py-4">
+      <div className="w-full max-w-3xl rounded-lg border border-border/80 bg-background shadow-xl">
+        <div className="flex items-start justify-between gap-3 border-b border-border/80 px-5 py-4">
           <div className="min-w-0">
             <p className="text-sm font-semibold text-foreground">{title}</p>
             <p className="text-xs text-muted-foreground truncate mt-0.5">
@@ -667,7 +667,7 @@ function UsageContentPopup({
             {entry.content}
           </pre>
         </div>
-        <div className="flex justify-end border-t border-black/10 dark:border-white/10 px-5 py-3">
+        <div className="flex justify-end border-t border-border/80 px-5 py-3">
           <Button variant="outline" onClick={onClose}>
             {closeLabel}
           </Button>

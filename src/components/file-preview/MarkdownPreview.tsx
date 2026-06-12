@@ -50,7 +50,7 @@ export default function MarkdownPreview({ source, className }: MarkdownPreviewPr
   return (
     <div className={cn('prose max-w-none px-6 py-4 text-sm leading-relaxed', className)}>
       {yaml && (
-        <pre className="mb-4 rounded-lg border border-black/5 bg-black/[.03] px-3 py-2 text-2xs leading-relaxed text-foreground/70 dark:border-white/10 dark:bg-white/5">
+        <pre className="mb-4 rounded-lg border border-border/70 bg-surface-input/70 px-3 py-2 text-2xs leading-relaxed text-muted-foreground">
           <code className="font-mono">{yaml}</code>
         </pre>
       )}

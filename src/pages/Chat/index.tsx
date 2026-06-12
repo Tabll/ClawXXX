@@ -949,7 +949,7 @@ export function Chat() {
                         type="button"
                         onClick={() => void loadMoreHistory()}
                         disabled={loadingMoreHistory}
-                        className="inline-flex items-center gap-2 rounded-full border border-border bg-background/80 px-3 py-1.5 text-xs text-muted-foreground shadow-sm transition-colors hover:bg-black/5 hover:text-foreground dark:hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60"
+                        className="inline-flex items-center gap-2 rounded-lg border border-border/80 bg-surface-modal/80 px-3 py-1.5 text-xs text-muted-foreground shadow-sm transition-colors hover:bg-surface-input hover:text-foreground disabled:cursor-not-allowed disabled:opacity-60"
                         data-testid="chat-load-more-history"
                       >
                         {loadingMoreHistory && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
@@ -1099,7 +1099,7 @@ export function Chat() {
             <button
               type="button"
               onClick={() => void scrollToBottom({ animation: 'smooth', ignoreEscapes: true })}
-              className="absolute bottom-4 right-4 z-20 inline-flex items-center gap-2 rounded-full border border-border bg-background/95 px-3 py-1.5 text-xs font-medium text-foreground shadow-lg shadow-black/10 backdrop-blur transition-colors hover:bg-black/5 dark:hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 dark:shadow-black/30"
+              className="absolute bottom-4 right-4 z-20 inline-flex items-center gap-2 rounded-full border border-border bg-background/95 px-3 py-1.5 text-xs font-medium text-foreground shadow-lg shadow-black/10 backdrop-blur transition-colors hover:bg-surface-input focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 dark:shadow-black/30"
               aria-label={t('scrollToLatest')}
               title={t('scrollToLatest')}
               data-testid="chat-scroll-to-latest"
@@ -1119,7 +1119,7 @@ export function Chat() {
       {/* Run error callout */}
       {runError && (
         <div className="px-4 pt-2" data-testid="chat-run-error">
-          <div className="max-w-4xl mx-auto rounded-xl border border-destructive/20 bg-destructive/10 px-4 py-3">
+          <div className="max-w-4xl mx-auto rounded-lg border border-destructive/20 bg-destructive/10 px-4 py-3">
             <div className="flex items-start justify-between gap-3">
               <p className="text-sm font-medium text-destructive flex items-center gap-2">
                 <AlertCircle className="h-4 w-4 shrink-0" />
@@ -1177,7 +1177,7 @@ export function Chat() {
           <aside
             data-testid="artifact-panel-aside"
             className={cn(
-              'relative z-20 hidden shrink-0 border-l border-black/5 dark:border-white/10 lg:flex lg:flex-col',
+              'relative z-20 hidden shrink-0 border-l border-border/60 lg:flex lg:flex-col',
               isMac && 'no-drag',
             )}
             style={{ width: `${panelWidthPct}%` }}
@@ -1202,7 +1202,7 @@ export function Chat() {
 
       {/* Transparent loading overlay */}
       {minLoading && !sending && (
-        <div className="absolute inset-0 z-50 flex items-center justify-center bg-background/20 backdrop-blur-[1px] rounded-xl pointer-events-auto">
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-background/20 backdrop-blur-[1px] rounded-lg pointer-events-auto">
           <div className="bg-background shadow-lg rounded-full p-2.5 border border-border">
             <LoadingSpinner size="md" />
           </div>
@@ -1262,12 +1262,12 @@ function QuestionDirectory({ items }: { items: QuestionDirectoryItem[] }) {
       className="flex min-h-0 w-full shrink-0 self-stretch lg:w-64 xl:w-72"
       aria-label={t('questionDirectory.title')}
     >
-      <div className="sticky top-2 flex min-h-0 w-full flex-1 flex-col rounded-2xl border border-black/5 bg-black/[0.02] p-3 shadow-sm dark:border-white/10 dark:bg-white/[0.03]">
+      <div className="sticky top-2 flex min-h-0 w-full flex-1 flex-col rounded-lg border border-border/70 bg-surface-modal/70 p-3 shadow-sm">
         <div className="mb-2 flex shrink-0 items-center justify-between gap-2 px-1">
           <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
             {t('questionDirectory.title')}
           </h2>
-          <span className="rounded-full bg-black/5 px-2 py-0.5 text-2xs font-medium text-muted-foreground dark:bg-white/10">
+          <span className="rounded-lg bg-surface-input px-2 py-0.5 text-2xs font-medium text-muted-foreground">
             {items.length}
           </span>
         </div>
@@ -1279,8 +1279,8 @@ function QuestionDirectory({ items }: { items: QuestionDirectoryItem[] }) {
               data-testid={`chat-question-directory-item-${item.index}`}
               onClick={() => handleJumpToMessage(item.index)}
               className={cn(
-                'group flex w-full items-start gap-2 rounded-xl px-2 py-2 text-left transition-colors',
-                'text-foreground/70 hover:bg-black/5 hover:text-foreground dark:hover:bg-white/10',
+                'group flex w-full items-start gap-2 rounded-lg px-2 py-2 text-left transition-colors',
+                'text-muted-foreground hover:bg-surface-input hover:text-foreground',
               )}
               title={item.title}
             >
@@ -1312,7 +1312,7 @@ function WelcomeScreen() {
 
   return (
     <div className="flex flex-col items-center justify-center text-center h-[60vh]">
-      <h1 className="text-4xl md:text-5xl font-serif text-foreground/80 mb-8 font-normal tracking-tight">
+      <h1 className="text-3xl md:text-4xl font-semibold text-foreground/85 mb-6 tracking-tight">
         {t('welcome.subtitle')}
       </h1>
 
@@ -1320,7 +1320,7 @@ function WelcomeScreen() {
         {quickActions.map(({ key, label }) => (
           <button 
             key={key}
-            className="px-4 py-1.5 rounded-full border border-black/10 dark:border-white/10 text-meta font-medium text-foreground/70 hover:bg-black/5 dark:hover:bg-white/5 transition-colors bg-black/[0.02]"
+            className="px-4 py-1.5 rounded-full border border-border/80 text-meta font-medium text-muted-foreground hover:bg-surface-input transition-colors bg-black/[0.02]"
           >
             {label}
           </button>
@@ -1335,10 +1335,10 @@ function WelcomeScreen() {
 function TypingIndicator() {
   return (
     <div className="flex gap-3" data-testid="chat-typing-indicator">
-      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full mt-1 bg-black/5 dark:bg-white/5 text-foreground">
+      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full mt-1 bg-surface-input/70 text-foreground">
         <Sparkles className="h-4 w-4" />
       </div>
-      <div className="bg-black/5 dark:bg-white/5 text-foreground rounded-2xl px-4 py-3">
+      <div className="bg-surface-input/70 text-foreground rounded-lg px-4 py-3">
         <div className="flex gap-1">
           <span className="w-2 h-2 bg-muted-foreground/50 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
           <span className="w-2 h-2 bg-muted-foreground/50 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
@@ -1355,10 +1355,10 @@ function ActivityIndicator({ phase }: { phase: 'tool_processing' }) {
   void phase;
   return (
     <div className="flex gap-3" data-testid="chat-activity-indicator">
-      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full mt-1 bg-black/5 dark:bg-white/5 text-foreground">
+      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full mt-1 bg-surface-input/70 text-foreground">
         <Sparkles className="h-4 w-4" />
       </div>
-      <div className="bg-black/5 dark:bg-white/5 text-foreground rounded-2xl px-4 py-3">
+      <div className="bg-surface-input/70 text-foreground rounded-lg px-4 py-3">
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
           <span>Processing tool results…</span>
@@ -1372,10 +1372,10 @@ function ImageGeneratingIndicator() {
   const { t } = useTranslation('chat');
   return (
     <div className="flex gap-3" data-testid="chat-image-generating-indicator">
-      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full mt-1 bg-black/5 dark:bg-white/5 text-foreground">
+      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full mt-1 bg-surface-input/70 text-foreground">
         <Sparkles className="h-4 w-4" />
       </div>
-      <div className="bg-black/5 dark:bg-white/5 text-foreground rounded-2xl px-4 py-3">
+      <div className="bg-surface-input/70 text-foreground rounded-lg px-4 py-3">
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
           <span>{t('imageGeneration.generating')}</span>

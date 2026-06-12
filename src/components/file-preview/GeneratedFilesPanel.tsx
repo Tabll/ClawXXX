@@ -60,9 +60,9 @@ export function GeneratedFilesPanel({
                 type="button"
                 onClick={() => revealInFileManager(file)}
                 className={cn(
-                  'group inline-flex min-w-0 max-w-full items-center gap-2 rounded-full border border-black/8 bg-black/[0.035] px-3.5 py-2 text-left transition-colors',
-                  'hover:border-black/12 hover:bg-black/[0.055] dark:hover:bg-white/[0.07]',
-                  'dark:border-white/10 dark:bg-white/[0.04]',
+                  'group inline-flex min-w-0 max-w-full items-center gap-2 rounded-full border border-border/70 bg-surface-modal/80 px-3.5 py-2 text-left transition-colors',
+                  'hover:border-border hover:bg-surface-modal',
+                  '',
                 )}
                 title={file.filePath}
               >
@@ -72,7 +72,7 @@ export function GeneratedFilesPanel({
                 </div>
                 <Badge
                   variant="secondary"
-                  className="shrink-0 rounded-full border border-black/8 bg-black/[0.045] px-1.5 py-0.5 text-2xs text-foreground/70 dark:border-white/10 dark:bg-white/[0.06] dark:text-foreground/75"
+                  className="shrink-0 rounded-full border border-border/70 bg-surface-input/80 px-1.5 py-0.5 text-2xs text-muted-foreground "
                 >
                   <FolderOpen className="mr-1 h-3 w-3" />
                   {t('generatedFiles.openFolder', 'Open folder')}
@@ -89,10 +89,10 @@ export function GeneratedFilesPanel({
                 if (clickable) onOpen(file);
               }}
               className={cn(
-                'group inline-flex min-w-0 max-w-full items-center gap-2 rounded-full border border-black/8 bg-black/[0.035] px-3.5 py-2 text-left transition-colors disabled:opacity-100',
-                clickable && 'hover:border-black/12 hover:bg-black/[0.055] dark:hover:bg-white/[0.07]',
+                'group inline-flex min-w-0 max-w-full items-center gap-2 rounded-full border border-border/70 bg-surface-modal/80 px-3.5 py-2 text-left transition-colors disabled:opacity-100',
+                clickable && 'hover:border-border hover:bg-surface-modal',
                 !clickable && 'cursor-default',
-                'dark:border-white/10 dark:bg-white/[0.04]',
+                '',
               )}
               title={file.filePath}
             >
@@ -108,7 +108,7 @@ export function GeneratedFilesPanel({
               )}
               <Badge
                 variant="secondary"
-                className="shrink-0 rounded-full border border-black/8 bg-black/[0.045] px-1.5 py-0.5 text-2xs text-foreground/70 dark:border-white/10 dark:bg-white/[0.06] dark:text-foreground/75"
+                className="shrink-0 rounded-full border border-border/70 bg-surface-input/80 px-1.5 py-0.5 text-2xs text-muted-foreground "
               >
                 {file.action === 'created'
                   ? t('generatedFiles.created', 'Created')

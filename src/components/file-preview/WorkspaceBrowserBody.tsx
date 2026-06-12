@@ -475,14 +475,14 @@ export function WorkspaceBrowserBody({
     <div className="flex h-full min-h-0 flex-col">
       <header
         className={cn(
-          'flex items-center justify-between gap-3 border-b border-black/5 dark:border-white/10',
+          'flex items-center justify-between gap-3 border-b border-border/60',
           compact ? 'px-3 py-1.5' : 'px-4 py-2',
         )}
       >
         <div className="flex min-w-0 items-center gap-3">
           <h2 className="truncate text-sm font-semibold">
             {t('workspace.title', 'Workspace')}
-            {agent?.name ? <span className="ml-2 font-normal text-foreground/70">· {agent.name}</span> : null}
+            {agent?.name ? <span className="ml-2 font-normal text-muted-foreground">· {agent.name}</span> : null}
           </h2>
           {workspace && !compact ? (
             <code className="hidden truncate rounded bg-black/5 px-2 py-0.5 text-2xs text-muted-foreground dark:bg-white/10 sm:inline">
@@ -529,12 +529,12 @@ export function WorkspaceBrowserBody({
         className="grid min-h-0 flex-1"
         style={{ gridTemplateColumns: `${treeWidth ?? (compact ? 220 : 280)}px 1fr` }}
       >
-        <aside className="min-h-0 overflow-hidden border-r border-black/5 dark:border-white/10">
+        <aside className="min-h-0 overflow-hidden border-r border-border/60">
           <div className="h-full overflow-y-auto py-2 text-sm">{renderTree()}</div>
         </aside>
         <section className="min-h-0 overflow-hidden">
           {selectedNode && !selectedNode.isDir && (
-            <div className="flex items-center justify-between gap-3 border-b border-black/5 px-4 py-1.5 text-xs text-muted-foreground dark:border-white/10">
+            <div className="flex items-center justify-between gap-3 border-b border-border/60 px-4 py-1.5 text-xs text-muted-foreground ">
               <div className="flex min-w-0 items-center gap-2">
                 <FilePreviewIcon
                   contentType={selectedNode.contentType}
@@ -603,7 +603,7 @@ function FileTreeNodeRow({ node, depth, expanded, selectedRel, onToggle, onSelec
           onClick={() => onToggle(node.relPath)}
           className={cn(
             'flex w-full items-center gap-1 rounded-md px-2 py-1 text-left text-xs transition-colors',
-            'hover:bg-black/5 dark:hover:bg-white/10',
+            'hover:bg-surface-input',
           )}
           style={{ paddingLeft: indent }}
           title={node.relPath || node.name}
@@ -639,7 +639,7 @@ function FileTreeNodeRow({ node, depth, expanded, selectedRel, onToggle, onSelec
           'flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-xs transition-colors',
           isSelected
             ? 'bg-primary/10 text-foreground'
-            : 'hover:bg-black/5 dark:hover:bg-white/10',
+            : 'hover:bg-surface-input',
         )}
         style={{ paddingLeft: indent + 16 }}
         title={node.relPath || node.name}

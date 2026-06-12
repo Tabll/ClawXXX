@@ -63,9 +63,9 @@ function NavItem({ to, icon, label, badge, collapsed, onClick, testId }: NavItem
       className={({ isActive }) =>
         cn(
           'sidebar-nav-text flex items-center gap-2 rounded-lg px-2.5 py-1.5 transition-colors',
-          'hover:bg-black/5 dark:hover:bg-white/5 text-foreground/80',
+          'hover:bg-surface-input text-foreground/85',
           isActive
-            ? 'bg-black/5 dark:bg-white/10 text-foreground'
+            ? 'bg-primary/10 text-primary'
             : '',
           collapsed && 'justify-center px-0'
         )
@@ -376,8 +376,8 @@ export function Sidebar() {
           variant="ghost"
           size="icon"
           className={cn(
-            'no-drag h-8 w-8 shrink-0 rounded-lg text-foreground/80',
-            'hover:bg-black/5 hover:text-foreground/80 dark:hover:bg-white/5',
+            'no-drag h-8 w-8 shrink-0 rounded-lg text-foreground/85',
+            'hover:bg-surface-input hover:text-foreground',
           )}
           onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
         >
@@ -397,7 +397,7 @@ export function Sidebar() {
           onClick={handleNewChat}
           className={cn(
             'sidebar-nav-text flex items-center gap-2 rounded-lg px-2.5 py-2 transition-colors',
-            'hover:bg-black/5 dark:hover:bg-white/5 text-foreground/80',
+            'hover:bg-surface-input text-foreground/85',
             sidebarCollapsed && 'justify-center px-0',
           )}
         >
@@ -431,7 +431,7 @@ export function Sidebar() {
                   className={cn(
                     'flex w-full items-center gap-1 rounded-md px-2.5 py-1 text-left text-tiny font-medium',
                     'text-muted-foreground/60 tracking-tight transition-colors',
-                    'hover:bg-black/5 hover:text-muted-foreground dark:hover:bg-white/5',
+                    'hover:bg-surface-input hover:text-muted-foreground',
                   )}
                 >
                   <ChevronRight
@@ -489,14 +489,14 @@ export function Sidebar() {
                             onDoubleClick={() => handleStartRename(s.key, sessionLabel)}
                             className={cn(
                               'w-full text-left rounded-lg px-2.5 py-1.5 text-meta transition-colors pr-16',
-                              'hover:bg-black/5 dark:hover:bg-white/5',
+                              'hover:bg-surface-input',
                               isOnChat && currentSessionKey === s.key
-                                ? 'bg-black/5 dark:bg-white/10 text-foreground font-medium'
+                                ? 'bg-primary/10 text-primary font-medium'
                                 : 'text-foreground/75',
                             )}
                           >
                             <div className="flex min-w-0 items-center gap-2">
-                              <span className="shrink-0 rounded-full bg-black/[0.04] px-2 py-0.5 text-2xs font-medium text-foreground/70 dark:bg-white/[0.08]">
+                              <span className="shrink-0 rounded-lg bg-surface-input px-2 py-0.5 text-2xs font-medium text-muted-foreground">
                                 {agentName}
                               </span>
                               <span className="truncate">{sessionLabel}</span>
@@ -512,7 +512,7 @@ export function Sidebar() {
                                 e.stopPropagation();
                                 handleStartRename(s.key, sessionLabel);
                               }}
-                              className="flex items-center justify-center rounded p-0.5 text-muted-foreground hover:text-foreground hover:bg-black/5 dark:hover:bg-white/10"
+                              className="flex items-center justify-center rounded p-0.5 text-muted-foreground hover:text-foreground hover:bg-surface-input"
                             >
                               <Pencil className="h-3.5 w-3.5" />
                             </button>
@@ -579,8 +579,8 @@ export function Sidebar() {
             className={({ isActive }) =>
               cn(
                 'sidebar-nav-text flex items-center gap-2 rounded-lg px-2.5 py-1.5 transition-colors',
-                'hover:bg-black/5 dark:hover:bg-white/5 text-foreground/80',
-                isActive && 'bg-black/5 dark:bg-white/10 text-foreground',
+                'hover:bg-surface-input text-foreground/85',
+                isActive && 'bg-primary/10 text-primary',
                 sidebarCollapsed ? 'justify-center px-0' : ''
               )
             }
@@ -599,7 +599,7 @@ export function Sidebar() {
             variant="ghost"
             className={cn(
               'sidebar-nav-text flex h-auto w-full items-center gap-2 rounded-lg px-2.5 py-1.5 transition-colors',
-              'hover:bg-black/5 dark:hover:bg-white/5 text-foreground/80',
+              'hover:bg-surface-input text-foreground/85',
               sidebarCollapsed ? 'justify-center px-0' : 'justify-start'
             )}
             onClick={openDevConsole}

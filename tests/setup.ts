@@ -60,7 +60,12 @@ if (typeof window !== 'undefined') {
 if (typeof window !== 'undefined') {
   let needsLocalStorageMock: boolean;
   try {
-    needsLocalStorageMock = !window.localStorage;
+    const candidate = window.localStorage;
+    needsLocalStorageMock = !candidate
+      || typeof candidate.getItem !== 'function'
+      || typeof candidate.setItem !== 'function'
+      || typeof candidate.removeItem !== 'function'
+      || typeof candidate.clear !== 'function';
   } catch {
     needsLocalStorageMock = true;
   }

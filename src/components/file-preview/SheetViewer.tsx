@@ -165,10 +165,10 @@ export default function SheetViewer({ filePath, fileName, className }: SheetView
         type="button"
         onClick={() => handleSelectSheet(idx)}
         className={cn(
-          'shrink-0 truncate border-r border-black/10 px-3 py-1 text-xs transition-colors dark:border-white/10',
+          'shrink-0 truncate border-r border-border/80 px-3 py-1 text-xs transition-colors ',
           idx === sheetIndex
             ? 'bg-background font-medium text-foreground'
-            : 'bg-black/5 text-muted-foreground hover:bg-black/10 dark:bg-white/5 dark:hover:bg-white/10',
+            : 'bg-surface-input/80 text-muted-foreground hover:bg-surface-modal',
         )}
         title={sheet.name}
         style={{ maxWidth: 220 }}
@@ -222,13 +222,13 @@ export default function SheetViewer({ filePath, fileName, className }: SheetView
             <thead className="sticky top-0 z-10 bg-surface-input/80 backdrop-blur">
               <tr>
                 <th
-                  className="sticky left-0 z-20 border-b border-r border-black/10 bg-surface-input/80 px-2 py-1 text-center text-2xs text-muted-foreground dark:border-white/10"
+                  className="sticky left-0 z-20 border-b border-r border-border/80 bg-surface-input/80 px-2 py-1 text-center text-2xs text-muted-foreground "
                   style={{ width: 48, minWidth: 48 }}
                 />
                 {activeSheet.columnLetters.map((letter, idx) => (
                   <th
                     key={letter + idx}
-                    className="border-b border-r border-black/10 bg-surface-input/80 px-2 py-1 text-center text-2xs font-medium text-muted-foreground dark:border-white/10"
+                    className="border-b border-r border-border/80 bg-surface-input/80 px-2 py-1 text-center text-2xs font-medium text-muted-foreground "
                     style={{ minWidth: 96 }}
                   >
                     {letter}
@@ -243,7 +243,7 @@ export default function SheetViewer({ filePath, fileName, className }: SheetView
                 return (
                   <tr key={realIdx} className={isHeaderRow ? 'bg-primary/5 font-semibold' : undefined}>
                     <td
-                      className="sticky left-0 z-10 border-b border-r border-black/10 bg-background px-2 py-1 text-center text-2xs text-muted-foreground dark:border-white/10"
+                      className="sticky left-0 z-10 border-b border-r border-border/80 bg-background px-2 py-1 text-center text-2xs text-muted-foreground "
                       style={{ width: 48, minWidth: 48 }}
                     >
                       {realIdx + 1}
@@ -251,7 +251,7 @@ export default function SheetViewer({ filePath, fileName, className }: SheetView
                     {row.map((cell, colIdx) => (
                       <td
                         key={colIdx}
-                        className="max-w-[420px] truncate border-b border-r border-black/5 px-2 py-1 align-top dark:border-white/5"
+                        className="max-w-[420px] truncate border-b border-r border-border/60 px-2 py-1 align-top "
                         title={cell.length > 80 ? cell : undefined}
                       >
                         {cell}
@@ -264,10 +264,10 @@ export default function SheetViewer({ filePath, fileName, className }: SheetView
           </table>
         )}
       </div>
-      <div className="flex shrink-0 items-stretch justify-between gap-2 border-t border-black/10 bg-surface-input/40 dark:border-white/10">
+      <div className="flex shrink-0 items-stretch justify-between gap-2 border-t border-border/80 bg-surface-input/40 ">
         <div className="flex min-w-0 items-stretch overflow-x-auto">{sheetTabs}</div>
         {totalPages > 1 && (
-          <div className="flex shrink-0 items-center gap-1 border-l border-black/10 px-2 text-xs text-muted-foreground dark:border-white/10">
+          <div className="flex shrink-0 items-center gap-1 border-l border-border/80 px-2 text-xs text-muted-foreground ">
             <Button
               variant="ghost"
               size="icon"
