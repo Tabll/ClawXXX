@@ -19,11 +19,8 @@ This directory contains the application icons for all supported platforms.
 ### Using the Script
 
 ```bash
-# Make the script executable
-chmod +x scripts/generate-icons.sh
-
 # Run icon generation
-./scripts/generate-icons.sh
+pnpm icons
 ```
 
 ### Prerequisites
@@ -59,14 +56,14 @@ If you prefer to generate icons manually:
 
 ### Application Icon
 - **Corner Radius**: ~20% of width (200px on 1024px canvas)
-- **Foreground**: White claw symbol with "X" accent
+- **Foreground**: Minimal folded "X" mark in black, white, and gray gradients
 - **Safe Area**: Keep 10% margin from edges
 
 ### macOS Tray Icon
 - **Format**: Single-color (black) on transparent background
 - **Size**: 22x22 pixels (system automatically handles @2x retina)
 - **Naming**: Must end with "Template.png" for automatic template mode
-- **Design**: Simplified monochrome version of main icon (ClawX logo)
+- **Design**: Simplified monochrome folded "X" from the main icon
 - **Source**: Use `tray-icon-template.svg` as the source
 - **Important**: Must be pure black (#000000) on transparent background - no gradients or colors
 
