@@ -118,27 +118,37 @@
   :root {
     /* ── shadcn semantic tokens (light) ─────────────────────────── */
     --app-font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
-    --background: 220 24% 96%;
-    --foreground: 222.2 84% 4.9%;
-    --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
-    --primary: 221 83% 53%;
-    --primary-foreground: 210 40% 98%;
-    --secondary: 220 16% 93%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
-    --muted: 220 16% 93%;
-    --muted-foreground: 215.4 16.3% 46.9%;
-    --accent: 220 16% 93%;
-    --accent-foreground: 222.2 47.4% 11.2%;
+    --appearance-primary: 0 0% 7%;
+    --appearance-primary-foreground: 0 0% 98%;
+    --appearance-ring: 0 0% 16%;
+    --appearance-brand: var(--appearance-primary);
+    --appearance-brand-hover: 0 0% 14%;
+    --appearance-primary-dark: 0 0% 86%;
+    --appearance-primary-foreground-dark: 0 0% 7%;
+    --appearance-ring-dark: 0 0% 78%;
+    --appearance-brand-dark: var(--appearance-primary-dark);
+    --appearance-brand-hover-dark: 0 0% 78%;
+    --background: 0 0% 96%;
+    --foreground: 0 0% 6%;
+    --card: 0 0% 99%;
+    --card-foreground: 0 0% 6%;
+    --popover: 0 0% 99%;
+    --popover-foreground: 0 0% 6%;
+    --primary: var(--appearance-primary);
+    --primary-foreground: var(--appearance-primary-foreground);
+    --secondary: 0 0% 91%;
+    --secondary-foreground: 0 0% 9%;
+    --muted: 0 0% 91%;
+    --muted-foreground: 0 0% 42%;
+    --accent: 0 0% 90%;
+    --accent-foreground: 0 0% 9%;
     --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 210 40% 98%;
-    --border: 220 15% 86%;
-    --input: 220 15% 86%;
-    --ring: 221 83% 53%;
-    --brand: 221 83% 53%;
-    --brand-hover: 221 83% 47%;
+    --border: 0 0% 84%;
+    --input: 0 0% 84%;
+    --ring: var(--appearance-ring);
+    --brand: var(--appearance-brand);
+    --brand-hover: var(--appearance-brand-hover);
     --radius: 0.5rem;
 
     /* ── ClawX neutral surfaces (light) ──────────────────────────
@@ -155,9 +165,9 @@
      *                                      so fields feel inset
      *   --surface-sidebar = sidebar neutral left navigation rail (often /60)
      * ─────────────────────────────────────────────────────────── */
-    --surface-modal: 0 0% 100%;
-    --surface-input: 220 18% 94%;
-    --surface-sidebar: 220 18% 93%;
+    --surface-modal: 0 0% 99%;
+    --surface-input: 0 0% 93%;
+    --surface-sidebar: 0 0% 91%;
 
     /* ── ClawX usage accents (light) ─────────────────────────────
      *
@@ -180,27 +190,29 @@
     --usage-cache: 48 96% 53%;
   }
 
-  /* Neutral deep-gray dark palette */
+  /* Icon-matched graphite dark palette */
   .dark {
-    --background: 240 4% 11%;
-    --foreground: 210 20% 96%;
-    --card: 240 3% 14%;
-    --card-foreground: 210 20% 96%;
-    --popover: 240 3% 14%;
-    --popover-foreground: 210 20% 96%;
-    --primary: 217.2 91.2% 59.8%;
-    --primary-foreground: 210 40% 98%;
-    --secondary: 240 3% 18%;
-    --secondary-foreground: 210 20% 96%;
-    --muted: 240 3% 18%;
-    --muted-foreground: 220 8% 72%;
-    --accent: 240 3% 22%;
-    --accent-foreground: 210 20% 96%;
+    --background: 0 0% 7%;
+    --foreground: 0 0% 96%;
+    --card: 0 0% 10%;
+    --card-foreground: 0 0% 96%;
+    --popover: 0 0% 10%;
+    --popover-foreground: 0 0% 96%;
+    --primary: var(--appearance-primary-dark);
+    --primary-foreground: var(--appearance-primary-foreground-dark);
+    --secondary: 0 0% 14%;
+    --secondary-foreground: 0 0% 96%;
+    --muted: 0 0% 14%;
+    --muted-foreground: 0 0% 70%;
+    --accent: 0 0% 18%;
+    --accent-foreground: 0 0% 96%;
     --destructive: 0 65% 42%;
-    --destructive-foreground: 210 20% 96%;
-    --border: 240 3% 24%;
-    --input: 240 3% 18%;
-    --ring: 217.2 91.2% 59.8%;
+    --destructive-foreground: 0 0% 96%;
+    --border: 0 0% 22%;
+    --input: 0 0% 18%;
+    --ring: var(--appearance-ring-dark);
+    --brand: var(--appearance-brand-dark);
+    --brand-hover: var(--appearance-brand-hover-dark);
 
     /* In dark mode the three neutral surfaces collapse onto existing
      * shadcn tokens:
@@ -210,9 +222,9 @@
      * This way every `bg-surface-*` utility resolves correctly in
      * both themes, and components no longer need `dark:bg-card`-style
      * companion classes for theme switching. */
-    --surface-modal: 240 3% 14%;
-    --surface-input: 240 3% 18%;
-    --surface-sidebar: 240 4% 11%;
+    --surface-modal: 0 0% 10%;
+    --surface-input: 0 0% 14%;
+    --surface-sidebar: 0 0% 7%;
 
     /* Usage accents — lifted *-400-ish shades so bars stay vivid
      * against the deep-gray dark surfaces (see light block above
@@ -257,7 +269,7 @@
   }
 
   .clawx-page-header {
-    @apply mb-6 flex shrink-0 flex-col justify-between gap-4 border-b border-border/70 pb-5 md:flex-row md:items-end;
+    @apply mb-6 flex shrink-0 flex-col justify-between gap-4 border-b border-border/60 pb-5 md:flex-row md:items-end;
   }
 
   .clawx-page-content {
@@ -265,15 +277,15 @@
   }
 
   .clawx-panel {
-    @apply rounded-lg border border-border/75 bg-surface-modal shadow-sm shadow-black/5;
+    @apply rounded-lg border border-border/70 bg-surface-modal shadow-sm shadow-black/5 dark:shadow-black/20;
   }
 
   .clawx-panel-muted {
-    @apply rounded-lg border border-border/70 bg-surface-input/70;
+    @apply rounded-lg border border-border/60 bg-surface-input/70;
   }
 
   .clawx-list-item {
-    @apply rounded-lg border border-border/60 bg-surface-modal/65 shadow-sm shadow-black/5 transition-colors hover:border-border hover:bg-surface-modal;
+    @apply rounded-lg border border-border/55 bg-surface-modal/70 shadow-sm shadow-black/5 transition-colors hover:border-border/80 hover:bg-surface-modal dark:shadow-black/20;
   }
 
   .clawx-toolbar {
@@ -281,7 +293,7 @@
   }
 
   .clawx-toolbar-button {
-    @apply h-9 rounded-lg border border-border/80 bg-surface-modal/80 px-3 text-meta font-medium text-foreground/85 shadow-sm shadow-black/5 hover:bg-surface-modal hover:text-foreground;
+    @apply h-9 rounded-lg border border-border/70 bg-surface-modal/80 px-3 text-meta font-medium text-foreground/85 shadow-sm shadow-black/5 hover:border-border hover:bg-surface-modal hover:text-foreground dark:shadow-black/20;
   }
 
   .clawx-form-label {
@@ -293,7 +305,7 @@
   }
 
   .clawx-settings-row {
-    @apply flex items-center justify-between gap-4 rounded-lg border border-border/60 bg-surface-modal px-4 py-3 shadow-sm shadow-black/5 transition-colors hover:border-border;
+    @apply flex items-center justify-between gap-4 rounded-lg border border-border/60 bg-surface-modal/85 px-4 py-3 shadow-sm shadow-black/5 transition-colors hover:border-border/80 hover:bg-surface-modal dark:shadow-black/20;
   }
 
   .sidebar-nav-text.sidebar-nav-text {

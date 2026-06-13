@@ -11,6 +11,14 @@ import { resolveSupportedLanguage } from '@shared/language';
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let settingsStoreInstance: any = null;
 
+const DEFAULT_THEME_COLOR = '#111111';
+const LEGACY_DEFAULT_THEME_COLOR = '#2563eb';
+
+type SettingsStoreLike = {
+  get: (key: 'themeColor') => unknown;
+  set: (key: 'themeColor', value: string) => void;
+};
+
 /**
  * Generate a random token for gateway authentication
  */
@@ -82,7 +90,7 @@ function createDefaultSettings(): AppSettings {
     launchAtStartup: false,
     telemetryEnabled: true,
     appFontFamily: '',
-    themeColor: '#2563eb',
+    themeColor: DEFAULT_THEME_COLOR,
     machineId: '',
     hasReportedInstall: false,
 
@@ -114,6 +122,16 @@ function createDefaultSettings(): AppSettings {
   };
 }
 
+function migrateDefaultThemeColor(store: SettingsStoreLike): void {
+  const storedThemeColor = store.get('themeColor');
+  if (
+    typeof storedThemeColor === 'string'
+    && storedThemeColor.trim().toLowerCase() === LEGACY_DEFAULT_THEME_COLOR
+  ) {
+    store.set('themeColor', DEFAULT_THEME_COLOR);
+  }
+}
+
 /**
  * Get the settings store instance (lazy initialization)
  */
@@ -124,6 +142,7 @@ async function getSettingsStore() {
       name: 'settings',
       defaults: createDefaultSettings(),
     });
+    migrateDefaultThemeColor(settingsStoreInstance);
   }
   return settingsStoreInstance;
 }

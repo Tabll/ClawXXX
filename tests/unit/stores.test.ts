@@ -50,7 +50,7 @@ describe('Settings Store', () => {
       startMinimized: false,
       launchAtStartup: false,
       appFontFamily: '',
-      themeColor: '#2563eb',
+      themeColor: '#111111',
       updateChannel: 'stable',
     });
   });

@@ -566,7 +566,7 @@ export function ChannelConfigModal({
           ) : (
             <div className="space-y-6">
               {isExistingConfig && (
-                <div className="bg-blue-500/10 text-blue-600 dark:text-blue-400 p-4 rounded-lg text-sm flex items-center gap-2 border border-blue-500/20">
+                <div className="flex items-center gap-2 rounded-lg border border-primary/20 bg-primary/10 p-4 text-sm text-primary">
                   <CheckCircle className="h-4 w-4 shrink-0" />
                   <span>{t('dialog.existingHint')}</span>
                 </div>

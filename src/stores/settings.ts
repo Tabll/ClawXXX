@@ -6,6 +6,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import i18n from '@/i18n';
 import { hostApi } from '@/lib/host-api';
+import { DEFAULT_THEME_COLOR } from '@/lib/app-appearance';
 import { resolveSupportedLanguage } from '@shared/language';
 
 type Theme = 'light' | 'dark' | 'system';
@@ -76,7 +77,7 @@ const defaultSettings = {
   launchAtStartup: false,
   telemetryEnabled: true,
   appFontFamily: '',
-  themeColor: '#2563eb',
+  themeColor: DEFAULT_THEME_COLOR,
   gatewayAutoStart: true,
   gatewayPort: 18789,
   proxyEnabled: false,

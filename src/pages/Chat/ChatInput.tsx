@@ -93,7 +93,7 @@ function removeSkillToken(value: string, skillName: string): string {
 }
 
 const SKILL_TOKEN_BUTTON_CLASS =
-  'rounded-md bg-skill-bg/14 text-skill-fg [-webkit-box-decoration-break:clone] [box-decoration-break:clone] [text-shadow:0_0_10px_rgba(47,107,255,0.38)] dark:bg-skill-bg/18 dark:text-skill-fg-dark dark:[text-shadow:0_0_12px_rgba(37,99,235,0.42)]';
+  'rounded-md bg-skill-bg/10 text-skill-fg [-webkit-box-decoration-break:clone] [box-decoration-break:clone] [text-shadow:0_0_10px_rgba(17,17,17,0.18)] dark:bg-skill-bg/20 dark:text-skill-fg-dark dark:[text-shadow:0_0_12px_rgba(229,229,229,0.2)]';
 
 function renderHighlightedComposerText(
   value: string,

@@ -1,4 +1,4 @@
-export const DEFAULT_THEME_COLOR = '#2563eb';
+export const DEFAULT_THEME_COLOR = '#111111';
 
 const SYSTEM_FONT_STACK = [
   '-apple-system',
@@ -133,6 +133,26 @@ function deriveHoverHsl(hsl: { h: number; s: number; l: number }): string {
   return hslTriplet({ ...hsl, l: nextLightness });
 }
 
+function deriveDarkPrimaryHsl(hsl: { h: number; s: number; l: number }): { h: number; s: number; l: number } {
+  if (hsl.l < 28) {
+    return {
+      ...hsl,
+      s: hsl.s < 8 ? hsl.s : Math.min(82, hsl.s),
+      l: hsl.s < 8 ? 86 : 62,
+    };
+  }
+
+  if (hsl.l > 78) {
+    return { ...hsl, l: 72 };
+  }
+
+  return { ...hsl, l: Math.max(56, hsl.l) };
+}
+
+function foregroundForHsl(hsl: { l: number }): string {
+  return hsl.l >= 68 ? '0 0% 7%' : '0 0% 98%';
+}
+
 export function applyAppAppearance(
   { appFontFamily, themeColor }: AppearanceSettings,
   root: HTMLElement = document.documentElement,
@@ -140,15 +160,20 @@ export function applyAppAppearance(
   const normalizedFont = normalizeAppFontFamily(appFontFamily);
   const normalizedColor = normalizeThemeColor(themeColor);
   const hsl = rgbToHsl(hexToRgb(normalizedColor));
-  const primaryForeground = hsl.l >= 68 ? '222.2 84% 4.9%' : '210 40% 98%';
+  const darkHsl = deriveDarkPrimaryHsl(hsl);
 
   root.style.setProperty(
     '--app-font-family',
     normalizedFont ? `${normalizedFont}, ${SYSTEM_FONT_STACK}` : SYSTEM_FONT_STACK,
   );
-  root.style.setProperty('--primary', hslTriplet(hsl));
-  root.style.setProperty('--ring', hslTriplet(hsl));
-  root.style.setProperty('--brand', hslTriplet(hsl));
-  root.style.setProperty('--brand-hover', deriveHoverHsl(hsl));
-  root.style.setProperty('--primary-foreground', primaryForeground);
+  root.style.setProperty('--appearance-primary', hslTriplet(hsl));
+  root.style.setProperty('--appearance-ring', hslTriplet(hsl));
+  root.style.setProperty('--appearance-brand', hslTriplet(hsl));
+  root.style.setProperty('--appearance-brand-hover', deriveHoverHsl(hsl));
+  root.style.setProperty('--appearance-primary-foreground', foregroundForHsl(hsl));
+  root.style.setProperty('--appearance-primary-dark', hslTriplet(darkHsl));
+  root.style.setProperty('--appearance-ring-dark', hslTriplet(darkHsl));
+  root.style.setProperty('--appearance-brand-dark', hslTriplet(darkHsl));
+  root.style.setProperty('--appearance-brand-hover-dark', deriveHoverHsl(darkHsl));
+  root.style.setProperty('--appearance-primary-foreground-dark', foregroundForHsl(darkHsl));
 }

@@ -579,7 +579,7 @@ function ProviderCard({
               data-testid={`provider-set-default-${account.id}`}
               variant="ghost"
               size="icon"
-              className="h-8 w-8 rounded-lg text-muted-foreground hover:text-blue-600 hover:bg-surface-modal shadow-sm"
+              className="h-8 w-8 rounded-lg text-muted-foreground shadow-sm hover:bg-surface-modal hover:text-primary"
                 onClick={onSetDefault}
                 title={t('aiProviders.card.setDefault')}
               >
@@ -618,7 +618,7 @@ function ProviderCard({
                 href={effectiveDocsUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-xs text-blue-500 hover:text-blue-600 font-medium inline-flex items-center gap-1"
+                className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:text-primary/80"
               >
                 {t('aiProviders.dialog.customDoc')}
                 <ExternalLink className="h-3 w-3" />
@@ -662,7 +662,7 @@ function ProviderCard({
                         href={typeInfo.codePlanDocsUrl}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="text-xs text-blue-500 hover:text-blue-600 font-medium inline-flex items-center gap-1"
+                        className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:text-primary/80"
                       >
                         {t('aiProviders.dialog.codePlanDoc')}
                         <ExternalLink className="h-3 w-3" />
@@ -781,7 +781,7 @@ function ProviderCard({
                             onChange={() => toggleFallbackProvider(candidate.account.id)}
                             className="rounded border-border/80 text-primary focus:ring-ring/35"
                           />
-                          <span className="font-medium group-hover/label:text-blue-500 transition-colors">{candidate.account.label}</span>
+                          <span className="font-medium transition-colors group-hover/label:text-primary">{candidate.account.label}</span>
                           <span className="text-xs text-muted-foreground">
                             {candidate.account.model || candidate.vendor?.name || candidate.account.vendorId}
                           </span>
@@ -816,7 +816,7 @@ function ProviderCard({
                   href={typeInfo.apiKeyUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-meta text-blue-500 hover:text-blue-600 hover:underline flex items-center gap-1"
+                  className="flex items-center gap-1 text-meta text-primary hover:text-primary/80 hover:underline"
                   tabIndex={-1}
                 >
                   {t('aiProviders.oauth.getApiKey')} <ExternalLink className="h-3 w-3" />
@@ -1340,7 +1340,7 @@ function AddProviderDialog({
                     setShowAdvancedConfig(false);
                     setArkMode('apikey');
                   }}
-                  className="text-meta text-blue-500 hover:text-blue-600 font-medium"
+                  className="text-meta font-medium text-primary hover:text-primary/80"
                 >
                     {t('aiProviders.dialog.change')}
                   </button>
@@ -1351,7 +1351,7 @@ function AddProviderDialog({
                         href={effectiveDocsUrl}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="text-meta text-blue-500 hover:text-blue-600 font-medium inline-flex items-center gap-1"
+                        className="inline-flex items-center gap-1 text-meta font-medium text-primary hover:text-primary/80"
                       >
                         {t('aiProviders.dialog.customDoc')}
                         <ExternalLink className="h-3 w-3" />
@@ -1410,7 +1410,7 @@ function AddProviderDialog({
                           href={typeInfo.apiKeyUrl}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="text-meta text-blue-500 hover:text-blue-600 font-medium flex items-center gap-1"
+                          className="flex items-center gap-1 text-meta font-medium text-primary hover:text-primary/80"
                           tabIndex={-1}
                         >
                           {t('aiProviders.oauth.getApiKey')} <ExternalLink className="h-3 w-3" />
@@ -1486,7 +1486,7 @@ function AddProviderDialog({
                           href={typeInfo.codePlanDocsUrl}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="text-meta text-blue-500 hover:text-blue-600 font-medium inline-flex items-center gap-1"
+                          className="inline-flex items-center gap-1 text-meta font-medium text-primary hover:text-primary/80"
                           tabIndex={-1}
                         >
                           {t('aiProviders.dialog.codePlanDoc')}
@@ -1584,8 +1584,8 @@ function AddProviderDialog({
                 {/* Device OAuth Trigger — only shown when in OAuth mode */}
                 {useOAuthFlow && (
                   <div className="space-y-4 pt-2">
-                    <div className="rounded-lg bg-blue-500/10 border border-blue-500/20 p-5 text-center">
-                      <p className="text-meta font-medium text-blue-600 dark:text-blue-400 mb-4 block">
+                    <div className="rounded-lg border border-primary/20 bg-primary/10 p-5 text-center">
+                      <p className="mb-4 block text-meta font-medium text-primary">
                         {t('aiProviders.oauth.loginPrompt')}
                       </p>
                       <Button
@@ -1606,7 +1606,7 @@ function AddProviderDialog({
                     {oauthFlowing && (
                       <div className="mt-4 p-5 border border-border/80 rounded-lg bg-surface-modal shadow-sm relative overflow-hidden">
                         {/* Background pulse effect */}
-                        <div className="absolute inset-0 bg-blue-500/5 animate-pulse" />
+                        <div className="absolute inset-0 animate-pulse bg-primary/5" />
 
                         <div className="relative z-10 flex flex-col items-center justify-center text-center space-y-5">
                           {oauthError ? (
@@ -1620,7 +1620,7 @@ function AddProviderDialog({
                             </div>
                           ) : !oauthData ? (
                             <div className="space-y-4 py-6">
-                              <Loader2 className="h-10 w-10 animate-spin text-blue-500 mx-auto" />
+                              <Loader2 className="mx-auto h-10 w-10 animate-spin text-primary" />
                               <p className="text-meta font-medium text-muted-foreground animate-pulse">{t('aiProviders.oauth.requestingCode')}</p>
                             </div>
                           ) : oauthData.mode === 'manual' ? (
@@ -1698,7 +1698,7 @@ function AddProviderDialog({
                               </Button>
 
                               <div className="flex items-center justify-center gap-2 text-meta font-medium text-muted-foreground pt-2">
-                                <Loader2 className="h-4 w-4 animate-spin text-blue-500" />
+                                <Loader2 className="h-4 w-4 animate-spin text-primary" />
                                 <span>{t('aiProviders.oauth.waitingApproval')}</span>
                               </div>
 

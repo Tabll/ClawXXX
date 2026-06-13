@@ -20,7 +20,7 @@
  *   3. colors — On top of shadcn's semantic tokens (primary / destructive /
  *      ...) we add three ClawX-private groups:
  *        - brand        : user-selected accent colour used for branded surfaces
- *        - skill        : highlight blue for inline /skill chips in chat
+ *        - skill        : inline /skill chip highlight derived from primary
  *        - surface.{modal,input,sidebar}: a 3-layer neutral background
  *                          system in light mode. In dark mode each layer
  *                          collapses to an existing shadcn token through
@@ -145,8 +145,8 @@ module.exports = {
        * Three groups:
        *   A. shadcn standard semantic tokens — read via `hsl(var(--xxx))`
        *      from globals.css. Kept fully compatible.
-       *   B. ClawX brand tokens (brand / skill) — plain hex values that
-       *      do not change between light and dark themes.
+       *   B. ClawX brand tokens (brand / skill) — CSS-variable driven
+       *      accents that follow the active appearance colour.
        *   C. ClawX surface tokens (surface.{modal,input,sidebar}) — use
        *      `hsl(var(--surface-xxx) / <alpha-value>)` so the alpha
        *      modifier still works (e.g. `bg-surface-sidebar/60`). The
@@ -211,15 +211,16 @@ module.exports = {
           hover: 'hsl(var(--brand-hover) / <alpha-value>)',
         },
 
-        // Highlight blue for inline /skill chips in the chat input.
+        // Inline /skill chips in the chat input. These follow the active
+        // primary colour so the composer stays aligned with the app theme.
         // The chip combines bg + text + text-shadow to produce a glow
         // effect, so we expose three separate tokens (bg, light fg,
-        // dark fg) instead of a 50/100/.../900 ramp — this palette is
+        // dark fg) instead of a 50/100/.../900 ramp — this token set is
         // intentionally not extensible.
         skill: {
-          bg: '#2F6BFF',          // chip backdrop (used at /14 or /18)
-          fg: '#1D4ED8',          // chip text (light mode)
-          'fg-dark': '#2563EB',   // chip text (dark mode)
+          bg: 'hsl(var(--primary) / <alpha-value>)',
+          fg: 'hsl(var(--primary))',
+          'fg-dark': 'hsl(var(--primary))',
         },
 
         // ── C. ClawX neutral surfaces ────────────────────────────────

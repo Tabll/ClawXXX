@@ -9,17 +9,17 @@ import { cva, type VariantProps } from 'class-variance-authority';
 import { cn } from '@/lib/utils';
 
 const buttonVariants = cva(
-  'inline-flex items-center justify-center whitespace-nowrap rounded-lg text-sm font-medium ring-offset-background transition-[background-color,border-color,color,box-shadow,transform] duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:ring-offset-0 disabled:pointer-events-none disabled:opacity-50 active:scale-[0.99]',
+  'inline-flex items-center justify-center whitespace-nowrap rounded-lg text-sm font-medium ring-offset-background transition-[background-color,border-color,color,box-shadow,transform] duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/35 focus-visible:ring-offset-0 disabled:pointer-events-none disabled:opacity-50 active:scale-[0.99]',
   {
     variants: {
       variant: {
-        default: 'border border-transparent bg-primary text-primary-foreground shadow-sm shadow-primary/15 hover:bg-primary/90',
+        default: 'border border-primary/90 bg-primary text-primary-foreground shadow-sm shadow-black/10 hover:bg-primary/90 dark:shadow-black/30',
         destructive:
           'border border-transparent bg-destructive text-destructive-foreground shadow-sm hover:bg-destructive/90',
         outline:
-          'border border-border/80 bg-surface-modal/80 text-foreground/85 shadow-sm shadow-black/5 hover:border-border hover:bg-surface-modal hover:text-foreground',
+          'border border-border/70 bg-surface-modal/80 text-foreground/85 shadow-sm shadow-black/5 hover:border-border hover:bg-surface-modal hover:text-foreground dark:shadow-black/20',
         secondary:
-          'border border-border/60 bg-surface-input text-secondary-foreground hover:bg-surface-modal',
+          'border border-border/60 bg-surface-input text-secondary-foreground shadow-sm shadow-black/5 hover:bg-surface-modal dark:shadow-black/20',
         ghost: 'text-foreground/75 hover:bg-surface-input hover:text-foreground',
         link: 'text-primary underline-offset-4 hover:underline',
       },
