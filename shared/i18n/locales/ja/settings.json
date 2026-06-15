@@ -6,6 +6,7 @@
     "appearance": "外観",
     "gateway": "ゲートウェイ",
     "models": "モデル",
+    "tokenUsage": "Token 使用量",
     "advanced": "詳細",
     "developer": "開発者",
     "about": "バージョン情報"
@@ -14,9 +15,76 @@
     "appearance": "テーマ、アクセント、フォント、言語、起動時の動作を調整します。",
     "gateway": "OpenClaw Gateway の実行状態を確認・制御します。",
     "models": "チャットプロバイダー、画像生成、Embedding モデルをまとめて設定します。",
+    "tokenUsage": "ローカル transcript に基づく Token、コスト、モデル、プロバイダー、Agent、セッション使用量を確認します。",
     "advanced": "上級者向け機能とローカル診断テレメトリを有効にします。",
     "developer": "開発者向けのプロキシ、ゲートウェイトークン、CLI、Doctor、テレメトリツールを確認します。",
     "about": "アプリ情報を確認し、アップデートを管理します。"
+  },
+  "tokenUsage": {
+    "title": "Token 使用量",
+    "description": "ローカル OpenClaw transcript から、モデル、プロバイダー、Agent、Token 種別、コスト、セッション別の使用量を確認します。",
+    "refresh": "更新",
+    "refreshing": "更新中...",
+    "exportJson": "JSON を書き出す",
+    "loading": "Token 使用履歴を読み込み中...",
+    "showing": "{{shown}} / {{total}} 件を表示",
+    "unknown": "不明",
+    "searchPlaceholder": "モデル、プロバイダー、Agent、セッション、内容を検索",
+    "emptyTitle": "Token 使用履歴はまだありません",
+    "emptyDescription": "構造化された usage データを含むアシスタントメッセージがローカル transcript に書き込まれると、ここに表示されます。",
+    "emptyFilteredTitle": "一致する使用記録はありません",
+    "emptyFilteredDescription": "期間を広げるか、別の検索語を試してください。",
+    "windows": {
+      "7d": "7 日",
+      "30d": "30 日",
+      "all": "全期間"
+    },
+    "groupBy": {
+      "model": "モデル",
+      "provider": "プロバイダー",
+      "agent": "Agent",
+      "day": "日付"
+    },
+    "metrics": {
+      "totalTokens": "合計 Token",
+      "cost": "コスト",
+      "sessions": "セッション",
+      "entries": "記録",
+      "input": "入力",
+      "output": "出力",
+      "cacheRead": "キャッシュ読込",
+      "cacheWrite": "キャッシュ書込",
+      "models": "モデル",
+      "providers": "プロバイダー",
+      "rawTokensDetail": "元 Token {{value}}",
+      "unpricedError": "{{count}} 件は未計算/エラー",
+      "averageSession": "平均 {{value}} / セッション",
+      "modelProviderDetail": "{{models}} モデル · {{providers}} プロバイダー"
+    },
+    "charts": {
+      "trendTitle": "日別 Token 推移",
+      "trendSubtitle": "出力、入力、キャッシュ Token の積み上げ表示。",
+      "compositionTitle": "Token 構成"
+    },
+    "breakdown": {
+      "title": "{{group}}別の使用量",
+      "records": "記録",
+      "inputShort": "入力",
+      "outputShort": "出力",
+      "cacheShort": "キャッシュ"
+    },
+    "entries": {
+      "title": "最近のセッション",
+      "page": "{{current}} / {{total}} ページ",
+      "prev": "前へ",
+      "next": "次へ",
+      "viewContent": "内容を表示",
+      "noUsage": "usage データなし",
+      "usageParseError": "Usage 解析エラー"
+    },
+    "contentDialog": {
+      "title": "Transcript 内容"
+    }
   },
   "appearance": {
     "title": "通用",

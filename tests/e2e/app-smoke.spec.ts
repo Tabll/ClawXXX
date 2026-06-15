@@ -7,15 +7,18 @@ test.describe('ClawX Electron smoke flows', () => {
     await expect(page.getByTestId('setup-skip-button')).toBeVisible();
   });
 
-  test('can skip setup and navigate to the models page', async ({ page }) => {
+  test('can skip setup and open token usage in settings', async ({ page }) => {
     await expect(page.getByTestId('setup-page')).toBeVisible();
     await page.getByTestId('setup-skip-button').click();
 
     await expect(page.getByTestId('main-layout')).toBeVisible();
-    await page.getByTestId('sidebar-nav-models').click();
+    await expect(page.getByTestId('sidebar-nav-models')).toHaveCount(0);
 
-    await expect(page.getByTestId('models-page')).toBeVisible();
-    await expect(page.getByTestId('models-page-title')).toBeVisible();
+    await page.getByTestId('sidebar-nav-settings').click();
+    await expect(page.getByTestId('settings-page')).toBeVisible();
+    await page.getByTestId('settings-nav-tokenUsage').click();
+    await expect(page.getByTestId('settings-token-usage-section')).toBeVisible();
+    await expect(page.getByTestId('token-usage-title')).toBeVisible();
     await expect(page.getByTestId('providers-settings')).toHaveCount(0);
   });
 

@@ -15,14 +15,18 @@ export type UsageHistoryEntry = {
 };
 
 export type UsageWindow = '7d' | '30d' | 'all';
-export type UsageGroupBy = 'model' | 'day';
+export type UsageGroupBy = 'model' | 'provider' | 'agent' | 'day';
 
 export type UsageGroup = {
   label: string;
   totalTokens: number;
   inputTokens: number;
   outputTokens: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
   cacheTokens: number;
+  costUsd: number;
+  count: number;
   sortKey: number | string;
 };
 
@@ -66,6 +70,25 @@ export function getUsageDaySortKey(timestamp: string): number {
   return date.getTime();
 }
 
+function getUsageGroupLabel(entry: UsageHistoryEntry, groupBy: UsageGroupBy): string {
+  switch (groupBy) {
+    case 'provider':
+      return entry.provider || 'Unknown';
+    case 'agent':
+      return entry.agentId || 'Unknown';
+    case 'day':
+      return formatUsageDay(entry.timestamp);
+    case 'model':
+    default:
+      return entry.model || 'Unknown';
+  }
+}
+
+function getUsageGroupSortKey(entry: UsageHistoryEntry, label: string, groupBy: UsageGroupBy): number | string {
+  if (groupBy === 'day') return getUsageDaySortKey(entry.timestamp);
+  return label.toLowerCase();
+}
+
 export function groupUsageHistory(
   entries: UsageHistoryEntry[],
   groupBy: UsageGroupBy,
@@ -73,21 +96,27 @@ export function groupUsageHistory(
   const grouped = new Map<string, UsageGroup>();
 
   for (const entry of entries) {
-    const label = groupBy === 'model'
-      ? (entry.model || 'Unknown')
-      : formatUsageDay(entry.timestamp);
+    const label = getUsageGroupLabel(entry, groupBy);
     const current = grouped.get(label) ?? {
       label,
       totalTokens: 0,
       inputTokens: 0,
       outputTokens: 0,
+      cacheReadTokens: 0,
+      cacheWriteTokens: 0,
       cacheTokens: 0,
-      sortKey: groupBy === 'day' ? getUsageDaySortKey(entry.timestamp) : label.toLowerCase(),
+      costUsd: 0,
+      count: 0,
+      sortKey: getUsageGroupSortKey(entry, label, groupBy),
     };
     current.totalTokens += entry.totalTokens;
     current.inputTokens += entry.inputTokens;
     current.outputTokens += entry.outputTokens;
+    current.cacheReadTokens += entry.cacheReadTokens;
+    current.cacheWriteTokens += entry.cacheWriteTokens;
     current.cacheTokens += entry.cacheReadTokens + entry.cacheWriteTokens;
+    current.costUsd += typeof entry.costUsd === 'number' && Number.isFinite(entry.costUsd) ? entry.costUsd : 0;
+    current.count += 1;
     grouped.set(label, current);
   }
 
@@ -98,7 +127,7 @@ export function groupUsageHistory(
     return b.totalTokens - a.totalTokens;
   });
 
-  return groupBy === 'model' ? sorted.slice(0, 8) : sorted;
+  return groupBy === 'day' ? sorted : sorted.slice(0, 8);
 }
 
 export function filterUsageHistoryByWindow(

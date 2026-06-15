@@ -13,14 +13,19 @@ test.describe('Image generation settings in Settings > Models', () => {
     await page.getByTestId('setup-skip-button').click();
 
     await expect(page.getByTestId('main-layout')).toBeVisible();
-    await page.getByTestId('sidebar-nav-models').click();
+    await expect(page.getByTestId('sidebar-nav-models')).toHaveCount(0);
+    await page.evaluate(() => {
+      window.location.hash = '#/models';
+    });
 
-    await expect(page.getByTestId('models-page')).toBeVisible();
+    await expect(page.getByTestId('settings-page')).toBeVisible();
+    await expect(page.getByTestId('settings-token-usage-section')).toBeVisible();
     await expect(page.getByTestId('providers-settings')).toHaveCount(0);
     await expect(page.getByTestId('image-generation-settings')).toHaveCount(0);
     await expect(page.getByTestId('sidebar-nav-image-generation')).toHaveCount(0);
 
-    await openSettingsModels(page);
+    await page.getByTestId('settings-nav-models').click();
+    await expect(page.getByTestId('settings-models-section')).toBeVisible();
 
     await expect(page.getByTestId('providers-settings')).toBeVisible();
     await expect(page.getByTestId('image-generation-settings')).toBeVisible();

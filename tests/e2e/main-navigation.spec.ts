@@ -26,9 +26,15 @@ test.describe('ClawX main navigation without setup flow', () => {
       await expect(page.getByTestId('sidebar-resize-handle')).toBeVisible();
       await expect(page.getByTestId('main-content')).toHaveCSS('border-top-left-radius', '16px');
 
-      await page.getByTestId('sidebar-nav-models').click();
-      await expect(page.getByTestId('models-page')).toBeVisible();
-      await expect(page.getByTestId('models-page-title')).toBeVisible();
+      await expect(page.getByTestId('sidebar-nav-models')).toHaveCount(0);
+
+      await page.evaluate(() => {
+        window.location.hash = '#/models';
+      });
+      await expect(page.getByTestId('settings-page')).toBeVisible();
+      await expect(page.getByTestId('settings-token-usage-section')).toBeVisible();
+      await page.getByTestId('settings-return-app').click();
+      await expect(page.getByTestId('chat-page')).toBeVisible();
 
       await page.getByTestId('sidebar-nav-agents').click();
       await expect(page.getByTestId('agents-page')).toBeVisible();
@@ -47,8 +53,8 @@ test.describe('ClawX main navigation without setup flow', () => {
       const page = await getStableWindow(app);
       await expect(page.getByTestId('chat-page')).toBeVisible();
 
-      await page.getByTestId('sidebar-nav-models').click();
-      await expect(page.getByTestId('models-page')).toBeVisible();
+      await page.getByTestId('sidebar-nav-agents').click();
+      await expect(page.getByTestId('agents-page')).toBeVisible();
 
       await app.evaluate(({ BrowserWindow, Menu }) => {
         const menu = Menu.getApplicationMenu();

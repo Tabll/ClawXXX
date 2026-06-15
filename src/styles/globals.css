@@ -111,7 +111,7 @@
  *     `bg-primary`). Do not hand-apply `bg-brand` to action buttons —
  *     `bg-brand` / `bg-brand-hover` are reserved for branded surfaces
  *     that should follow the user-selected accent colour.
- *     Reference: pages/Models "+ Add Provider" trigger.
+ *     Reference: Settings > Models "+ Add Provider" trigger.
  * ────────────────────────────────────────────────────────────────────────── */
 
 @layer base {

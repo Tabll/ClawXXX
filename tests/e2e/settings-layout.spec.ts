@@ -12,9 +12,12 @@ test.describe('Full-screen settings layout', () => {
     await expect(page.getByTestId('settings-app-version')).toContainText(/ClawX ·/);
     await expect(page.getByTestId('settings-section-title')).toHaveCount(0);
 
-    for (const section of ['appearance', 'gateway', 'models', 'advanced', 'developer', 'about']) {
+    for (const section of ['appearance', 'gateway', 'models', 'tokenUsage', 'advanced', 'developer', 'about']) {
       await expect(page.getByTestId(`settings-nav-${section}`)).toBeVisible();
     }
+
+    await page.getByTestId('settings-nav-tokenUsage').click();
+    await expect(page.getByTestId('settings-token-usage-section')).toBeVisible();
 
     await page.getByTestId('settings-nav-models').click();
     await expect(page.getByTestId('settings-models-section')).toBeVisible();

@@ -65,10 +65,6 @@ ClawX comes pre-configured with best-practice model providers and natively suppo
 </p>
 
 <p align="center">
-  <img src="resources/screenshot/en/models.png" style="width: 100%; height: auto;">
-</p>
-
-<p align="center">
   <img src="resources/screenshot/en/settings.png" style="width: 100%; height: auto;">
 </p>
 
@@ -131,6 +127,7 @@ Environment variables for bundled search skills:
 ### 🔐 Secure Provider Integration
 Connect to multiple AI providers (OpenAI, Anthropic, and more) with credentials stored securely in your system's native keychain. OpenAI supports both API key and browser OAuth (Codex subscription) sign-in.
 **Settings → Models** now centralizes chat model providers, image generation, and Embedding model configuration. The image generation settings support an independent OpenAI-compatible image endpoint (Base URL, API key, and model name such as `gpt-image-2`) while chat continues using the normal provider. The Embedding model settings write OpenClaw memory search `agents.defaults.memorySearch` provider/model settings plus OpenAI-compatible `/v1/embeddings` endpoint and local GGUF options.
+**Settings → Token Usage** shows transcript-based token, cost, model, provider, agent, and session usage with compact charts.
 For **Custom** providers used with OpenAI-compatible gateways, you can set a custom `User-Agent` in **Settings → Models → Edit Provider** for compatibility-sensitive endpoints.
 When you edit or switch providers, ClawX preserves existing per-model capability metadata such as `input: ["text", "image"]`. Newly selected Custom-provider models use OpenClaw onboarding-compatible image-input inference, with unknown models defaulting to text-only.
 When a compatible gateway rejects `/models` for non-auth reasons, ClawX automatically falls back to a lightweight `/chat/completions` or `/responses` probe during API key validation.
@@ -403,7 +400,7 @@ from `dist/` and `dist-electron/`, so it does not require manually running
 The first two baseline specs cover:
 
 - first-launch setup wizard visibility on a fresh profile
-- skipping setup and navigating to the Models page inside the Electron app
+- skipping setup and opening Token Usage inside the full-screen Settings page
 
 Add future Electron flows under `tests/e2e/` and reuse the shared fixture in
 `tests/e2e/fixtures/electron.ts`.

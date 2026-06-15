@@ -6,6 +6,7 @@
     "appearance": "Appearance",
     "gateway": "Gateway",
     "models": "Models",
+    "tokenUsage": "Token Usage",
     "advanced": "Advanced",
     "developer": "Developer",
     "about": "About"
@@ -14,9 +15,76 @@
     "appearance": "Tune the interface theme, accent, font, language, and launch behavior.",
     "gateway": "Monitor and control the OpenClaw Gateway runtime.",
     "models": "Configure chat providers, image generation, and embedding models in one place.",
+    "tokenUsage": "Review transcript-based token, cost, model, provider, agent, and session usage.",
     "advanced": "Enable power-user features and local diagnostic telemetry.",
     "developer": "Inspect developer-only proxy, CLI, token, doctor, and telemetry tools.",
     "about": "View app information and manage updates."
+  },
+  "tokenUsage": {
+    "title": "Token Usage",
+    "description": "Review local OpenClaw transcript usage across models, providers, agents, token types, cost, and sessions.",
+    "refresh": "Refresh",
+    "refreshing": "Refreshing...",
+    "exportJson": "Export JSON",
+    "loading": "Loading token usage history...",
+    "showing": "Showing {{shown}} of {{total}} records",
+    "unknown": "Unknown",
+    "searchPlaceholder": "Search model, provider, agent, session, or content",
+    "emptyTitle": "No token usage history yet",
+    "emptyDescription": "Token usage appears here after assistant messages with structured usage data are written to local transcripts.",
+    "emptyFilteredTitle": "No matching usage records",
+    "emptyFilteredDescription": "Try a broader time range or a different search term.",
+    "windows": {
+      "7d": "7 days",
+      "30d": "30 days",
+      "all": "All time"
+    },
+    "groupBy": {
+      "model": "Model",
+      "provider": "Provider",
+      "agent": "Agent",
+      "day": "Day"
+    },
+    "metrics": {
+      "totalTokens": "Total tokens",
+      "cost": "Cost",
+      "sessions": "Sessions",
+      "entries": "Records",
+      "input": "Input",
+      "output": "Output",
+      "cacheRead": "Cache read",
+      "cacheWrite": "Cache write",
+      "models": "models",
+      "providers": "providers",
+      "rawTokensDetail": "{{value}} raw tokens",
+      "unpricedError": "{{count}} unpriced/error",
+      "averageSession": "{{value}} avg/session",
+      "modelProviderDetail": "{{models}} models · {{providers}} providers"
+    },
+    "charts": {
+      "trendTitle": "Daily token trend",
+      "trendSubtitle": "Stacked by output, input, and cache tokens.",
+      "compositionTitle": "Token composition"
+    },
+    "breakdown": {
+      "title": "Usage by {{group}}",
+      "records": "Records",
+      "inputShort": "In",
+      "outputShort": "Out",
+      "cacheShort": "Cache"
+    },
+    "entries": {
+      "title": "Recent sessions",
+      "page": "Page {{current}} / {{total}}",
+      "prev": "Previous",
+      "next": "Next",
+      "viewContent": "View content",
+      "noUsage": "No usage data",
+      "usageParseError": "Usage parse error"
+    },
+    "contentDialog": {
+      "title": "Transcript content"
+    }
   },
   "appearance": {
     "title": "General",

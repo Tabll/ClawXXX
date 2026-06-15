@@ -22,8 +22,7 @@ test.describe('ClawX gateway lifecycle resilience', () => {
 
     // Navigate through all major pages to verify nothing crashes
     // when the gateway is not running.
-    await page.getByTestId('sidebar-nav-models').click();
-    await expect(page.getByTestId('models-page')).toBeVisible();
+    await expect(page.getByTestId('sidebar-nav-models')).toHaveCount(0);
 
     await page.getByTestId('sidebar-nav-agents').click();
     await expect(page.getByTestId('agents-page')).toBeVisible();
@@ -33,9 +32,11 @@ test.describe('ClawX gateway lifecycle resilience', () => {
 
     await page.getByTestId('sidebar-nav-settings').click();
     await expect(page.getByTestId('settings-page')).toBeVisible();
+    await page.getByTestId('settings-nav-tokenUsage').click();
+    await expect(page.getByTestId('settings-token-usage-section')).toBeVisible();
 
     // Navigate back to chat — the gateway status indicator should be visible
-    await page.getByTestId('sidebar-new-chat').click();
+    await page.getByTestId('settings-return-app').click();
     // Verify the page didn't crash; main layout should still be stable
     await expect(page.getByTestId('main-layout')).toBeVisible();
   });
@@ -75,8 +76,10 @@ test.describe('ClawX gateway lifecycle resilience', () => {
     await page.waitForTimeout(500);
 
     // Verify navigation still works after status transitions
-    await page.getByTestId('sidebar-nav-models').click();
-    await expect(page.getByTestId('models-page')).toBeVisible();
+    await page.getByTestId('sidebar-nav-settings').click();
+    await expect(page.getByTestId('settings-page')).toBeVisible();
+    await page.getByTestId('settings-nav-tokenUsage').click();
+    await expect(page.getByTestId('settings-token-usage-section')).toBeVisible();
 
     // Transition 3: running → error (simulates the bug scenario where
     // gateway becomes unreachable after in-process restart)
@@ -91,6 +94,7 @@ test.describe('ClawX gateway lifecycle resilience', () => {
     await page.waitForTimeout(500);
 
     // App should still be functional in error state
+    await page.getByTestId('settings-return-app').click();
     await page.getByTestId('sidebar-nav-agents').click();
     await expect(page.getByTestId('agents-page')).toBeVisible();
 
@@ -119,7 +123,7 @@ test.describe('ClawX gateway lifecycle resilience', () => {
     // Final navigation check to confirm app is still healthy after full lifecycle
     await page.getByTestId('sidebar-nav-settings').click();
     await expect(page.getByTestId('settings-page')).toBeVisible();
-    await page.getByTestId('sidebar-new-chat').click();
+    await page.getByTestId('settings-return-app').click();
     await expect(page.getByTestId('main-layout')).toBeVisible();
   });
 

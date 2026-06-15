@@ -1,21 +1,14 @@
 import { act, render } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { Models } from '@/pages/Models/index';
+import { TokenUsageSettings } from '@/components/settings/TokenUsageSettings';
 
 const hostApiFetchMock = vi.fn();
 const trackUiEventMock = vi.fn();
 
-const { gatewayState, settingsState } = vi.hoisted(() => ({
-  gatewayState: {
-    status: { state: 'running', port: 18789, connectedAt: 1, pid: 1234 },
-  },
+const { settingsState } = vi.hoisted(() => ({
   settingsState: {
     devModeUnlocked: false,
   },
-}));
-
-vi.mock('@/stores/gateway', () => ({
-  useGatewayStore: (selector: (state: typeof gatewayState) => unknown) => selector(gatewayState),
 }));
 
 vi.mock('@/stores/settings', () => ({
@@ -23,24 +16,15 @@ vi.mock('@/stores/settings', () => ({
 }));
 
 vi.mock('@/lib/host-api', () => ({
-  hostApiFetch: (...args: unknown[]) => hostApiFetchMock(...args),
   hostApi: {
     usage: {
-      recentTokenHistory: () => hostApiFetchMock('/api/usage/recent-token-history'),
+      recentTokenHistory: () => hostApiFetchMock(),
     },
   },
 }));
 
 vi.mock('@/lib/telemetry', () => ({
   trackUiEvent: (...args: unknown[]) => trackUiEventMock(...args),
-}));
-
-vi.mock('@/components/settings/ProvidersSettings', () => ({
-  ProvidersSettings: () => null,
-}));
-
-vi.mock('@/components/common/FeedbackState', () => ({
-  FeedbackState: ({ title }: { title: string }) => <div>{title}</div>,
 }));
 
 vi.mock('react-i18next', () => ({
@@ -67,11 +51,10 @@ function createUsageEntry(totalTokens: number) {
   };
 }
 
-describe('Models page auto refresh', () => {
+describe('Token usage settings auto refresh', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.clearAllMocks();
-    gatewayState.status = { state: 'running', port: 18789, connectedAt: 1, pid: 1234 };
     Object.defineProperty(document, 'visibilityState', {
       configurable: true,
       value: 'visible',
@@ -84,7 +67,7 @@ describe('Models page auto refresh', () => {
   });
 
   it('refreshes token usage while the page stays open', async () => {
-    render(<Models />);
+    render(<TokenUsageSettings />);
 
     await act(async () => {
       await Promise.resolve();

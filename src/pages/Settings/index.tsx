@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft,
+  BarChart3,
   Cpu,
   Sun,
   Moon,
@@ -36,6 +37,7 @@ import { UpdateSettings } from '@/components/settings/UpdateSettings';
 import { ProvidersSettings } from '@/components/settings/ProvidersSettings';
 import { ImageGenerationSettings } from '@/components/settings/ImageGenerationSettings';
 import { EmbeddingSettings } from '@/components/settings/EmbeddingSettings';
+import { TokenUsageSettings } from '@/components/settings/TokenUsageSettings';
 import { toUserMessage } from '@/lib/error-message';
 import {
   clearUiTelemetry,
@@ -57,13 +59,14 @@ type ControlUiInfo = {
   port: number;
 };
 
-const SETTINGS_SECTIONS = ['appearance', 'gateway', 'models', 'advanced', 'developer', 'about'] as const;
+const SETTINGS_SECTIONS = ['appearance', 'gateway', 'models', 'tokenUsage', 'advanced', 'developer', 'about'] as const;
 type SettingsSectionId = typeof SETTINGS_SECTIONS[number];
 
 const SETTINGS_SECTION_ICONS: Record<SettingsSectionId, LucideIcon> = {
   appearance: Palette,
   gateway: Server,
   models: Cpu,
+  tokenUsage: BarChart3,
   advanced: SlidersHorizontal,
   developer: Terminal,
   about: Info,
@@ -744,6 +747,10 @@ export function Settings() {
     </div>
   );
 
+  const renderTokenUsageSection = () => (
+    <TokenUsageSettings />
+  );
+
   const renderAdvancedSection = () => (
     <div data-testid="settings-advanced-section" className="space-y-4">
       <div className="clawx-settings-row">
@@ -1212,6 +1219,8 @@ export function Settings() {
         return renderGatewaySection();
       case 'models':
         return renderModelsSection();
+      case 'tokenUsage':
+        return renderTokenUsageSection();
       case 'advanced':
         return renderAdvancedSection();
       case 'developer':
@@ -1274,7 +1283,7 @@ export function Settings() {
         </div>
       </aside>
 
-      <section className="min-w-0 flex-1 overflow-y-auto">
+      <section data-testid="settings-content-scroll" className="min-w-0 flex-1 overflow-y-auto">
         <div className="mx-auto flex w-full max-w-5xl flex-col px-7 py-6">
           <div className="min-h-0 pb-8">
             {renderActiveSection()}

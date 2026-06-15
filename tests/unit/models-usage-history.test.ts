@@ -5,7 +5,7 @@ import {
   resolveStableUsageHistory,
   resolveVisibleUsageHistory,
   type UsageHistoryEntry,
-} from '@/pages/Models/usage-history';
+} from '@/lib/usage-history';
 
 function createEntry(day: number, totalTokens: number): UsageHistoryEntry {
   return {
@@ -21,7 +21,7 @@ function createEntry(day: number, totalTokens: number): UsageHistoryEntry {
   };
 }
 
-describe('models usage history helpers', () => {
+describe('token usage history helpers', () => {
   it('keeps all day buckets instead of truncating to the first eight', () => {
     const entries = Array.from({ length: 12 }, (_, index) => createEntry(index + 1, index + 1));
 
