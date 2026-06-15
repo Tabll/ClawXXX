@@ -10,6 +10,7 @@ test.describe('Full-screen settings layout', () => {
     await expect(page.getByTestId('sidebar')).toHaveCount(0);
     await expect(page.getByTestId('settings-return-app')).toBeVisible();
     await expect(page.getByTestId('settings-app-version')).toContainText(/ClawX ·/);
+    await expect(page.getByTestId('settings-section-title')).toHaveCount(0);
 
     for (const section of ['appearance', 'gateway', 'models', 'advanced', 'developer', 'about']) {
       await expect(page.getByTestId(`settings-nav-${section}`)).toBeVisible();

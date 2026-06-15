@@ -1275,19 +1275,7 @@ export function Settings() {
       </aside>
 
       <section className="min-w-0 flex-1 overflow-y-auto">
-        <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-7 py-6">
-          <header className="border-b border-border/60 pb-5">
-            <p className="mb-2 text-meta font-medium uppercase tracking-normal text-muted-foreground">
-              {t('title')}
-            </p>
-            <h1 data-testid="settings-section-title" className="font-serif text-2xl font-normal tracking-normal text-foreground md:text-3xl">
-              {t(`settingsNav.${activeSection}`)}
-            </h1>
-            <p className="mt-2 max-w-2xl text-meta text-muted-foreground">
-              {t(`sectionDescriptions.${activeSection}`)}
-            </p>
-          </header>
-
+        <div className="mx-auto flex w-full max-w-5xl flex-col px-7 py-6">
           <div className="min-h-0 pb-8">
             {renderActiveSection()}
           </div>
