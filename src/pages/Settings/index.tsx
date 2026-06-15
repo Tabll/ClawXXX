@@ -475,17 +475,17 @@ export function Settings() {
   };
 
   const renderAppearanceSection = () => (
-    <div data-testid="settings-appearance-section" className="space-y-6">
+    <div data-testid="settings-appearance-section" className="space-y-5">
       <div className="space-y-3">
         <Label className="clawx-form-label">{t('appearance.theme')}</Label>
         <div className="flex flex-wrap gap-2">
           <Button
             variant={theme === 'light' ? 'secondary' : 'outline'}
             className={cn(
-              'h-9 rounded-lg border-border/80 px-4',
+              'h-9 rounded-lg border-border/80 px-4 text-meta',
               theme === 'light'
-                ? 'border-primary/30 bg-primary/10 text-primary'
-                : 'bg-surface-modal/70 text-muted-foreground hover:bg-surface-modal',
+                ? 'border-primary/45 bg-primary/10 text-primary shadow-none'
+                : 'bg-surface-modal/70 text-muted-foreground hover:border-ring/35 hover:bg-surface-modal',
             )}
             onClick={() => setTheme('light')}
           >
@@ -495,10 +495,10 @@ export function Settings() {
           <Button
             variant={theme === 'dark' ? 'secondary' : 'outline'}
             className={cn(
-              'h-9 rounded-lg border-border/80 px-4',
+              'h-9 rounded-lg border-border/80 px-4 text-meta',
               theme === 'dark'
-                ? 'border-primary/30 bg-primary/10 text-primary'
-                : 'bg-surface-modal/70 text-muted-foreground hover:bg-surface-modal',
+                ? 'border-primary/45 bg-primary/10 text-primary shadow-none'
+                : 'bg-surface-modal/70 text-muted-foreground hover:border-ring/35 hover:bg-surface-modal',
             )}
             onClick={() => setTheme('dark')}
           >
@@ -508,10 +508,10 @@ export function Settings() {
           <Button
             variant={theme === 'system' ? 'secondary' : 'outline'}
             className={cn(
-              'h-9 rounded-lg border-border/80 px-4',
+              'h-9 rounded-lg border-border/80 px-4 text-meta',
               theme === 'system'
-                ? 'border-primary/30 bg-primary/10 text-primary'
-                : 'bg-surface-modal/70 text-muted-foreground hover:bg-surface-modal',
+                ? 'border-primary/45 bg-primary/10 text-primary shadow-none'
+                : 'bg-surface-modal/70 text-muted-foreground hover:border-ring/35 hover:bg-surface-modal',
             )}
             onClick={() => setTheme('system')}
           >
@@ -585,7 +585,7 @@ export function Settings() {
               setThemeColor(event.target.value);
             }}
             aria-label={t('appearance.themeColor')}
-            className="h-10 w-12 shrink-0 cursor-pointer p-1"
+            className="h-9 w-11 shrink-0 cursor-pointer p-1"
           />
           <Input
             id="settings-theme-color-text"
@@ -624,10 +624,10 @@ export function Settings() {
               key={lang.code}
               variant={language === lang.code ? 'secondary' : 'outline'}
               className={cn(
-                'h-9 rounded-lg border-border/80 px-4',
+                'h-9 rounded-lg border-border/80 px-4 text-meta',
                 language === lang.code
-                  ? 'border-primary/30 bg-primary/10 text-primary'
-                  : 'bg-surface-modal/70 text-muted-foreground hover:bg-surface-modal',
+                  ? 'border-primary/45 bg-primary/10 text-primary shadow-none'
+                  : 'bg-surface-modal/70 text-muted-foreground hover:border-ring/35 hover:bg-surface-modal',
               )}
               onClick={() => handleLanguageChange(lang.code)}
             >
@@ -653,8 +653,8 @@ export function Settings() {
   );
 
   const renderGatewaySection = () => (
-    <div data-testid="settings-gateway-section" className="space-y-6">
-      <div className="clawx-panel p-5">
+    <div data-testid="settings-gateway-section" className="space-y-5">
+      <div className="clawx-panel p-4">
         <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
           <div>
             <Label className="text-sm font-medium text-foreground">{t('gateway.status')}</Label>
@@ -737,7 +737,7 @@ export function Settings() {
   );
 
   const renderModelsSection = () => (
-    <div data-testid="settings-models-section" className="space-y-10">
+    <div data-testid="settings-models-section" className="space-y-8">
       <ProvidersSettings />
       <ImageGenerationSettings />
       <EmbeddingSettings />
@@ -778,7 +778,7 @@ export function Settings() {
   const renderDeveloperSection = () => {
     if (!devModeUnlocked) {
       return (
-        <div data-testid="settings-developer-locked" className="clawx-panel-muted p-6">
+        <div data-testid="settings-developer-locked" className="clawx-panel-muted p-5">
           <div className="max-w-2xl space-y-3">
             <h2 className="clawx-section-title">{t('developer.lockedTitle')}</h2>
             <p className="text-sm text-muted-foreground">{t('developer.lockedDescription')}</p>
@@ -796,7 +796,7 @@ export function Settings() {
     }
 
     return (
-      <div data-testid="settings-developer-section" className="space-y-8">
+      <div data-testid="settings-developer-section" className="space-y-6">
         <div className="space-y-4" data-testid="settings-proxy-section">
           <div className="flex items-center justify-between">
             <div>
@@ -818,7 +818,7 @@ export function Settings() {
               onClick={handleSaveProxySettings}
               disabled={savingProxy || !proxySettingsDirty}
               data-testid="settings-proxy-save-button"
-              className="h-10 rounded-lg border-border/80 bg-surface-modal/70 px-4 hover:bg-surface-modal"
+              className="h-9 rounded-lg border-border/80 bg-surface-modal/70 px-4 hover:border-ring/35 hover:bg-surface-modal"
             >
               <RefreshCw className={`mr-2 h-4 w-4${savingProxy ? ' animate-spin' : ''}`} />
               {savingProxy ? t('common:status.saving') : t('common:actions.save')}
@@ -838,7 +838,7 @@ export function Settings() {
                     value={proxyServerDraft}
                     onChange={(event) => setProxyServerDraft(event.target.value)}
                     placeholder="http://127.0.0.1:7890"
-                    className="h-10 rounded-lg border-border/80 bg-surface-modal/70 font-mono text-meta"
+                    className="h-9 rounded-lg border-border/80 bg-surface-modal/70 font-mono text-meta"
                   />
                   <p className="text-tiny text-muted-foreground">
                     {t('gateway.proxyServerHelp')}
@@ -852,7 +852,7 @@ export function Settings() {
                     value={proxyHttpServerDraft}
                     onChange={(event) => setProxyHttpServerDraft(event.target.value)}
                     placeholder={proxyServerDraft || 'http://127.0.0.1:7890'}
-                    className="h-10 rounded-lg border-border/80 bg-surface-modal/70 font-mono text-meta"
+                    className="h-9 rounded-lg border-border/80 bg-surface-modal/70 font-mono text-meta"
                   />
                   <p className="text-tiny text-muted-foreground">
                     {t('gateway.proxyHttpServerHelp')}
@@ -866,7 +866,7 @@ export function Settings() {
                     value={proxyHttpsServerDraft}
                     onChange={(event) => setProxyHttpsServerDraft(event.target.value)}
                     placeholder={proxyServerDraft || 'http://127.0.0.1:7890'}
-                    className="h-10 rounded-lg border-border/80 bg-surface-modal/70 font-mono text-meta"
+                    className="h-9 rounded-lg border-border/80 bg-surface-modal/70 font-mono text-meta"
                   />
                   <p className="text-tiny text-muted-foreground">
                     {t('gateway.proxyHttpsServerHelp')}
@@ -880,7 +880,7 @@ export function Settings() {
                     value={proxyAllServerDraft}
                     onChange={(event) => setProxyAllServerDraft(event.target.value)}
                     placeholder={proxyServerDraft || 'socks5://127.0.0.1:7891'}
-                    className="h-10 rounded-lg border-border/80 bg-surface-modal/70 font-mono text-meta"
+                    className="h-9 rounded-lg border-border/80 bg-surface-modal/70 font-mono text-meta"
                   />
                   <p className="text-tiny text-muted-foreground">
                     {t('gateway.proxyAllServerHelp')}
@@ -895,7 +895,7 @@ export function Settings() {
                   value={proxyBypassRulesDraft}
                   onChange={(event) => setProxyBypassRulesDraft(event.target.value)}
                   placeholder="<local>;localhost;127.0.0.1;::1"
-                  className="h-10 rounded-lg border-border/80 bg-surface-modal/70 font-mono text-meta"
+                  className="h-9 rounded-lg border-border/80 bg-surface-modal/70 font-mono text-meta"
                 />
                 <p className="text-tiny text-muted-foreground">
                   {t('gateway.proxyBypassHelp')}
@@ -916,14 +916,14 @@ export function Settings() {
               readOnly
               value={controlUiInfo?.token || ''}
               placeholder={t('developer.tokenUnavailable')}
-              className="h-10 min-w-[200px] flex-1 rounded-lg border-border/80 bg-surface-modal/70 font-mono text-meta"
+              className="h-9 min-w-[200px] flex-1 rounded-lg border-border/80 bg-surface-modal/70 font-mono text-meta"
             />
             <Button
               type="button"
               variant="outline"
               onClick={refreshControlUiInfo}
               disabled={!devModeUnlocked}
-              className="h-10 rounded-lg border-border/80 bg-surface-modal/70 px-3 hover:bg-surface-modal"
+              className="h-9 rounded-lg border-border/80 bg-surface-modal/70 px-3 hover:border-ring/35 hover:bg-surface-modal"
             >
               <RefreshCw className="mr-2 h-4 w-4" />
               {t('common:actions.load')}
@@ -933,7 +933,7 @@ export function Settings() {
               variant="outline"
               onClick={handleCopyGatewayToken}
               disabled={!controlUiInfo?.token}
-              className="h-10 rounded-lg border-border/80 bg-surface-modal/70 px-3 hover:bg-surface-modal"
+              className="h-9 rounded-lg border-border/80 bg-surface-modal/70 px-3 hover:border-ring/35 hover:bg-surface-modal"
             >
               <Copy className="mr-2 h-4 w-4" />
               {t('common:actions.copy')}
@@ -957,14 +957,14 @@ export function Settings() {
                 readOnly
                 value={openclawCliCommand}
                 placeholder={openclawCliError || t('developer.cmdUnavailable')}
-                className="h-10 min-w-[200px] flex-1 rounded-lg border-border/80 bg-surface-modal/70 font-mono text-meta"
+                className="h-9 min-w-[200px] flex-1 rounded-lg border-border/80 bg-surface-modal/70 font-mono text-meta"
               />
               <Button
                 type="button"
                 variant="outline"
                 onClick={handleCopyCliCommand}
                 disabled={!openclawCliCommand}
-                className="h-10 rounded-lg border-border/80 bg-surface-modal/70 px-3 hover:bg-surface-modal"
+                className="h-9 rounded-lg border-border/80 bg-surface-modal/70 px-3 hover:border-ring/35 hover:bg-surface-modal"
               >
                 <Copy className="mr-2 h-4 w-4" />
                 {t('common:actions.copy')}
@@ -987,7 +987,7 @@ export function Settings() {
                 variant="outline"
                 onClick={() => void handleRunOpenClawDoctor('diagnose')}
                 disabled={doctorRunningMode !== null}
-                className="h-10 rounded-lg border-border/80 bg-surface-modal/70 px-3 hover:bg-surface-modal"
+                className="h-9 rounded-lg border-border/80 bg-surface-modal/70 px-3 hover:border-ring/35 hover:bg-surface-modal"
               >
                 <RefreshCw className={`mr-2 h-4 w-4${doctorRunningMode === 'diagnose' ? ' animate-spin' : ''}`} />
                 {doctorRunningMode === 'diagnose' ? t('common:status.running') : t('developer.runDoctor')}
@@ -997,7 +997,7 @@ export function Settings() {
                 variant="outline"
                 onClick={() => void handleRunOpenClawDoctor('fix')}
                 disabled={doctorRunningMode !== null}
-                className="h-10 rounded-lg border-border/80 bg-surface-modal/70 px-3 hover:bg-surface-modal"
+                className="h-9 rounded-lg border-border/80 bg-surface-modal/70 px-3 hover:border-ring/35 hover:bg-surface-modal"
               >
                 <RefreshCw className={`mr-2 h-4 w-4${doctorRunningMode === 'fix' ? ' animate-spin' : ''}`} />
                 {doctorRunningMode === 'fix' ? t('common:status.running') : t('developer.runDoctorFix')}
@@ -1007,7 +1007,7 @@ export function Settings() {
                 variant="outline"
                 onClick={handleCopyDoctorOutput}
                 disabled={!doctorResult}
-                className="h-10 rounded-lg border-border/80 bg-surface-modal/70 px-3 hover:bg-surface-modal"
+                className="h-9 rounded-lg border-border/80 bg-surface-modal/70 px-3 hover:border-ring/35 hover:bg-surface-modal"
               >
                 <Copy className="mr-2 h-4 w-4" />
                 {t('common:actions.copy')}
@@ -1228,7 +1228,7 @@ export function Settings() {
       <aside
         data-testid="settings-sidebar"
         className={cn(
-          'flex w-[268px] shrink-0 flex-col border-r border-border/70 bg-surface-sidebar/80 px-3 pb-4',
+          'flex w-[252px] shrink-0 flex-col border-r border-border/65 bg-surface-sidebar/85 px-3 pb-4',
           isMac ? 'pt-9' : 'pt-4',
         )}
       >
@@ -1237,7 +1237,7 @@ export function Settings() {
           variant="ghost"
           data-testid="settings-return-app"
           onClick={() => navigate('/')}
-          className="mb-4 h-10 justify-start gap-2 rounded-lg px-3 text-foreground/85 hover:bg-surface-input"
+          className="mb-3 h-9 justify-start gap-2 rounded-lg px-3 text-meta text-foreground/85 hover:border-ring/30 hover:bg-surface-input"
         >
           <ArrowLeft className="h-4 w-4" />
           {t('settingsNav.returnApp')}
@@ -1255,8 +1255,8 @@ export function Settings() {
                 data-testid={`settings-nav-${sectionId}`}
                 onClick={() => navigate(`/settings/${sectionId}`)}
                 className={cn(
-                  'h-10 w-full justify-start gap-2 rounded-lg px-3 text-sm font-normal text-foreground/85 hover:bg-surface-input',
-                  selected && 'bg-primary/10 text-primary hover:bg-primary/10 hover:text-primary',
+                  'h-9 w-full justify-start gap-2 rounded-lg px-3 text-meta font-medium text-foreground/80 hover:border-ring/30 hover:bg-surface-input hover:text-foreground',
+                  selected && 'border-primary/45 bg-primary/10 text-primary hover:border-primary/45 hover:bg-primary/10 hover:text-primary',
                 )}
               >
                 <Icon className="h-4 w-4" />
@@ -1275,20 +1275,20 @@ export function Settings() {
       </aside>
 
       <section className="min-w-0 flex-1 overflow-y-auto">
-        <div className="mx-auto flex w-full max-w-6xl flex-col gap-7 px-8 py-8">
-          <header className="border-b border-border/60 pb-6">
+        <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-7 py-6">
+          <header className="border-b border-border/60 pb-5">
             <p className="mb-2 text-meta font-medium uppercase tracking-normal text-muted-foreground">
               {t('title')}
             </p>
-            <h1 data-testid="settings-section-title" className="font-serif text-3xl font-normal tracking-tight text-foreground md:text-4xl">
+            <h1 data-testid="settings-section-title" className="font-serif text-2xl font-normal tracking-normal text-foreground md:text-3xl">
               {t(`settingsNav.${activeSection}`)}
             </h1>
-            <p className="mt-3 max-w-2xl text-sm text-muted-foreground">
+            <p className="mt-2 max-w-2xl text-meta text-muted-foreground">
               {t(`sectionDescriptions.${activeSection}`)}
             </p>
           </header>
 
-          <div className="min-h-0 pb-10">
+          <div className="min-h-0 pb-8">
             {renderActiveSection()}
           </div>
         </div>

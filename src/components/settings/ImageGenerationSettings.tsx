@@ -20,7 +20,7 @@ import {
 import { cn } from '@/lib/utils';
 
 const inputClasses =
-  'h-10 rounded-lg font-mono text-meta bg-surface-modal/70 border-border/80 focus-visible:ring-2 focus-visible:ring-ring/25 focus-visible:border-ring/60 shadow-sm transition-all text-foreground placeholder:text-muted-foreground/70';
+  'h-9 rounded-lg font-mono text-meta bg-surface-modal/70 border-border/75 hover:border-ring/35 focus-visible:border-ring/60 focus-visible:ring-0 shadow-sm transition-[background-color,border-color,color] text-foreground placeholder:text-muted-foreground/65';
 const labelClasses = 'clawx-form-label';
 
 function extractTestOutputPath(result: unknown): string | null {
@@ -186,14 +186,14 @@ export function ImageGenerationSettings() {
   };
 
   return (
-    <div data-testid="image-generation-settings" className="space-y-6">
+    <div data-testid="image-generation-settings" className="space-y-5">
       <div className="flex items-start justify-between gap-4">
         <div>
           <h2
             data-testid="image-generation-settings-title"
             className="clawx-section-title flex items-center gap-2"
           >
-            <ImagePlus className="h-7 w-7 text-muted-foreground" />
+            <ImagePlus className="h-5 w-5 text-muted-foreground" />
             {t('imageGeneration.title')}
           </h2>
           <p className="text-meta text-muted-foreground mt-2 max-w-2xl">
@@ -203,7 +203,7 @@ export function ImageGenerationSettings() {
         <Button
           variant="outline"
           size="sm"
-          className="rounded-lg shrink-0"
+          className="shrink-0 rounded-lg"
           onClick={() => void load()}
           disabled={loading}
           data-testid="image-generation-refresh"
@@ -213,13 +213,13 @@ export function ImageGenerationSettings() {
       </div>
 
       {loading ? (
-        <div className="flex items-center justify-center py-12 text-muted-foreground bg-surface-input/70 rounded-lg border border-dashed border-transparent">
+        <div className="flex items-center justify-center rounded-lg border border-dashed border-border/55 bg-surface-input/70 py-10 text-muted-foreground">
           <Loader2 className="h-6 w-6 animate-spin" />
         </div>
       ) : (
-        <div className="space-y-8 rounded-lg border border-border/80 bg-surface-modal p-6 md:p-8">
+        <div className="space-y-6 rounded-lg border border-border/65 bg-surface-modal/90 p-5 shadow-sm shadow-black/5 dark:shadow-black/20">
           <div
-            className="space-y-4 rounded-lg border border-border/80 p-5"
+            className="space-y-4 rounded-lg border border-border/65 bg-surface-input/45 p-4"
             data-testid="image-generation-openai-relay"
           >
             <div>
@@ -332,22 +332,22 @@ export function ImageGenerationSettings() {
           <div className="space-y-3">
             <Label className={labelClasses}>{t('imageGeneration.agentAuthTitle')}</Label>
             <p className="text-meta text-muted-foreground">{t('imageGeneration.agentAuthDesc')}</p>
-            <div className="rounded-lg border border-border/80 overflow-hidden">
+            <div className="overflow-hidden rounded-lg border border-border/65">
               <table className="w-full text-sm" data-testid="image-generation-agent-auth-table">
                 <thead>
-                  <tr className="border-b border-border/80 bg-surface-input/70 text-left text-meta text-muted-foreground">
-                    <th className="px-4 py-2 font-medium">{t('imageGeneration.agentColumn')}</th>
-                    <th className="px-4 py-2 font-medium">{t('imageGeneration.authColumn')}</th>
+                  <tr className="border-b border-border/65 bg-surface-input/70 text-left text-meta text-muted-foreground">
+                    <th className="px-3 py-2 font-medium">{t('imageGeneration.agentColumn')}</th>
+                    <th className="px-3 py-2 font-medium">{t('imageGeneration.authColumn')}</th>
                   </tr>
                 </thead>
                 <tbody>
                   {(snapshot?.agents ?? []).map((agent) => (
                     <tr
                       key={agent.id}
-                      className="border-b border-border/60 last:border-0"
+                      className="border-b border-border/55 last:border-0"
                       data-testid={`image-generation-agent-row-${agent.id}`}
                     >
-                      <td className="px-4 py-3">
+                      <td className="px-3 py-2.5">
                         <span className="font-medium">{agent.name}</span>
                         {agent.isDefault ? (
                           <Badge variant="outline" className="ml-2 rounded-full text-2xs">
@@ -356,7 +356,7 @@ export function ImageGenerationSettings() {
                         ) : null}
                         <span className="block font-mono text-tiny text-muted-foreground mt-0.5">{agent.id}</span>
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="px-3 py-2.5">
                         {agent.provider ? (
                           agent.configured ? (
                             <Badge className="rounded-full bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-500/15">
@@ -378,7 +378,7 @@ export function ImageGenerationSettings() {
             </div>
           </div>
 
-          <div className="flex flex-wrap items-end gap-4 pt-2 border-t border-border/80">
+          <div className="flex flex-wrap items-end gap-3 border-t border-border/65 pt-4">
             <div className="space-y-2 min-w-[200px]">
               <Label htmlFor="image-gen-test-agent" className={labelClasses}>
                 {t('imageGeneration.testAgent')}
@@ -400,7 +400,7 @@ export function ImageGenerationSettings() {
             </div>
             <Button
               variant="outline"
-              className="rounded-lg h-10"
+              className="h-9 rounded-lg"
               onClick={() => void handleTest()}
               disabled={testing || !hasConfiguredRelay || dirty}
               data-testid="image-generation-test-button"
@@ -413,7 +413,7 @@ export function ImageGenerationSettings() {
               {testing ? t('imageGeneration.testing') : t('imageGeneration.testButton')}
             </Button>
             <Button
-              className="rounded-lg h-10"
+              className="h-9 rounded-lg"
               onClick={() => void handleSave()}
               disabled={saving || !dirty}
               data-testid="image-generation-save"
@@ -423,7 +423,7 @@ export function ImageGenerationSettings() {
             </Button>
             <Button
               variant="outline"
-              className="rounded-lg h-10 text-destructive hover:text-destructive"
+              className="h-9 rounded-lg text-destructive hover:text-destructive"
               onClick={() => setClearConfirmOpen(true)}
               disabled={clearing || !hasConfiguredRelay}
               data-testid="image-generation-clear"

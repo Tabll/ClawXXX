@@ -9,24 +9,24 @@ import { cva, type VariantProps } from 'class-variance-authority';
 import { cn } from '@/lib/utils';
 
 const buttonVariants = cva(
-  'inline-flex items-center justify-center whitespace-nowrap rounded-lg text-sm font-medium ring-offset-background transition-[background-color,border-color,color,box-shadow,transform] duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/35 focus-visible:ring-offset-0 disabled:pointer-events-none disabled:opacity-50 active:scale-[0.99]',
+  'inline-flex items-center justify-center whitespace-nowrap rounded-lg text-sm font-medium transition-[background-color,border-color,color,box-shadow,transform] duration-150 focus-visible:outline-none focus-visible:ring-0 disabled:pointer-events-none disabled:opacity-50 active:scale-[0.99]',
   {
     variants: {
       variant: {
-        default: 'border border-primary/90 bg-primary text-primary-foreground shadow-sm shadow-black/10 hover:bg-primary/90 dark:shadow-black/30',
+        default: 'border border-primary/90 bg-primary text-primary-foreground shadow-sm shadow-black/10 hover:border-primary hover:bg-primary/90 focus-visible:border-ring/70 dark:shadow-black/30',
         destructive:
-          'border border-transparent bg-destructive text-destructive-foreground shadow-sm hover:bg-destructive/90',
+          'border border-transparent bg-destructive text-destructive-foreground shadow-sm hover:border-destructive hover:bg-destructive/90 focus-visible:border-ring/70',
         outline:
-          'border border-border/70 bg-surface-modal/80 text-foreground/85 shadow-sm shadow-black/5 hover:border-border hover:bg-surface-modal hover:text-foreground dark:shadow-black/20',
+          'border border-border/70 bg-surface-modal/80 text-foreground/85 shadow-sm shadow-black/5 hover:border-ring/35 hover:bg-surface-modal hover:text-foreground focus-visible:border-ring/60 dark:shadow-black/20',
         secondary:
-          'border border-border/60 bg-surface-input text-secondary-foreground shadow-sm shadow-black/5 hover:bg-surface-modal dark:shadow-black/20',
-        ghost: 'text-foreground/75 hover:bg-surface-input hover:text-foreground',
-        link: 'text-primary underline-offset-4 hover:underline',
+          'border border-border/60 bg-surface-input text-secondary-foreground shadow-sm shadow-black/5 hover:border-ring/35 hover:bg-surface-modal focus-visible:border-ring/60 dark:shadow-black/20',
+        ghost: 'border border-transparent text-foreground/75 hover:border-border/70 hover:bg-surface-input hover:text-foreground focus-visible:border-ring/55',
+        link: 'border border-transparent text-primary underline-offset-4 hover:underline focus-visible:border-ring/55',
       },
       size: {
-        default: 'h-10 px-4 py-2',
+        default: 'h-9 px-3.5 py-2',
         sm: 'h-8 rounded-lg px-3 text-meta',
-        lg: 'h-11 rounded-lg px-6',
+        lg: 'h-10 rounded-lg px-5',
         icon: 'h-9 w-9',
       },
     },

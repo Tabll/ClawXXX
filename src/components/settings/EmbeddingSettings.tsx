@@ -19,7 +19,7 @@ import {
 import { cn } from '@/lib/utils';
 
 const inputClasses =
-  'h-10 rounded-lg font-mono text-meta bg-surface-modal/70 border-border/80 focus-visible:ring-2 focus-visible:ring-ring/25 focus-visible:border-ring/60 shadow-sm transition-all text-foreground placeholder:text-muted-foreground/70';
+  'h-9 rounded-lg font-mono text-meta bg-surface-modal/70 border-border/75 hover:border-ring/35 focus-visible:border-ring/60 focus-visible:ring-0 shadow-sm transition-[background-color,border-color,color] text-foreground placeholder:text-muted-foreground/65';
 const labelClasses = 'clawx-form-label';
 
 const DEFAULT_PROVIDER_MODELS: Record<string, string> = {
@@ -269,14 +269,14 @@ export function EmbeddingSettings() {
   };
 
   return (
-    <div data-testid="embedding-settings" className="space-y-6">
+    <div data-testid="embedding-settings" className="space-y-5">
       <div className="flex items-start justify-between gap-4">
         <div>
           <h2
             data-testid="embedding-settings-title"
             className="clawx-section-title flex items-center gap-2"
           >
-            <BrainCircuit className="h-7 w-7 text-muted-foreground" />
+            <BrainCircuit className="h-5 w-5 text-muted-foreground" />
             {t('embeddings.title')}
           </h2>
           <p className="text-meta text-muted-foreground mt-2 max-w-2xl">
@@ -286,7 +286,7 @@ export function EmbeddingSettings() {
         <Button
           variant="outline"
           size="sm"
-          className="rounded-lg shrink-0"
+          className="shrink-0 rounded-lg"
           onClick={() => void load()}
           disabled={loading}
           data-testid="embedding-refresh"
@@ -296,12 +296,12 @@ export function EmbeddingSettings() {
       </div>
 
       {loading ? (
-        <div className="flex items-center justify-center py-12 text-muted-foreground bg-surface-input/70 rounded-lg border border-dashed border-transparent">
+        <div className="flex items-center justify-center rounded-lg border border-dashed border-border/55 bg-surface-input/70 py-10 text-muted-foreground">
           <Loader2 className="h-6 w-6 animate-spin" />
         </div>
       ) : (
-        <div className="space-y-8 rounded-lg border border-border/80 bg-surface-modal p-6 md:p-8">
-          <div className="flex items-center justify-between gap-4 rounded-lg border border-border/80 p-5">
+        <div className="space-y-6 rounded-lg border border-border/65 bg-surface-modal/90 p-5 shadow-sm shadow-black/5 dark:shadow-black/20">
+          <div className="flex items-center justify-between gap-4 rounded-lg border border-border/65 bg-surface-input/45 p-4">
             <div>
               <Label htmlFor="embedding-enabled" className={labelClasses}>
                 {t('embeddings.enabled')}
@@ -393,7 +393,7 @@ export function EmbeddingSettings() {
           </div>
 
           {showRemoteFields ? (
-            <div className="space-y-4 rounded-lg border border-border/80 p-5" data-testid="embedding-remote-section">
+            <div className="space-y-4 rounded-lg border border-border/65 bg-surface-input/45 p-4" data-testid="embedding-remote-section">
               <div>
                 <Label className={labelClasses}>{t('embeddings.remote.title')}</Label>
                 <p className="text-meta text-muted-foreground mt-1">
@@ -516,7 +516,7 @@ export function EmbeddingSettings() {
           ) : null}
 
           {showLocalFields ? (
-            <div className="space-y-4 rounded-lg border border-border/80 p-5" data-testid="embedding-local-section">
+            <div className="space-y-4 rounded-lg border border-border/65 bg-surface-input/45 p-4" data-testid="embedding-local-section">
               <div>
                 <Label className={labelClasses}>{t('embeddings.local.title')}</Label>
                 <p className="text-meta text-muted-foreground mt-1">
@@ -584,9 +584,9 @@ export function EmbeddingSettings() {
             />
           </div>
 
-          <div className="flex flex-wrap items-center gap-3 pt-2 border-t border-border/80">
+          <div className="flex flex-wrap items-center gap-3 border-t border-border/65 pt-4">
             <Button
-              className="rounded-lg h-10"
+              className="h-9 rounded-lg"
               onClick={() => void handleSave()}
               disabled={saving || !dirty}
               data-testid="embedding-save"
@@ -596,7 +596,7 @@ export function EmbeddingSettings() {
             </Button>
             <Button
               variant="outline"
-              className="rounded-lg h-10 text-destructive hover:text-destructive"
+              className="h-9 rounded-lg text-destructive hover:text-destructive"
               onClick={() => setClearConfirmOpen(true)}
               disabled={clearing || !snapshot?.configured}
               data-testid="embedding-clear"

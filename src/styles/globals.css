@@ -94,8 +94,8 @@
  *
  *   TYPOGRAPHY
  *   ─────────────────────────────────────────────────────────────────────
- *     page H1 / H2     :  font-serif font-normal tracking-tight
- *                         · page H1      text-3xl md:text-4xl  (Settings,
+ *     page H1 / H2     :  font-serif font-normal tracking-normal
+ *                         · page H1      text-xl md:text-2xl  (Settings,
  *                                                               Cron, Models)
  *                         · wizard steps text-3xl / section H2 text-xl
  *                                                              (Setup)
@@ -249,7 +249,7 @@
 
 @layer components {
   .clawx-page-title {
-    @apply font-serif text-2xl font-semibold tracking-tight text-foreground md:text-3xl;
+    @apply font-serif text-xl font-semibold tracking-normal text-foreground md:text-2xl;
   }
 
   .clawx-page-subtitle {
@@ -257,7 +257,7 @@
   }
 
   .clawx-section-title {
-    @apply text-lg font-semibold tracking-tight text-foreground md:text-xl;
+    @apply text-base font-semibold tracking-normal text-foreground md:text-lg;
   }
 
   .clawx-page-root {
@@ -265,23 +265,23 @@
   }
 
   .clawx-page-container {
-    @apply mx-auto flex h-full w-full max-w-6xl flex-col px-8 py-7;
+    @apply mx-auto flex h-full w-full max-w-6xl flex-col px-8 py-6;
   }
 
   .clawx-page-header {
-    @apply mb-6 flex shrink-0 flex-col justify-between gap-4 border-b border-border/60 pb-5 md:flex-row md:items-end;
+    @apply mb-5 flex shrink-0 flex-col justify-between gap-4 border-b border-border/60 pb-4 md:flex-row md:items-end;
   }
 
   .clawx-page-content {
-    @apply -mr-2 min-h-0 flex-1 space-y-7 overflow-y-auto pb-8 pr-2;
+    @apply -mr-2 min-h-0 flex-1 space-y-6 overflow-y-auto pb-8 pr-2;
   }
 
   .clawx-panel {
-    @apply rounded-lg border border-border/70 bg-surface-modal shadow-sm shadow-black/5 dark:shadow-black/20;
+    @apply rounded-lg border border-border/65 bg-surface-modal shadow-sm shadow-black/5 transition-colors hover:border-border/80 dark:shadow-black/20;
   }
 
   .clawx-panel-muted {
-    @apply rounded-lg border border-border/60 bg-surface-input/70;
+    @apply rounded-lg border border-border/60 bg-surface-input/70 transition-colors hover:border-border/80;
   }
 
   .clawx-list-item {
@@ -293,11 +293,11 @@
   }
 
   .clawx-toolbar-button {
-    @apply h-9 rounded-lg border border-border/70 bg-surface-modal/80 px-3 text-meta font-medium text-foreground/85 shadow-sm shadow-black/5 hover:border-border hover:bg-surface-modal hover:text-foreground dark:shadow-black/20;
+    @apply h-8 rounded-lg border border-border/70 bg-surface-modal/80 px-3 text-meta font-medium text-foreground/85 shadow-sm shadow-black/5 hover:border-ring/35 hover:bg-surface-modal hover:text-foreground focus-visible:border-ring/60 focus-visible:ring-0 dark:shadow-black/20;
   }
 
   .clawx-form-label {
-    @apply text-sm font-medium text-foreground;
+    @apply text-meta font-medium text-foreground;
   }
 
   .clawx-helper-text {
@@ -305,7 +305,15 @@
   }
 
   .clawx-settings-row {
-    @apply flex items-center justify-between gap-4 rounded-lg border border-border/60 bg-surface-modal/85 px-4 py-3 shadow-sm shadow-black/5 transition-colors hover:border-border/80 hover:bg-surface-modal dark:shadow-black/20;
+    @apply flex items-center justify-between gap-4 rounded-lg border border-border/60 bg-surface-modal/85 px-4 py-3 shadow-sm shadow-black/5 transition-colors hover:border-ring/30 hover:bg-surface-modal dark:shadow-black/20;
+  }
+
+  .clawx-settings-card {
+    @apply rounded-lg border border-border/65 bg-surface-modal/90 p-5 shadow-sm shadow-black/5 transition-colors hover:border-border/85 dark:shadow-black/20;
+  }
+
+  .clawx-settings-panel {
+    @apply rounded-lg border border-border/65 bg-surface-modal/90 p-5 shadow-sm shadow-black/5 dark:shadow-black/20;
   }
 
   .sidebar-nav-text.sidebar-nav-text {
@@ -448,7 +456,7 @@
 
 /* Focus ring */
 .focus-ring {
-  @apply focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2;
+  @apply focus:border-ring/60 focus:outline-none focus:ring-0;
 }
 
 /* Prose styling for markdown */
