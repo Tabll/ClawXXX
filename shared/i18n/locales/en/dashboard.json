@@ -110,5 +110,52 @@
             "relayModelRequired": "Model name is required",
             "relayModelInvalid": "Enter only the model name, for example gpt-image-2. Do not include provider/model."
         }
+    },
+    "embeddings": {
+        "title": "Embedding Models",
+        "description": "Configure OpenClaw memory-search embeddings under agents.defaults.memorySearch.",
+        "enabled": "Memory search",
+        "enabledDesc": "Use embeddings for semantic recall from memory files and configured transcript sources.",
+        "provider": "Provider ID",
+        "providerHint": "Use a built-in adapter such as openai, gemini, ollama, local, or a configured models.providers.<id> entry.",
+        "model": "Embedding model",
+        "modelHint": "Leave blank to use the provider default.",
+        "fallback": "Fallback provider",
+        "outputDimensionality": "Output dimensions",
+        "inputType": "Input type",
+        "queryInputType": "Query input type",
+        "documentInputType": "Document input type",
+        "batchTimeout": "Embedding batch timeout (s)",
+        "save": "Save",
+        "saving": "Saving...",
+        "clear": "Clear configuration",
+        "clearing": "Clearing...",
+        "clearConfirmTitle": "Clear embedding configuration?",
+        "clearConfirmMessage": "This removes the memory embedding provider, model, endpoint, and local model fields from agents.defaults.memorySearch. Other memory-search tuning is kept.",
+        "clearConfirmAction": "Clear",
+        "remote": {
+            "title": "OpenAI-compatible endpoint",
+            "description": "Used when provider is openai-compatible, or when you need a dedicated /v1/embeddings server.",
+            "baseUrl": "Embedding Base URL",
+            "apiKey": "API key",
+            "clearKey": "Clear key",
+            "keepKey": "Keep key"
+        },
+        "local": {
+            "title": "Local GGUF embeddings",
+            "description": "Used by the local llama.cpp embedding provider.",
+            "modelPath": "Model path",
+            "modelCacheDir": "Model cache directory",
+            "contextSize": "Context size"
+        },
+        "toast": {
+            "saved": "Embedding settings saved",
+            "cleared": "Embedding configuration cleared"
+        },
+        "errors": {
+            "providerRequired": "Embedding provider is required",
+            "remoteBaseUrlRequired": "Embedding Base URL is required for openai-compatible providers",
+            "positiveInteger": "Numeric fields must be positive integers"
+        }
     }
 }

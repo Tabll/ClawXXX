@@ -1,6 +1,23 @@
 {
   "title": "設定",
   "subtitle": "ClawX の体験をカスタマイズ",
+  "settingsNav": {
+    "returnApp": "アプリに戻る",
+    "appearance": "外観",
+    "gateway": "ゲートウェイ",
+    "models": "モデル",
+    "advanced": "詳細",
+    "developer": "開発者",
+    "about": "バージョン情報"
+  },
+  "sectionDescriptions": {
+    "appearance": "テーマ、アクセント、フォント、言語、起動時の動作を調整します。",
+    "gateway": "OpenClaw Gateway の実行状態を確認・制御します。",
+    "models": "チャットプロバイダー、画像生成、Embedding モデルをまとめて設定します。",
+    "advanced": "上級者向け機能とローカル診断テレメトリを有効にします。",
+    "developer": "開発者向けのプロキシ、ゲートウェイトークン、CLI、Doctor、テレメトリツールを確認します。",
+    "about": "アプリ情報を確認し、アップデートを管理します。"
+  },
   "appearance": {
     "title": "通用",
     "description": "外観とスタイルをカスタマイズ",
@@ -259,6 +276,9 @@
     "telemetryEmpty": "テレメトリはまだありません",
     "telemetryCopied": "テレメトリをコピーしました",
     "telemetryCleared": "テレメトリをクリアしました",
+    "lockedTitle": "開発者モードはオフです",
+    "lockedDescription": "プロキシ、ゲートウェイトークン、CLI、Doctor、テレメトリツールを使うには、詳細設定で開発者モードを有効にしてください。",
+    "openAdvanced": "詳細設定を開く",
     "installCmd": "\"openclaw\" コマンドをインストール",
     "installCmdDesc": "~/.local/bin/openclaw をインストール（管理者権限不要）",
     "installTitle": "OpenClaw コマンドをインストール",

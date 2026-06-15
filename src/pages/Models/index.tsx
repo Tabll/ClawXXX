@@ -10,7 +10,6 @@ import { useGatewayStore } from '@/stores/gateway';
 import { useSettingsStore } from '@/stores/settings';
 import { hostApi } from '@/lib/host-api';
 import { trackUiEvent } from '@/lib/telemetry';
-import { ProvidersSettings } from '@/components/settings/ProvidersSettings';
 import { FeedbackState } from '@/components/common/FeedbackState';
 import {
   filterUsageHistoryByWindow,
@@ -35,7 +34,7 @@ function isHiddenUsageSource(source?: string): boolean {
 }
 
 export function Models() {
-  const { t } = useTranslation(['dashboard', 'settings']);
+  const { t } = useTranslation('dashboard');
   const gatewayStatus = useGatewayStore((state) => state.status);
   const devModeUnlocked = useSettingsStore((state) => state.devModeUnlocked);
   const isGatewayRunning = gatewayStatus.state === 'running';
@@ -290,9 +289,6 @@ export function Models() {
         {/* Content Area */}
         <div className="clawx-page-content">
           
-          {/* AI Providers Section */}
-          <ProvidersSettings />
-
           {/* Token Usage History Section */}
           <div>
             <h2 className="clawx-section-title mb-4">

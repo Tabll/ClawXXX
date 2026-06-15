@@ -548,6 +548,56 @@ export type ImageGenerationTestResult = {
   result?: unknown;
 };
 
+export type EmbeddingRemoteConfigSnapshot = {
+  baseUrl: string;
+  apiKeyConfigured: boolean;
+};
+export type EmbeddingLocalConfigSnapshot = {
+  modelPath: string;
+  modelCacheDir: string;
+  contextSize: string;
+};
+export type EmbeddingSyncConfigSnapshot = {
+  embeddingBatchTimeoutSeconds: number | null;
+};
+export type EmbeddingSettingsConfig = {
+  enabled: boolean;
+  provider: string;
+  model: string;
+  fallback: string;
+  inputType: string;
+  queryInputType: string;
+  documentInputType: string;
+  outputDimensionality: number | null;
+  remote: EmbeddingRemoteConfigSnapshot;
+  local: EmbeddingLocalConfigSnapshot;
+  sync: EmbeddingSyncConfigSnapshot;
+};
+export type EmbeddingSettingsSnapshot = {
+  source: 'agents.defaults.memorySearch';
+  configured: boolean;
+  config: EmbeddingSettingsConfig;
+  knownProviders: string[];
+};
+export type EmbeddingSettingsPayload = {
+  enabled?: boolean;
+  provider?: string | null;
+  model?: string | null;
+  fallback?: string | null;
+  inputType?: string | null;
+  queryInputType?: string | null;
+  documentInputType?: string | null;
+  outputDimensionality?: number | null;
+  remoteBaseUrl?: string | null;
+  remoteApiKey?: string;
+  clearRemoteApiKey?: boolean;
+  localModelPath?: string | null;
+  localModelCacheDir?: string | null;
+  localContextSize?: string | null;
+  embeddingBatchTimeoutSeconds?: number | null;
+};
+export type EmbeddingSettingsResult = OptionalHostSuccess & EmbeddingSettingsSnapshot;
+
 export type SessionHistoryPayload = {
   sessionKey?: string;
   agentId?: string;
@@ -805,6 +855,11 @@ export type HostApiContract = {
     saveImageGenerationSettings: (payload: ImageGenerationSettingsPayload) => ImageGenerationSettingsResult;
     imageGenerationProviders: () => ImageGenerationProvidersResult;
     testImageGeneration: (payload: ImageGenerationTestPayload) => ImageGenerationTestResult;
+  };
+  embeddings: {
+    settings: () => EmbeddingSettingsResult;
+    saveSettings: (payload: EmbeddingSettingsPayload) => EmbeddingSettingsResult;
+    clearSettings: () => EmbeddingSettingsResult;
   };
   sessions: {
     delete: (payload: SessionDeletePayload) => HostSuccess;

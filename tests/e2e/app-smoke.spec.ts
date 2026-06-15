@@ -16,7 +16,7 @@ test.describe('ClawX Electron smoke flows', () => {
 
     await expect(page.getByTestId('models-page')).toBeVisible();
     await expect(page.getByTestId('models-page-title')).toBeVisible();
-    await expect(page.getByTestId('providers-settings')).toBeVisible();
+    await expect(page.getByTestId('providers-settings')).toHaveCount(0);
   });
 
   test('persists skipped setup across relaunch for the same isolated profile', async ({ electronApp, launchElectronApp }) => {

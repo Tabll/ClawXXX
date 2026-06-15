@@ -6,7 +6,9 @@ test.describe('ClawX developer-mode gated UI', () => {
 
     await page.getByTestId('sidebar-nav-settings').click();
     await expect(page.getByTestId('settings-page')).toBeVisible();
+    await expect(page.getByTestId('settings-sidebar')).toBeVisible();
     await expect(page.getByTestId('settings-developer-section')).toHaveCount(0);
+    await page.getByTestId('settings-nav-advanced').click();
     await expect(page.getByTestId('settings-dev-mode-switch')).toHaveAttribute('data-state', 'unchecked');
     await expect(page.getByTestId('sidebar-open-dev-console')).toHaveCount(0);
     await expect(page.getByTestId('sidebar-nav-dreams')).toHaveCount(0);
@@ -17,7 +19,8 @@ test.describe('ClawX developer-mode gated UI', () => {
     await expect(page.getByTestId('dreams-page')).toHaveCount(0);
     await expect(page.getByTestId('chat-composer-input')).toBeVisible();
 
-    await page.getByTestId('sidebar-nav-models').click();
+    await page.getByTestId('sidebar-nav-settings').click();
+    await page.getByTestId('settings-nav-models').click();
     await page.getByTestId('providers-add-button').click();
     await expect(page.getByTestId('add-provider-dialog')).toBeVisible();
     await page.getByTestId('add-provider-type-siliconflow').click();
@@ -27,15 +30,18 @@ test.describe('ClawX developer-mode gated UI', () => {
     await page.getByTestId('add-provider-close-button').click();
     await expect(page.getByTestId('add-provider-dialog')).toHaveCount(0);
 
-    await page.getByTestId('sidebar-nav-settings').click();
+    await page.getByTestId('settings-nav-advanced').click();
     await page.getByTestId('settings-dev-mode-switch').click();
     await expect(page.getByTestId('settings-dev-mode-switch')).toHaveAttribute('data-state', 'checked');
+    await page.getByTestId('settings-nav-developer').click();
     await expect(page.getByTestId('settings-developer-section')).toBeVisible();
     await expect(page.getByTestId('settings-developer-gateway-token')).toBeVisible();
+    await page.getByTestId('settings-return-app').click();
     await expect(page.getByTestId('sidebar-open-dev-console')).toBeVisible();
     await expect(page.getByTestId('sidebar-nav-dreams')).toBeVisible();
 
-    await page.getByTestId('sidebar-nav-models').click();
+    await page.getByTestId('sidebar-nav-settings').click();
+    await page.getByTestId('settings-nav-models').click();
     await page.getByTestId('providers-add-button').click();
     await expect(page.getByTestId('add-provider-dialog')).toBeVisible();
     await page.getByTestId('add-provider-type-siliconflow').click();

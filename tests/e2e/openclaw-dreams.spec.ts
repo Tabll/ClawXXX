@@ -29,11 +29,13 @@ function buildDreamingEnabledPatchRaw(enabled: boolean): string {
 async function enableDeveloperMode(page: Page): Promise<void> {
   await page.getByTestId('sidebar-nav-settings').click();
   await expect(page.getByTestId('settings-page')).toBeVisible();
+  await page.getByTestId('settings-nav-advanced').click();
   const devModeToggle = page.getByTestId('settings-dev-mode-switch');
   if ((await devModeToggle.getAttribute('data-state')) !== 'checked') {
     await devModeToggle.click();
   }
   await expect(devModeToggle).toHaveAttribute('data-state', 'checked');
+  await page.getByTestId('settings-return-app').click();
 }
 
 test.describe('OpenClaw Dreams', () => {

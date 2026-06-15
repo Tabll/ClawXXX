@@ -118,7 +118,8 @@ test.describe('dialog transitions', () => {
 
     await completeSetup(page);
 
-    await page.getByTestId('sidebar-nav-models').click();
+    await page.getByTestId('sidebar-nav-settings').click();
+    await page.getByTestId('settings-nav-models').click();
     await page.getByTestId('providers-add-button').click();
     const providerDialog = page.getByTestId('add-provider-dialog');
     await expectSubtleDialogAnimation(providerDialog);
@@ -127,6 +128,7 @@ test.describe('dialog transitions', () => {
     await expect(providerDialog).toHaveAttribute('data-state', 'closed');
     await expect(providerDialog).toHaveCount(0);
 
+    await page.getByTestId('settings-return-app').click();
     await page.getByTestId('sidebar-nav-agents').click();
     await page.getByTestId('agents-add-button').click();
     const agentDialog = page.getByTestId('add-agent-dialog');

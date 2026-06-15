@@ -110,5 +110,52 @@
             "relayModelRequired": "Укажите имя модели",
             "relayModelInvalid": "Введите только имя модели, например gpt-image-2. Не используйте provider/model."
         }
+    },
+    "embeddings": {
+        "title": "Модели эмбеддингов",
+        "description": "Настройте эмбеддинги поиска памяти OpenClaw в agents.defaults.memorySearch.",
+        "enabled": "Поиск памяти",
+        "enabledDesc": "Использовать эмбеддинги для семантического поиска по файлам памяти и настроенным источникам сессий.",
+        "provider": "Provider ID",
+        "providerHint": "Используйте встроенный адаптер, например openai, gemini, ollama, local, или настроенный models.providers.<id>.",
+        "model": "Модель эмбеддингов",
+        "modelHint": "Оставьте пустым, чтобы использовать модель provider по умолчанию.",
+        "fallback": "Резервный provider",
+        "outputDimensionality": "Размерность вывода",
+        "inputType": "Input type",
+        "queryInputType": "Query input type",
+        "documentInputType": "Document input type",
+        "batchTimeout": "Таймаут batch эмбеддингов (с)",
+        "save": "Сохранить",
+        "saving": "Сохранение...",
+        "clear": "Очистить конфигурацию",
+        "clearing": "Очистка...",
+        "clearConfirmTitle": "Очистить конфигурацию эмбеддингов?",
+        "clearConfirmMessage": "Это удалит provider, модель, endpoint и локальные поля модели из agents.defaults.memorySearch. Остальные настройки поиска памяти сохранятся.",
+        "clearConfirmAction": "Очистить",
+        "remote": {
+            "title": "OpenAI-совместимый endpoint",
+            "description": "Используется для provider openai-compatible или отдельного сервера /v1/embeddings.",
+            "baseUrl": "Base URL эмбеддингов",
+            "apiKey": "API key",
+            "clearKey": "Очистить ключ",
+            "keepKey": "Сохранить ключ"
+        },
+        "local": {
+            "title": "Локальные GGUF эмбеддинги",
+            "description": "Используется локальным llama.cpp provider эмбеддингов.",
+            "modelPath": "Путь модели",
+            "modelCacheDir": "Каталог кэша модели",
+            "contextSize": "Размер контекста"
+        },
+        "toast": {
+            "saved": "Настройки эмбеддингов сохранены",
+            "cleared": "Конфигурация эмбеддингов очищена"
+        },
+        "errors": {
+            "providerRequired": "Укажите provider эмбеддингов",
+            "remoteBaseUrlRequired": "Для openai-compatible provider нужен Base URL эмбеддингов",
+            "positiveInteger": "Числовые поля должны быть положительными целыми числами"
+        }
     }
 }

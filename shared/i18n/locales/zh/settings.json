@@ -1,6 +1,23 @@
 {
   "title": "设置",
   "subtitle": "配置您的 ClawX 体验",
+  "settingsNav": {
+    "returnApp": "返回应用",
+    "appearance": "外观",
+    "gateway": "网关",
+    "models": "模型",
+    "advanced": "高级",
+    "developer": "开发者",
+    "about": "关于"
+  },
+  "sectionDescriptions": {
+    "appearance": "调整界面主题、强调色、字体、语言和启动行为。",
+    "gateway": "查看并控制 OpenClaw Gateway 运行状态。",
+    "models": "集中配置对话模型、图像生成和 Embedding 模型。",
+    "advanced": "启用高级功能与本地诊断埋点。",
+    "developer": "查看开发者代理、网关令牌、CLI、Doctor 和埋点工具。",
+    "about": "查看应用信息并管理更新。"
+  },
   "appearance": {
     "title": "通用",
     "description": "自定义外观和风格",
@@ -259,6 +276,9 @@
     "telemetryEmpty": "暂无埋点",
     "telemetryCopied": "埋点已复制",
     "telemetryCleared": "埋点已清空",
+    "lockedTitle": "开发者模式未开启",
+    "lockedDescription": "请在高级设置中开启开发者模式，以访问代理、网关令牌、CLI、Doctor 和埋点工具。",
+    "openAdvanced": "打开高级设置",
     "installCmd": "安装 \"openclaw\" 命令",
     "installCmdDesc": "安装 ~/.local/bin/openclaw（无需管理员权限）",
     "installTitle": "安装 OpenClaw 命令",

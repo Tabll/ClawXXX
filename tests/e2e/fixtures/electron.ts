@@ -322,6 +322,11 @@ export async function installIpcMocks(
           if (request.action === 'imageGenerationSettings') return ['/api/media/image-generation', 'GET'];
           if (request.action === 'saveImageGenerationSettings') return ['/api/media/image-generation', 'PUT'];
         }
+        if (request.module === 'embeddings') {
+          if (request.action === 'settings') return ['/api/embeddings/settings', 'GET'];
+          if (request.action === 'saveSettings') return ['/api/embeddings/settings', 'PUT'];
+          if (request.action === 'clearSettings') return ['/api/embeddings/settings', 'DELETE'];
+        }
         if (request.module === 'sessions') {
           if (request.action === 'history') {
             const params = new URLSearchParams();

@@ -11,6 +11,7 @@ import type {
   DialogOpenPayload,
   FilePreviewTreeOptions,
   FileReadBinaryOptions,
+  EmbeddingSettingsPayload,
   ImageGenerationSettingsPayload,
   MediaThumbnailEntry,
   OpenClawDoctorMode,
@@ -51,6 +52,7 @@ export type {
   DeliveryChannelGroup,
   DeliveryTargetsResult,
   GatewayHealthSummary,
+  EmbeddingSettingsResult,
   ImageGenerationProvidersResult,
   ImageGenerationSettingsResult,
   LocalSkillsResult,
@@ -282,6 +284,11 @@ export const hostApi = {
     testImageGeneration: (input: { agentId?: string; prompt?: string; model?: string }) => (
       invokeHost('media', 'testImageGeneration', input)
     ),
+  },
+  embeddings: {
+    settings: () => invokeHost('embeddings', 'settings'),
+    saveSettings: (input: EmbeddingSettingsPayload) => invokeHost('embeddings', 'saveSettings', input),
+    clearSettings: () => invokeHost('embeddings', 'clearSettings'),
   },
   sessions: {
     delete: (id: string) => invokeHost('sessions', 'delete', { id }),

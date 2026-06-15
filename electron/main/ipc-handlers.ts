@@ -60,6 +60,7 @@ import { createChatApi } from '../services/chat-api';
 import { createCronApi } from '../services/cron-api';
 import { createFilesApi } from '../services/files-api';
 import { createMediaApi } from '../services/media-api';
+import { createEmbeddingsApi } from '../services/embeddings-api';
 import { createProvidersApi } from '../services/providers-api';
 import { createSessionsApi } from '../services/sessions-api';
 import { createSkillsApi } from '../services/skills-api';
@@ -149,6 +150,7 @@ function registerTypedHostHandlers(
     providers: createProvidersApi({ gatewayManager, mainWindow }),
     files: createFilesApi(),
     media: createMediaApi(),
+    embeddings: createEmbeddingsApi(),
     sessions: createSessionsApi(),
     chat: createChatApi({ gatewayManager }),
     cron: createCronApi({ gatewayManager }),

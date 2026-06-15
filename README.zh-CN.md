@@ -130,17 +130,17 @@ Skills 页面可展示来自多个 OpenClaw 来源的技能（托管目录、wor
 
 ### 🔐 安全的供应商集成
 连接多个 AI 供应商（OpenAI、Anthropic 等），凭证安全存储在系统原生密钥链中。OpenAI 同时支持 API Key 与浏览器 OAuth（Codex 订阅）登录。
-在开发者模式下，独立的“图像生成”页面支持配置 OpenAI 兼容生图端点（Base URL、API Key 和模型名，例如 `gpt-image-2`），生图请求会走专用的 `/v1/images/generations` 服务，聊天仍继续使用正常的 OpenAI Provider。
-如果你通过 **自定义（Custom）Provider** 对接 OpenAI-compatible 网关，可以在 **设置 → AI Providers → 编辑 Provider** 中配置自定义 `User-Agent`，以提高兼容性。
+**设置 → 模型** 会集中管理对话模型 Provider、图像生成和 Embedding 模型配置。图像生成支持独立的 OpenAI 兼容生图端点（Base URL、API Key 和模型名，例如 `gpt-image-2`），生图请求可走专用的 `/v1/images/generations` 服务，聊天仍继续使用正常的 Provider。Embedding 模型配置会写入 OpenClaw 记忆搜索的 `agents.defaults.memorySearch` provider/model，并支持 OpenAI 兼容 `/v1/embeddings` 端点与本地 GGUF 选项。
+如果你通过 **自定义（Custom）Provider** 对接 OpenAI-compatible 网关，可以在 **设置 → 模型 → 编辑 Provider** 中配置自定义 `User-Agent`，以提高兼容性。
 编辑或切换 Provider 时，ClawX 会保留已有的模型级能力元数据，例如 `input: ["text", "image"]`。新选择的自定义 Provider 模型会使用与 OpenClaw onboarding 一致的图片输入能力推断；未知模型默认按纯文本模型处理。
 如果兼容网关的 `/models` 因非鉴权原因不可用，ClawX 会在校验 API Key 时自动降级为轻量的 `/chat/completions` 或 `/responses` 探测。
 
 ### 🌙 自适应主题
 支持浅色模式、深色模式或跟随系统主题。ClawX 自动适应你的偏好设置。
-你也可以在 **设置 → 通用** 中自定义应用强调色和全局界面字体。
+你也可以在 **设置 → 外观** 中自定义应用强调色和全局界面字体。
 
 ### 🚀 开机启动控制
-在 **设置 → 通用** 中，你可以开启 **开机自动启动**，让 ClawX 在系统登录后自动启动。
+在 **设置 → 外观** 中，你可以开启 **开机自动启动**，让 ClawX 在系统登录后自动启动。
 
 ### 🔔 更新提示
 ClawX 可以在启动时自动检查新版本。发现更新后会显示应用内提示；只有在你选择操作后，才会下载或安装更新。
@@ -192,7 +192,7 @@ pnpm dev
 
 ClawX 内置了代理设置，适用于需要通过本地代理客户端访问外网的场景，包括 Electron 本身、OpenClaw Gateway，以及 Telegram 这类频道的联网请求。
 
-打开 **设置 → 网关 → 代理**，配置以下内容：
+先在 **设置 → 高级** 开启开发者模式，再打开 **设置 → 开发者 → 代理** 配置以下内容：
 
 - **代理服务器**：所有请求默认使用的代理
 - **绕过规则**：需要直连的主机，使用分号、逗号或换行分隔
@@ -214,7 +214,7 @@ ClawX 内置了代理设置，适用于需要通过本地代理客户端访问�
 - 如果启用了 Telegram，ClawX 还会把代理同步到 OpenClaw 的 Telegram 频道配置中。
 - 当 ClawX 代理处于关闭状态时，Gateway 的常规重启会保留已有的 Telegram 频道代理配置。
 - 如果你要明确清空 OpenClaw 中的 Telegram 代理，请在关闭代理后点一次“保存代理设置”。
-- 在 **设置 → 高级 → 开发者** 中，可以直接运行 **OpenClaw Doctor**，执行 `openclaw doctor --json` 并在应用内查看诊断输出。
+- 在 **设置 → 开发者** 中，可以直接运行 **OpenClaw Doctor**，执行 `openclaw doctor --json` 并在应用内查看诊断输出。
 - 在 Windows 打包版本中，内置的 `openclaw` CLI/TUI 会通过随包分发的 `node.exe` 入口运行，以保证终端输入行为稳定。
 
 ---

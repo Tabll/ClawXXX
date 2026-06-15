@@ -1,6 +1,23 @@
 {
   "title": "Settings",
   "subtitle": "Configure your ClawX experience",
+  "settingsNav": {
+    "returnApp": "Back to app",
+    "appearance": "Appearance",
+    "gateway": "Gateway",
+    "models": "Models",
+    "advanced": "Advanced",
+    "developer": "Developer",
+    "about": "About"
+  },
+  "sectionDescriptions": {
+    "appearance": "Tune the interface theme, accent, font, language, and launch behavior.",
+    "gateway": "Monitor and control the OpenClaw Gateway runtime.",
+    "models": "Configure chat providers, image generation, and embedding models in one place.",
+    "advanced": "Enable power-user features and local diagnostic telemetry.",
+    "developer": "Inspect developer-only proxy, CLI, token, doctor, and telemetry tools.",
+    "about": "View app information and manage updates."
+  },
   "appearance": {
     "title": "General",
     "description": "Customize the look and feel",
@@ -259,6 +276,9 @@
     "telemetryEmpty": "No telemetry yet",
     "telemetryCopied": "Telemetry copied",
     "telemetryCleared": "Telemetry cleared",
+    "lockedTitle": "Developer mode is off",
+    "lockedDescription": "Enable Developer Mode from Advanced settings to access proxy, gateway token, CLI, doctor, and telemetry tools.",
+    "openAdvanced": "Open Advanced",
     "installCmd": "Install \"openclaw\" Command",
     "installCmdDesc": "Installs ~/.local/bin/openclaw (no admin required)",
     "installTitle": "Install OpenClaw Command",

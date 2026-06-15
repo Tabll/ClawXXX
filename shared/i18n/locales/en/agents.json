@@ -33,7 +33,7 @@
         "modelOverrideLabel": "Model Override",
         "modelProviderLabel": "Provider",
         "modelProviderPlaceholder": "Select a provider",
-        "modelProviderEmpty": "No provider accounts configured. Add one in Settings → AI Providers.",
+        "modelProviderEmpty": "No provider accounts configured. Add one in Settings → Models.",
         "modelIdLabel": "Model ID",
         "modelIdPlaceholder": "model-id",
         "modelPreview": "Preview",

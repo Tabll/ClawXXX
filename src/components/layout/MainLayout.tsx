@@ -2,16 +2,25 @@
  * Main Layout Component
  * Platform-aware application shell.
  */
-import { Outlet } from 'react-router-dom';
+import { useEffect } from 'react';
+import { Outlet, useLocation } from 'react-router-dom';
 import { Sidebar } from './Sidebar';
 import { TitleBar } from './TitleBar';
 import { MAC_SIDEBAR_CHROME_HEIGHT } from '@shared/sidebar-layout';
+import { hostApi } from '@/lib/host-api';
 import { cn } from '@/lib/utils';
 
 export function MainLayout() {
+  const location = useLocation();
   const platform = window.electron?.platform;
   const isMac = platform === 'darwin';
   const isWin = platform === 'win32';
+  const isSettingsRoute = location.pathname.startsWith('/settings');
+
+  useEffect(() => {
+    if (!isMac || !isSettingsRoute) return;
+    void hostApi.window.syncTrafficLightPosition(false);
+  }, [isMac, isSettingsRoute]);
 
   return (
     <div
@@ -25,13 +34,19 @@ export function MainLayout() {
     >
       <TitleBar />
 
-      <div className="flex min-h-0 flex-1 overflow-hidden bg-surface-sidebar">
-        <Sidebar />
+      <div className={cn(
+        'flex min-h-0 flex-1 overflow-hidden',
+        isSettingsRoute ? 'bg-background' : 'bg-surface-sidebar',
+      )}>
+        {!isSettingsRoute && <Sidebar />}
         <main
           data-testid="main-content"
           className={cn(
-            'relative min-h-0 flex-1 overflow-auto rounded-tl-2xl border-l border-border/60 bg-background p-6',
-            !isWin && 'border-t border-border/60',
+            'relative min-h-0 flex-1 overflow-auto bg-background',
+            isSettingsRoute
+              ? 'p-0'
+              : 'rounded-tl-2xl border-l border-border/60 p-6',
+            !isSettingsRoute && !isWin && 'border-t border-border/60',
           )}
         >
           {isMac && (

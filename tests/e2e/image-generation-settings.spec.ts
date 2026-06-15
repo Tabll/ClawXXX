@@ -1,14 +1,14 @@
 import { expect, installIpcMocks, test } from './fixtures/electron';
 
-test.describe('Image generation settings page', () => {
-  async function unlockDeveloperMode(page: import('@playwright/test').Page) {
+test.describe('Image generation settings in Settings > Models', () => {
+  async function openSettingsModels(page: import('@playwright/test').Page) {
     await page.getByTestId('sidebar-nav-settings').click();
     await expect(page.getByTestId('settings-page')).toBeVisible();
-    await page.getByTestId('settings-dev-mode-switch').click();
-    await expect(page.getByTestId('sidebar-nav-image-generation')).toBeVisible();
+    await page.getByTestId('settings-nav-models').click();
+    await expect(page.getByTestId('settings-models-section')).toBeVisible();
   }
 
-  test('shows image generation only as a developer-mode page after skipping setup', async ({ page }) => {
+  test('keeps model configuration inside the full-screen Settings models section', async ({ page }) => {
     await expect(page.getByTestId('setup-page')).toBeVisible();
     await page.getByTestId('setup-skip-button').click();
 
@@ -16,15 +16,15 @@ test.describe('Image generation settings page', () => {
     await page.getByTestId('sidebar-nav-models').click();
 
     await expect(page.getByTestId('models-page')).toBeVisible();
-    await expect(page.getByTestId('providers-settings')).toBeVisible();
+    await expect(page.getByTestId('providers-settings')).toHaveCount(0);
     await expect(page.getByTestId('image-generation-settings')).toHaveCount(0);
     await expect(page.getByTestId('sidebar-nav-image-generation')).toHaveCount(0);
 
-    await unlockDeveloperMode(page);
-    await page.getByTestId('sidebar-nav-image-generation').click();
+    await openSettingsModels(page);
 
-    await expect(page.getByTestId('image-generation-page')).toBeVisible();
+    await expect(page.getByTestId('providers-settings')).toBeVisible();
     await expect(page.getByTestId('image-generation-settings')).toBeVisible();
+    await expect(page.getByTestId('embedding-settings')).toBeVisible();
     await expect(page.getByTestId('image-generation-settings-title')).toBeVisible();
     await expect(page.getByTestId('image-generation-relay-enabled')).toHaveCount(0);
     await expect(page.getByTestId('image-generation-relay-model')).toBeVisible();
@@ -36,13 +36,25 @@ test.describe('Image generation settings page', () => {
     await expect(page.getByTestId('image-generation-clear')).toBeDisabled();
   });
 
+  test('redirects the retired image generation route to Settings models', async ({ page }) => {
+    await expect(page.getByTestId('setup-page')).toBeVisible();
+    await page.getByTestId('setup-skip-button').click();
+
+    await page.evaluate(() => {
+      window.location.hash = '#/image-generation';
+    });
+
+    await expect(page.getByTestId('settings-page')).toBeVisible();
+    await expect(page.getByTestId('settings-models-section')).toBeVisible();
+    await expect(page.getByTestId('image-generation-settings')).toBeVisible();
+  });
+
   test('configures an independent OpenAI-compatible image endpoint', async ({ page }) => {
     await expect(page.getByTestId('setup-page')).toBeVisible();
     await page.getByTestId('setup-skip-button').click();
 
     await expect(page.getByTestId('main-layout')).toBeVisible();
-    await unlockDeveloperMode(page);
-    await page.getByTestId('sidebar-nav-image-generation').click();
+    await openSettingsModels(page);
 
     await expect(page.getByTestId('image-generation-settings')).toBeVisible();
     await expect(page.getByTestId('image-generation-relay-base-url')).toBeVisible();
@@ -97,8 +109,7 @@ test.describe('Image generation settings page', () => {
     await page.getByTestId('setup-skip-button').click();
 
     await expect(page.getByTestId('main-layout')).toBeVisible();
-    await unlockDeveloperMode(page);
-    await page.getByTestId('sidebar-nav-image-generation').click();
+    await openSettingsModels(page);
 
     await expect(page.getByTestId('image-generation-relay-api-key')).toHaveValue('');
     await expect(page.getByTestId('image-generation-api-key-status')).not.toBeEmpty();
@@ -165,8 +176,7 @@ test.describe('Image generation settings page', () => {
     await page.getByTestId('setup-skip-button').click();
 
     await expect(page.getByTestId('main-layout')).toBeVisible();
-    await unlockDeveloperMode(page);
-    await page.getByTestId('sidebar-nav-image-generation').click();
+    await openSettingsModels(page);
 
     await expect(page.getByTestId('image-generation-relay-base-url')).toHaveValue('https://api.example.com/v1');
     await expect(page.getByTestId('image-generation-clear')).toBeEnabled();

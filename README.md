@@ -130,17 +130,17 @@ Environment variables for bundled search skills:
 
 ### 🔐 Secure Provider Integration
 Connect to multiple AI providers (OpenAI, Anthropic, and more) with credentials stored securely in your system's native keychain. OpenAI supports both API key and browser OAuth (Codex subscription) sign-in.
-In developer mode, the dedicated Image Generation page supports an independent OpenAI-compatible image-generation endpoint (Base URL, API key, and model name such as `gpt-image-2`) so image generation can use a dedicated `/v1/images/generations` service while chat continues using the normal OpenAI provider.
-For **Custom** providers used with OpenAI-compatible gateways, you can set a custom `User-Agent` in **Settings → AI Providers → Edit Provider** for compatibility-sensitive endpoints.
+**Settings → Models** now centralizes chat model providers, image generation, and Embedding model configuration. The image generation settings support an independent OpenAI-compatible image endpoint (Base URL, API key, and model name such as `gpt-image-2`) while chat continues using the normal provider. The Embedding model settings write OpenClaw memory search `agents.defaults.memorySearch` provider/model settings plus OpenAI-compatible `/v1/embeddings` endpoint and local GGUF options.
+For **Custom** providers used with OpenAI-compatible gateways, you can set a custom `User-Agent` in **Settings → Models → Edit Provider** for compatibility-sensitive endpoints.
 When you edit or switch providers, ClawX preserves existing per-model capability metadata such as `input: ["text", "image"]`. Newly selected Custom-provider models use OpenClaw onboarding-compatible image-input inference, with unknown models defaulting to text-only.
 When a compatible gateway rejects `/models` for non-auth reasons, ClawX automatically falls back to a lightweight `/chat/completions` or `/responses` probe during API key validation.
 
 ### 🌙 Adaptive Theming
 Light mode, dark mode, or system-synchronized themes. ClawX adapts to your preferences automatically.
-You can also customize the app accent color and global interface font from **Settings → General**.
+You can also customize the app accent color and global interface font from **Settings → Appearance**.
 
 ### 🚀 Startup Launch Control
-In **Settings → General**, you can enable **Launch at system startup** so ClawX starts automatically after login.
+In **Settings → Appearance**, you can enable **Launch at system startup** so ClawX starts automatically after login.
 
 ### 🔔 Update Prompts
 ClawX can automatically check for new versions on startup. When an update is available, it shows an in-app prompt; downloading and installing only happen after you choose the action.
@@ -192,7 +192,7 @@ The wizard preselects your system language when it is supported, and falls back 
 
 ClawX includes built-in proxy settings for environments where Electron, the OpenClaw Gateway, or channels such as Telegram need to reach the internet through a local proxy client.
 
-Open **Settings → Gateway → Proxy** and configure:
+Enable **Settings → Advanced → Developer Mode**, then open **Settings → Developer → Proxy** and configure:
 
 - **Proxy Server**: the default proxy for all requests
 - **Bypass Rules**: hosts that should connect directly, separated by semicolons, commas, or new lines
@@ -214,7 +214,7 @@ Notes:
 - ClawX also syncs the proxy to OpenClaw's Telegram channel config when Telegram is enabled.
 - Gateway restarts preserve an existing Telegram channel proxy if ClawX proxy is currently disabled.
 - To explicitly clear Telegram channel proxy from OpenClaw config, save proxy settings with proxy disabled.
-- In **Settings → Advanced → Developer**, you can run **OpenClaw Doctor** to execute `openclaw doctor --json` and inspect the diagnostic output without leaving the app.
+- In **Settings → Developer**, you can run **OpenClaw Doctor** to execute `openclaw doctor --json` and inspect the diagnostic output without leaving the app.
 - On packaged Windows builds, the bundled `openclaw` CLI/TUI runs via the shipped `node.exe` entrypoint to keep terminal input behavior stable.
 
 ---

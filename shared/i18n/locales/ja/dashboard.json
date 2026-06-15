@@ -110,5 +110,52 @@
             "relayModelRequired": "モデル名が必要です",
             "relayModelInvalid": "gpt-image-2 のようなモデル名のみを入力してください。provider/model は入力しないでください。"
         }
+    },
+    "embeddings": {
+        "title": "埋め込みモデル",
+        "description": "OpenClaw のメモリ検索埋め込みを agents.defaults.memorySearch で設定します。",
+        "enabled": "メモリ検索",
+        "enabledDesc": "メモリファイルと設定済みの会話ソースから、埋め込みによるセマンティック検索を行います。",
+        "provider": "Provider ID",
+        "providerHint": "openai、gemini、ollama、local などの内蔵アダプター、または設定済みの models.providers.<id> を使用できます。",
+        "model": "埋め込みモデル",
+        "modelHint": "空欄の場合は provider のデフォルトを使用します。",
+        "fallback": "フォールバック provider",
+        "outputDimensionality": "出力次元",
+        "inputType": "Input type",
+        "queryInputType": "Query input type",
+        "documentInputType": "Document input type",
+        "batchTimeout": "埋め込みバッチタイムアウト（秒）",
+        "save": "保存",
+        "saving": "保存中...",
+        "clear": "設定をクリア",
+        "clearing": "クリア中...",
+        "clearConfirmTitle": "埋め込み設定をクリアしますか？",
+        "clearConfirmMessage": "agents.defaults.memorySearch からメモリ埋め込みの provider、モデル、エンドポイント、ローカルモデル項目を削除します。その他のメモリ検索調整は保持されます。",
+        "clearConfirmAction": "クリア",
+        "remote": {
+            "title": "OpenAI 互換エンドポイント",
+            "description": "provider が openai-compatible の場合、または専用の /v1/embeddings サーバーを使う場合に使用します。",
+            "baseUrl": "埋め込み Base URL",
+            "apiKey": "API キー",
+            "clearKey": "キーをクリア",
+            "keepKey": "キーを保持"
+        },
+        "local": {
+            "title": "ローカル GGUF 埋め込み",
+            "description": "local llama.cpp 埋め込み provider が使用します。",
+            "modelPath": "モデルパス",
+            "modelCacheDir": "モデルキャッシュディレクトリ",
+            "contextSize": "コンテキストサイズ"
+        },
+        "toast": {
+            "saved": "埋め込み設定を保存しました",
+            "cleared": "埋め込み設定をクリアしました"
+        },
+        "errors": {
+            "providerRequired": "埋め込み provider が必要です",
+            "remoteBaseUrlRequired": "openai-compatible provider には埋め込み Base URL が必要です",
+            "positiveInteger": "数値フィールドは正の整数である必要があります"
+        }
     }
 }
