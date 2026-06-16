@@ -52,6 +52,13 @@ interface NavItemProps {
   testId?: string;
 }
 
+const sidebarNavItemClasses = (active?: boolean, collapsed?: boolean) =>
+  cn(
+    'clawx-nav-item',
+    active && 'clawx-nav-item-active font-medium',
+    collapsed && 'justify-center px-0',
+  );
+
 function NavItem({ to, icon, label, badge, collapsed, onClick, testId }: NavItemProps) {
   return (
     <NavLink
@@ -59,14 +66,7 @@ function NavItem({ to, icon, label, badge, collapsed, onClick, testId }: NavItem
       onClick={onClick}
       data-testid={testId}
       className={({ isActive }) =>
-        cn(
-          'sidebar-nav-text flex items-center gap-2 rounded-lg px-2.5 py-1.5 transition-colors',
-          'hover:bg-surface-input text-foreground/85',
-          isActive
-            ? 'bg-primary/10 text-primary'
-            : '',
-          collapsed && 'justify-center px-0'
-        )
+        sidebarNavItemClasses(isActive, collapsed)
       }
     >
       <>
@@ -371,10 +371,7 @@ export function Sidebar() {
           data-testid="sidebar-collapse-toggle"
           variant="ghost"
           size="icon"
-          className={cn(
-            'no-drag h-8 w-8 shrink-0 rounded-lg text-foreground/85',
-            'hover:bg-surface-input hover:text-foreground',
-          )}
+          className="no-drag h-8 w-8 shrink-0 rounded-lg text-foreground/85"
           onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
         >
           {sidebarCollapsed ? (
@@ -392,9 +389,8 @@ export function Sidebar() {
           data-testid="sidebar-new-chat"
           onClick={handleNewChat}
           className={cn(
-            'sidebar-nav-text flex items-center gap-2 rounded-lg px-2.5 py-2 transition-colors',
-            'hover:bg-surface-input text-foreground/85',
-            sidebarCollapsed && 'justify-center px-0',
+            sidebarNavItemClasses(false, sidebarCollapsed),
+            'py-2',
           )}
         >
           <div className="flex shrink-0 items-center justify-center text-current [&_svg]:size-4">
@@ -425,9 +421,9 @@ export function Sidebar() {
                   aria-expanded={isBucketExpanded}
                   onClick={() => toggleSessionBucket(bucket.key)}
                   className={cn(
-                    'flex w-full items-center gap-1 rounded-md px-2.5 py-1 text-left text-tiny font-medium',
+                    'flex w-full items-center gap-1 rounded-lg px-2.5 py-1 text-left text-tiny font-medium',
                     'text-muted-foreground/60 tracking-tight transition-colors',
-                    'hover:bg-surface-input hover:text-muted-foreground',
+                    'hover:bg-black/5 hover:text-muted-foreground dark:hover:bg-white/10',
                   )}
                 >
                   <ChevronRight
@@ -459,14 +455,14 @@ export function Sidebar() {
                           <button
                             aria-label={t('common:sidebar.saveSessionRename')}
                             onMouseDown={(e) => { e.preventDefault(); void handleRenameSubmit(); }}
-                            className="flex shrink-0 items-center justify-center rounded p-0.5 text-muted-foreground hover:text-foreground"
+                            className="clawx-icon-button h-6 w-6 shrink-0 p-0.5"
                           >
                             <Check className="h-3.5 w-3.5" />
                           </button>
                           <button
                             aria-label={t('common:sidebar.cancelSessionRename')}
                             onMouseDown={(e) => { e.preventDefault(); handleRenameCancel(); }}
-                            className="flex shrink-0 items-center justify-center rounded p-0.5 text-muted-foreground hover:text-destructive"
+                            className="clawx-icon-button h-6 w-6 shrink-0 p-0.5 hover:text-destructive"
                           >
                             <X className="h-3.5 w-3.5" />
                           </button>
@@ -484,10 +480,9 @@ export function Sidebar() {
                             }}
                             onDoubleClick={() => handleStartRename(s.key, sessionLabel)}
                             className={cn(
-                              'w-full text-left rounded-lg px-2.5 py-1.5 text-meta transition-colors pr-16',
-                              'hover:bg-surface-input',
+                              'clawx-nav-item w-full pr-16 text-left text-meta',
                               isOnChat && currentSessionKey === s.key
-                                ? 'bg-primary/10 text-primary font-medium'
+                                ? 'clawx-nav-item-active font-medium'
                                 : 'text-foreground/75',
                             )}
                           >
@@ -508,7 +503,7 @@ export function Sidebar() {
                                 e.stopPropagation();
                                 handleStartRename(s.key, sessionLabel);
                               }}
-                              className="flex items-center justify-center rounded p-0.5 text-muted-foreground hover:text-foreground hover:bg-surface-input"
+                              className="clawx-icon-button h-6 w-6 p-0.5"
                             >
                               <Pencil className="h-3.5 w-3.5" />
                             </button>
@@ -523,7 +518,7 @@ export function Sidebar() {
                                 });
                                 setDeleteDialogOpen(true);
                               }}
-                              className="flex items-center justify-center rounded p-0.5 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                              className="clawx-icon-button h-6 w-6 p-0.5 hover:bg-destructive/10 hover:text-destructive"
                             >
                               <Trash2 className="h-3.5 w-3.5" />
                             </button>
@@ -555,8 +550,9 @@ export function Sidebar() {
             aria-label={t('common:gateway.restarting')}
             title={t('common:gateway.restarting')}
             className={cn(
-              'sidebar-nav-text flex items-center gap-2 rounded-lg px-2.5 py-1.5',
+              'clawx-nav-item',
               'border border-yellow-500/20 bg-yellow-500/10 text-yellow-700 dark:text-yellow-400',
+              'hover:bg-yellow-500/10 hover:text-yellow-700 dark:hover:bg-yellow-500/10 dark:hover:text-yellow-400',
               sidebarCollapsed && 'justify-center px-0',
             )}
           >
@@ -570,17 +566,12 @@ export function Sidebar() {
         </div>
 
         <NavLink
-            to="/settings"
-            data-testid="sidebar-nav-settings"
-            className={({ isActive }) =>
-              cn(
-                'sidebar-nav-text flex items-center gap-2 rounded-lg px-2.5 py-1.5 transition-colors',
-                'hover:bg-surface-input text-foreground/85',
-                isActive && 'bg-primary/10 text-primary',
-                sidebarCollapsed ? 'justify-center px-0' : ''
-              )
-            }
-          >
+          to="/settings"
+          data-testid="sidebar-nav-settings"
+          className={({ isActive }) =>
+            sidebarNavItemClasses(isActive, sidebarCollapsed)
+          }
+        >
           <>
             <div className="flex shrink-0 items-center justify-center text-current [&_svg]:size-4">
               <SettingsIcon className="h-4 w-4" strokeWidth={2} />
@@ -590,13 +581,13 @@ export function Sidebar() {
         </NavLink>
 
         {devModeUnlocked && (
-          <Button
+          <button
+            type="button"
             data-testid="sidebar-open-dev-console"
-            variant="ghost"
             className={cn(
-              'sidebar-nav-text flex h-auto w-full items-center gap-2 rounded-lg px-2.5 py-1.5 transition-colors',
-              'hover:bg-surface-input text-foreground/85',
-              sidebarCollapsed ? 'justify-center px-0' : 'justify-start'
+              sidebarNavItemClasses(false, sidebarCollapsed),
+              'h-auto w-full',
+              sidebarCollapsed ? '' : 'justify-start',
             )}
             onClick={openDevConsole}
           >
@@ -609,7 +600,7 @@ export function Sidebar() {
                 <ExternalLink className="ml-auto h-3 w-3 shrink-0 opacity-50 text-current" />
               </>
             )}
-          </Button>
+          </button>
         )}
       </div>
 

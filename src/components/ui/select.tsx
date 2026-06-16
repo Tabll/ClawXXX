@@ -147,7 +147,7 @@ const Select = React.forwardRef<HTMLButtonElement, SelectProps>(
             data-testid={dataTestId}
             data-value={actualValue}
             className={cn(
-              'group flex h-9 w-full items-center justify-between gap-2 rounded-lg border border-border/70 bg-surface-modal/75 px-3 py-2 text-sm text-foreground shadow-sm shadow-black/5 outline-none transition-[background-color,border-color,color,box-shadow,transform] duration-150 hover:border-ring/35 hover:bg-surface-modal focus-visible:border-ring/60 focus-visible:bg-surface-modal focus-visible:ring-0 data-[state=open]:border-ring/60 data-[state=open]:bg-surface-modal data-[state=open]:shadow-md data-[state=open]:shadow-black/10 disabled:cursor-not-allowed disabled:opacity-50 active:scale-[0.995] dark:shadow-black/20 dark:data-[state=open]:shadow-black/30',
+              'clawx-control group flex h-9 w-full items-center justify-between gap-2 px-3 py-2 text-sm text-foreground outline-none transition-transform duration-150 data-[state=open]:border-ring/60 data-[state=open]:bg-surface-modal data-[state=open]:shadow-md data-[state=open]:shadow-black/10 disabled:cursor-not-allowed disabled:opacity-50 active:scale-[0.995] dark:data-[state=open]:shadow-black/30',
               className,
             )}
             {...triggerProps}

@@ -55,15 +55,27 @@
  *     Never write `dark:bg-card` / `dark:bg-muted` companion classes —
  *     the surface tokens already redirect in dark mode.
  *
- *   SELECTED / ACTIVE STATE  (sidebar nav, theme & language picker,
- *                             segmented controls, composer chips)
+ *   SELECTED / ACTIVE STATE  (sidebar nav, settings nav, theme &
+ *                             language picker, segmented controls,
+ *                             composer chips)
  *   ─────────────────────────────────────────────────────────────────────
- *     selected   :  bg-primary/10 text-primary
- *     hover      :  hover:bg-surface-input
+ *     neutral nav selected :  bg-black/5 text-foreground dark:bg-white/10
+ *     neutral nav hover    :  hover:bg-black/5 dark:hover:bg-white/10
+ *     accent selected      :  bg-primary/10 text-primary
  *     idle text  :  text-muted-foreground (or text-foreground/85)
  *
- *     Reference: components/layout/Sidebar.tsx, pages/Settings/index.tsx
- *     (theme + language picker).
+ *     Reference: .clawx-nav-item / .clawx-nav-item-active below.
+ *     Accent selected is reserved for controls where the user's chosen
+ *     theme colour is the subject, such as appearance pickers.
+ *
+ *   SHARED CONTROL SURFACES
+ *   ─────────────────────────────────────────────────────────────────────
+ *     inputs / selects / textareas : clawx-control
+ *     quiet outline actions       : clawx-action-surface
+ *     icon-only quiet controls    : clawx-icon-button
+ *
+ *     Prefer these classes over repeating border + bg + hover + focus
+ *     stacks in component code.
  *
  *   MODAL / SCRIM BACKDROPS
  *   ─────────────────────────────────────────────────────────────────────
@@ -149,7 +161,7 @@
     --ring: var(--appearance-ring);
     --brand: var(--appearance-brand);
     --brand-hover: var(--appearance-brand-hover);
-    --radius: 0.5rem;
+    --radius: 0.625rem;
 
     /* ── ClawX neutral surfaces (light) ──────────────────────────
      *
@@ -280,6 +292,10 @@
     @apply rounded-lg border border-border/65 bg-surface-modal shadow-sm shadow-black/5 transition-colors hover:border-border/80 dark:shadow-black/20;
   }
 
+  .clawx-surface-card {
+    @apply rounded-lg border border-border/70 bg-surface-modal text-card-foreground shadow-sm shadow-black/5 dark:shadow-black/20;
+  }
+
   .clawx-panel-muted {
     @apply rounded-lg border border-border/60 bg-surface-input/70 transition-colors hover:border-border/80;
   }
@@ -294,6 +310,26 @@
 
   .clawx-toolbar-button {
     @apply h-8 rounded-lg border border-border/70 bg-surface-modal/80 px-3 text-meta font-medium text-foreground/85 shadow-sm shadow-black/5 hover:border-ring/35 hover:bg-surface-modal hover:text-foreground focus-visible:border-ring/60 focus-visible:ring-0 dark:shadow-black/20;
+  }
+
+  .clawx-control {
+    @apply rounded-lg border border-border/70 bg-surface-modal/75 shadow-sm shadow-black/5 transition-[background-color,border-color,color,box-shadow] hover:border-ring/35 hover:bg-surface-modal focus-visible:border-ring/60 focus-visible:bg-surface-modal focus-visible:outline-none focus-visible:ring-0 dark:shadow-black/20;
+  }
+
+  .clawx-action-surface {
+    @apply rounded-lg border border-border/70 bg-surface-modal/80 text-foreground/85 shadow-sm shadow-black/5 transition-[background-color,border-color,color,box-shadow] hover:border-ring/35 hover:bg-surface-modal hover:text-foreground focus-visible:border-ring/60 focus-visible:outline-none focus-visible:ring-0 dark:shadow-black/20;
+  }
+
+  .clawx-icon-button {
+    @apply inline-flex items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-black/5 hover:text-foreground focus-visible:border-ring/55 focus-visible:outline-none focus-visible:ring-0 dark:hover:bg-white/10;
+  }
+
+  .clawx-nav-item {
+    @apply flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm font-normal leading-4 text-foreground/85 transition-[background-color,color] hover:bg-black/5 hover:text-foreground dark:hover:bg-white/10;
+  }
+
+  .clawx-nav-item-active {
+    @apply bg-black/5 text-foreground dark:bg-white/10;
   }
 
   .clawx-form-label {

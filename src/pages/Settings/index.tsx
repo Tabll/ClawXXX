@@ -1241,36 +1241,34 @@ export function Settings() {
           isMac ? 'pt-9' : 'pt-4',
         )}
       >
-        <Button
+        <button
           type="button"
-          variant="ghost"
           data-testid="settings-return-app"
           onClick={() => navigate('/')}
-          className="mb-3 h-9 justify-start gap-2 rounded-lg px-3 text-meta text-foreground/85 hover:border-ring/30 hover:bg-surface-input"
+          className="clawx-nav-item mb-3 h-9 w-full justify-start px-3 text-meta"
         >
           <ArrowLeft className="h-4 w-4" />
           {t('settingsNav.returnApp')}
-        </Button>
+        </button>
 
         <nav className="space-y-1" aria-label={t('title')}>
           {SETTINGS_SECTIONS.map((sectionId) => {
             const Icon = SETTINGS_SECTION_ICONS[sectionId];
             const selected = activeSection === sectionId;
             return (
-              <Button
+              <button
                 key={sectionId}
                 type="button"
-                variant="ghost"
                 data-testid={`settings-nav-${sectionId}`}
                 onClick={() => navigate(`/settings/${sectionId}`)}
                 className={cn(
-                  'h-9 w-full justify-start gap-2 rounded-lg px-3 text-meta font-medium text-foreground/80 hover:border-ring/30 hover:bg-surface-input hover:text-foreground',
-                  selected && 'border-primary/45 bg-primary/10 text-primary hover:border-primary/45 hover:bg-primary/10 hover:text-primary',
+                  'clawx-nav-item h-9 w-full justify-start px-3 text-meta font-medium',
+                  selected && 'clawx-nav-item-active',
                 )}
               >
                 <Icon className="h-4 w-4" />
                 <span className="truncate">{t(`settingsNav.${sectionId}`)}</span>
-              </Button>
+              </button>
             );
           })}
         </nav>

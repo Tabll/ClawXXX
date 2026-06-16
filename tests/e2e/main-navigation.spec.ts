@@ -28,6 +28,16 @@ test.describe('ClawX main navigation without setup flow', () => {
 
       await expect(page.getByTestId('sidebar-nav-models')).toHaveCount(0);
 
+      const sidebarStateBackground = await page.evaluate(() =>
+        document.documentElement.classList.contains('dark')
+          ? 'rgba(255, 255, 255, 0.1)'
+          : 'rgba(0, 0, 0, 0.05)',
+      );
+      const agentsNav = page.getByTestId('sidebar-nav-agents');
+      await expect(agentsNav).toHaveCSS('border-radius', '10px');
+      await agentsNav.hover();
+      await expect(agentsNav).toHaveCSS('background-color', sidebarStateBackground);
+
       await page.evaluate(() => {
         window.location.hash = '#/models';
       });
@@ -36,8 +46,9 @@ test.describe('ClawX main navigation without setup flow', () => {
       await page.getByTestId('settings-return-app').click();
       await expect(page.getByTestId('chat-page')).toBeVisible();
 
-      await page.getByTestId('sidebar-nav-agents').click();
+      await agentsNav.click();
       await expect(page.getByTestId('agents-page')).toBeVisible();
+      await expect(agentsNav).toHaveCSS('background-color', sidebarStateBackground);
 
       await page.getByTestId('sidebar-nav-channels').click();
       await expect(page.getByTestId('channels-page')).toBeVisible();
