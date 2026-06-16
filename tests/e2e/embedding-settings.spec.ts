@@ -25,6 +25,7 @@ test.describe('Embedding model settings in Settings > Models', () => {
     await expect(page.getByTestId('embedding-settings-title')).toBeVisible();
     await expect(page.getByTestId('embedding-provider')).toHaveValue('openai');
     await expect(page.getByTestId('embedding-model')).toHaveValue('text-embedding-3-small');
+    await expect(page.getByTestId('embedding-advanced-section')).toBeVisible();
   });
 
   test('configures an OpenAI-compatible embedding endpoint without echoing the key', async ({ page }) => {
@@ -48,5 +49,27 @@ test.describe('Embedding model settings in Settings > Models', () => {
     await expect(page.getByTestId('embedding-remote-api-key')).toHaveValue('');
     await expect(page.getByTestId('embedding-api-key-status')).not.toBeEmpty();
     await expect(page.getByTestId('embedding-clear')).toBeEnabled();
+  });
+
+  test('configures advanced memory-search tuning fields', async ({ page }) => {
+    await expect(page.getByTestId('setup-page')).toBeVisible();
+    await page.getByTestId('setup-skip-button').click();
+
+    await expect(page.getByTestId('main-layout')).toBeVisible();
+    await openSettingsModels(page);
+
+    await page.getByTestId('embedding-advanced-section').scrollIntoViewIfNeeded();
+    await page.getByTestId('embedding-extra-paths').fill('~/knowledge\n../shared-notes');
+    await page.getByTestId('embedding-query-max-results').fill('12');
+    await page.getByTestId('embedding-query-min-score').fill('0.2');
+    await page.getByTestId('embedding-cache-enabled').selectOption('true');
+    await page.getByTestId('embedding-cache-max-entries').fill('256');
+
+    await expect(page.getByTestId('embedding-save')).toBeEnabled();
+    await page.getByTestId('embedding-save').click();
+
+    await expect(page.getByTestId('embedding-save')).toBeDisabled();
+    await expect(page.getByTestId('embedding-extra-paths')).toHaveValue('~/knowledge\n../shared-notes');
+    await expect(page.getByTestId('embedding-cache-enabled')).toHaveValue('true');
   });
 });

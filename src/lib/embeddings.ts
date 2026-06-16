@@ -1,8 +1,27 @@
 import { hostApi } from '@/lib/host-api';
 
+export type MemorySearchBooleanSetting = boolean | null;
+export type MemorySearchSource = 'memory' | 'sessions';
+export type MemorySearchModality = 'image' | 'audio' | 'all';
+
+export interface MemorySearchQmdCollection {
+  path: string;
+  name?: string;
+  pattern?: string;
+}
+
 export interface EmbeddingRemoteConfigSnapshot {
   baseUrl: string;
   apiKeyConfigured: boolean;
+  headers: Record<string, string>;
+  nonBatchConcurrency: number | null;
+  batch: {
+    enabled: MemorySearchBooleanSetting;
+    wait: MemorySearchBooleanSetting;
+    concurrency: number | null;
+    pollIntervalMs: number | null;
+    timeoutMinutes: number | null;
+  };
 }
 
 export interface EmbeddingLocalConfigSnapshot {
@@ -12,7 +31,68 @@ export interface EmbeddingLocalConfigSnapshot {
 }
 
 export interface EmbeddingSyncConfigSnapshot {
+  onSessionStart: MemorySearchBooleanSetting;
+  onSearch: MemorySearchBooleanSetting;
+  watch: MemorySearchBooleanSetting;
+  watchDebounceMs: number | null;
+  intervalMinutes: number | null;
   embeddingBatchTimeoutSeconds: number | null;
+  sessions: {
+    deltaBytes: number | null;
+    deltaMessages: number | null;
+    postCompactionForce: MemorySearchBooleanSetting;
+  };
+}
+
+export interface MemorySearchAdvancedConfigSnapshot {
+  sources: MemorySearchSource[];
+  extraPaths: string[];
+  qmd: {
+    extraCollections: MemorySearchQmdCollection[];
+  };
+  multimodal: {
+    enabled: MemorySearchBooleanSetting;
+    modalities: MemorySearchModality[];
+    maxFileBytes: number | null;
+  };
+  experimental: {
+    sessionMemory: MemorySearchBooleanSetting;
+  };
+  store: {
+    driver: string;
+    path: string;
+    ftsTokenizer: string;
+    vector: {
+      enabled: MemorySearchBooleanSetting;
+      extensionPath: string;
+    };
+  };
+  chunking: {
+    tokens: number | null;
+    overlap: number | null;
+  };
+  query: {
+    maxResults: number | null;
+    minScore: number | null;
+    hybrid: {
+      enabled: MemorySearchBooleanSetting;
+      vectorWeight: number | null;
+      textWeight: number | null;
+      candidateMultiplier: number | null;
+      mmr: {
+        enabled: MemorySearchBooleanSetting;
+        lambda: number | null;
+      };
+      temporalDecay: {
+        enabled: MemorySearchBooleanSetting;
+        halfLifeDays: number | null;
+      };
+    };
+  };
+  cache: {
+    enabled: MemorySearchBooleanSetting;
+    maxEntries: number | null;
+  };
 }
 
 export interface EmbeddingSettingsConfig {
@@ -27,6 +107,7 @@ export interface EmbeddingSettingsConfig {
   remote: EmbeddingRemoteConfigSnapshot;
   local: EmbeddingLocalConfigSnapshot;
   sync: EmbeddingSyncConfigSnapshot;
+  advanced: MemorySearchAdvancedConfigSnapshot;
 }
 
 export interface EmbeddingSettingsSnapshot {
@@ -52,6 +133,47 @@ export type SaveEmbeddingSettingsInput = {
   localModelCacheDir?: string | null;
   localContextSize?: string | null;
   embeddingBatchTimeoutSeconds?: number | null;
+  sources?: MemorySearchSource[] | null;
+  extraPaths?: string[] | null;
+  qmdExtraCollections?: MemorySearchQmdCollection[] | null;
+  multimodalEnabled?: MemorySearchBooleanSetting;
+  multimodalModalities?: MemorySearchModality[] | null;
+  multimodalMaxFileBytes?: number | null;
+  experimentalSessionMemory?: MemorySearchBooleanSetting;
+  remoteHeaders?: Record<string, string> | null;
+  remoteNonBatchConcurrency?: number | null;
+  remoteBatchEnabled?: MemorySearchBooleanSetting;
+  remoteBatchWait?: MemorySearchBooleanSetting;
+  remoteBatchConcurrency?: number | null;
+  remoteBatchPollIntervalMs?: number | null;
+  remoteBatchTimeoutMinutes?: number | null;
+  storeDriver?: string | null;
+  storePath?: string | null;
+  storeFtsTokenizer?: string | null;
+  storeVectorEnabled?: MemorySearchBooleanSetting;
+  storeVectorExtensionPath?: string | null;
+  chunkingTokens?: number | null;
+  chunkingOverlap?: number | null;
+  syncOnSessionStart?: MemorySearchBooleanSetting;
+  syncOnSearch?: MemorySearchBooleanSetting;
+  syncWatch?: MemorySearchBooleanSetting;
+  syncWatchDebounceMs?: number | null;
+  syncIntervalMinutes?: number | null;
+  syncSessionsDeltaBytes?: number | null;
+  syncSessionsDeltaMessages?: number | null;
+  syncSessionsPostCompactionForce?: MemorySearchBooleanSetting;
+  queryMaxResults?: number | null;
+  queryMinScore?: number | null;
+  queryHybridEnabled?: MemorySearchBooleanSetting;
+  queryHybridVectorWeight?: number | null;
+  queryHybridTextWeight?: number | null;
+  queryHybridCandidateMultiplier?: number | null;
+  queryHybridMmrEnabled?: MemorySearchBooleanSetting;
+  queryHybridMmrLambda?: number | null;
+  queryHybridTemporalDecayEnabled?: MemorySearchBooleanSetting;
+  queryHybridTemporalDecayHalfLifeDays?: number | null;
+  cacheEnabled?: MemorySearchBooleanSetting;
+  cacheMaxEntries?: number | null;
 };
 
 export async function fetchEmbeddingSettings(): Promise<EmbeddingSettingsSnapshot> {

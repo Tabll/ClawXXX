@@ -77,7 +77,7 @@ describe('openclaw-embeddings helpers', () => {
     });
   });
 
-  it('writes agents.defaults.memorySearch embedding fields and preserves query tuning', async () => {
+  it('writes agents.defaults.memorySearch embedding and advanced memory-search fields', async () => {
     await writeOpenClawJson({
       models: {
         providers: {
@@ -93,6 +93,7 @@ describe('openclaw-embeddings helpers', () => {
           memorySearch: {
             query: {
               maxResults: 12,
+              customRanking: 'keep-me',
             },
           },
         },
@@ -112,16 +113,81 @@ describe('openclaw-embeddings helpers', () => {
       documentInputType: 'document',
       outputDimensionality: 1024,
       embeddingBatchTimeoutSeconds: 240,
+      sources: ['memory', 'sessions'],
+      extraPaths: ['~/notes', '../shared'],
+      qmdExtraCollections: [{
+        path: '~/qmd',
+        name: 'QMD',
+        pattern: '**/*.qmd',
+      }],
+      multimodalEnabled: true,
+      multimodalModalities: ['image'],
+      multimodalMaxFileBytes: 10485760,
+      experimentalSessionMemory: true,
+      remoteHeaders: {
+        'X-Embedding': 'memory',
+      },
+      remoteNonBatchConcurrency: 4,
+      remoteBatchEnabled: true,
+      remoteBatchWait: false,
+      remoteBatchConcurrency: 2,
+      remoteBatchPollIntervalMs: 1000,
+      remoteBatchTimeoutMinutes: 30,
+      storeDriver: 'sqlite',
+      storePath: '~/.openclaw/memory/search.sqlite',
+      storeFtsTokenizer: 'trigram',
+      storeVectorEnabled: true,
+      storeVectorExtensionPath: '/tmp/sqlite-vec.dylib',
+      chunkingTokens: 512,
+      chunkingOverlap: 64,
+      syncOnSessionStart: true,
+      syncOnSearch: false,
+      syncWatch: true,
+      syncWatchDebounceMs: 500,
+      syncIntervalMinutes: 15,
+      syncSessionsDeltaBytes: 4096,
+      syncSessionsDeltaMessages: 8,
+      syncSessionsPostCompactionForce: true,
+      queryMaxResults: 16,
+      queryMinScore: 0.2,
+      queryHybridEnabled: true,
+      queryHybridVectorWeight: 0.7,
+      queryHybridTextWeight: 0.3,
+      queryHybridCandidateMultiplier: 4,
+      queryHybridMmrEnabled: true,
+      queryHybridMmrLambda: 0.5,
+      queryHybridTemporalDecayEnabled: true,
+      queryHybridTemporalDecayHalfLifeDays: 30,
+      cacheEnabled: true,
+      cacheMaxEntries: 512,
     });
 
     expect(snapshot.config.remote.apiKeyConfigured).toBe(true);
+    expect(snapshot.config.advanced.query.maxResults).toBe(16);
+    expect(snapshot.config.advanced.cache.enabled).toBe(true);
     expect(snapshot.knownProviders).toContain('embed-gpu');
 
     const saved = await readOpenClawJson();
     const defaults = (saved.agents as Record<string, unknown>).defaults as Record<string, unknown>;
     expect(defaults.memorySearch).toEqual({
       query: {
-        maxResults: 12,
+        maxResults: 16,
+        customRanking: 'keep-me',
+        minScore: 0.2,
+        hybrid: {
+          enabled: true,
+          vectorWeight: 0.7,
+          textWeight: 0.3,
+          candidateMultiplier: 4,
+          mmr: {
+            enabled: true,
+            lambda: 0.5,
+          },
+          temporalDecay: {
+            enabled: true,
+            halfLifeDays: 30,
+          },
+        },
       },
       enabled: true,
       provider: 'openai-compatible',
@@ -134,14 +200,71 @@ describe('openclaw-embeddings helpers', () => {
       remote: {
         baseUrl: 'https://embeddings.example/v1',
         apiKey: 'sk-embed',
+        headers: {
+          'X-Embedding': 'memory',
+        },
+        nonBatchConcurrency: 4,
+        batch: {
+          enabled: true,
+          wait: false,
+          concurrency: 2,
+          pollIntervalMs: 1000,
+          timeoutMinutes: 30,
+        },
+      },
+      sources: ['memory', 'sessions'],
+      extraPaths: ['~/notes', '../shared'],
+      qmd: {
+        extraCollections: [{
+          path: '~/qmd',
+          name: 'QMD',
+          pattern: '**/*.qmd',
+        }],
+      },
+      multimodal: {
+        enabled: true,
+        modalities: ['image'],
+        maxFileBytes: 10485760,
+      },
+      experimental: {
+        sessionMemory: true,
+      },
+      store: {
+        driver: 'sqlite',
+        path: '~/.openclaw/memory/search.sqlite',
+        fts: {
+          tokenizer: 'trigram',
+        },
+        vector: {
+          enabled: true,
+          extensionPath: '/tmp/sqlite-vec.dylib',
+        },
+      },
+      chunking: {
+        tokens: 512,
+        overlap: 64,
       },
       sync: {
+        onSessionStart: true,
+        onSearch: false,
+        watch: true,
+        watchDebounceMs: 500,
+        intervalMinutes: 15,
         embeddingBatchTimeoutSeconds: 240,
+        sessions: {
+          deltaBytes: 4096,
+          deltaMessages: 8,
+          postCompactionForce: true,
+        },
+      },
+      cache: {
+        enabled: true,
+        maxEntries: 512,
       },
     });
   });
 
-  it('clears embedding fields while keeping unrelated memorySearch settings', async () => {
+  it('clears managed memorySearch fields while keeping unknown memorySearch settings', async () => {
     await writeOpenClawJson({
       agents: {
         defaults: {
@@ -160,10 +283,12 @@ describe('openclaw-embeddings helpers', () => {
             sync: {
               onSearch: true,
               embeddingBatchTimeoutSeconds: 240,
+              customSync: 'keep-me',
             },
             query: {
               maxResults: 8,
             },
+            customRuntimeFlag: true,
           },
         },
       },
@@ -179,11 +304,9 @@ describe('openclaw-embeddings helpers', () => {
     const defaults = (saved.agents as Record<string, unknown>).defaults as Record<string, unknown>;
     expect(defaults.memorySearch).toEqual({
       sync: {
-        onSearch: true,
+        customSync: 'keep-me',
       },
-      query: {
-        maxResults: 8,
-      },
+      customRuntimeFlag: true,
     });
   });
 });
