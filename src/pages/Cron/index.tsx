@@ -19,7 +19,6 @@ import {
   Timer,
   History,
   Pause,
-  ChevronDown,
   Bot,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -209,18 +208,15 @@ interface SelectFieldProps extends SelectHTMLAttributes<HTMLSelectElement> {
 
 function SelectField({ className, children, ...props }: SelectFieldProps) {
   return (
-    <div className="relative">
-      <Select
-        className={cn(
-          'h-10 rounded-lg border-border/80 bg-surface-modal/70 text-meta pr-10 [background-image:none] appearance-none',
-          className,
-        )}
-        {...props}
-      >
-        {children}
-      </Select>
-      <ChevronDown className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-    </div>
+    <Select
+      className={cn(
+        'h-10 rounded-lg border-border/80 bg-surface-modal/70 text-meta',
+        className,
+      )}
+      {...props}
+    >
+      {children}
+    </Select>
   );
 }
 

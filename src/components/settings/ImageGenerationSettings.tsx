@@ -10,6 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { Select } from '@/components/ui/select';
 import {
   clearImageGenerationSettings,
   fetchImageGenerationSettings,
@@ -383,7 +384,7 @@ export function ImageGenerationSettings() {
               <Label htmlFor="image-gen-test-agent" className={labelClasses}>
                 {t('imageGeneration.testAgent')}
               </Label>
-              <select
+              <Select
                 id="image-gen-test-agent"
                 value={testAgentId}
                 onChange={(e) => setTestAgentId(e.target.value)}
@@ -396,7 +397,7 @@ export function ImageGenerationSettings() {
                     {agent.isDefault ? ` (${t('imageGeneration.defaultAgent')})` : ''}
                   </option>
                 ))}
-              </select>
+              </Select>
             </div>
             <Button
               variant="outline"

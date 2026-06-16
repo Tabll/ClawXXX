@@ -357,6 +357,127 @@ function BooleanSelect({
   );
 }
 
+function ProviderSuggestionInput({
+  id,
+  value,
+  onChange,
+  options,
+  className,
+  placeholder,
+  testId,
+}: {
+  id: string;
+  value: string;
+  onChange: (value: string) => void;
+  options: string[];
+  className?: string;
+  placeholder?: string;
+  testId?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [activeIndex, setActiveIndex] = useState(0);
+  const normalizedValue = value.trim().toLowerCase();
+  const listboxId = `${id}-suggestions`;
+  const suggestions = useMemo(() => {
+    const uniqueOptions = Array.from(new Set(options.map(normalizeProvider).filter(Boolean)));
+    const filtered = normalizedValue
+      ? uniqueOptions.filter((option) => option.includes(normalizedValue))
+      : uniqueOptions;
+
+    return filtered.length > 0 ? filtered : uniqueOptions;
+  }, [normalizedValue, options]);
+  const safeActiveIndex = Math.min(activeIndex, Math.max(suggestions.length - 1, 0));
+
+  const selectSuggestion = useCallback((nextValue: string) => {
+    onChange(nextValue);
+    setOpen(false);
+  }, [onChange]);
+
+  return (
+    <div className="relative">
+      <Input
+        id={id}
+        role="combobox"
+        aria-expanded={open}
+        aria-controls={listboxId}
+        aria-autocomplete="list"
+        aria-activedescendant={open && suggestions[safeActiveIndex] ? `${listboxId}-${suggestions[safeActiveIndex]}` : undefined}
+        value={value}
+        onFocus={() => {
+          setActiveIndex(0);
+          setOpen(true);
+        }}
+        onBlur={() => {
+          window.setTimeout(() => setOpen(false), 120);
+        }}
+        onChange={(event) => {
+          onChange(event.target.value);
+          setActiveIndex(0);
+          setOpen(true);
+        }}
+        onKeyDown={(event) => {
+          if (event.key === 'ArrowDown') {
+            event.preventDefault();
+            setOpen(true);
+            setActiveIndex((current) => Math.min(current + 1, suggestions.length - 1));
+            return;
+          }
+
+          if (event.key === 'ArrowUp') {
+            event.preventDefault();
+            setOpen(true);
+            setActiveIndex((current) => Math.max(current - 1, 0));
+            return;
+          }
+
+          if (event.key === 'Enter' && open && suggestions[safeActiveIndex]) {
+            event.preventDefault();
+            selectSuggestion(suggestions[safeActiveIndex]);
+            return;
+          }
+
+          if (event.key === 'Escape') {
+            setOpen(false);
+          }
+        }}
+        className={className}
+        placeholder={placeholder}
+        data-testid={testId}
+      />
+      {open && suggestions.length > 0 && (
+        <div
+          id={listboxId}
+          role="listbox"
+          className="absolute left-0 right-0 top-full z-50 mt-1 max-h-56 overflow-auto rounded-lg border border-border/70 bg-popover/95 p-1 text-popover-foreground shadow-xl shadow-black/10 backdrop-blur-xl animate-in fade-in-0 zoom-in-95 slide-in-from-top-1 dark:shadow-black/35"
+        >
+          {suggestions.map((option, index) => (
+            <button
+              key={option}
+              id={`${listboxId}-${option}`}
+              type="button"
+              role="option"
+              aria-selected={option === normalizeProvider(value)}
+              className={cn(
+                'flex min-h-8 w-full items-center rounded-md px-2.5 py-1.5 text-left font-mono text-meta outline-none transition-[background-color,color] duration-150',
+                index === activeIndex
+                  ? 'bg-primary/10 text-primary'
+                  : 'text-foreground hover:bg-surface-input',
+                option === normalizeProvider(value) && 'text-primary',
+              )}
+              onMouseDown={(event) => {
+                event.preventDefault();
+                selectSuggestion(option);
+              }}
+            >
+              {option}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function EmbeddingSettings() {
   const { t } = useTranslation(['dashboard', 'settings', 'common']);
   const booleanLabels = useMemo(() => ({
@@ -515,6 +636,9 @@ export function EmbeddingSettings() {
       normalizeProvider(provider),
     ])).filter(Boolean).sort((a, b) => a.localeCompare(b));
   }, [provider, snapshot]);
+  const fallbackProviderOptions = useMemo(() => {
+    return Array.from(new Set(['none', ...knownProviders])).sort((a, b) => a.localeCompare(b));
+  }, [knownProviders]);
 
   const currentProvider = normalizeProvider(provider);
   const showRemoteFields = currentProvider === 'openai-compatible'
@@ -773,20 +897,15 @@ export function EmbeddingSettings() {
               label={t('embeddings.provider')}
               hint={t('embeddings.providerHint')}
             >
-              <Input
+              <ProviderSuggestionInput
                 id="embedding-provider"
-                list="embedding-provider-options"
                 value={provider}
-                onChange={(event) => handleProviderChange(event.target.value)}
+                onChange={handleProviderChange}
+                options={knownProviders}
                 className={inputClasses}
                 placeholder="openai"
-                data-testid="embedding-provider"
+                testId="embedding-provider"
               />
-              <datalist id="embedding-provider-options">
-                {knownProviders.map((providerId) => (
-                  <option key={providerId} value={providerId} />
-                ))}
-              </datalist>
             </AdvancedField>
 
             <AdvancedField
@@ -805,14 +924,14 @@ export function EmbeddingSettings() {
             </AdvancedField>
 
             <AdvancedField id="embedding-fallback" label={t('embeddings.fallback')}>
-              <Input
+              <ProviderSuggestionInput
                 id="embedding-fallback"
-                list="embedding-provider-options"
                 value={fallback}
-                onChange={(event) => setFallback(event.target.value)}
+                onChange={setFallback}
+                options={fallbackProviderOptions}
                 className={inputClasses}
                 placeholder="none"
-                data-testid="embedding-fallback"
+                testId="embedding-fallback"
               />
             </AdvancedField>
 

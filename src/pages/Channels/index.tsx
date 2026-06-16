@@ -3,6 +3,7 @@ import { RefreshCw, Trash2, AlertCircle, Plus, Copy, RotateCcw, ChevronDown, Che
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { Select } from '@/components/ui/select';
 import { useGatewayStore } from '@/stores/gateway';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import {
@@ -705,8 +706,8 @@ export function Channels() {
 
                             <div className="flex items-center gap-2">
                               <span className="text-xs text-muted-foreground">{t('account.bindAgentLabel')}</span>
-                              <select
-                                className="h-8 rounded-lg border border-border/80 bg-surface-modal/80 px-2 text-xs outline-none focus:ring-2 focus:ring-ring/25"
+                              <Select
+                                className="h-8 min-w-36 rounded-lg border-border/80 bg-surface-modal/80 px-2 text-xs"
                                 value={account.agentId || ''}
                                 onChange={(event) => {
                                   void handleBindAgent(group.channelType, account.accountId, event.target.value);
@@ -716,7 +717,7 @@ export function Channels() {
                                 {visibleAgents.map((agent) => (
                                   <option key={agent.id} value={agent.id}>{agent.name}</option>
                                 ))}
-                              </select>
+                              </Select>
                               <Button
                                 size="sm"
                                 variant="outline"

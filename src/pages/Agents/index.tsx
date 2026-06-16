@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { Switch } from '@/components/ui/switch';
+import { Select } from '@/components/ui/select';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { useAgentsStore } from '@/stores/agents';
 import { useGatewayStore } from '@/stores/gateway';
@@ -808,7 +809,7 @@ function AgentModelModal({
         <CardContent className="space-y-4 p-6 pt-4">
           <div className="space-y-2">
             <Label htmlFor="agent-model-provider" className={labelClasses}>{t('settingsDialog.modelProviderLabel')}</Label>
-            <select
+            <Select
               id="agent-model-provider"
               value={selectedRuntimeProviderKey}
               onChange={(event) => {
@@ -827,7 +828,7 @@ function AgentModelModal({
                   {option.label}
                 </option>
               ))}
-            </select>
+            </Select>
           </div>
           <div className="space-y-2">
             <Label htmlFor="agent-model-id" className={labelClasses}>{t('settingsDialog.modelIdLabel')}</Label>

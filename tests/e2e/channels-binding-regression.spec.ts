@@ -103,8 +103,10 @@ test.describe('Channels binding regression', () => {
     await expect(page.getByTestId('channels-page')).toBeVisible();
     await expect(page.getByText('Feishu / Lark')).toBeVisible();
 
-    const feishuGroupHeader = page.locator('div.rounded-2xl').filter({ hasText: 'Feishu / Lark' }).first();
-    await expect(feishuGroupHeader).toContainText(/Connected|已连接|接続済み|Подключён/);
+    const feishuGroup = page.locator('.clawx-panel').filter({
+      has: page.getByRole('heading', { name: 'Feishu / Lark' }),
+    }).first();
+    await expect(feishuGroup).toContainText(/Connected|已连接|接続済み|Подключён/);
 
     await page.getByRole('button', { name: /Add Account|添加账号|アカウントを追加/ }).click();
     await expect(page.getByText(/Configure Feishu \/ Lark|dialog\.configureTitle/)).toBeVisible();
@@ -118,13 +120,14 @@ test.describe('Channels binding regression', () => {
     await page.getByRole('button', { name: /Save & Connect|dialog\.saveAndConnect/ }).click();
     await expect(page.getByText(/Configure Feishu \/ Lark|dialog\.configureTitle/)).toBeHidden();
 
-    const newAccountRow = page.locator('div.rounded-xl').filter({ hasText: newAccountId }).first();
+    const newAccountRow = page.locator('div.rounded-lg').filter({ hasText: newAccountId }).first();
     await expect(newAccountRow).toBeVisible();
-    const bindingSelect = newAccountRow.locator('select');
-    await expect(bindingSelect).toHaveValue('');
+    const bindingSelect = newAccountRow.getByRole('combobox');
+    await expect(bindingSelect).toHaveAttribute('data-value', '');
 
-    await bindingSelect.selectOption('code');
-    await expect(bindingSelect).toHaveValue('code');
+    await bindingSelect.click();
+    await page.getByRole('option', { name: 'Code Agent' }).click();
+    await expect(bindingSelect).toHaveAttribute('data-value', 'code');
 
     const counters = await electronApp.evaluate(() => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any

@@ -62,7 +62,9 @@ test.describe('Embedding model settings in Settings > Models', () => {
     await page.getByTestId('embedding-extra-paths').fill('~/knowledge\n../shared-notes');
     await page.getByTestId('embedding-query-max-results').fill('12');
     await page.getByTestId('embedding-query-min-score').fill('0.2');
-    await page.getByTestId('embedding-cache-enabled').selectOption('true');
+    const cacheEnabledSelect = page.getByTestId('embedding-cache-enabled');
+    await cacheEnabledSelect.click();
+    await page.getByRole('option', { name: /Enabled|启用|有効|Включено/ }).click();
     await page.getByTestId('embedding-cache-max-entries').fill('256');
 
     await expect(page.getByTestId('embedding-save')).toBeEnabled();
@@ -70,6 +72,6 @@ test.describe('Embedding model settings in Settings > Models', () => {
 
     await expect(page.getByTestId('embedding-save')).toBeDisabled();
     await expect(page.getByTestId('embedding-extra-paths')).toHaveValue('~/knowledge\n../shared-notes');
-    await expect(page.getByTestId('embedding-cache-enabled')).toHaveValue('true');
+    await expect(cacheEnabledSelect).toHaveAttribute('data-value', 'true');
   });
 });
