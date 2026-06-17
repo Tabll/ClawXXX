@@ -1,3 +1,29 @@
+export interface TokenUsageContextWeightEntry {
+  name: string;
+  blockChars?: number;
+  summaryChars?: number;
+  schemaChars?: number;
+  injectedChars?: number;
+}
+
+export interface TokenUsageContextWeight {
+  systemPrompt: {
+    chars: number;
+    projectContextChars?: number;
+    nonProjectContextChars?: number;
+  };
+  skills: {
+    promptChars: number;
+    entries: TokenUsageContextWeightEntry[];
+  };
+  tools: {
+    listChars: number;
+    schemaChars: number;
+    entries: TokenUsageContextWeightEntry[];
+  };
+  injectedWorkspaceFiles: TokenUsageContextWeightEntry[];
+}
+
 export interface TokenUsageHistoryEntry {
   timestamp: string;
   sessionId: string;
@@ -5,6 +31,8 @@ export interface TokenUsageHistoryEntry {
   model?: string;
   provider?: string;
   content?: string;
+  recordKind?: 'assistant' | 'toolResult';
+  contextWeight?: TokenUsageContextWeight;
   usageStatus: 'available' | 'missing' | 'error';
   inputTokens: number;
   outputTokens: number;
@@ -84,6 +112,88 @@ function normalizeUsageNumber(value: unknown): number | undefined {
     return Number.isFinite(parsed) ? parsed : undefined;
   }
   return undefined;
+}
+
+function normalizeNonNegativeInteger(value: unknown): number | undefined {
+  const parsed = normalizeUsageNumber(value);
+  if (parsed === undefined || parsed < 0) return undefined;
+  return Math.floor(parsed);
+}
+
+function normalizeString(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function normalizeContextEntry(value: unknown): TokenUsageContextWeightEntry | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+  const record = value as Record<string, unknown>;
+  const name = normalizeString(record.name) ?? normalizeString(record.path) ?? '(unknown)';
+  const entry: TokenUsageContextWeightEntry = { name };
+  const blockChars = normalizeNonNegativeInteger(record.blockChars);
+  const summaryChars = normalizeNonNegativeInteger(record.summaryChars);
+  const schemaChars = normalizeNonNegativeInteger(record.schemaChars);
+  const injectedChars = normalizeNonNegativeInteger(record.injectedChars);
+  if (blockChars !== undefined) entry.blockChars = blockChars;
+  if (summaryChars !== undefined) entry.summaryChars = summaryChars;
+  if (schemaChars !== undefined) entry.schemaChars = schemaChars;
+  if (injectedChars !== undefined) entry.injectedChars = injectedChars;
+  return entry;
+}
+
+function normalizeContextEntries(value: unknown): TokenUsageContextWeightEntry[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((entry) => normalizeContextEntry(entry))
+    .filter((entry): entry is TokenUsageContextWeightEntry => Boolean(entry));
+}
+
+export function normalizeTokenUsageContextWeight(value: unknown): TokenUsageContextWeight | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+  const record = value as Record<string, unknown>;
+  const systemPrompt = record.systemPrompt && typeof record.systemPrompt === 'object'
+    ? record.systemPrompt as Record<string, unknown>
+    : {};
+  const skills = record.skills && typeof record.skills === 'object'
+    ? record.skills as Record<string, unknown>
+    : {};
+  const tools = record.tools && typeof record.tools === 'object'
+    ? record.tools as Record<string, unknown>
+    : {};
+  const systemPromptChars = normalizeNonNegativeInteger(systemPrompt.chars) ?? 0;
+  const skillsPromptChars = normalizeNonNegativeInteger(skills.promptChars) ?? 0;
+  const toolsListChars = normalizeNonNegativeInteger(tools.listChars) ?? 0;
+  const toolsSchemaChars = normalizeNonNegativeInteger(tools.schemaChars) ?? 0;
+  const injectedWorkspaceFiles = normalizeContextEntries(record.injectedWorkspaceFiles);
+  const hasContextData = systemPromptChars > 0
+    || skillsPromptChars > 0
+    || toolsListChars > 0
+    || toolsSchemaChars > 0
+    || injectedWorkspaceFiles.some((entry) => (entry.injectedChars ?? 0) > 0);
+
+  if (!hasContextData) return undefined;
+
+  const projectContextChars = normalizeNonNegativeInteger(systemPrompt.projectContextChars);
+  const nonProjectContextChars = normalizeNonNegativeInteger(systemPrompt.nonProjectContextChars);
+
+  return {
+    systemPrompt: {
+      chars: systemPromptChars,
+      ...(projectContextChars !== undefined ? { projectContextChars } : {}),
+      ...(nonProjectContextChars !== undefined ? { nonProjectContextChars } : {}),
+    },
+    skills: {
+      promptChars: skillsPromptChars,
+      entries: normalizeContextEntries(skills.entries),
+    },
+    tools: {
+      listChars: toolsListChars,
+      schemaChars: toolsSchemaChars,
+      entries: normalizeContextEntries(tools.entries),
+    },
+    injectedWorkspaceFiles,
+  };
 }
 
 function firstUsageNumber(usage: TranscriptUsageShape | undefined, candidates: string[]): number | undefined {
@@ -259,7 +369,7 @@ function normalizeUsageContent(value: unknown): string | undefined {
 
 export function parseUsageEntriesFromJsonl(
   content: string,
-  context: { sessionId: string; agentId: string },
+  context: { sessionId: string; agentId: string; contextWeight?: TokenUsageContextWeight },
   limit?: number,
 ): TokenUsageHistoryEntry[] {
   const entries: TokenUsageHistoryEntry[] = [];
@@ -292,6 +402,8 @@ export function parseUsageEntriesFromJsonl(
         agentId: context.agentId,
         model: message.model ?? message.modelRef,
         provider: message.provider,
+        recordKind: 'assistant',
+        ...(context.contextWeight ? { contextWeight: context.contextWeight } : {}),
         ...(contentText ? { content: contentText } : {}),
         ...usage,
       });
@@ -321,6 +433,8 @@ export function parseUsageEntriesFromJsonl(
       agentId: context.agentId,
       model,
       provider,
+      recordKind: 'toolResult',
+      ...(context.contextWeight ? { contextWeight: context.contextWeight } : {}),
       ...(contentText ? { content: contentText } : {}),
       ...usage,
     });

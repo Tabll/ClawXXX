@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
+  aggregateUsageSessions,
   filterUsageHistoryByWindow,
   groupUsageHistory,
+  matchesUsageSession,
   resolveStableUsageHistory,
   resolveVisibleUsageHistory,
   type UsageHistoryEntry,
@@ -87,5 +89,73 @@ describe('token usage history helpers', () => {
     expect(resolveVisibleUsageHistory([], stable)).toEqual([]);
     expect(resolveVisibleUsageHistory([], stable, { preferStableOnEmpty: true })).toEqual(stable);
     expect(resolveVisibleUsageHistory(fresh, stable, { preferStableOnEmpty: true })).toEqual(fresh);
+  });
+
+  it('aggregates multiple usage records from one agent session into a single summary', () => {
+    const entries: UsageHistoryEntry[] = [
+      {
+        ...createEntry(12, 20),
+        sessionId: 'session-a',
+        timestamp: '2026-03-12T12:00:00.000Z',
+        inputTokens: 12,
+        outputTokens: 8,
+        totalTokens: 20,
+        costUsd: 0.01,
+      },
+      {
+        ...createEntry(12, 30),
+        sessionId: 'session-a',
+        timestamp: '2026-03-12T12:02:00.000Z',
+        inputTokens: 10,
+        outputTokens: 20,
+        totalTokens: 30,
+        costUsd: 0.02,
+      },
+    ];
+
+    const sessions = aggregateUsageSessions(entries);
+
+    expect(sessions).toHaveLength(1);
+    expect(sessions[0]?.sessionId).toBe('session-a');
+    expect(sessions[0]?.entries).toHaveLength(2);
+    expect(sessions[0]?.totalTokens).toBe(50);
+    expect(sessions[0]?.costUsd).toBeCloseTo(0.03);
+    expect(sessions[0]?.lastTimestamp).toBe('2026-03-12T12:02:00.000Z');
+  });
+
+  it('keeps identical session ids separated across agents', () => {
+    const entries: UsageHistoryEntry[] = [
+      {
+        ...createEntry(12, 20),
+        agentId: 'main',
+        sessionId: 'shared-session',
+      },
+      {
+        ...createEntry(12, 30),
+        agentId: 'reviewer',
+        sessionId: 'shared-session',
+      },
+    ];
+
+    const sessions = aggregateUsageSessions(entries);
+
+    expect(sessions).toHaveLength(2);
+    expect(sessions.map((session) => session.agentId).sort()).toEqual(['main', 'reviewer']);
+  });
+
+  it('matches session search against entry content and breakdown metadata', () => {
+    const [session] = aggregateUsageSessions([
+      {
+        ...createEntry(12, 20),
+        sessionId: 'session-with-content',
+        provider: 'openai',
+        content: 'Refactor usage dialog',
+      },
+    ]);
+
+    expect(session).toBeTruthy();
+    expect(matchesUsageSession(session!, 'dialog')).toBe(true);
+    expect(matchesUsageSession(session!, 'openai')).toBe(true);
+    expect(matchesUsageSession(session!, 'missing')).toBe(false);
   });
 });

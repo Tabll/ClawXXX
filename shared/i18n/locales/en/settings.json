@@ -28,6 +28,7 @@
     "exportJson": "Export JSON",
     "loading": "Loading token usage history...",
     "showing": "Showing {{shown}} of {{total}} records",
+    "showingSessions": "Showing {{shown}} of {{total}} sessions",
     "unknown": "Unknown",
     "searchPlaceholder": "Search model, provider, agent, session, or content",
     "emptyTitle": "No token usage history yet",
@@ -63,7 +64,7 @@
     },
     "charts": {
       "trendTitle": "Daily token trend",
-      "trendSubtitle": "Stacked by output, input, and cache tokens.",
+      "trendSubtitle": "Hover the curve to inspect daily token details.",
       "compositionTitle": "Token composition"
     },
     "breakdown": {
@@ -79,11 +80,41 @@
       "prev": "Previous",
       "next": "Next",
       "viewContent": "View content",
+      "viewDetails": "View details",
       "noUsage": "No usage data",
-      "usageParseError": "Usage parse error"
+      "usageParseError": "Usage parse error",
+      "calls": "Calls",
+      "updated": "Updated",
+      "mixedModels": "Mixed models"
     },
     "contentDialog": {
-      "title": "Transcript content"
+      "title": "Session usage details",
+      "calls": "Usage calls",
+      "dateRange": "Activity range",
+      "tokenComposition": "Token composition",
+      "modelBreakdown": "Model breakdown",
+      "providerBreakdown": "Provider breakdown",
+      "callTimeline": "Call timeline",
+      "contentExcerpts": "Content excerpts",
+      "noContent": "No content excerpt was captured for this session.",
+      "assistant": "Assistant",
+      "toolResult": "Tool result",
+      "statusAvailable": "Available",
+      "statusMissing": "Missing usage",
+      "statusError": "Parse error",
+      "sessionMeta": "Session",
+      "systemPromptBreakdown": "System prompt breakdown",
+      "systemPromptShare": "System prompt share",
+      "estimatedContext": "Estimated context",
+      "estimatedTokens": "estimated tokens",
+      "noContextData": "No system prompt breakdown was captured for this session.",
+      "system": "System prompt",
+      "systemShort": "System",
+      "skills": "Skills",
+      "tools": "Tools",
+      "files": "Files",
+      "ofInput": "of input",
+      "baseContextPerMessage": "Base context per message"
     }
   },
   "appearance": {

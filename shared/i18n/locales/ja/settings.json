@@ -28,6 +28,7 @@
     "exportJson": "JSON を書き出す",
     "loading": "Token 使用履歴を読み込み中...",
     "showing": "{{shown}} / {{total}} 件を表示",
+    "showingSessions": "{{shown}} / {{total}} セッションを表示",
     "unknown": "不明",
     "searchPlaceholder": "モデル、プロバイダー、Agent、セッション、内容を検索",
     "emptyTitle": "Token 使用履歴はまだありません",
@@ -63,7 +64,7 @@
     },
     "charts": {
       "trendTitle": "日別 Token 推移",
-      "trendSubtitle": "出力、入力、キャッシュ Token の積み上げ表示。",
+      "trendSubtitle": "曲線にホバーすると日別 Token の詳細を確認できます。",
       "compositionTitle": "Token 構成"
     },
     "breakdown": {
@@ -79,11 +80,41 @@
       "prev": "前へ",
       "next": "次へ",
       "viewContent": "内容を表示",
+      "viewDetails": "詳細を表示",
       "noUsage": "usage データなし",
-      "usageParseError": "Usage 解析エラー"
+      "usageParseError": "Usage 解析エラー",
+      "calls": "呼び出し",
+      "updated": "更新",
+      "mixedModels": "複数モデル"
     },
     "contentDialog": {
-      "title": "Transcript 内容"
+      "title": "セッション使用量の詳細",
+      "calls": "Usage 呼び出し",
+      "dateRange": "アクティビティ範囲",
+      "tokenComposition": "Token 構成",
+      "modelBreakdown": "モデル内訳",
+      "providerBreakdown": "プロバイダー内訳",
+      "callTimeline": "呼び出しタイムライン",
+      "contentExcerpts": "内容の抜粋",
+      "noContent": "このセッションには表示できる内容の抜粋がありません。",
+      "assistant": "Assistant",
+      "toolResult": "Tool result",
+      "statusAvailable": "利用可能",
+      "statusMissing": "usage なし",
+      "statusError": "解析エラー",
+      "sessionMeta": "セッション",
+      "systemPromptBreakdown": "システムプロンプト内訳",
+      "systemPromptShare": "システムプロンプト比率",
+      "estimatedContext": "推定コンテキスト",
+      "estimatedTokens": "推定 Token",
+      "noContextData": "このセッションにはシステムプロンプト内訳が記録されていません。",
+      "system": "システムプロンプト",
+      "systemShort": "システム",
+      "skills": "スキル",
+      "tools": "ツール",
+      "files": "ファイル",
+      "ofInput": "入力に占める割合",
+      "baseContextPerMessage": "メッセージごとの基本コンテキスト"
     }
   },
   "appearance": {

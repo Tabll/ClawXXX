@@ -28,6 +28,7 @@
     "exportJson": "导出 JSON",
     "loading": "正在加载 Token 使用历史...",
     "showing": "显示 {{shown}} / {{total}} 条记录",
+    "showingSessions": "显示 {{shown}} / {{total}} 个会话",
     "unknown": "未知",
     "searchPlaceholder": "搜索模型、供应商、Agent、会话或内容",
     "emptyTitle": "暂无 Token 使用历史",
@@ -63,7 +64,7 @@
     },
     "charts": {
       "trendTitle": "每日 Token 趋势",
-      "trendSubtitle": "按输出、输入与缓存 Token 堆叠展示。",
+      "trendSubtitle": "悬浮曲线查看每日 Token 明细。",
       "compositionTitle": "Token 构成"
     },
     "breakdown": {
@@ -79,11 +80,41 @@
       "prev": "上一页",
       "next": "下一页",
       "viewContent": "查看内容",
+      "viewDetails": "查看详情",
       "noUsage": "无 usage 数据",
-      "usageParseError": "Usage 解析异常"
+      "usageParseError": "Usage 解析异常",
+      "calls": "调用",
+      "updated": "更新",
+      "mixedModels": "多模型"
     },
     "contentDialog": {
-      "title": "Transcript 内容"
+      "title": "会话消耗详情",
+      "calls": "Usage 调用",
+      "dateRange": "活动范围",
+      "tokenComposition": "Token 构成",
+      "modelBreakdown": "模型拆分",
+      "providerBreakdown": "供应商拆分",
+      "callTimeline": "调用时间线",
+      "contentExcerpts": "内容片段",
+      "noContent": "该会话没有捕获到可展示的内容片段。",
+      "assistant": "Assistant",
+      "toolResult": "Tool result",
+      "statusAvailable": "可用",
+      "statusMissing": "缺少 usage",
+      "statusError": "解析异常",
+      "sessionMeta": "会话",
+      "systemPromptBreakdown": "系统提示词占比",
+      "systemPromptShare": "系统提示词占比",
+      "estimatedContext": "预估上下文",
+      "estimatedTokens": "预估 Token",
+      "noContextData": "该会话没有捕获到系统提示词拆分数据。",
+      "system": "系统提示词",
+      "systemShort": "系统",
+      "skills": "技能",
+      "tools": "工具",
+      "files": "文件",
+      "ofInput": "占输入",
+      "baseContextPerMessage": "每次消息的基础上下文"
     }
   },
   "appearance": {

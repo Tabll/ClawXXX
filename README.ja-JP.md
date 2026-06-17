@@ -126,7 +126,7 @@ Skills ページでは OpenClaw の複数ソース（管理ディレクトリ、
 ### 🔐 セキュアなプロバイダー統合
 複数のAIプロバイダー（OpenAI、Anthropicなど）に接続でき、資格情報はシステムのネイティブキーチェーンに安全に保存されます。OpenAI は API キーとブラウザ OAuth（Codex サブスクリプション）の両方に対応しています。
 **設定 → モデル** で、チャットモデルプロバイダー、画像生成、Embedding モデル設定をまとめて管理できます。画像生成設定では独立した OpenAI 互換の画像生成エンドポイント（Base URL、API キー、`gpt-image-2` などのモデル名）を使え、チャットは通常の Provider のまま継続できます。Embedding モデル設定は OpenClaw メモリ検索用の `agents.defaults.memorySearch` provider/model、OpenAI 互換 `/v1/embeddings` エンドポイント、ローカル GGUF オプションに加え、ソース、バッチ処理、マルチモーダル索引、ストレージ、検索ランキング、同期、キャッシュの高度な Memory Search パラメーターを書き込みます。
-**設定 → Token 使用量** では、ローカル transcript に基づく Token、コスト、モデル、プロバイダー、Agent、セッション使用量を簡潔なチャートで確認できます。
+**設定 → Token 使用量** では、ローカル transcript に基づく Token、コスト、モデル、プロバイダー、Agent、セッション使用量をインタラクティブなチャート、セッション単位の最近使用リスト、システムプロンプトのコンテキスト比率を含むセッション詳細ダイアログで確認できます。
 OpenAI-compatible ゲートウェイを **Custom プロバイダー** で使う場合、**設定 → モデル → Provider 編集** でカスタム `User-Agent` を設定でき、互換性が必要なエンドポイントで有効です。
 プロバイダーの編集や切り替え時、ClawX は `input: ["text", "image"]` など既存のモデル単位の能力メタデータを保持します。新しく選択した Custom プロバイダーのモデルには OpenClaw onboarding と同等の画像入力推論を適用し、不明なモデルはテキスト専用として扱います。
 互換ゲートウェイで `/models` が認証以外の理由で使えない場合、ClawX は API キー検証時に軽量な `/chat/completions` または `/responses` プローブへ自動フォールバックします。

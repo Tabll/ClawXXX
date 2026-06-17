@@ -28,6 +28,7 @@
     "exportJson": "Экспорт JSON",
     "loading": "Загрузка истории расхода токенов...",
     "showing": "Показано {{shown}} из {{total}} записей",
+    "showingSessions": "Показано {{shown}} из {{total}} сессий",
     "unknown": "Неизвестно",
     "searchPlaceholder": "Поиск по модели, провайдеру, агенту, сессии или содержимому",
     "emptyTitle": "Истории расхода токенов пока нет",
@@ -63,7 +64,7 @@
     },
     "charts": {
       "trendTitle": "Дневной тренд токенов",
-      "trendSubtitle": "Стек по токенам вывода, ввода и кэша.",
+      "trendSubtitle": "Наведите на кривую, чтобы увидеть детали дня.",
       "compositionTitle": "Состав токенов"
     },
     "breakdown": {
@@ -79,11 +80,41 @@
       "prev": "Назад",
       "next": "Далее",
       "viewContent": "Показать содержимое",
+      "viewDetails": "Показать детали",
       "noUsage": "Нет usage-данных",
-      "usageParseError": "Ошибка разбора usage"
+      "usageParseError": "Ошибка разбора usage",
+      "calls": "Вызовы",
+      "updated": "Обновлено",
+      "mixedModels": "Несколько моделей"
     },
     "contentDialog": {
-      "title": "Содержимое transcript"
+      "title": "Детали расхода сессии",
+      "calls": "Usage-вызовы",
+      "dateRange": "Период активности",
+      "tokenComposition": "Состав токенов",
+      "modelBreakdown": "Разбивка по моделям",
+      "providerBreakdown": "Разбивка по провайдерам",
+      "callTimeline": "Хронология вызовов",
+      "contentExcerpts": "Фрагменты содержимого",
+      "noContent": "Для этой сессии не сохранены фрагменты содержимого.",
+      "assistant": "Assistant",
+      "toolResult": "Tool result",
+      "statusAvailable": "Доступно",
+      "statusMissing": "Нет usage",
+      "statusError": "Ошибка разбора",
+      "sessionMeta": "Сессия",
+      "systemPromptBreakdown": "Разбивка системного промпта",
+      "systemPromptShare": "Доля системного промпта",
+      "estimatedContext": "Оценка контекста",
+      "estimatedTokens": "оценка токенов",
+      "noContextData": "Для этой сессии не сохранена разбивка системного промпта.",
+      "system": "Системный промпт",
+      "systemShort": "Система",
+      "skills": "Навыки",
+      "tools": "Инструменты",
+      "files": "Файлы",
+      "ofInput": "от ввода",
+      "baseContextPerMessage": "Базовый контекст на сообщение"
     }
   },
   "appearance": {

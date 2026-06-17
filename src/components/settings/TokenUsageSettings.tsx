@@ -3,10 +3,15 @@ import {
   BarChart3,
   ChevronLeft,
   ChevronRight,
+  Clock,
   Coins,
+  Cpu,
   Database,
   Download,
+  FileText,
+  Info,
   Layers3,
+  MessageSquare,
   RefreshCw,
   Search,
   Sigma,
@@ -18,17 +23,21 @@ import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
-import { useSettingsStore } from '@/stores/settings';
 import { hostApi } from '@/lib/host-api';
 import { trackUiEvent } from '@/lib/telemetry';
 import {
+  aggregateUsageSessions,
   filterUsageHistoryByWindow,
   groupUsageHistory,
+  matchesUsageSession,
   resolveStableUsageHistory,
   resolveVisibleUsageHistory,
   type UsageGroup,
   type UsageGroupBy,
+  type UsageContextWeightEntry,
   type UsageHistoryEntry,
+  type UsageSessionBreakdownItem,
+  type UsageSessionSummary,
   type UsageWindow,
 } from '@/lib/usage-history';
 import { cn } from '@/lib/utils';
@@ -39,6 +48,7 @@ const USAGE_FETCH_RETRY_DELAY_MS = 1500;
 const USAGE_AUTO_REFRESH_INTERVAL_MS = 15_000;
 const USAGE_PAGE_SIZE = 8;
 const HIDDEN_USAGE_MARKERS = ['gateway-injected', 'delivery-mirror'];
+const CONTEXT_TOKEN_CHAR_RATIO = 4;
 
 type FetchState = {
   status: 'idle' | 'loading' | 'done';
@@ -102,6 +112,15 @@ function formatUsd(value: number): string {
   }).format(value);
 }
 
+function estimateContextTokens(chars: number): number {
+  return Math.round(Math.max(0, chars) / CONTEXT_TOKEN_CHAR_RATIO);
+}
+
+function formatPercent(value: number): string {
+  if (!Number.isFinite(value)) return '0%';
+  return `${value >= 10 ? value.toFixed(0) : value.toFixed(1)}%`;
+}
+
 function formatUsageTimestamp(timestamp: string): string {
   const date = new Date(timestamp);
   if (Number.isNaN(date.getTime())) return timestamp;
@@ -142,7 +161,7 @@ function buildTotals(entries: UsageHistoryEntry[]): UsageTotals {
     totals.costUsd += typeof entry.costUsd === 'number' && Number.isFinite(entry.costUsd) ? entry.costUsd : 0;
     if (entry.usageStatus === 'missing') totals.missingEntries += 1;
     if (entry.usageStatus === 'error') totals.errorEntries += 1;
-    if (entry.sessionId) sessionIds.add(entry.sessionId);
+    if (entry.sessionId) sessionIds.add(`${entry.agentId || 'Unknown'}::${entry.sessionId}`);
     if (entry.model && !isHiddenUsageSource(entry.model)) models.add(entry.model);
     if (entry.provider && !isHiddenUsageSource(entry.provider)) providers.add(entry.provider);
   }
@@ -154,20 +173,8 @@ function buildTotals(entries: UsageHistoryEntry[]): UsageTotals {
   return totals;
 }
 
-function matchesQuery(entry: UsageHistoryEntry, query: string): boolean {
-  const normalizedQuery = query.trim().toLowerCase();
-  if (!normalizedQuery) return true;
-  return [
-    entry.model,
-    entry.provider,
-    entry.agentId,
-    entry.sessionId,
-    entry.content,
-  ].some((value) => value?.toLowerCase().includes(normalizedQuery));
-}
-
-function exportUsageJson(entries: UsageHistoryEntry[], fileName: string): void {
-  const blob = new Blob([JSON.stringify(entries, null, 2)], { type: 'application/json;charset=utf-8' });
+function exportUsageJson(data: unknown, fileName: string): void {
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json;charset=utf-8' });
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;
@@ -176,21 +183,8 @@ function exportUsageJson(entries: UsageHistoryEntry[], fileName: string): void {
   URL.revokeObjectURL(url);
 }
 
-function getUsageTotalClass(entry: UsageHistoryEntry): string {
-  if (entry.usageStatus === 'error') return 'text-sm font-semibold text-red-600 dark:text-red-400';
-  if (entry.usageStatus === 'missing') return 'text-sm font-semibold text-muted-foreground';
-  return 'text-sm font-semibold text-foreground';
-}
-
-function formatUsageTotal(entry: UsageHistoryEntry): string {
-  if (entry.usageStatus === 'error') return '!';
-  if (entry.usageStatus === 'missing') return '-';
-  return formatTokenCount(entry.totalTokens);
-}
-
 export function TokenUsageSettings() {
   const { t } = useTranslation(['settings', 'common']);
-  const devModeUnlocked = useSettingsStore((state) => state.devModeUnlocked);
   const usageFetchMaxAttempts = window.electron.platform === 'win32'
     ? WINDOWS_USAGE_FETCH_MAX_ATTEMPTS
     : DEFAULT_USAGE_FETCH_MAX_ATTEMPTS;
@@ -199,7 +193,7 @@ export function TokenUsageSettings() {
   const [usageGroupBy, setUsageGroupBy] = useState<UsageGroupBy>('model');
   const [query, setQuery] = useState('');
   const [usagePage, setUsagePage] = useState(1);
-  const [selectedUsageEntry, setSelectedUsageEntry] = useState<UsageHistoryEntry | null>(null);
+  const [selectedUsageSession, setSelectedUsageSession] = useState<UsageSessionSummary | null>(null);
   const [usageRefreshNonce, setUsageRefreshNonce] = useState(0);
 
   const [fetchState, dispatchFetch] = useReducer(
@@ -341,9 +335,17 @@ export function TokenUsageSettings() {
     () => filterUsageHistoryByWindow(visibleUsageHistory, usageWindow),
     [usageWindow, visibleUsageHistory],
   );
+  const windowedUsageSessions = useMemo(
+    () => aggregateUsageSessions(windowedUsageHistory),
+    [windowedUsageHistory],
+  );
+  const filteredUsageSessions = useMemo(
+    () => windowedUsageSessions.filter((session) => matchesUsageSession(session, query)),
+    [query, windowedUsageSessions],
+  );
   const filteredUsageHistory = useMemo(
-    () => windowedUsageHistory.filter((entry) => matchesQuery(entry, query)),
-    [query, windowedUsageHistory],
+    () => filteredUsageSessions.flatMap((session) => session.entries),
+    [filteredUsageSessions],
   );
   const usageGroups = useMemo(
     () => groupUsageHistory(filteredUsageHistory, usageGroupBy),
@@ -354,9 +356,9 @@ export function TokenUsageSettings() {
     [filteredUsageHistory],
   );
   const totals = useMemo(() => buildTotals(filteredUsageHistory), [filteredUsageHistory]);
-  const usageTotalPages = Math.max(1, Math.ceil(filteredUsageHistory.length / USAGE_PAGE_SIZE));
+  const usageTotalPages = Math.max(1, Math.ceil(filteredUsageSessions.length / USAGE_PAGE_SIZE));
   const safeUsagePage = Math.min(usagePage, usageTotalPages);
-  const pagedUsageHistory = filteredUsageHistory.slice(
+  const pagedUsageSessions = filteredUsageSessions.slice(
     (safeUsagePage - 1) * USAGE_PAGE_SIZE,
     safeUsagePage * USAGE_PAGE_SIZE,
   );
@@ -392,8 +394,14 @@ export function TokenUsageSettings() {
             variant="outline"
             size="sm"
             className="h-9 rounded-lg"
-            onClick={() => exportUsageJson(filteredUsageHistory, 'clawx-token-usage.json')}
-            disabled={filteredUsageHistory.length === 0}
+            onClick={() => exportUsageJson({
+              generatedAt: new Date().toISOString(),
+              window: usageWindow,
+              query,
+              totals,
+              sessions: filteredUsageSessions,
+            }, 'clawx-token-usage.json')}
+            disabled={filteredUsageSessions.length === 0}
           >
             <Download className="mr-2 h-4 w-4" />
             {t('tokenUsage.exportJson')}
@@ -455,7 +463,7 @@ export function TokenUsageSettings() {
         <p className="text-meta text-muted-foreground">
           {usageRefreshing
             ? t('tokenUsage.refreshing')
-            : t('tokenUsage.showing', { shown: filteredUsageHistory.length, total: windowedUsageHistory.length })}
+            : t('tokenUsage.showingSessions', { shown: filteredUsageSessions.length, total: windowedUsageSessions.length })}
         </p>
       </div>
 
@@ -466,7 +474,7 @@ export function TokenUsageSettings() {
         </div>
       ) : visibleUsageHistory.length === 0 ? (
         <EmptyUsageState title={t('tokenUsage.emptyTitle')} description={t('tokenUsage.emptyDescription')} />
-      ) : filteredUsageHistory.length === 0 ? (
+      ) : filteredUsageSessions.length === 0 ? (
         <EmptyUsageState title={t('tokenUsage.emptyFilteredTitle')} description={t('tokenUsage.emptyFilteredDescription')} />
       ) : (
         <>
@@ -496,6 +504,13 @@ export function TokenUsageSettings() {
               title={t('tokenUsage.charts.trendTitle')}
               subtitle={t('tokenUsage.charts.trendSubtitle')}
               emptyLabel={t('tokenUsage.emptyTitle')}
+              labels={{
+                total: t('tokenUsage.metrics.totalTokens'),
+                input: t('tokenUsage.metrics.input'),
+                output: t('tokenUsage.metrics.output'),
+                cache: t('tokenUsage.breakdown.cacheShort'),
+                cost: t('tokenUsage.metrics.cost'),
+              }}
             />
             <UsageCompositionCard
               totals={totals}
@@ -521,14 +536,13 @@ export function TokenUsageSettings() {
             unknownLabel={t('tokenUsage.unknown')}
           />
 
-          <UsageEntryList
-            entries={pagedUsageHistory}
+          <UsageSessionList
+            sessions={pagedUsageSessions}
             page={safeUsagePage}
             totalPages={usageTotalPages}
-            devModeUnlocked={devModeUnlocked}
             onPrev={() => setUsagePage((page) => Math.max(1, page - 1))}
             onNext={() => setUsagePage((page) => Math.min(usageTotalPages, page + 1))}
-            onSelect={setSelectedUsageEntry}
+            onSelect={setSelectedUsageSession}
             labels={{
               title: t('tokenUsage.entries.title'),
               page: t('tokenUsage.entries.page', { current: safeUsagePage, total: usageTotalPages }),
@@ -539,22 +553,60 @@ export function TokenUsageSettings() {
               cacheRead: t('tokenUsage.metrics.cacheRead'),
               cacheWrite: t('tokenUsage.metrics.cacheWrite'),
               cost: t('tokenUsage.metrics.cost'),
-              viewContent: t('tokenUsage.entries.viewContent'),
+              viewDetails: t('tokenUsage.entries.viewDetails'),
               noUsage: t('tokenUsage.entries.noUsage'),
               usageParseError: t('tokenUsage.entries.usageParseError'),
               unknown: t('tokenUsage.unknown'),
+              calls: t('tokenUsage.entries.calls'),
+              updated: t('tokenUsage.entries.updated'),
+              mixedModels: t('tokenUsage.entries.mixedModels'),
             }}
           />
         </>
       )}
 
-      {devModeUnlocked && selectedUsageEntry && (
-        <UsageContentPopup
-          entry={selectedUsageEntry}
-          onClose={() => setSelectedUsageEntry(null)}
+      {selectedUsageSession && (
+        <UsageSessionDetailDialog
+          session={selectedUsageSession}
+          onClose={() => setSelectedUsageSession(null)}
           title={t('tokenUsage.contentDialog.title')}
           closeLabel={t('common:actions.close')}
-          unknownLabel={t('tokenUsage.unknown')}
+          labels={{
+            unknown: t('tokenUsage.unknown'),
+            totalTokens: t('tokenUsage.metrics.totalTokens'),
+            cost: t('tokenUsage.metrics.cost'),
+            calls: t('tokenUsage.contentDialog.calls'),
+            dateRange: t('tokenUsage.contentDialog.dateRange'),
+            tokenComposition: t('tokenUsage.contentDialog.tokenComposition'),
+            modelBreakdown: t('tokenUsage.contentDialog.modelBreakdown'),
+            providerBreakdown: t('tokenUsage.contentDialog.providerBreakdown'),
+            callTimeline: t('tokenUsage.contentDialog.callTimeline'),
+            contentExcerpts: t('tokenUsage.contentDialog.contentExcerpts'),
+            noContent: t('tokenUsage.contentDialog.noContent'),
+            assistant: t('tokenUsage.contentDialog.assistant'),
+            toolResult: t('tokenUsage.contentDialog.toolResult'),
+            input: t('tokenUsage.metrics.input'),
+            output: t('tokenUsage.metrics.output'),
+            cacheRead: t('tokenUsage.metrics.cacheRead'),
+            cacheWrite: t('tokenUsage.metrics.cacheWrite'),
+            statusAvailable: t('tokenUsage.contentDialog.statusAvailable'),
+            statusMissing: t('tokenUsage.contentDialog.statusMissing'),
+            statusError: t('tokenUsage.contentDialog.statusError'),
+            sessionMeta: t('tokenUsage.contentDialog.sessionMeta'),
+            entries: t('tokenUsage.metrics.entries'),
+            systemPromptBreakdown: t('tokenUsage.contentDialog.systemPromptBreakdown'),
+            systemPromptShare: t('tokenUsage.contentDialog.systemPromptShare'),
+            estimatedContext: t('tokenUsage.contentDialog.estimatedContext'),
+            estimatedTokens: t('tokenUsage.contentDialog.estimatedTokens'),
+            noContextData: t('tokenUsage.contentDialog.noContextData'),
+            system: t('tokenUsage.contentDialog.system'),
+            systemShort: t('tokenUsage.contentDialog.systemShort'),
+            skills: t('tokenUsage.contentDialog.skills'),
+            tools: t('tokenUsage.contentDialog.tools'),
+            files: t('tokenUsage.contentDialog.files'),
+            ofInput: t('tokenUsage.contentDialog.ofInput'),
+            baseContextPerMessage: t('tokenUsage.contentDialog.baseContextPerMessage'),
+          }}
         />
       )}
     </div>
@@ -677,95 +729,218 @@ function UsageTrendChart({
   title,
   subtitle,
   emptyLabel,
+  labels,
 }: {
   groups: UsageGroup[];
   title: string;
   subtitle: string;
   emptyLabel: string;
+  labels: Record<string, string>;
 }) {
+  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
   const width = 720;
   const height = 260;
-  const padding = { top: 20, right: 18, bottom: 36, left: 18 };
+  const padding = { top: 22, right: 26, bottom: 38, left: 34 };
   const chartWidth = width - padding.left - padding.right;
   const chartHeight = height - padding.top - padding.bottom;
   const maxTokens = Math.max(...groups.map((group) => group.totalTokens), 1);
-  const barGap = 6;
-  const barWidth = groups.length > 0
-    ? Math.max(8, (chartWidth - barGap * Math.max(groups.length - 1, 0)) / groups.length)
-    : 0;
+  const yBase = padding.top + chartHeight;
+  const points = groups.map((group, index) => {
+    const x = groups.length === 1
+      ? padding.left + chartWidth / 2
+      : padding.left + (index / Math.max(groups.length - 1, 1)) * chartWidth;
+    const y = padding.top + chartHeight - (group.totalTokens / maxTokens) * chartHeight;
+    return { x, y, group };
+  });
+  const linePath = points.length === 0
+    ? ''
+    : points.length === 1
+      ? `M ${points[0].x} ${points[0].y}`
+      : points.reduce((path, point, index) => {
+        if (index === 0) return `M ${point.x} ${point.y}`;
+        const previous = points[index - 1];
+        const controlX = (previous.x + point.x) / 2;
+        return `${path} C ${controlX} ${previous.y}, ${controlX} ${point.y}, ${point.x} ${point.y}`;
+      }, '');
+  const areaPath = points.length === 0
+    ? ''
+    : points.length === 1
+      ? `M ${points[0].x} ${points[0].y} L ${points[0].x} ${yBase} Z`
+      : `${linePath} L ${points[points.length - 1].x} ${yBase} L ${points[0].x} ${yBase} Z`;
+  const hoveredPoint = hoveredIndex === null ? null : points[hoveredIndex];
+  const tooltipAlignClass = hoveredIndex === 0
+    ? 'translate-x-0'
+    : hoveredIndex === points.length - 1
+      ? '-translate-x-full'
+      : '-translate-x-1/2';
+  const tooltipVerticalClass = hoveredPoint && hoveredPoint.y < 92
+    ? 'translate-y-3'
+    : '-translate-y-[calc(100%+10px)]';
 
   return (
-    <div className="rounded-lg border border-border/65 bg-surface-modal/90 p-5 shadow-sm shadow-black/5 dark:shadow-black/20">
+    <div
+      className="rounded-lg border border-border/65 bg-surface-modal/90 p-5 shadow-sm shadow-black/5 dark:shadow-black/20"
+      data-testid="token-usage-trend-chart"
+    >
       <div className="mb-4 flex items-start justify-between gap-3">
         <div>
           <p className="text-sm font-semibold text-foreground">{title}</p>
           <p className="mt-1 text-meta text-muted-foreground">{subtitle}</p>
         </div>
-        <BarChart3 className="h-5 w-5 text-muted-foreground" />
+        <TrendingUp className="h-5 w-5 text-muted-foreground" />
       </div>
       {groups.length === 0 ? (
         <div className="flex h-56 items-center justify-center rounded-lg border border-dashed border-border/60 text-meta text-muted-foreground">
           {emptyLabel}
         </div>
       ) : (
-        <svg viewBox={`0 0 ${width} ${height}`} className="h-64 w-full overflow-visible" role="img">
-          <defs>
-            <linearGradient id="usageInputGradient" x1="0" x2="0" y1="1" y2="0">
-              <stop offset="0%" stopColor="hsl(var(--usage-input))" stopOpacity="0.74" />
-              <stop offset="100%" stopColor="hsl(var(--usage-input))" stopOpacity="1" />
-            </linearGradient>
-            <linearGradient id="usageOutputGradient" x1="0" x2="0" y1="1" y2="0">
-              <stop offset="0%" stopColor="hsl(var(--usage-output))" stopOpacity="0.72" />
-              <stop offset="100%" stopColor="hsl(var(--usage-output))" stopOpacity="1" />
-            </linearGradient>
-            <linearGradient id="usageCacheGradient" x1="0" x2="0" y1="1" y2="0">
-              <stop offset="0%" stopColor="hsl(var(--usage-cache))" stopOpacity="0.68" />
-              <stop offset="100%" stopColor="hsl(var(--usage-cache))" stopOpacity="1" />
-            </linearGradient>
-          </defs>
-          {[0, 0.25, 0.5, 0.75, 1].map((tick) => {
-            const y = padding.top + chartHeight - chartHeight * tick;
-            return (
-              <line
-                key={tick}
-                x1={padding.left}
-                x2={width - padding.right}
-                y1={y}
-                y2={y}
-                stroke="hsl(var(--border))"
-                strokeOpacity="0.42"
-              />
-            );
-          })}
-          {groups.map((group, index) => {
-            const x = padding.left + index * (barWidth + barGap);
-            const totalHeight = (group.totalTokens / maxTokens) * chartHeight;
-            const inputHeight = group.totalTokens > 0 ? (group.inputTokens / group.totalTokens) * totalHeight : 0;
-            const outputHeight = group.totalTokens > 0 ? (group.outputTokens / group.totalTokens) * totalHeight : 0;
-            const cacheHeight = group.totalTokens > 0 ? (group.cacheTokens / group.totalTokens) * totalHeight : 0;
-            const yBase = padding.top + chartHeight;
-            const yCache = yBase - cacheHeight;
-            const yInput = yCache - inputHeight;
-            const yOutput = yInput - outputHeight;
-            return (
-              <g key={`${group.label}-${index}`}>
-                <title>{`${group.label}: ${formatTokenCount(group.totalTokens)}`}</title>
-                <rect x={x} y={yOutput} width={barWidth} height={outputHeight} rx="3" fill="url(#usageOutputGradient)" />
-                <rect x={x} y={yInput} width={barWidth} height={inputHeight} rx="3" fill="url(#usageInputGradient)" />
-                <rect x={x} y={yCache} width={barWidth} height={cacheHeight} rx="3" fill="url(#usageCacheGradient)" />
-                <text
-                  x={x + barWidth / 2}
-                  y={height - 14}
-                  textAnchor="middle"
-                  fill="hsl(var(--muted-foreground))"
-                  fontSize="11"
-                >
-                  {groups.length <= 12 || index % Math.ceil(groups.length / 8) === 0 ? group.label : ''}
-                </text>
+        <div className="relative" onMouseLeave={() => setHoveredIndex(null)}>
+          <svg viewBox={`0 0 ${width} ${height}`} className="h-64 w-full overflow-visible" role="img" aria-label={title}>
+            <defs>
+              <linearGradient id="usageTrendAreaGradient" x1="0" x2="0" y1="0" y2="1">
+                <stop offset="0%" stopColor="hsl(var(--usage-input))" stopOpacity="0.22" />
+                <stop offset="58%" stopColor="hsl(var(--usage-input))" stopOpacity="0.08" />
+                <stop offset="100%" stopColor="hsl(var(--usage-input))" stopOpacity="0.01" />
+              </linearGradient>
+              <linearGradient id="usageTrendLineGradient" x1="0" x2="1" y1="0" y2="0">
+                <stop offset="0%" stopColor="hsl(var(--usage-input))" stopOpacity="0.74" />
+                <stop offset="48%" stopColor="hsl(var(--usage-input))" stopOpacity="0.96" />
+                <stop offset="100%" stopColor="hsl(var(--usage-input))" stopOpacity="0.78" />
+              </linearGradient>
+            </defs>
+            {[0, 0.25, 0.5, 0.75, 1].map((tick) => {
+              const y = padding.top + chartHeight - chartHeight * tick;
+              const tickValue = Math.round(maxTokens * tick);
+              return (
+                <g key={tick}>
+                  <line
+                    x1={padding.left}
+                    x2={width - padding.right}
+                    y1={y}
+                    y2={y}
+                    stroke="hsl(var(--border))"
+                    strokeOpacity="0.36"
+                  />
+                  {(tick === 0 || tick === 1) && (
+                    <text
+                      x={padding.left}
+                      y={y - 6}
+                      fill="hsl(var(--muted-foreground))"
+                      fontSize="10"
+                    >
+                      {formatCompactNumber(tickValue)}
+                    </text>
+                  )}
+                </g>
+              );
+            })}
+            <path d={areaPath} fill="url(#usageTrendAreaGradient)" />
+            <path
+              d={linePath}
+              fill="none"
+              stroke="url(#usageTrendLineGradient)"
+              strokeWidth="2.75"
+              strokeLinecap="round"
+            />
+            {hoveredPoint && (
+              <g>
+                <line
+                  x1={hoveredPoint.x}
+                  x2={hoveredPoint.x}
+                  y1={padding.top}
+                  y2={yBase}
+                  stroke="hsl(var(--usage-input))"
+                  strokeDasharray="4 5"
+                  strokeOpacity="0.48"
+                />
+                <circle
+                  cx={hoveredPoint.x}
+                  cy={hoveredPoint.y}
+                  r="7"
+                  fill="hsl(var(--background))"
+                  stroke="hsl(var(--usage-input))"
+                  strokeWidth="3"
+                />
+                <circle cx={hoveredPoint.x} cy={hoveredPoint.y} r="3.5" fill="hsl(var(--usage-input))" />
               </g>
-            );
-          })}
-        </svg>
+            )}
+            {points.map((point, index) => {
+              const hotspotWidth = groups.length === 1 ? chartWidth : chartWidth / Math.max(groups.length - 1, 1);
+              const hotspotX = groups.length === 1
+                ? padding.left
+                : Math.max(padding.left, point.x - hotspotWidth / 2);
+              const boundedWidth = groups.length === 1
+                ? chartWidth
+                : Math.min(hotspotWidth, width - padding.right - hotspotX);
+              return (
+                <g key={`${point.group.label}-${index}`}>
+                  <rect
+                    x={hotspotX}
+                    y={padding.top}
+                    width={boundedWidth}
+                    height={chartHeight}
+                    fill="transparent"
+                    onMouseEnter={() => setHoveredIndex(index)}
+                    onFocus={() => setHoveredIndex(index)}
+                    tabIndex={0}
+                    data-testid="token-usage-trend-hotspot"
+                    data-day={point.group.label}
+                  />
+                  <text
+                    x={point.x}
+                    y={height - 14}
+                    textAnchor="middle"
+                    fill="hsl(var(--muted-foreground))"
+                    fontSize="11"
+                  >
+                    {groups.length <= 12 || index % Math.ceil(groups.length / 8) === 0 ? point.group.label : ''}
+                  </text>
+                </g>
+              );
+            })}
+          </svg>
+          {hoveredPoint && (
+            <div
+              data-testid="token-usage-trend-tooltip"
+              className={cn(
+                'pointer-events-none absolute z-10 w-56 rounded-lg border border-border/70 bg-background/95 p-3 shadow-xl shadow-black/10 backdrop-blur dark:shadow-black/35',
+                tooltipAlignClass,
+                tooltipVerticalClass,
+              )}
+              style={{
+                left: `${(hoveredPoint.x / width) * 100}%`,
+                top: `${(hoveredPoint.y / height) * 100}%`,
+              }}
+            >
+              <div className="mb-2 flex items-start justify-between gap-3">
+                <p className="text-sm font-semibold text-foreground">{hoveredPoint.group.label}</p>
+                <p className="text-meta font-semibold text-usage-input">{formatCompactNumber(hoveredPoint.group.totalTokens)}</p>
+              </div>
+              <div className="space-y-1.5 text-tiny font-medium text-muted-foreground">
+                <div className="flex justify-between gap-3">
+                  <span>{labels.total}</span>
+                  <span className="text-foreground">{formatTokenCount(hoveredPoint.group.totalTokens)}</span>
+                </div>
+                <div className="flex justify-between gap-3">
+                  <span>{labels.input}</span>
+                  <span className="text-foreground">{formatTokenCount(hoveredPoint.group.inputTokens)}</span>
+                </div>
+                <div className="flex justify-between gap-3">
+                  <span>{labels.output}</span>
+                  <span className="text-foreground">{formatTokenCount(hoveredPoint.group.outputTokens)}</span>
+                </div>
+                <div className="flex justify-between gap-3">
+                  <span>{labels.cache}</span>
+                  <span className="text-foreground">{formatTokenCount(hoveredPoint.group.cacheTokens)}</span>
+                </div>
+                <div className="flex justify-between gap-3 border-t border-border/55 pt-1.5">
+                  <span>{labels.cost}</span>
+                  <span className="text-foreground">{formatUsd(hoveredPoint.group.costUsd)}</span>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
       )}
     </div>
   );
@@ -875,23 +1050,21 @@ function UsageBreakdown({
   );
 }
 
-function UsageEntryList({
-  entries,
+function UsageSessionList({
+  sessions,
   page,
   totalPages,
-  devModeUnlocked,
   onPrev,
   onNext,
   onSelect,
   labels,
 }: {
-  entries: UsageHistoryEntry[];
+  sessions: UsageSessionSummary[];
   page: number;
   totalPages: number;
-  devModeUnlocked: boolean;
   onPrev: () => void;
   onNext: () => void;
-  onSelect: (entry: UsageHistoryEntry) => void;
+  onSelect: (session: UsageSessionSummary) => void;
   labels: Record<string, string>;
 }) {
   return (
@@ -900,58 +1073,72 @@ function UsageEntryList({
         <p className="text-sm font-semibold text-foreground">{labels.title}</p>
         <p className="text-meta font-medium text-muted-foreground">{labels.page}</p>
       </div>
-      <div className="space-y-2">
-        {entries.map((entry) => (
-          <div
-            key={`${entry.sessionId}-${entry.timestamp}`}
-            data-testid="token-usage-entry"
-            className="rounded-lg border border-border/65 bg-surface-modal/90 p-4 shadow-sm shadow-black/5 transition-colors hover:border-border/85 hover:bg-surface-modal dark:shadow-black/20"
-          >
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <p className="truncate text-sm font-semibold text-foreground">
-                  {entry.model || labels.unknown}
-                </p>
-                <p className="mt-0.5 truncate text-meta text-muted-foreground">
-                  {[formatUsageSource(entry.provider), formatUsageSource(entry.agentId), entry.sessionId].filter(Boolean).join(' - ')}
-                </p>
-              </div>
-              <div className="shrink-0 text-right">
-                <p className={getUsageTotalClass(entry)}>{formatUsageTotal(entry)}</p>
-                <p className="mt-0.5 text-tiny text-muted-foreground">{formatUsageTimestamp(entry.timestamp)}</p>
+      <div className="space-y-2.5">
+        {sessions.map((session) => {
+          const modelLabel = session.models.length > 1
+            ? `${session.model || labels.unknown} +${session.models.length - 1}`
+            : session.model || labels.unknown;
+          const sourceLine = [
+            formatUsageSource(session.provider),
+            formatUsageSource(session.agentId),
+            session.sessionId,
+          ].filter(Boolean).join(' - ');
+          const hasIssue = session.missingEntries > 0 || session.errorEntries > 0;
+
+          return (
+            <div
+              key={session.id}
+              data-testid="token-usage-entry"
+              className="rounded-lg border border-border/65 bg-surface-modal/90 p-4 shadow-sm shadow-black/5 transition-colors hover:border-ring/45 hover:bg-surface-modal dark:shadow-black/20"
+            >
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                <div className="min-w-0 flex-1">
+                  <div className="flex min-w-0 flex-wrap items-center gap-2">
+                    <p className="min-w-0 truncate text-sm font-semibold text-foreground">{modelLabel}</p>
+                    {session.models.length > 1 && (
+                      <span className="rounded-md bg-black/5 px-2 py-0.5 text-tiny font-medium text-muted-foreground dark:bg-white/10">
+                        {labels.mixedModels}
+                      </span>
+                    )}
+                    {hasIssue && (
+                      <span className="rounded-md bg-amber-500/10 px-2 py-0.5 text-tiny font-medium text-amber-700 dark:text-amber-400">
+                        {session.errorEntries > 0 ? labels.usageParseError : labels.noUsage}
+                      </span>
+                    )}
+                  </div>
+                  <p className="mt-1 truncate text-meta text-muted-foreground">{sourceLine}</p>
+                  <SessionTokenBar session={session} className="mt-3" />
+                  <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1.5 text-meta font-medium text-muted-foreground">
+                    <span>{labels.input}: {formatTokenCount(session.inputTokens)}</span>
+                    <span>{labels.output}: {formatTokenCount(session.outputTokens)}</span>
+                    <span>{labels.cacheRead}: {formatTokenCount(session.cacheReadTokens)}</span>
+                    <span>{labels.cacheWrite}: {formatTokenCount(session.cacheWriteTokens)}</span>
+                    <span>{labels.calls}: {formatTokenCount(session.entries.length)}</span>
+                  </div>
+                </div>
+                <div className="flex shrink-0 items-end justify-between gap-4 lg:flex-col lg:items-end">
+                  <div className="text-left lg:text-right">
+                    <p className="text-base font-semibold text-foreground">{formatTokenCount(session.totalTokens)}</p>
+                    <p className="mt-0.5 text-tiny text-muted-foreground">
+                      {labels.updated}: {formatUsageTimestamp(session.lastTimestamp)}
+                    </p>
+                    <p className="mt-1 text-tiny font-medium text-muted-foreground">{labels.cost}: {formatUsd(session.costUsd)}</p>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-8 rounded-lg px-3 text-meta"
+                    onClick={() => onSelect(session)}
+                    data-testid="token-usage-session-details"
+                  >
+                    <Info className="mr-1.5 h-3.5 w-3.5" />
+                    {labels.viewDetails}
+                  </Button>
+                </div>
               </div>
             </div>
-            <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-meta font-medium text-muted-foreground">
-              {entry.usageStatus === 'available' || entry.usageStatus === undefined ? (
-                <>
-                  <span>{labels.input}: {formatTokenCount(entry.inputTokens)}</span>
-                  <span>{labels.output}: {formatTokenCount(entry.outputTokens)}</span>
-                  <span>{labels.cacheRead}: {formatTokenCount(entry.cacheReadTokens)}</span>
-                  <span>{labels.cacheWrite}: {formatTokenCount(entry.cacheWriteTokens)}</span>
-                </>
-              ) : (
-                <span>
-                  {entry.usageStatus === 'missing' ? labels.noUsage : labels.usageParseError}
-                </span>
-              )}
-              {typeof entry.costUsd === 'number' && Number.isFinite(entry.costUsd) && (
-                <span className="rounded-md bg-surface-input/70 px-2 py-0.5 text-foreground/85">
-                  {labels.cost}: {formatUsd(entry.costUsd)}
-                </span>
-              )}
-              {devModeUnlocked && entry.content && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="ml-auto h-7 rounded-lg px-2.5 text-tiny"
-                  onClick={() => onSelect(entry)}
-                >
-                  {labels.viewContent}
-                </Button>
-              )}
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
       <div className="flex items-center justify-end gap-2 pt-1">
         <Button variant="outline" size="sm" className="h-8 rounded-lg" onClick={onPrev} disabled={page <= 1}>
@@ -967,52 +1154,505 @@ function UsageEntryList({
   );
 }
 
-function UsageContentPopup({
-  entry,
+function SessionTokenBar({ session, className }: { session: UsageSessionSummary; className?: string }) {
+  const total = Math.max(session.totalTokens, 1);
+  const segments = [
+    { key: 'output', value: session.outputTokens, className: 'bg-usage-output' },
+    { key: 'input', value: session.inputTokens, className: 'bg-usage-input' },
+    { key: 'cacheWrite', value: session.cacheWriteTokens, className: 'bg-indigo-500' },
+    { key: 'cacheRead', value: session.cacheReadTokens, className: 'bg-usage-cache' },
+  ];
+
+  return (
+    <div className={cn('h-2 overflow-hidden rounded-full bg-surface-input/75', className)}>
+      <div className="flex h-full">
+        {segments.map((segment) => (
+          segment.value > 0 ? (
+            <div
+              key={segment.key}
+              className={segment.className}
+              style={{ width: `${Math.max((segment.value / total) * 100, 2)}%` }}
+            />
+          ) : null
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function UsageSessionDetailDialog({
+  session,
   onClose,
   title,
   closeLabel,
-  unknownLabel,
+  labels,
 }: {
-  entry: UsageHistoryEntry;
+  session: UsageSessionSummary;
   onClose: () => void;
   title: string;
   closeLabel: string;
-  unknownLabel: string;
+  labels: Record<string, string>;
 }) {
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onClose]);
+
+  const dateRange = session.firstTimestamp === session.lastTimestamp
+    ? formatUsageTimestamp(session.lastTimestamp)
+    : `${formatUsageTimestamp(session.firstTimestamp)} - ${formatUsageTimestamp(session.lastTimestamp)}`;
+  const contentEntries = session.entries.filter((entry) => entry.content?.trim());
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4" role="dialog" aria-modal="true">
-      <div className="w-full max-w-3xl rounded-lg border border-border/80 bg-background shadow-xl">
-        <div className="flex items-start justify-between gap-3 border-b border-border/80 px-5 py-4">
-          <div className="min-w-0">
-            <p className="text-sm font-semibold text-foreground">{title}</p>
-            <p className="mt-0.5 truncate text-xs text-muted-foreground">
-              {(entry.model || unknownLabel)} - {formatUsageTimestamp(entry.timestamp)}
-            </p>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 px-4 py-6 backdrop-blur-sm"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="token-usage-session-dialog-title"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
+      <div
+        data-testid="token-usage-session-dialog"
+        className="flex max-h-[88vh] w-full max-w-6xl flex-col overflow-hidden rounded-xl border border-border/80 bg-background shadow-2xl shadow-black/20"
+      >
+        <div className="border-b border-border/70 bg-surface-modal/80 px-5 py-4">
+          <div className="flex items-start justify-between gap-4">
+            <div className="min-w-0">
+              <p id="token-usage-session-dialog-title" className="text-base font-semibold text-foreground">{title}</p>
+              <p className="mt-1 truncate text-meta text-muted-foreground">
+                {labels.sessionMeta}: {[session.model || labels.unknown, session.provider || labels.unknown, session.agentId].filter(Boolean).join(' - ')}
+              </p>
+              <p className="mt-0.5 truncate text-tiny text-muted-foreground">{session.sessionId}</p>
+            </div>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 rounded-lg"
+              onClick={onClose}
+              aria-label={closeLabel}
+            >
+              <X className="h-4 w-4" />
+            </Button>
           </div>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8 rounded-lg"
-            onClick={onClose}
-            aria-label={closeLabel}
-          >
-            <X className="h-4 w-4" />
-          </Button>
         </div>
-        <div className="max-h-[65vh] overflow-y-auto px-5 py-4">
-          <pre className="whitespace-pre-wrap break-words font-mono text-sm text-foreground">
-            {entry.content}
-          </pre>
+
+        <div className="flex-1 overflow-y-auto px-5 py-5">
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <DetailMetricCard
+              icon={Sigma}
+              label={labels.totalTokens}
+              value={formatTokenCount(session.totalTokens)}
+              detail={`${labels.entries}: ${formatTokenCount(session.entries.length)}`}
+              className="from-cyan-500/18 via-blue-500/10 to-transparent"
+            />
+            <DetailMetricCard
+              icon={Coins}
+              label={labels.cost}
+              value={formatUsd(session.costUsd)}
+              detail={`${labels.calls}: ${formatTokenCount(session.availableEntries)}`}
+              className="from-emerald-500/18 via-teal-500/10 to-transparent"
+            />
+            <DetailMetricCard
+              icon={Cpu}
+              label={labels.modelBreakdown}
+              value={formatTokenCount(session.models.length)}
+              detail={session.models.map((item) => item.label).slice(0, 3).join(' - ') || labels.unknown}
+              className="from-violet-500/16 via-fuchsia-500/10 to-transparent"
+            />
+            <DetailMetricCard
+              icon={Clock}
+              label={labels.dateRange}
+              value={formatUsageTimestamp(session.lastTimestamp)}
+              detail={dateRange}
+              className="from-amber-500/18 via-orange-500/10 to-transparent"
+            />
+          </div>
+
+          <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1.1fr)_minmax(320px,0.9fr)]">
+            <TokenCompositionDetail session={session} title={labels.tokenComposition} labels={labels} />
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-1">
+              <UsageBreakdownPanel title={labels.modelBreakdown} items={session.models} />
+              <UsageBreakdownPanel title={labels.providerBreakdown} items={session.providers} />
+            </div>
+          </div>
+
+          <ContextWeightDetail session={session} labels={labels} />
+
+          <UsageCallTimeline session={session} labels={labels} />
+
+          <div className="mt-4 rounded-lg border border-border/65 bg-surface-modal/80 p-4">
+            <div className="mb-3 flex items-center gap-2">
+              <FileText className="h-4 w-4 text-muted-foreground" />
+              <p className="text-sm font-semibold text-foreground">{labels.contentExcerpts}</p>
+            </div>
+            {contentEntries.length === 0 ? (
+              <div className="rounded-lg border border-dashed border-border/60 bg-surface-input/55 px-4 py-8 text-center text-meta text-muted-foreground">
+                {labels.noContent}
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {contentEntries.map((entry, index) => (
+                  <div
+                    key={`${entry.timestamp}-${index}`}
+                    className="rounded-lg border border-border/55 bg-background/55 p-3"
+                  >
+                    <div className="mb-2 flex flex-wrap items-center gap-2 text-tiny font-medium text-muted-foreground">
+                      <span>{getUsageRecordKindLabel(entry, labels)}</span>
+                      <span>{formatUsageTimestamp(entry.timestamp)}</span>
+                      <span>{entry.model || labels.unknown}</span>
+                    </div>
+                    <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-words font-mono text-[12px] leading-relaxed text-foreground">
+                      {entry.content}
+                    </pre>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
-        <div className="flex justify-end border-t border-border/80 px-5 py-3">
-          <Button variant="outline" onClick={onClose}>
+
+        <div className="flex justify-end border-t border-border/70 bg-surface-modal/75 px-5 py-3">
+          <Button variant="outline" className="h-9 rounded-lg" onClick={onClose}>
             {closeLabel}
           </Button>
         </div>
       </div>
     </div>
   );
+}
+
+function DetailMetricCard({
+  icon: Icon,
+  label,
+  value,
+  detail,
+  className,
+}: {
+  icon: typeof Sigma;
+  label: string;
+  value: string;
+  detail: string;
+  className: string;
+}) {
+  return (
+    <div className={cn('rounded-lg border border-border/60 bg-surface-modal/90 bg-gradient-to-br p-4 shadow-sm shadow-black/5', className)}>
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <p className="truncate text-meta font-medium text-muted-foreground">{label}</p>
+        <Icon className="h-4 w-4 text-muted-foreground" />
+      </div>
+      <p className="truncate text-xl font-semibold text-foreground">{value}</p>
+      <p className="mt-1 truncate text-tiny font-medium text-muted-foreground">{detail}</p>
+    </div>
+  );
+}
+
+function TokenCompositionDetail({
+  session,
+  title,
+  labels,
+}: {
+  session: UsageSessionSummary;
+  title: string;
+  labels: Record<string, string>;
+}) {
+  const rows = [
+    { key: 'output', label: labels.output, value: session.outputTokens, className: 'bg-usage-output' },
+    { key: 'input', label: labels.input, value: session.inputTokens, className: 'bg-usage-input' },
+    { key: 'cacheWrite', label: labels.cacheWrite, value: session.cacheWriteTokens, className: 'bg-indigo-500' },
+    { key: 'cacheRead', label: labels.cacheRead, value: session.cacheReadTokens, className: 'bg-usage-cache' },
+  ];
+
+  return (
+    <div className="rounded-lg border border-border/65 bg-surface-modal/80 p-4">
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <p className="text-sm font-semibold text-foreground">{title}</p>
+        <p className="text-meta font-semibold text-muted-foreground">{formatTokenCount(session.totalTokens)}</p>
+      </div>
+      <SessionTokenBar session={session} className="h-3" />
+      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+        {rows.map((row) => (
+          <div key={row.key} className="rounded-lg border border-border/50 bg-background/50 p-3">
+            <div className="mb-2 flex items-center justify-between gap-3 text-meta">
+              <span className="flex items-center gap-2 text-muted-foreground">
+                <span className={cn('h-2.5 w-2.5 rounded-full', row.className)} />
+                {row.label}
+              </span>
+              <span className="font-semibold text-foreground">{formatTokenCount(row.value)}</span>
+            </div>
+            <div className="h-1.5 overflow-hidden rounded-full bg-surface-input/70">
+              <div
+                className={cn('h-full rounded-full', row.className)}
+                style={{ width: `${row.value > 0 ? Math.max((row.value / Math.max(session.totalTokens, 1)) * 100, 2) : 0}%` }}
+              />
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function UsageBreakdownPanel({ title, items }: { title: string; items: UsageSessionBreakdownItem[] }) {
+  const maxTokens = Math.max(...items.map((item) => item.totalTokens), 1);
+  return (
+    <div className="rounded-lg border border-border/65 bg-surface-modal/80 p-4">
+      <p className="mb-3 text-sm font-semibold text-foreground">{title}</p>
+      <div className="max-h-64 space-y-3 overflow-y-auto pr-1">
+        {items.map((item) => (
+          <div key={item.label} className="space-y-1.5">
+            <div className="flex items-center justify-between gap-3 text-meta">
+              <span className="truncate font-medium text-foreground">{item.label}</span>
+              <span className="shrink-0 font-semibold text-muted-foreground">{formatCompactNumber(item.totalTokens)}</span>
+            </div>
+            <div className="h-2 overflow-hidden rounded-full bg-surface-input/70">
+              <div
+                className="h-full rounded-full bg-[linear-gradient(90deg,hsl(var(--usage-output)),hsl(var(--usage-input)),hsl(var(--usage-cache)))]"
+                style={{ width: `${item.totalTokens > 0 ? Math.max((item.totalTokens / maxTokens) * 100, 4) : 0}%` }}
+              />
+            </div>
+            <div className="flex items-center justify-between gap-3 text-tiny font-medium text-muted-foreground">
+              <span>{formatTokenCount(item.count)}</span>
+              <span>{formatUsd(item.costUsd)}</span>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ContextWeightDetail({
+  session,
+  labels,
+}: {
+  session: UsageSessionSummary;
+  labels: Record<string, string>;
+}) {
+  const contextWeight = session.contextWeight;
+  if (!contextWeight) {
+    return (
+      <div
+        data-testid="token-usage-context-breakdown"
+        className="mt-4 rounded-lg border border-border/65 bg-surface-modal/80 p-4"
+      >
+        <div className="mb-3 flex items-center gap-2">
+          <FileText className="h-4 w-4 text-muted-foreground" />
+          <p className="text-sm font-semibold text-foreground">{labels.systemPromptBreakdown}</p>
+        </div>
+        <div className="rounded-lg border border-dashed border-border/60 bg-surface-input/55 px-4 py-8 text-center text-meta text-muted-foreground">
+          {labels.noContextData}
+        </div>
+      </div>
+    );
+  }
+
+  const systemChars = contextWeight.systemPrompt.chars;
+  const skillsChars = contextWeight.skills.promptChars;
+  const toolsChars = contextWeight.tools.listChars + contextWeight.tools.schemaChars;
+  const filesChars = contextWeight.injectedWorkspaceFiles.reduce((sum, entry) => sum + (entry.injectedChars ?? 0), 0);
+  const systemTokens = estimateContextTokens(systemChars);
+  const skillsTokens = estimateContextTokens(skillsChars);
+  const toolsTokens = estimateContextTokens(toolsChars);
+  const filesTokens = estimateContextTokens(filesChars);
+  const totalContextTokens = Math.max(systemTokens + skillsTokens + toolsTokens + filesTokens, 0);
+  const inputBasis = session.inputTokens + session.cacheReadTokens;
+  const inputShare = inputBasis > 0 ? Math.min((totalContextTokens / inputBasis) * 100, 100) : undefined;
+  const systemShare = totalContextTokens > 0 ? (systemTokens / totalContextTokens) * 100 : 0;
+  const segments = [
+    { key: 'system', label: labels.systemShort, value: systemTokens, className: 'bg-usage-input' },
+    { key: 'skills', label: labels.skills, value: skillsTokens, className: 'bg-usage-output' },
+    { key: 'tools', label: labels.tools, value: toolsTokens, className: 'bg-indigo-500' },
+    { key: 'files', label: labels.files, value: filesTokens, className: 'bg-usage-cache' },
+  ];
+  const contextShareText = inputShare !== undefined
+    ? `~${formatPercent(inputShare)} ${labels.ofInput}`
+    : labels.baseContextPerMessage;
+
+  return (
+    <div
+      data-testid="token-usage-context-breakdown"
+      className="mt-4 rounded-lg border border-border/65 bg-surface-modal/80 p-4"
+    >
+      <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <FileText className="h-4 w-4 text-muted-foreground" />
+            <p className="text-sm font-semibold text-foreground">{labels.systemPromptBreakdown}</p>
+          </div>
+          <p className="mt-1 text-meta text-muted-foreground">{contextShareText}</p>
+        </div>
+        <div className="grid grid-cols-2 gap-2 sm:min-w-[320px]">
+          <div className="rounded-lg border border-border/50 bg-background/50 p-3">
+            <p className="text-tiny font-medium text-muted-foreground">{labels.estimatedContext}</p>
+            <p className="mt-1 text-lg font-semibold text-foreground">{formatTokenCount(totalContextTokens)}</p>
+            <p className="mt-0.5 text-tiny text-muted-foreground">{labels.estimatedTokens}</p>
+          </div>
+          <div className="rounded-lg border border-border/50 bg-background/50 p-3">
+            <p className="text-tiny font-medium text-muted-foreground">{labels.systemPromptShare}</p>
+            <p className="mt-1 text-lg font-semibold text-foreground">{formatPercent(systemShare)}</p>
+            <p className="mt-0.5 text-tiny text-muted-foreground">~{formatTokenCount(systemTokens)}</p>
+          </div>
+        </div>
+      </div>
+
+      <div className="h-3 overflow-hidden rounded-full bg-surface-input/75">
+        <div className="flex h-full">
+          {segments.map((segment) => (
+            segment.value > 0 ? (
+              <div
+                key={segment.key}
+                className={segment.className}
+                style={{ width: `${Math.max((segment.value / Math.max(totalContextTokens, 1)) * 100, 2)}%` }}
+                title={`${segment.label}: ~${formatTokenCount(segment.value)}`}
+              />
+            ) : null
+          ))}
+        </div>
+      </div>
+      <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+        {segments.map((segment) => (
+          <div key={segment.key} className="rounded-lg border border-border/50 bg-background/50 p-3">
+            <div className="mb-1.5 flex items-center justify-between gap-3">
+              <span className="flex min-w-0 items-center gap-2 text-meta font-medium text-muted-foreground">
+                <span className={cn('h-2.5 w-2.5 shrink-0 rounded-full', segment.className)} />
+                <span className="truncate">{segment.label}</span>
+              </span>
+              <span className="shrink-0 text-meta font-semibold text-foreground">
+                {formatPercent(totalContextTokens > 0 ? (segment.value / totalContextTokens) * 100 : 0)}
+              </span>
+            </div>
+            <p className="text-tiny font-medium text-muted-foreground">~{formatTokenCount(segment.value)}</p>
+          </div>
+        ))}
+      </div>
+
+      <div className="mt-4 grid gap-3 lg:grid-cols-3">
+        <ContextEntryList
+          title={`${labels.skills} (${contextWeight.skills.entries.length})`}
+          entries={contextWeight.skills.entries}
+          getChars={(entry) => entry.blockChars ?? 0}
+        />
+        <ContextEntryList
+          title={`${labels.tools} (${contextWeight.tools.entries.length})`}
+          entries={contextWeight.tools.entries}
+          getChars={(entry) => (entry.summaryChars ?? 0) + (entry.schemaChars ?? 0)}
+        />
+        <ContextEntryList
+          title={`${labels.files} (${contextWeight.injectedWorkspaceFiles.length})`}
+          entries={contextWeight.injectedWorkspaceFiles}
+          getChars={(entry) => entry.injectedChars ?? 0}
+        />
+      </div>
+    </div>
+  );
+}
+
+function ContextEntryList({
+  title,
+  entries,
+  getChars,
+}: {
+  title: string;
+  entries: UsageContextWeightEntry[];
+  getChars: (entry: UsageContextWeightEntry) => number;
+}) {
+  const sortedEntries = [...entries]
+    .sort((a, b) => getChars(b) - getChars(a))
+    .slice(0, 4);
+
+  if (sortedEntries.length === 0) return null;
+
+  return (
+    <div className="rounded-lg border border-border/50 bg-background/50 p-3">
+      <p className="mb-2 text-meta font-semibold text-foreground">{title}</p>
+      <div className="space-y-2">
+        {sortedEntries.map((entry) => (
+          <div key={entry.name} className="flex items-center justify-between gap-3 text-tiny">
+            <span className="min-w-0 truncate font-mono text-muted-foreground" title={entry.name}>
+              {entry.name}
+            </span>
+            <span className="shrink-0 font-semibold text-foreground">
+              ~{formatTokenCount(estimateContextTokens(getChars(entry)))}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function UsageCallTimeline({
+  session,
+  labels,
+}: {
+  session: UsageSessionSummary;
+  labels: Record<string, string>;
+}) {
+  return (
+    <div className="mt-4 rounded-lg border border-border/65 bg-surface-modal/80 p-4">
+      <div className="mb-3 flex items-center gap-2">
+        <MessageSquare className="h-4 w-4 text-muted-foreground" />
+        <p className="text-sm font-semibold text-foreground">{labels.callTimeline}</p>
+      </div>
+      <div className="space-y-3">
+        {session.entries.map((entry, index) => (
+          <div
+            key={`${entry.timestamp}-${index}`}
+            data-testid="token-usage-call-row"
+            className="rounded-lg border border-border/55 bg-background/55 p-3"
+          >
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+              <div className="min-w-0">
+                <div className="flex min-w-0 flex-wrap items-center gap-2">
+                  <span className="rounded-md bg-black/5 px-2 py-0.5 text-tiny font-medium text-foreground dark:bg-white/10">
+                    {getUsageRecordKindLabel(entry, labels)}
+                  </span>
+                  <span className={cn('rounded-md px-2 py-0.5 text-tiny font-medium', getUsageStatusClass(entry.usageStatus))}>
+                    {getUsageStatusLabel(entry, labels)}
+                  </span>
+                  <span className="text-tiny text-muted-foreground">{formatUsageTimestamp(entry.timestamp)}</span>
+                </div>
+                <p className="mt-2 truncate text-sm font-semibold text-foreground">{entry.model || labels.unknown}</p>
+                <p className="mt-0.5 truncate text-meta text-muted-foreground">{entry.provider || labels.unknown}</p>
+              </div>
+              <div className="grid grid-cols-2 gap-2 text-right text-tiny font-medium text-muted-foreground sm:grid-cols-4 lg:min-w-[360px]">
+                <span>{labels.input}: <b className="font-semibold text-foreground">{formatTokenCount(entry.inputTokens)}</b></span>
+                <span>{labels.output}: <b className="font-semibold text-foreground">{formatTokenCount(entry.outputTokens)}</b></span>
+                <span>{labels.cacheRead}: <b className="font-semibold text-foreground">{formatTokenCount(entry.cacheReadTokens)}</b></span>
+                <span>{labels.cacheWrite}: <b className="font-semibold text-foreground">{formatTokenCount(entry.cacheWriteTokens)}</b></span>
+              </div>
+            </div>
+            {entry.content && (
+              <p className="mt-3 line-clamp-2 whitespace-pre-wrap text-meta leading-relaxed text-muted-foreground">
+                {entry.content}
+              </p>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function getUsageRecordKindLabel(entry: UsageHistoryEntry, labels: Record<string, string>): string {
+  return entry.recordKind === 'toolResult' ? labels.toolResult : labels.assistant;
+}
+
+function getUsageStatusLabel(entry: UsageHistoryEntry, labels: Record<string, string>): string {
+  if (entry.usageStatus === 'missing') return labels.statusMissing;
+  if (entry.usageStatus === 'error') return labels.statusError;
+  return labels.statusAvailable;
+}
+
+function getUsageStatusClass(status: UsageHistoryEntry['usageStatus']): string {
+  if (status === 'missing') return 'bg-amber-500/10 text-amber-700 dark:text-amber-400';
+  if (status === 'error') return 'bg-red-500/10 text-red-700 dark:text-red-400';
+  return 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400';
 }
 
 export default TokenUsageSettings;

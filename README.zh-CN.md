@@ -127,7 +127,7 @@ Skills 页面可展示来自多个 OpenClaw 来源的技能（托管目录、wor
 ### 🔐 安全的供应商集成
 连接多个 AI 供应商（OpenAI、Anthropic 等），凭证安全存储在系统原生密钥链中。OpenAI 同时支持 API Key 与浏览器 OAuth（Codex 订阅）登录。
 **设置 → 模型** 会集中管理对话模型 Provider、图像生成和 Embedding 模型配置。图像生成支持独立的 OpenAI 兼容生图端点（Base URL、API Key 和模型名，例如 `gpt-image-2`），生图请求可走专用的 `/v1/images/generations` 服务，聊天仍继续使用正常的 Provider。Embedding 模型配置会写入 OpenClaw 记忆搜索的 `agents.defaults.memorySearch` provider/model，并支持 OpenAI 兼容 `/v1/embeddings` 端点、本地 GGUF 选项，以及来源、批处理、多模态索引、存储、查询排序、同步和缓存等高级 Memory Search 参数。
-**设置 → Token 消耗** 会展示基于本地 transcript 汇总的 Token、费用、模型、供应商、Agent 与会话使用情况，并提供简洁图表。
+**设置 → Token 消耗** 会展示基于本地 transcript 汇总的 Token、费用、模型、供应商、Agent 与会话使用情况，并提供可交互图表、按会话聚合的最近使用列表，以及包含系统提示词上下文占比的会话详情弹窗。
 如果你通过 **自定义（Custom）Provider** 对接 OpenAI-compatible 网关，可以在 **设置 → 模型 → 编辑 Provider** 中配置自定义 `User-Agent`，以提高兼容性。
 编辑或切换 Provider 时，ClawX 会保留已有的模型级能力元数据，例如 `input: ["text", "image"]`。新选择的自定义 Provider 模型会使用与 OpenClaw onboarding 一致的图片输入能力推断；未知模型默认按纯文本模型处理。
 如果兼容网关的 `/models` 因非鉴权原因不可用，ClawX 会在校验 API Key 时自动降级为轻量的 `/chat/completions` 或 `/responses` 探测。

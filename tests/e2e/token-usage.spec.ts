@@ -8,6 +8,7 @@ const ZERO_TOKEN_SESSION_ID = 'agent-session-zero-token';
 const NONZERO_TOKEN_SESSION_ID = 'agent-session-nonzero-token';
 const GATEWAY_INJECTED_SESSION_ID = 'agent-session-gateway-injected';
 const DELIVERY_MIRROR_SESSION_ID = 'agent-session-delivery-mirror';
+const MULTI_TURN_SESSION_ID = 'agent-session-multi-turn';
 
 async function seedTokenUsageTranscripts(homeDir: string): Promise<void> {
   const sessionDir = join(homeDir, '.openclaw', 'agents', TEST_AGENT_ID, 'sessions');
@@ -99,9 +100,97 @@ async function seedTokenUsageTranscripts(homeDir: string): Promise<void> {
   );
 }
 
+async function seedMultiTurnTokenUsageTranscript(homeDir: string): Promise<void> {
+  const sessionDir = join(homeDir, '.openclaw', 'agents', TEST_AGENT_ID, 'sessions');
+  const now = new Date();
+  await mkdir(sessionDir, { recursive: true });
+  await writeFile(
+    join(sessionDir, 'sessions.json'),
+    JSON.stringify({
+      'agent:multi-turn': {
+        sessionId: MULTI_TURN_SESSION_ID,
+        systemPromptReport: {
+          systemPrompt: {
+            chars: 12000,
+            projectContextChars: 4000,
+            nonProjectContextChars: 8000,
+          },
+          skills: {
+            promptChars: 4000,
+            entries: [
+              { name: 'skill-a', blockChars: 2400 },
+            ],
+          },
+          tools: {
+            listChars: 500,
+            schemaChars: 1500,
+            entries: [
+              { name: 'tool-a', summaryChars: 100, schemaChars: 900 },
+            ],
+          },
+          injectedWorkspaceFiles: [
+            { name: 'AGENTS.md', injectedChars: 1000 },
+          ],
+        },
+      },
+    }, null, 2),
+    'utf8',
+  );
+  await writeFile(
+    join(sessionDir, `${MULTI_TURN_SESSION_ID}.jsonl`),
+    [
+      JSON.stringify({
+        type: 'message',
+        timestamp: new Date(now.getTime() - 45_000).toISOString(),
+        message: {
+          role: 'assistant',
+          model: 'kimi-k2.6',
+          provider: 'kimi',
+          content: 'First assistant response for the multi-turn usage session.',
+          usage: {
+            total_tokens: 18,
+            input_tokens: 12,
+            output_tokens: 6,
+            cache_read_tokens: 0,
+            cache_write_tokens: 0,
+            cost: {
+              total: 0.0018,
+            },
+          },
+        },
+      }),
+      JSON.stringify({
+        type: 'message',
+        timestamp: now.toISOString(),
+        message: {
+          role: 'assistant',
+          model: 'kimi-k2.6',
+          provider: 'kimi',
+          content: 'Second assistant response for the multi-turn usage session.',
+          usage: {
+            total_tokens: 32,
+            input_tokens: 20,
+            output_tokens: 12,
+            cache_read_tokens: 0,
+            cache_write_tokens: 0,
+            cost: {
+              total: 0.0032,
+            },
+          },
+        },
+      }),
+      '',
+    ].join('\n'),
+    'utf8',
+  );
+}
+
 test.describe('ClawX token usage history', () => {
 
-  async function validateUsageHistory(page: Page): Promise<void> {
+  async function validateUsageHistory(
+    page: Page,
+    expectedSessionIds = [ZERO_TOKEN_SESSION_ID, NONZERO_TOKEN_SESSION_ID],
+  ): Promise<void> {
     const usageHistory = await page.evaluate(async () => {
       return window.electron.ipcRenderer.invoke('usage:recentTokenHistory', 20);
     });
@@ -110,10 +199,7 @@ test.describe('ClawX token usage history', () => {
     }
 
     const hasSeededEntries = usageHistory.some((entry) =>
-      typeof entry?.sessionId === 'string' && (
-        entry.sessionId === ZERO_TOKEN_SESSION_ID
-        || entry.sessionId === NONZERO_TOKEN_SESSION_ID
-      ),
+      typeof entry?.sessionId === 'string' && expectedSessionIds.includes(entry.sessionId),
     );
     if (!hasSeededEntries) {
       throw new Error('Seeded transcript session IDs were not found in IPC usage history');
@@ -154,7 +240,44 @@ test.describe('ClawX token usage history', () => {
     const usageEntryRows = page.getByTestId('token-usage-entry');
     await expect.poll(async () => await usageEntryRows.count()).toBe(2);
 
+    await page.getByTestId('token-usage-trend-hotspot').first().hover();
+    const trendTooltip = page.getByTestId('token-usage-trend-tooltip');
+    await expect(trendTooltip).toBeVisible();
+    await expect(trendTooltip).toContainText('Total tokens');
+    await expect(trendTooltip).toContainText('Input');
+
     await expect(page.locator('[data-testid="token-usage-entry"]', { hasText: GATEWAY_INJECTED_SESSION_ID })).toHaveCount(0);
     await expect(page.locator('[data-testid="token-usage-entry"]', { hasText: DELIVERY_MIRROR_SESSION_ID })).toHaveCount(0);
+  });
+
+  test('aggregates recent usage by session and opens the full detail dialog', async ({ page, homeDir }) => {
+    await seedMultiTurnTokenUsageTranscript(homeDir);
+    await completeSetup(page);
+    await validateUsageHistory(page, [MULTI_TURN_SESSION_ID]);
+
+    await page.getByTestId('sidebar-nav-settings').click();
+    await expect(page.getByTestId('settings-page')).toBeVisible();
+    await page.getByTestId('settings-nav-tokenUsage').click();
+    await expect(page.getByTestId('settings-token-usage-section')).toBeVisible();
+
+    await page.getByTestId('token-usage-search').fill(MULTI_TURN_SESSION_ID);
+
+    const usageEntryRows = page.getByTestId('token-usage-entry');
+    await expect.poll(async () => await usageEntryRows.count()).toBe(1);
+    await expect(usageEntryRows.first()).toContainText(MULTI_TURN_SESSION_ID);
+    await expect(usageEntryRows.first()).toContainText('50');
+
+    await page.getByTestId('token-usage-session-details').click();
+    const dialog = page.getByTestId('token-usage-session-dialog');
+    await expect(dialog).toBeVisible();
+    await expect(dialog).toContainText(MULTI_TURN_SESSION_ID);
+    await expect(dialog).toContainText('50');
+    await expect(dialog.getByTestId('token-usage-call-row')).toHaveCount(2);
+    await expect(dialog.getByTestId('token-usage-context-breakdown')).toContainText('System prompt');
+    await expect(dialog.getByTestId('token-usage-context-breakdown')).toContainText('skill-a');
+    await expect(dialog.getByTestId('token-usage-context-breakdown')).toContainText('tool-a');
+    await expect(dialog.getByTestId('token-usage-context-breakdown')).toContainText('AGENTS.md');
+    await expect(dialog).toContainText('First assistant response');
+    await expect(dialog).toContainText('Second assistant response');
   });
 });
