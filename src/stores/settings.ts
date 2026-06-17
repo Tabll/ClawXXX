@@ -21,6 +21,7 @@ interface SettingsState {
   telemetryEnabled: boolean;
   appFontFamily: string;
   themeColor: string;
+  macOSNativeFontSmoothing: boolean;
 
   // Gateway
   gatewayAutoStart: boolean;
@@ -53,6 +54,7 @@ interface SettingsState {
   setTelemetryEnabled: (value: boolean) => void;
   setAppFontFamily: (value: string) => void;
   setThemeColor: (value: string) => void;
+  setMacOSNativeFontSmoothing: (value: boolean) => void;
   setGatewayAutoStart: (value: boolean) => void;
   setGatewayPort: (port: number) => void;
   setProxyEnabled: (value: boolean) => void;
@@ -78,6 +80,7 @@ const defaultSettings = {
   telemetryEnabled: true,
   appFontFamily: '',
   themeColor: DEFAULT_THEME_COLOR,
+  macOSNativeFontSmoothing: false,
   gatewayAutoStart: true,
   gatewayPort: 18789,
   proxyEnabled: false,
@@ -150,6 +153,10 @@ export const useSettingsStore = create<SettingsState>()(
       setThemeColor: (themeColor) => {
         set({ themeColor });
         void hostApi.settings.set('themeColor', themeColor).catch(() => { });
+      },
+      setMacOSNativeFontSmoothing: (macOSNativeFontSmoothing) => {
+        set({ macOSNativeFontSmoothing });
+        void hostApi.settings.set('macOSNativeFontSmoothing', macOSNativeFontSmoothing).catch(() => { });
       },
       setGatewayAutoStart: (gatewayAutoStart) => {
         set({ gatewayAutoStart });

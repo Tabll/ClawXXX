@@ -101,6 +101,8 @@
     "appFontPreview": "{{font}} を使用中",
     "systemFont": "システム UI フォントを使用中",
     "resetFont": "アプリのフォントをリセット",
+    "fontSmoothing": "フォントスムージング",
+    "fontSmoothingDesc": "macOS ネイティブのフォントアンチエイリアスをアプリ全体に適用します。",
     "themeColor": "テーマカラー",
     "themeColorDesc": "ボタン、スイッチ、フォーカス状態に使うアクセント色です。",
     "resetThemeColor": "テーマカラーをリセット",

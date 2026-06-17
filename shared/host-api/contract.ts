@@ -104,6 +104,7 @@ export type SettingsSnapshot = Partial<{
   telemetryEnabled: boolean;
   appFontFamily: string;
   themeColor: string;
+  macOSNativeFontSmoothing: boolean;
   gatewayAutoStart: boolean;
   gatewayPort: number;
   proxyEnabled: boolean;

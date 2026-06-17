@@ -38,6 +38,7 @@ export interface AppSettings {
   telemetryEnabled: boolean;
   appFontFamily: string;
   themeColor: string;
+  macOSNativeFontSmoothing: boolean;
   machineId: string;
   hasReportedInstall: boolean;
 
@@ -91,6 +92,7 @@ function createDefaultSettings(): AppSettings {
     telemetryEnabled: true,
     appFontFamily: '',
     themeColor: DEFAULT_THEME_COLOR,
+    macOSNativeFontSmoothing: false,
     machineId: '',
     hasReportedInstall: false,
 

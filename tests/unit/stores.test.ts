@@ -51,6 +51,7 @@ describe('Settings Store', () => {
       launchAtStartup: false,
       appFontFamily: '',
       themeColor: '#111111',
+      macOSNativeFontSmoothing: false,
       updateChannel: 'stable',
     });
   });
@@ -110,14 +111,17 @@ describe('Settings Store', () => {
   it('should persist appearance settings through host api', () => {
     hostApiMock.settings.set.mockResolvedValue({ success: true });
 
-    const { setAppFontFamily, setThemeColor } = useSettingsStore.getState();
+    const { setAppFontFamily, setMacOSNativeFontSmoothing, setThemeColor } = useSettingsStore.getState();
     setAppFontFamily('Inter');
     setThemeColor('#0f766e');
+    setMacOSNativeFontSmoothing(true);
 
     expect(useSettingsStore.getState().appFontFamily).toBe('Inter');
     expect(useSettingsStore.getState().themeColor).toBe('#0f766e');
+    expect(useSettingsStore.getState().macOSNativeFontSmoothing).toBe(true);
     expect(hostApiMock.settings.set).toHaveBeenCalledWith('appFontFamily', 'Inter');
     expect(hostApiMock.settings.set).toHaveBeenCalledWith('themeColor', '#0f766e');
+    expect(hostApiMock.settings.set).toHaveBeenCalledWith('macOSNativeFontSmoothing', true);
   });
 });
 

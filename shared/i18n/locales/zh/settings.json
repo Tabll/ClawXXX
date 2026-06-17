@@ -101,6 +101,8 @@
     "appFontPreview": "正在使用 {{font}}",
     "systemFont": "正在使用系统界面字体",
     "resetFont": "重置全局字体",
+    "fontSmoothing": "字体平滑",
+    "fontSmoothingDesc": "使用 macOS 原生字体抗锯齿，应用到整个 App。",
     "themeColor": "主题颜色",
     "themeColorDesc": "用于按钮、开关、焦点态等全局强调色。",
     "resetThemeColor": "重置主题颜色",

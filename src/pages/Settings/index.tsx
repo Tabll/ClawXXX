@@ -111,6 +111,8 @@ export function Settings() {
     setAppFontFamily,
     themeColor,
     setThemeColor,
+    macOSNativeFontSmoothing,
+    setMacOSNativeFontSmoothing,
   } = useSettingsStore();
 
   const { status: gatewayStatus, restart: restartGateway } = useGatewayStore();
@@ -523,6 +525,25 @@ export function Settings() {
           </Button>
         </div>
       </div>
+
+      {isMac && (
+        <div className="clawx-settings-row" data-testid="settings-font-smoothing-row">
+          <div>
+            <Label htmlFor="settings-font-smoothing-switch" className="text-sm font-medium text-foreground">
+              {t('appearance.fontSmoothing')}
+            </Label>
+            <p className="text-meta mt-1 text-muted-foreground">
+              {t('appearance.fontSmoothingDesc')}
+            </p>
+          </div>
+          <Switch
+            id="settings-font-smoothing-switch"
+            checked={macOSNativeFontSmoothing}
+            onCheckedChange={setMacOSNativeFontSmoothing}
+            data-testid="settings-font-smoothing-switch"
+          />
+        </div>
+      )}
 
       <div className="clawx-settings-row flex-col items-stretch sm:flex-row sm:items-center">
         <div className="flex min-w-0 items-start gap-3">

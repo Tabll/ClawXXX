@@ -257,6 +257,12 @@
     font-family: var(--app-font-family);
     font-feature-settings: "rlig" 1, "calt" 1;
   }
+
+  .clawx-macos-font-smoothing,
+  .clawx-macos-font-smoothing body,
+  .clawx-macos-font-smoothing * {
+    -webkit-font-smoothing: antialiased;
+  }
 }
 
 @layer components {

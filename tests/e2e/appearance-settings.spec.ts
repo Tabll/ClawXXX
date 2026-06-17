@@ -27,6 +27,27 @@ test.describe('Appearance settings', () => {
       await expect.poll(() => page.evaluate(() => getComputedStyle(document.body).fontFamily))
         .toContain('Arial');
 
+      const isMac = await page.evaluate(() => window.electron.platform === 'darwin');
+      if (isMac) {
+        await expect(page.getByTestId('settings-font-smoothing-row')).toBeVisible();
+        await expect(page.getByTestId('settings-font-smoothing-switch')).toHaveAttribute('data-state', 'unchecked');
+        await expect.poll(() => page.evaluate(() => (
+          document.documentElement.classList.contains('clawx-macos-font-smoothing')
+        ))).toBe(false);
+
+        await page.getByTestId('settings-font-smoothing-switch').click();
+
+        await expect(page.getByTestId('settings-font-smoothing-switch')).toHaveAttribute('data-state', 'checked');
+        await expect.poll(() => page.evaluate(() => (
+          document.documentElement.classList.contains('clawx-macos-font-smoothing')
+        ))).toBe(true);
+        await expect.poll(() => page.evaluate(() => (
+          getComputedStyle(document.body).getPropertyValue('-webkit-font-smoothing')
+        ))).toBe('antialiased');
+      } else {
+        await expect(page.getByTestId('settings-font-smoothing-row')).toHaveCount(0);
+      }
+
       await page.getByTestId('settings-theme-color-text').fill('#0f766e');
       await page.getByTestId('settings-theme-color-text').press('Enter');
 

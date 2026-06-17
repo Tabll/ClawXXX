@@ -34,6 +34,7 @@ const GENERIC_FONT_FAMILIES = new Set([
 type AppearanceSettings = {
   appFontFamily?: string;
   themeColor?: string;
+  macOSNativeFontSmoothing?: boolean;
 };
 
 function expandShortHex(value: string): string {
@@ -154,7 +155,7 @@ function foregroundForHsl(hsl: { l: number }): string {
 }
 
 export function applyAppAppearance(
-  { appFontFamily, themeColor }: AppearanceSettings,
+  { appFontFamily, macOSNativeFontSmoothing, themeColor }: AppearanceSettings,
   root: HTMLElement = document.documentElement,
 ): void {
   const normalizedFont = normalizeAppFontFamily(appFontFamily);
@@ -176,4 +177,5 @@ export function applyAppAppearance(
   root.style.setProperty('--appearance-brand-dark', hslTriplet(darkHsl));
   root.style.setProperty('--appearance-brand-hover-dark', deriveHoverHsl(darkHsl));
   root.style.setProperty('--appearance-primary-foreground-dark', foregroundForHsl(darkHsl));
+  root.classList.toggle('clawx-macos-font-smoothing', Boolean(macOSNativeFontSmoothing));
 }

@@ -134,7 +134,7 @@ When a compatible gateway rejects `/models` for non-auth reasons, ClawX automati
 
 ### 🌙 Adaptive Theming
 Light mode, dark mode, or system-synchronized themes. ClawX adapts to your preferences automatically.
-You can also customize the app accent color and global interface font from **Settings → Appearance**.
+You can also customize the app accent color, global interface font, and macOS font smoothing from **Settings → Appearance**.
 
 ### 🚀 Startup Launch Control
 In **Settings → Appearance**, you can enable **Launch at system startup** so ClawX starts automatically after login.

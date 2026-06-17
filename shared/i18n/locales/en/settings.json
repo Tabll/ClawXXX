@@ -101,6 +101,8 @@
     "appFontPreview": "Using {{font}}",
     "systemFont": "Using the system UI font",
     "resetFont": "Reset app font",
+    "fontSmoothing": "Font smoothing",
+    "fontSmoothingDesc": "Use macOS native font antialiasing across the whole app.",
     "themeColor": "Theme color",
     "themeColorDesc": "Choose the accent used by buttons, switches, and focus states.",
     "resetThemeColor": "Reset theme color",
