@@ -101,6 +101,25 @@ describe('token usage history helpers', () => {
         outputTokens: 8,
         totalTokens: 20,
         costUsd: 0.01,
+        inputCostUsd: 0.002,
+        outputCostUsd: 0.008,
+        sessionMeta: {
+          label: 'Usage refactor',
+          channel: 'cli',
+          messageCounts: {
+            total: 4,
+            user: 2,
+            assistant: 2,
+            toolCalls: 1,
+            toolResults: 1,
+            errors: 0,
+          },
+          toolUsage: {
+            totalCalls: 1,
+            uniqueTools: 1,
+            tools: [{ name: 'shell', count: 1 }],
+          },
+        },
       },
       {
         ...createEntry(12, 30),
@@ -110,6 +129,8 @@ describe('token usage history helpers', () => {
         outputTokens: 20,
         totalTokens: 30,
         costUsd: 0.02,
+        inputCostUsd: 0.004,
+        outputCostUsd: 0.016,
       },
     ];
 
@@ -120,7 +141,15 @@ describe('token usage history helpers', () => {
     expect(sessions[0]?.entries).toHaveLength(2);
     expect(sessions[0]?.totalTokens).toBe(50);
     expect(sessions[0]?.costUsd).toBeCloseTo(0.03);
+    expect(sessions[0]?.inputCostUsd).toBeCloseTo(0.006);
+    expect(sessions[0]?.outputCostUsd).toBeCloseTo(0.024);
     expect(sessions[0]?.lastTimestamp).toBe('2026-03-12T12:02:00.000Z');
+    expect(sessions[0]?.sessionMeta).toEqual(expect.objectContaining({
+      label: 'Usage refactor',
+      channel: 'cli',
+    }));
+    expect(sessions[0]?.messageCounts?.total).toBe(4);
+    expect(sessions[0]?.toolUsage?.tools[0]).toEqual({ name: 'shell', count: 1 });
   });
 
   it('keeps identical session ids separated across agents', () => {

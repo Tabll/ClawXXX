@@ -3,7 +3,6 @@ import {
   BarChart3,
   ChevronLeft,
   ChevronRight,
-  Clock,
   Coins,
   Cpu,
   Database,
@@ -130,6 +129,21 @@ function formatUsageTimestamp(timestamp: string): string {
     hour: '2-digit',
     minute: '2-digit',
   }).format(date);
+}
+
+function formatUsageTimestampMs(timestamp: number | undefined, fallback: string): string {
+  if (timestamp === undefined || !Number.isFinite(timestamp)) return fallback;
+  return formatUsageTimestamp(new Date(timestamp).toISOString());
+}
+
+function formatDurationMs(durationMs: number | undefined, fallback: string): string {
+  if (durationMs === undefined || !Number.isFinite(durationMs) || durationMs < 0) return fallback;
+  if (durationMs < 1000) return `${Math.round(durationMs)}ms`;
+  const seconds = durationMs / 1000;
+  if (seconds < 60) return `${seconds >= 10 ? seconds.toFixed(0) : seconds.toFixed(1)}s`;
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = Math.round(seconds % 60);
+  return `${minutes}m ${remainingSeconds}s`;
 }
 
 function buildTotals(entries: UsageHistoryEntry[]): UsageTotals {
@@ -606,6 +620,39 @@ export function TokenUsageSettings() {
             files: t('tokenUsage.contentDialog.files'),
             ofInput: t('tokenUsage.contentDialog.ofInput'),
             baseContextPerMessage: t('tokenUsage.contentDialog.baseContextPerMessage'),
+            sessionOverview: t('tokenUsage.contentDialog.sessionOverview'),
+            messages: t('tokenUsage.contentDialog.messages'),
+            userMessages: t('tokenUsage.contentDialog.userMessages'),
+            assistantMessages: t('tokenUsage.contentDialog.assistantMessages'),
+            toolCalls: t('tokenUsage.contentDialog.toolCalls'),
+            toolResults: t('tokenUsage.contentDialog.toolResults'),
+            errors: t('tokenUsage.contentDialog.errors'),
+            duration: t('tokenUsage.contentDialog.duration'),
+            cacheHitRate: t('tokenUsage.contentDialog.cacheHitRate'),
+            sessionLabel: t('tokenUsage.contentDialog.sessionLabel'),
+            sessionKey: t('tokenUsage.contentDialog.sessionKey'),
+            channel: t('tokenUsage.contentDialog.channel'),
+            chatType: t('tokenUsage.contentDialog.chatType'),
+            status: t('tokenUsage.contentDialog.status'),
+            started: t('tokenUsage.contentDialog.started'),
+            updated: t('tokenUsage.contentDialog.updated'),
+            ended: t('tokenUsage.contentDialog.ended'),
+            runtime: t('tokenUsage.contentDialog.runtime'),
+            familySessions: t('tokenUsage.contentDialog.familySessions'),
+            modelOverride: t('tokenUsage.contentDialog.modelOverride'),
+            providerOverride: t('tokenUsage.contentDialog.providerOverride'),
+            costBreakdown: t('tokenUsage.contentDialog.costBreakdown'),
+            inputCost: t('tokenUsage.contentDialog.inputCost'),
+            outputCost: t('tokenUsage.contentDialog.outputCost'),
+            cacheReadCost: t('tokenUsage.contentDialog.cacheReadCost'),
+            cacheWriteCost: t('tokenUsage.contentDialog.cacheWriteCost'),
+            averageTokens: t('tokenUsage.contentDialog.averageTokens'),
+            averageCost: t('tokenUsage.contentDialog.averageCost'),
+            topTools: t('tokenUsage.contentDialog.topTools'),
+            noToolCalls: t('tokenUsage.contentDialog.noToolCalls'),
+            content: t('tokenUsage.contentDialog.content'),
+            noCallContent: t('tokenUsage.contentDialog.noCallContent'),
+            missingValue: t('tokenUsage.contentDialog.missingValue'),
           }}
         />
       )}
@@ -1204,7 +1251,10 @@ function UsageSessionDetailDialog({
   const dateRange = session.firstTimestamp === session.lastTimestamp
     ? formatUsageTimestamp(session.lastTimestamp)
     : `${formatUsageTimestamp(session.firstTimestamp)} - ${formatUsageTimestamp(session.lastTimestamp)}`;
-  const contentEntries = session.entries.filter((entry) => entry.content?.trim());
+  const messageCount = session.messageCounts?.total ?? session.entries.length;
+  const toolCalls = session.toolUsage?.totalCalls ?? 0;
+  const averageTokens = session.entries.length > 0 ? session.totalTokens / session.entries.length : 0;
+  const averageCost = session.entries.length > 0 ? session.costUsd / session.entries.length : 0;
 
   return (
     <div
@@ -1218,14 +1268,19 @@ function UsageSessionDetailDialog({
     >
       <div
         data-testid="token-usage-session-dialog"
-        className="flex max-h-[88vh] w-full max-w-6xl flex-col overflow-hidden rounded-xl border border-border/80 bg-background shadow-2xl shadow-black/20"
+        className="flex max-h-[90vh] w-full max-w-7xl flex-col overflow-hidden rounded-xl border border-border/80 bg-background shadow-2xl shadow-black/20"
       >
         <div className="border-b border-border/70 bg-surface-modal/80 px-5 py-4">
           <div className="flex items-start justify-between gap-4">
             <div className="min-w-0">
               <p id="token-usage-session-dialog-title" className="text-base font-semibold text-foreground">{title}</p>
               <p className="mt-1 truncate text-meta text-muted-foreground">
-                {labels.sessionMeta}: {[session.model || labels.unknown, session.provider || labels.unknown, session.agentId].filter(Boolean).join(' - ')}
+                {[
+                  session.sessionMeta?.label,
+                  session.model || labels.unknown,
+                  session.provider || labels.unknown,
+                  session.agentId,
+                ].filter(Boolean).join(' - ')}
               </p>
               <p className="mt-0.5 truncate text-tiny text-muted-foreground">{session.sessionId}</p>
             </div>
@@ -1247,72 +1302,44 @@ function UsageSessionDetailDialog({
               icon={Sigma}
               label={labels.totalTokens}
               value={formatTokenCount(session.totalTokens)}
-              detail={`${labels.entries}: ${formatTokenCount(session.entries.length)}`}
+              detail={`${labels.averageTokens}: ${formatTokenCount(averageTokens)}`}
               className="from-cyan-500/18 via-blue-500/10 to-transparent"
             />
             <DetailMetricCard
               icon={Coins}
               label={labels.cost}
               value={formatUsd(session.costUsd)}
-              detail={`${labels.calls}: ${formatTokenCount(session.availableEntries)}`}
+              detail={`${labels.averageCost}: ${formatUsd(averageCost)}`}
               className="from-emerald-500/18 via-teal-500/10 to-transparent"
             />
             <DetailMetricCard
-              icon={Cpu}
-              label={labels.modelBreakdown}
-              value={formatTokenCount(session.models.length)}
-              detail={session.models.map((item) => item.label).slice(0, 3).join(' - ') || labels.unknown}
+              icon={MessageSquare}
+              label={labels.messages}
+              value={formatTokenCount(messageCount)}
+              detail={`${labels.calls}: ${formatTokenCount(session.availableEntries)}`}
               className="from-violet-500/16 via-fuchsia-500/10 to-transparent"
             />
             <DetailMetricCard
-              icon={Clock}
-              label={labels.dateRange}
-              value={formatUsageTimestamp(session.lastTimestamp)}
-              detail={dateRange}
+              icon={Cpu}
+              label={labels.toolCalls}
+              value={formatTokenCount(toolCalls)}
+              detail={session.toolUsage?.tools.slice(0, 2).map((tool) => tool.name).join(' - ') || labels.noToolCalls}
               className="from-amber-500/18 via-orange-500/10 to-transparent"
             />
           </div>
 
-          <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1.1fr)_minmax(320px,0.9fr)]">
-            <TokenCompositionDetail session={session} title={labels.tokenComposition} labels={labels} />
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-1">
+          <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1fr)_390px]">
+            <div className="min-w-0 space-y-4">
+              <TokenCompositionDetail session={session} title={labels.tokenComposition} labels={labels} />
+              <UsageCallTimeline session={session} labels={labels} />
+            </div>
+            <div className="min-w-0 space-y-4">
+              <SessionOverviewPanel session={session} labels={labels} dateRange={dateRange} />
+              <ContextWeightDetail session={session} labels={labels} />
+              <CostBreakdownPanel session={session} labels={labels} />
               <UsageBreakdownPanel title={labels.modelBreakdown} items={session.models} />
               <UsageBreakdownPanel title={labels.providerBreakdown} items={session.providers} />
             </div>
-          </div>
-
-          <ContextWeightDetail session={session} labels={labels} />
-
-          <UsageCallTimeline session={session} labels={labels} />
-
-          <div className="mt-4 rounded-lg border border-border/65 bg-surface-modal/80 p-4">
-            <div className="mb-3 flex items-center gap-2">
-              <FileText className="h-4 w-4 text-muted-foreground" />
-              <p className="text-sm font-semibold text-foreground">{labels.contentExcerpts}</p>
-            </div>
-            {contentEntries.length === 0 ? (
-              <div className="rounded-lg border border-dashed border-border/60 bg-surface-input/55 px-4 py-8 text-center text-meta text-muted-foreground">
-                {labels.noContent}
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {contentEntries.map((entry, index) => (
-                  <div
-                    key={`${entry.timestamp}-${index}`}
-                    className="rounded-lg border border-border/55 bg-background/55 p-3"
-                  >
-                    <div className="mb-2 flex flex-wrap items-center gap-2 text-tiny font-medium text-muted-foreground">
-                      <span>{getUsageRecordKindLabel(entry, labels)}</span>
-                      <span>{formatUsageTimestamp(entry.timestamp)}</span>
-                      <span>{entry.model || labels.unknown}</span>
-                    </div>
-                    <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-words font-mono text-[12px] leading-relaxed text-foreground">
-                      {entry.content}
-                    </pre>
-                  </div>
-                ))}
-              </div>
-            )}
           </div>
         </div>
 
@@ -1347,6 +1374,110 @@ function DetailMetricCard({
       </div>
       <p className="truncate text-xl font-semibold text-foreground">{value}</p>
       <p className="mt-1 truncate text-tiny font-medium text-muted-foreground">{detail}</p>
+    </div>
+  );
+}
+
+function getSessionDurationMs(session: UsageSessionSummary): number | undefined {
+  if (session.sessionMeta?.runtimeMs !== undefined) return session.sessionMeta.runtimeMs;
+  const start = Date.parse(session.firstTimestamp);
+  const end = Date.parse(session.lastTimestamp);
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) return undefined;
+  return end - start;
+}
+
+function SessionOverviewPanel({
+  session,
+  labels,
+  dateRange,
+}: {
+  session: UsageSessionSummary;
+  labels: Record<string, string>;
+  dateRange: string;
+}) {
+  const meta = session.sessionMeta;
+  const messageCounts = session.messageCounts;
+  const toolUsage = session.toolUsage;
+  const durationMs = getSessionDurationMs(session);
+  const inputBasis = session.inputTokens + session.cacheReadTokens + session.cacheWriteTokens;
+  const cacheHitRate = inputBasis > 0 ? (session.cacheReadTokens / inputBasis) * 100 : undefined;
+  const fields = [
+    { label: labels.sessionLabel, value: meta?.label },
+    { label: labels.sessionKey, value: meta?.key },
+    { label: labels.channel, value: meta?.channel },
+    { label: labels.chatType, value: meta?.chatType },
+    { label: labels.status, value: meta?.status },
+    { label: labels.modelOverride, value: meta?.modelOverride ?? meta?.modelProvider },
+    { label: labels.providerOverride, value: meta?.providerOverride ?? meta?.originProvider },
+    { label: labels.familySessions, value: meta?.includedSessionIds?.length ? formatTokenCount(meta.includedSessionIds.length) : undefined },
+  ].filter((field) => field.value);
+  const timeFields = [
+    { label: labels.dateRange, value: dateRange },
+    { label: labels.started, value: formatUsageTimestampMs(meta?.startedAt, labels.missingValue) },
+    { label: labels.updated, value: formatUsageTimestampMs(meta?.updatedAt, labels.missingValue) },
+    { label: labels.ended, value: formatUsageTimestampMs(meta?.endedAt, labels.missingValue) },
+  ];
+
+  return (
+    <div className="rounded-lg border border-border/65 bg-surface-modal/80 p-4">
+      <div className="mb-4 flex items-center gap-2">
+        <Info className="h-4 w-4 text-muted-foreground" />
+        <p className="text-sm font-semibold text-foreground">{labels.sessionOverview}</p>
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        <MiniStat label={labels.messages} value={formatTokenCount(messageCounts?.total ?? session.entries.length)} detail={`${formatTokenCount(messageCounts?.user ?? 0)} ${labels.userMessages}`} />
+        <MiniStat label={labels.toolCalls} value={formatTokenCount(toolUsage?.totalCalls ?? 0)} detail={`${formatTokenCount(toolUsage?.uniqueTools ?? 0)} ${labels.tools}`} />
+        <MiniStat label={labels.errors} value={formatTokenCount(messageCounts?.errors ?? 0)} detail={`${formatTokenCount(messageCounts?.toolResults ?? 0)} ${labels.toolResults}`} />
+        <MiniStat label={labels.cacheHitRate} value={cacheHitRate === undefined ? labels.missingValue : formatPercent(cacheHitRate)} detail={formatDurationMs(durationMs, labels.missingValue)} />
+      </div>
+
+      {fields.length > 0 && (
+        <div className="mt-4 flex flex-wrap gap-2">
+          {fields.map((field) => (
+            <span key={field.label} className="max-w-full rounded-md border border-border/50 bg-background/55 px-2.5 py-1 text-tiny font-medium text-muted-foreground">
+              <span className="text-foreground">{field.label}</span>: {field.value}
+            </span>
+          ))}
+        </div>
+      )}
+
+      <div className="mt-4 space-y-2 border-t border-border/60 pt-3">
+        {timeFields.map((field) => (
+          <div key={field.label} className="flex items-center justify-between gap-3 text-tiny">
+            <span className="text-muted-foreground">{field.label}</span>
+            <span className="min-w-0 truncate text-right font-medium text-foreground">{field.value}</span>
+          </div>
+        ))}
+      </div>
+
+      <div className="mt-4 border-t border-border/60 pt-3">
+        <div className="mb-2 flex items-center justify-between gap-3">
+          <p className="text-tiny font-semibold uppercase text-muted-foreground">{labels.topTools}</p>
+          <p className="text-tiny text-muted-foreground">{formatTokenCount(toolUsage?.totalCalls ?? 0)}</p>
+        </div>
+        {toolUsage && toolUsage.tools.length > 0 ? (
+          <div className="space-y-2">
+            {toolUsage.tools.slice(0, 5).map((tool) => (
+              <div key={tool.name} className="flex items-center justify-between gap-3 text-tiny">
+                <span className="min-w-0 truncate font-mono text-muted-foreground" title={tool.name}>{tool.name}</span>
+                <span className="shrink-0 font-semibold text-foreground">{formatTokenCount(tool.count)}</span>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="text-meta text-muted-foreground">{labels.noToolCalls}</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function MiniStat({ label, value, detail }: { label: string; value: string; detail: string }) {
+  return (
+    <div className="rounded-lg border border-border/50 bg-background/50 p-3">
+      <p className="text-tiny font-medium text-muted-foreground">{label}</p>
+      <p className="mt-1 text-lg font-semibold text-foreground">{value}</p>
+      <p className="mt-0.5 truncate text-tiny text-muted-foreground">{detail}</p>
     </div>
   );
 }
@@ -1426,6 +1557,62 @@ function UsageBreakdownPanel({ title, items }: { title: string; items: UsageSess
   );
 }
 
+function CostBreakdownPanel({
+  session,
+  labels,
+}: {
+  session: UsageSessionSummary;
+  labels: Record<string, string>;
+}) {
+  const rows = [
+    { key: 'output', label: labels.outputCost, value: session.outputCostUsd, className: 'bg-usage-output' },
+    { key: 'input', label: labels.inputCost, value: session.inputCostUsd, className: 'bg-usage-input' },
+    { key: 'cacheWrite', label: labels.cacheWriteCost, value: session.cacheWriteCostUsd, className: 'bg-indigo-500' },
+    { key: 'cacheRead', label: labels.cacheReadCost, value: session.cacheReadCostUsd, className: 'bg-usage-cache' },
+  ];
+  const hasCostParts = rows.some((row) => row.value > 0);
+  if (!hasCostParts && session.costUsd <= 0) return null;
+
+  return (
+    <div className="rounded-lg border border-border/65 bg-surface-modal/80 p-4">
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <p className="text-sm font-semibold text-foreground">{labels.costBreakdown}</p>
+        <p className="text-meta font-semibold text-muted-foreground">{formatUsd(session.costUsd)}</p>
+      </div>
+      <div className="space-y-2">
+        {rows.map((row) => (
+          <div key={row.key} className="space-y-1.5">
+            <div className="flex items-center justify-between gap-3 text-tiny">
+              <span className="flex min-w-0 items-center gap-2 text-muted-foreground">
+                <span className={cn('h-2.5 w-2.5 shrink-0 rounded-full', row.className)} />
+                <span className="truncate">{row.label}</span>
+              </span>
+              <span className="shrink-0 font-semibold text-foreground">{formatUsd(row.value)}</span>
+            </div>
+            <div className="h-1.5 overflow-hidden rounded-full bg-surface-input/70">
+              <div
+                className={cn('h-full rounded-full', row.className)}
+                style={{ width: `${row.value > 0 ? Math.max((row.value / Math.max(session.costUsd, 0.000001)) * 100, 2) : 0}%` }}
+              />
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function buildConicGradient(segments: Array<{ value: number; color: string }>): string {
+  const total = segments.reduce((sum, segment) => sum + segment.value, 0);
+  if (total <= 0) return 'hsl(var(--muted) / 0.35) 0 100%';
+  let cursor = 0;
+  return segments.map((segment) => {
+    const start = cursor;
+    cursor += (segment.value / total) * 100;
+    return `${segment.color} ${start.toFixed(2)}% ${cursor.toFixed(2)}%`;
+  }).join(', ');
+}
+
 function ContextWeightDetail({
   session,
   labels,
@@ -1438,7 +1625,7 @@ function ContextWeightDetail({
     return (
       <div
         data-testid="token-usage-context-breakdown"
-        className="mt-4 rounded-lg border border-border/65 bg-surface-modal/80 p-4"
+        className="rounded-lg border border-border/65 bg-surface-modal/80 p-4"
       >
         <div className="mb-3 flex items-center gap-2">
           <FileText className="h-4 w-4 text-muted-foreground" />
@@ -1464,10 +1651,10 @@ function ContextWeightDetail({
   const inputShare = inputBasis > 0 ? Math.min((totalContextTokens / inputBasis) * 100, 100) : undefined;
   const systemShare = totalContextTokens > 0 ? (systemTokens / totalContextTokens) * 100 : 0;
   const segments = [
-    { key: 'system', label: labels.systemShort, value: systemTokens, className: 'bg-usage-input' },
-    { key: 'skills', label: labels.skills, value: skillsTokens, className: 'bg-usage-output' },
-    { key: 'tools', label: labels.tools, value: toolsTokens, className: 'bg-indigo-500' },
-    { key: 'files', label: labels.files, value: filesTokens, className: 'bg-usage-cache' },
+    { key: 'system', label: labels.systemShort, value: systemTokens, color: 'hsl(var(--usage-input))', className: 'bg-usage-input' },
+    { key: 'skills', label: labels.skills, value: skillsTokens, color: 'hsl(var(--usage-output))', className: 'bg-usage-output' },
+    { key: 'tools', label: labels.tools, value: toolsTokens, color: 'rgb(99 102 241)', className: 'bg-indigo-500' },
+    { key: 'files', label: labels.files, value: filesTokens, color: 'hsl(var(--usage-cache))', className: 'bg-usage-cache' },
   ];
   const contextShareText = inputShare !== undefined
     ? `~${formatPercent(inputShare)} ${labels.ofInput}`
@@ -1476,9 +1663,9 @@ function ContextWeightDetail({
   return (
     <div
       data-testid="token-usage-context-breakdown"
-      className="mt-4 rounded-lg border border-border/65 bg-surface-modal/80 p-4"
+      className="rounded-lg border border-border/65 bg-surface-modal/80 p-4"
     >
-      <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+      <div className="mb-4 flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
             <FileText className="h-4 w-4 text-muted-foreground" />
@@ -1486,52 +1673,45 @@ function ContextWeightDetail({
           </div>
           <p className="mt-1 text-meta text-muted-foreground">{contextShareText}</p>
         </div>
-        <div className="grid grid-cols-2 gap-2 sm:min-w-[320px]">
-          <div className="rounded-lg border border-border/50 bg-background/50 p-3">
-            <p className="text-tiny font-medium text-muted-foreground">{labels.estimatedContext}</p>
-            <p className="mt-1 text-lg font-semibold text-foreground">{formatTokenCount(totalContextTokens)}</p>
-            <p className="mt-0.5 text-tiny text-muted-foreground">{labels.estimatedTokens}</p>
-          </div>
-          <div className="rounded-lg border border-border/50 bg-background/50 p-3">
-            <p className="text-tiny font-medium text-muted-foreground">{labels.systemPromptShare}</p>
-            <p className="mt-1 text-lg font-semibold text-foreground">{formatPercent(systemShare)}</p>
-            <p className="mt-0.5 text-tiny text-muted-foreground">~{formatTokenCount(systemTokens)}</p>
-          </div>
+        <div className="shrink-0 text-right">
+          <p className="text-sm font-semibold text-foreground">~{formatTokenCount(totalContextTokens)}</p>
+          <p className="text-tiny text-muted-foreground">{labels.estimatedTokens}</p>
         </div>
       </div>
 
-      <div className="h-3 overflow-hidden rounded-full bg-surface-input/75">
-        <div className="flex h-full">
+      <div className="grid gap-4 sm:grid-cols-[132px_minmax(0,1fr)]">
+        <div className="relative mx-auto h-32 w-32 rounded-full border border-border/60 p-2">
+          <div
+            data-testid="token-usage-context-pie"
+            className="h-full w-full rounded-full"
+            style={{ background: `conic-gradient(${buildConicGradient(segments)})` }}
+            role="img"
+            aria-label={`${labels.systemPromptShare}: ${formatPercent(systemShare)}`}
+          />
+          <div className="absolute inset-7 flex flex-col items-center justify-center rounded-full border border-border/55 bg-background text-center">
+            <span className="text-lg font-semibold text-foreground">{formatPercent(systemShare)}</span>
+            <span className="mt-0.5 text-[10px] font-medium text-muted-foreground">{labels.systemShort}</span>
+          </div>
+        </div>
+        <div className="grid content-center gap-2">
           {segments.map((segment) => (
-            segment.value > 0 ? (
-              <div
-                key={segment.key}
-                className={segment.className}
-                style={{ width: `${Math.max((segment.value / Math.max(totalContextTokens, 1)) * 100, 2)}%` }}
-                title={`${segment.label}: ~${formatTokenCount(segment.value)}`}
-              />
-            ) : null
+            <div key={segment.key} className="rounded-lg border border-border/50 bg-background/50 p-2.5">
+              <div className="flex items-center justify-between gap-3">
+                <span className="flex min-w-0 items-center gap-2 text-meta font-medium text-muted-foreground">
+                  <span className={cn('h-2.5 w-2.5 shrink-0 rounded-full', segment.className)} />
+                  <span className="truncate">{segment.label}</span>
+                </span>
+                <span className="shrink-0 text-meta font-semibold text-foreground">
+                  {formatPercent(totalContextTokens > 0 ? (segment.value / totalContextTokens) * 100 : 0)}
+                </span>
+              </div>
+              <p className="mt-1 text-tiny font-medium text-muted-foreground">~{formatTokenCount(segment.value)}</p>
+            </div>
           ))}
         </div>
       </div>
-      <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
-        {segments.map((segment) => (
-          <div key={segment.key} className="rounded-lg border border-border/50 bg-background/50 p-3">
-            <div className="mb-1.5 flex items-center justify-between gap-3">
-              <span className="flex min-w-0 items-center gap-2 text-meta font-medium text-muted-foreground">
-                <span className={cn('h-2.5 w-2.5 shrink-0 rounded-full', segment.className)} />
-                <span className="truncate">{segment.label}</span>
-              </span>
-              <span className="shrink-0 text-meta font-semibold text-foreground">
-                {formatPercent(totalContextTokens > 0 ? (segment.value / totalContextTokens) * 100 : 0)}
-              </span>
-            </div>
-            <p className="text-tiny font-medium text-muted-foreground">~{formatTokenCount(segment.value)}</p>
-          </div>
-        ))}
-      </div>
 
-      <div className="mt-4 grid gap-3 lg:grid-cols-3">
+      <div className="mt-4 grid gap-3">
         <ContextEntryList
           title={`${labels.skills} (${contextWeight.skills.entries.length})`}
           entries={contextWeight.skills.entries}
@@ -1594,7 +1774,7 @@ function UsageCallTimeline({
   labels: Record<string, string>;
 }) {
   return (
-    <div className="mt-4 rounded-lg border border-border/65 bg-surface-modal/80 p-4">
+    <div className="rounded-lg border border-border/65 bg-surface-modal/80 p-4">
       <div className="mb-3 flex items-center gap-2">
         <MessageSquare className="h-4 w-4 text-muted-foreground" />
         <p className="text-sm font-semibold text-foreground">{labels.callTimeline}</p>
@@ -1620,17 +1800,35 @@ function UsageCallTimeline({
                 <p className="mt-2 truncate text-sm font-semibold text-foreground">{entry.model || labels.unknown}</p>
                 <p className="mt-0.5 truncate text-meta text-muted-foreground">{entry.provider || labels.unknown}</p>
               </div>
-              <div className="grid grid-cols-2 gap-2 text-right text-tiny font-medium text-muted-foreground sm:grid-cols-4 lg:min-w-[360px]">
+              <div className="grid grid-cols-2 gap-2 text-right text-tiny font-medium text-muted-foreground sm:grid-cols-3 xl:min-w-[430px]">
+                <span>{labels.totalTokens}: <b className="font-semibold text-foreground">{formatTokenCount(entry.totalTokens)}</b></span>
+                <span>{labels.cost}: <b className="font-semibold text-foreground">{formatUsd(entry.costUsd ?? 0)}</b></span>
                 <span>{labels.input}: <b className="font-semibold text-foreground">{formatTokenCount(entry.inputTokens)}</b></span>
                 <span>{labels.output}: <b className="font-semibold text-foreground">{formatTokenCount(entry.outputTokens)}</b></span>
                 <span>{labels.cacheRead}: <b className="font-semibold text-foreground">{formatTokenCount(entry.cacheReadTokens)}</b></span>
                 <span>{labels.cacheWrite}: <b className="font-semibold text-foreground">{formatTokenCount(entry.cacheWriteTokens)}</b></span>
               </div>
             </div>
-            {entry.content && (
-              <p className="mt-3 line-clamp-2 whitespace-pre-wrap text-meta leading-relaxed text-muted-foreground">
-                {entry.content}
-              </p>
+            <div className="mt-3 rounded-lg border border-border/45 bg-surface-input/45 p-3">
+              <div className="mb-2 flex items-center justify-between gap-3">
+                <span className="text-tiny font-semibold uppercase text-muted-foreground">{labels.content}</span>
+                <span className="text-tiny text-muted-foreground">{formatUsageTimestamp(entry.timestamp)}</span>
+              </div>
+              {entry.content ? (
+                <pre className="max-h-44 overflow-auto whitespace-pre-wrap break-words font-mono text-[12px] leading-relaxed text-foreground">
+                  {entry.content}
+                </pre>
+              ) : (
+                <p className="text-meta text-muted-foreground">{labels.noCallContent}</p>
+              )}
+            </div>
+            {(entry.inputCostUsd || entry.outputCostUsd || entry.cacheReadCostUsd || entry.cacheWriteCostUsd) && (
+              <div className="mt-3 grid grid-cols-2 gap-2 text-tiny text-muted-foreground sm:grid-cols-4">
+                <span>{labels.inputCost}: <b className="font-semibold text-foreground">{formatUsd(entry.inputCostUsd ?? 0)}</b></span>
+                <span>{labels.outputCost}: <b className="font-semibold text-foreground">{formatUsd(entry.outputCostUsd ?? 0)}</b></span>
+                <span>{labels.cacheReadCost}: <b className="font-semibold text-foreground">{formatUsd(entry.cacheReadCostUsd ?? 0)}</b></span>
+                <span>{labels.cacheWriteCost}: <b className="font-semibold text-foreground">{formatUsd(entry.cacheWriteCostUsd ?? 0)}</b></span>
+              </div>
             )}
           </div>
         ))}

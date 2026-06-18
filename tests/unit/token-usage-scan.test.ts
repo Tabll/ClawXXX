@@ -95,7 +95,32 @@ describe('token usage session scan', () => {
       join(sessionsDir, 'sessions.json'),
       JSON.stringify({
         'agent:thread': {
+          label: 'Context Session',
           sessionId: 'context-session',
+          channel: 'cli',
+          chatType: 'direct',
+          status: 'done',
+          runtimeMs: 1250,
+          providerOverride: 'openai',
+          modelOverride: 'gpt-5.2-2025-12-11',
+          usageFamilySessionIds: ['context-session', 'context-session-reset'],
+          usage: {
+            messageCounts: {
+              total: 4,
+              user: 2,
+              assistant: 2,
+              toolCalls: 1,
+              toolResults: 1,
+              errors: 0,
+            },
+            toolUsage: {
+              totalCalls: 1,
+              uniqueTools: 1,
+              tools: [
+                { name: 'shell', count: 1 },
+              ],
+            },
+          },
           systemPromptReport: {
             systemPrompt: {
               chars: 12000,
@@ -156,6 +181,26 @@ describe('token usage session scan', () => {
     expect(entry?.contextWeight?.injectedWorkspaceFiles[0]).toEqual(expect.objectContaining({
       name: 'AGENTS.md',
       injectedChars: 1000,
+    }));
+    expect(entry?.sessionMeta).toEqual(expect.objectContaining({
+      key: 'agent:thread',
+      label: 'Context Session',
+      channel: 'cli',
+      chatType: 'direct',
+      status: 'done',
+      runtimeMs: 1250,
+      providerOverride: 'openai',
+      modelOverride: 'gpt-5.2-2025-12-11',
+      includedSessionIds: ['context-session', 'context-session-reset'],
+    }));
+    expect(entry?.sessionMeta?.messageCounts).toEqual(expect.objectContaining({
+      total: 1,
+      assistant: 1,
+    }));
+    expect(entry?.sessionMeta?.toolUsage).toEqual(expect.objectContaining({
+      totalCalls: 1,
+      uniqueTools: 1,
+      tools: [{ name: 'shell', count: 1 }],
     }));
   });
 });

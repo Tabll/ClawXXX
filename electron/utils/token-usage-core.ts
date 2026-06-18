@@ -24,6 +24,47 @@ export interface TokenUsageContextWeight {
   injectedWorkspaceFiles: TokenUsageContextWeightEntry[];
 }
 
+export interface TokenUsageMessageCounts {
+  total: number;
+  user: number;
+  assistant: number;
+  toolCalls: number;
+  toolResults: number;
+  errors: number;
+}
+
+export interface TokenUsageToolStat {
+  name: string;
+  count: number;
+}
+
+export interface TokenUsageToolUsage {
+  totalCalls: number;
+  uniqueTools: number;
+  tools: TokenUsageToolStat[];
+}
+
+export interface TokenUsageSessionMetadata {
+  key?: string;
+  label?: string;
+  channel?: string;
+  chatType?: string;
+  status?: string;
+  startedAt?: number;
+  endedAt?: number;
+  runtimeMs?: number;
+  updatedAt?: number;
+  usageFamilyKey?: string;
+  includedSessionIds?: string[];
+  modelOverride?: string;
+  providerOverride?: string;
+  modelProvider?: string;
+  originProvider?: string;
+  originModel?: string;
+  messageCounts?: TokenUsageMessageCounts;
+  toolUsage?: TokenUsageToolUsage;
+}
+
 export interface TokenUsageHistoryEntry {
   timestamp: string;
   sessionId: string;
@@ -33,6 +74,7 @@ export interface TokenUsageHistoryEntry {
   content?: string;
   recordKind?: 'assistant' | 'toolResult';
   contextWeight?: TokenUsageContextWeight;
+  sessionMeta?: TokenUsageSessionMetadata;
   usageStatus: 'available' | 'missing' | 'error';
   inputTokens: number;
   outputTokens: number;
@@ -40,6 +82,10 @@ export interface TokenUsageHistoryEntry {
   cacheWriteTokens: number;
   totalTokens: number;
   costUsd?: number;
+  inputCostUsd?: number;
+  outputCostUsd?: number;
+  cacheReadCostUsd?: number;
+  cacheWriteCostUsd?: number;
 }
 
 export function extractSessionIdFromTranscriptFileName(fileName: string): string | undefined {
@@ -83,8 +129,27 @@ interface TranscriptUsageShape {
   cacheReadTokens?: number;
   cache_write_token_count?: number;
   cost?: {
+    input?: number;
+    output?: number;
+    cacheRead?: number;
+    cacheWrite?: number;
+    input_cost?: number;
+    output_cost?: number;
+    cache_read?: number;
+    cache_write?: number;
     total?: number;
+    total_cost?: number;
   };
+  inputCost?: number;
+  outputCost?: number;
+  cacheReadCost?: number;
+  cacheWriteCost?: number;
+  totalCost?: number;
+  input_cost?: number;
+  output_cost?: number;
+  cache_read_cost?: number;
+  cache_write_cost?: number;
+  total_cost?: number;
 }
 
 type UsageRecordStatus = 'available' | 'missing' | 'error';
@@ -96,6 +161,10 @@ interface ParsedUsageTokens {
   cacheWriteTokens: number;
   totalTokens: number;
   costUsd?: number;
+  inputCostUsd?: number;
+  outputCostUsd?: number;
+  cacheReadCostUsd?: number;
+  cacheWriteCostUsd?: number;
   usageStatus: UsageRecordStatus;
 }
 
@@ -124,6 +193,16 @@ function normalizeString(value: unknown): string | undefined {
   if (typeof value !== 'string') return undefined;
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function normalizeTimestampMs(value: unknown): number | undefined {
+  const numeric = normalizeUsageNumber(value);
+  if (numeric !== undefined && numeric >= 0) return numeric;
+  if (typeof value === 'string' && value.trim()) {
+    const parsed = Date.parse(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return undefined;
 }
 
 function normalizeContextEntry(value: unknown): TokenUsageContextWeightEntry | undefined {
@@ -196,6 +275,101 @@ export function normalizeTokenUsageContextWeight(value: unknown): TokenUsageCont
   };
 }
 
+function normalizeStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((entry) => normalizeString(entry))
+    .filter((entry): entry is string => Boolean(entry));
+}
+
+function normalizeMessageCounts(value: unknown): TokenUsageMessageCounts | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+  const record = value as Record<string, unknown>;
+  const total = normalizeNonNegativeInteger(record.total) ?? 0;
+  const user = normalizeNonNegativeInteger(record.user) ?? 0;
+  const assistant = normalizeNonNegativeInteger(record.assistant) ?? 0;
+  const toolCalls = normalizeNonNegativeInteger(record.toolCalls) ?? normalizeNonNegativeInteger(record.tool_calls) ?? 0;
+  const toolResults = normalizeNonNegativeInteger(record.toolResults) ?? normalizeNonNegativeInteger(record.tool_results) ?? 0;
+  const errors = normalizeNonNegativeInteger(record.errors) ?? 0;
+  if (total + user + assistant + toolCalls + toolResults + errors <= 0) return undefined;
+  return { total, user, assistant, toolCalls, toolResults, errors };
+}
+
+function normalizeToolUsage(value: unknown): TokenUsageToolUsage | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+  const record = value as Record<string, unknown>;
+  const tools = Array.isArray(record.tools)
+    ? record.tools
+      .map((entry) => {
+        if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return undefined;
+        const toolRecord = entry as Record<string, unknown>;
+        const name = normalizeString(toolRecord.name);
+        const count = normalizeNonNegativeInteger(toolRecord.count) ?? 0;
+        return name && count > 0 ? { name, count } : undefined;
+      })
+      .filter((entry): entry is TokenUsageToolStat => Boolean(entry))
+      .sort((a, b) => {
+        if (b.count !== a.count) return b.count - a.count;
+        return a.name.localeCompare(b.name);
+      })
+    : [];
+  const totalCalls = normalizeNonNegativeInteger(record.totalCalls)
+    ?? normalizeNonNegativeInteger(record.total_calls)
+    ?? tools.reduce((sum, tool) => sum + tool.count, 0);
+  const uniqueTools = normalizeNonNegativeInteger(record.uniqueTools)
+    ?? normalizeNonNegativeInteger(record.unique_tools)
+    ?? tools.length;
+  if (totalCalls <= 0 && uniqueTools <= 0 && tools.length === 0) return undefined;
+  return { totalCalls, uniqueTools, tools };
+}
+
+export function normalizeTokenUsageSessionMetadata(
+  value: unknown,
+  key?: string,
+): TokenUsageSessionMetadata | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+  const record = value as Record<string, unknown>;
+  const origin = record.origin && typeof record.origin === 'object' && !Array.isArray(record.origin)
+    ? record.origin as Record<string, unknown>
+    : undefined;
+  const usage = record.usage && typeof record.usage === 'object' && !Array.isArray(record.usage)
+    ? record.usage as Record<string, unknown>
+    : record.responseUsage && typeof record.responseUsage === 'object' && !Array.isArray(record.responseUsage)
+      ? record.responseUsage as Record<string, unknown>
+      : undefined;
+  const includedSessionIds = [
+    ...normalizeStringArray(record.includedSessionIds),
+    ...normalizeStringArray(record.usageFamilySessionIds),
+  ];
+  const meta: TokenUsageSessionMetadata = {
+    ...(normalizeString(key) ?? normalizeString(record.key) ?? normalizeString(record.sessionKey)
+      ? { key: normalizeString(key) ?? normalizeString(record.key) ?? normalizeString(record.sessionKey) }
+      : {}),
+    ...(normalizeString(record.label) ?? normalizeString(record.displayName)
+      ? { label: normalizeString(record.label) ?? normalizeString(record.displayName) }
+      : {}),
+    ...(normalizeString(record.channel) ? { channel: normalizeString(record.channel) } : {}),
+    ...(normalizeString(record.chatType) ? { chatType: normalizeString(record.chatType) } : {}),
+    ...(normalizeString(record.status) ? { status: normalizeString(record.status) } : {}),
+    ...(normalizeTimestampMs(record.sessionStartedAt) ?? normalizeTimestampMs(record.startedAt)
+      ? { startedAt: normalizeTimestampMs(record.sessionStartedAt) ?? normalizeTimestampMs(record.startedAt) }
+      : {}),
+    ...(normalizeTimestampMs(record.endedAt) ? { endedAt: normalizeTimestampMs(record.endedAt) } : {}),
+    ...(normalizeTimestampMs(record.updatedAt) ? { updatedAt: normalizeTimestampMs(record.updatedAt) } : {}),
+    ...(normalizeNonNegativeInteger(record.runtimeMs) ? { runtimeMs: normalizeNonNegativeInteger(record.runtimeMs) } : {}),
+    ...(normalizeString(record.usageFamilyKey) ? { usageFamilyKey: normalizeString(record.usageFamilyKey) } : {}),
+    ...(includedSessionIds.length > 0 ? { includedSessionIds: [...new Set(includedSessionIds)] } : {}),
+    ...(normalizeString(record.modelOverride) ? { modelOverride: normalizeString(record.modelOverride) } : {}),
+    ...(normalizeString(record.providerOverride) ? { providerOverride: normalizeString(record.providerOverride) } : {}),
+    ...(normalizeString(record.modelProvider) ? { modelProvider: normalizeString(record.modelProvider) } : {}),
+    ...(normalizeString(origin?.provider) ? { originProvider: normalizeString(origin?.provider) } : {}),
+    ...(normalizeString(origin?.model) ? { originModel: normalizeString(origin?.model) } : {}),
+    ...(normalizeMessageCounts(usage?.messageCounts) ? { messageCounts: normalizeMessageCounts(usage?.messageCounts) } : {}),
+    ...(normalizeToolUsage(usage?.toolUsage) ? { toolUsage: normalizeToolUsage(usage?.toolUsage) } : {}),
+  };
+  return Object.keys(meta).length > 0 ? meta : undefined;
+}
+
 function firstUsageNumber(usage: TranscriptUsageShape | undefined, candidates: string[]): number | undefined {
   if (!usage) return undefined;
   for (const key of candidates) {
@@ -204,6 +378,16 @@ function firstUsageNumber(usage: TranscriptUsageShape | undefined, candidates: s
     if (parsed !== undefined) return parsed;
   }
   return undefined;
+}
+
+function firstNestedUsageNumber(
+  usage: TranscriptUsageShape,
+  nestedKey: keyof TranscriptUsageShape,
+  candidates: string[],
+): number | undefined {
+  const nested = usage[nestedKey];
+  if (!nested || typeof nested !== 'object' || Array.isArray(nested)) return undefined;
+  return firstUsageNumber(nested as TranscriptUsageShape, candidates);
 }
 
 function parseUsageFromShape(usage: unknown): ParsedUsageTokens | undefined {
@@ -267,6 +451,16 @@ function parseUsageFromShape(usage: unknown): ParsedUsageTokens | undefined {
     'totalTokenCount',
     'total_token_count',
   ]);
+  const inputCostUsd = firstNestedUsageNumber(usageShape, 'cost', ['input', 'inputCost', 'input_cost'])
+    ?? firstUsageNumber(usageShape, ['inputCost', 'input_cost']);
+  const outputCostUsd = firstNestedUsageNumber(usageShape, 'cost', ['output', 'outputCost', 'output_cost'])
+    ?? firstUsageNumber(usageShape, ['outputCost', 'output_cost']);
+  const cacheReadCostUsd = firstNestedUsageNumber(usageShape, 'cost', ['cacheRead', 'cache_read', 'cacheReadCost', 'cache_read_cost'])
+    ?? firstUsageNumber(usageShape, ['cacheReadCost', 'cache_read_cost']);
+  const cacheWriteCostUsd = firstNestedUsageNumber(usageShape, 'cost', ['cacheWrite', 'cache_write', 'cacheWriteCost', 'cache_write_cost'])
+    ?? firstUsageNumber(usageShape, ['cacheWriteCost', 'cache_write_cost']);
+  const costUsd = firstNestedUsageNumber(usageShape, 'cost', ['total', 'totalCost', 'total_cost'])
+    ?? firstUsageNumber(usageShape, ['totalCost', 'total_cost']);
 
   const hasUsageValue =
     inputTokens !== undefined
@@ -274,7 +468,11 @@ function parseUsageFromShape(usage: unknown): ParsedUsageTokens | undefined {
     || cacheReadTokens !== undefined
     || cacheWriteTokens !== undefined
     || explicitTotalTokens !== undefined
-    || normalizeUsageNumber(usageShape.cost?.total) !== undefined;
+    || costUsd !== undefined
+    || inputCostUsd !== undefined
+    || outputCostUsd !== undefined
+    || cacheReadCostUsd !== undefined
+    || cacheWriteCostUsd !== undefined;
 
   if (!hasUsageValue) {
     return {
@@ -301,7 +499,11 @@ function parseUsageFromShape(usage: unknown): ParsedUsageTokens | undefined {
     cacheReadTokens: cacheReadTokens ?? 0,
     cacheWriteTokens: cacheWriteTokens ?? 0,
     totalTokens,
-    costUsd: normalizeUsageNumber(usageShape.cost?.total),
+    costUsd,
+    inputCostUsd,
+    outputCostUsd,
+    cacheReadCostUsd,
+    cacheWriteCostUsd,
   };
 }
 
@@ -310,6 +512,12 @@ interface TranscriptLineShape {
   timestamp?: string;
   message?: {
     role?: string;
+    error?: unknown;
+    content?: unknown;
+    toolName?: string;
+    name?: string;
+    tool_calls?: unknown;
+    toolCalls?: unknown;
     model?: string;
     modelRef?: string;
     provider?: string;
@@ -319,10 +527,131 @@ interface TranscriptLineShape {
       model?: string;
       usage?: TranscriptUsageShape;
       content?: unknown;
+      error?: unknown;
+      toolName?: string;
+      name?: string;
       externalContent?: {
         provider?: string;
       };
     };
+  };
+}
+
+function mergeSessionMetadata(
+  base: TokenUsageSessionMetadata | undefined,
+  extra: TokenUsageSessionMetadata | undefined,
+): TokenUsageSessionMetadata | undefined {
+  if (!base && !extra) return undefined;
+  const extraToolUsage = extra?.toolUsage;
+  const baseToolUsage = base?.toolUsage;
+  return {
+    ...(base ?? {}),
+    ...(extra ?? {}),
+    messageCounts: extra?.messageCounts ?? base?.messageCounts,
+    toolUsage: extraToolUsage && extraToolUsage.totalCalls > 0 ? extraToolUsage : baseToolUsage ?? extraToolUsage,
+  };
+}
+
+function countMessageError(parsed: TranscriptLineShape, message: NonNullable<TranscriptLineShape['message']>): boolean {
+  if (parsed.type === 'error') return true;
+  if (message.error !== undefined) return true;
+  if (message.details?.error !== undefined) return true;
+  return false;
+}
+
+function extractToolNamesFromContent(value: unknown): string[] {
+  if (typeof value === 'string') {
+    return [...value.matchAll(/^\s*\[Tool:\s*([^\]]+)\]/gm)]
+      .map((match) => normalizeString(match[1]))
+      .filter((name): name is string => Boolean(name));
+  }
+
+  if (Array.isArray(value)) {
+    return value.flatMap((item) => extractToolNamesFromContent(item));
+  }
+
+  if (value && typeof value === 'object') {
+    const record = value as Record<string, unknown>;
+    return [
+      ...extractToolNamesFromContent(record.text),
+      ...extractToolNamesFromContent(record.content),
+    ];
+  }
+
+  return [];
+}
+
+function extractToolNamesFromCalls(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item) => {
+      if (!item || typeof item !== 'object' || Array.isArray(item)) return undefined;
+      const record = item as Record<string, unknown>;
+      const fn = record.function && typeof record.function === 'object'
+        ? record.function as Record<string, unknown>
+        : undefined;
+      return normalizeString(record.name)
+        ?? normalizeString(record.toolName)
+        ?? normalizeString(fn?.name);
+    })
+    .filter((name): name is string => Boolean(name));
+}
+
+function extractToolNamesFromMessage(message: NonNullable<TranscriptLineShape['message']>): string[] {
+  const names = [
+    normalizeString(message.toolName),
+    normalizeString(message.name),
+    normalizeString(message.details?.toolName),
+    normalizeString(message.details?.name),
+    ...extractToolNamesFromCalls(message.toolCalls),
+    ...extractToolNamesFromCalls(message.tool_calls),
+    ...extractToolNamesFromContent(message.content),
+    ...extractToolNamesFromContent(message.details?.content),
+  ].filter((name): name is string => Boolean(name));
+  return names;
+}
+
+function summarizeTranscriptSession(parsedLines: TranscriptLineShape[]): TokenUsageSessionMetadata {
+  const counts: TokenUsageMessageCounts = {
+    total: 0,
+    user: 0,
+    assistant: 0,
+    toolCalls: 0,
+    toolResults: 0,
+    errors: 0,
+  };
+  const tools = new Map<string, number>();
+
+  for (const parsed of parsedLines) {
+    const message = parsed.message;
+    if (!message) continue;
+    counts.total += 1;
+    if (message.role === 'user') counts.user += 1;
+    if (message.role === 'assistant') counts.assistant += 1;
+    if (message.role === 'toolResult' || message.role === 'tool') counts.toolResults += 1;
+    if (countMessageError(parsed, message)) counts.errors += 1;
+
+    const toolNames = extractToolNamesFromMessage(message);
+    counts.toolCalls += toolNames.length;
+    for (const name of toolNames) {
+      tools.set(name, (tools.get(name) ?? 0) + 1);
+    }
+  }
+
+  const toolEntries = Array.from(tools.entries())
+    .map(([name, count]) => ({ name, count }))
+    .sort((a, b) => {
+      if (b.count !== a.count) return b.count - a.count;
+      return a.name.localeCompare(b.name);
+    });
+
+  return {
+    messageCounts: counts,
+    toolUsage: {
+      totalCalls: toolEntries.reduce((sum, tool) => sum + tool.count, 0),
+      uniqueTools: toolEntries.length,
+      tools: toolEntries,
+    },
   };
 }
 
@@ -369,23 +698,31 @@ function normalizeUsageContent(value: unknown): string | undefined {
 
 export function parseUsageEntriesFromJsonl(
   content: string,
-  context: { sessionId: string; agentId: string; contextWeight?: TokenUsageContextWeight },
+  context: {
+    sessionId: string;
+    agentId: string;
+    contextWeight?: TokenUsageContextWeight;
+    sessionMeta?: TokenUsageSessionMetadata;
+  },
   limit?: number,
 ): TokenUsageHistoryEntry[] {
   const entries: TokenUsageHistoryEntry[] = [];
   const lines = content.split(/\r?\n/).filter(Boolean);
+  const parsedLines: TranscriptLineShape[] = [];
+  for (const line of lines) {
+    try {
+      parsedLines.push(JSON.parse(line) as TranscriptLineShape);
+    } catch {
+      continue;
+    }
+  }
+  const sessionMeta = mergeSessionMetadata(context.sessionMeta, summarizeTranscriptSession(parsedLines));
   const maxEntries = typeof limit === 'number' && Number.isFinite(limit)
     ? Math.max(Math.floor(limit), 0)
     : Number.POSITIVE_INFINITY;
 
-  for (let i = lines.length - 1; i >= 0 && entries.length < maxEntries; i -= 1) {
-    let parsed: TranscriptLineShape;
-    try {
-      parsed = JSON.parse(lines[i]) as TranscriptLineShape;
-    } catch {
-      continue;
-    }
-
+  for (let i = parsedLines.length - 1; i >= 0 && entries.length < maxEntries; i -= 1) {
+    const parsed = parsedLines[i];
     const message = parsed.message;
     if (!message || !parsed.timestamp) {
       continue;
@@ -404,6 +741,7 @@ export function parseUsageEntriesFromJsonl(
         provider: message.provider,
         recordKind: 'assistant',
         ...(context.contextWeight ? { contextWeight: context.contextWeight } : {}),
+        ...(sessionMeta ? { sessionMeta } : {}),
         ...(contentText ? { content: contentText } : {}),
         ...usage,
       });
@@ -435,6 +773,7 @@ export function parseUsageEntriesFromJsonl(
       provider,
       recordKind: 'toolResult',
       ...(context.contextWeight ? { contextWeight: context.contextWeight } : {}),
+      ...(sessionMeta ? { sessionMeta } : {}),
       ...(contentText ? { content: contentText } : {}),
       ...usage,
     });

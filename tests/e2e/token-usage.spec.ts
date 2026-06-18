@@ -108,7 +108,13 @@ async function seedMultiTurnTokenUsageTranscript(homeDir: string): Promise<void>
     join(sessionDir, 'sessions.json'),
     JSON.stringify({
       'agent:multi-turn': {
+        label: 'Multi-turn usage review',
         sessionId: MULTI_TURN_SESSION_ID,
+        channel: 'cli',
+        chatType: 'direct',
+        status: 'done',
+        runtimeMs: 45000,
+        usageFamilySessionIds: [MULTI_TURN_SESSION_ID, `${MULTI_TURN_SESSION_ID}-reset`],
         systemPromptReport: {
           systemPrompt: {
             chars: 12000,
@@ -141,12 +147,20 @@ async function seedMultiTurnTokenUsageTranscript(homeDir: string): Promise<void>
     [
       JSON.stringify({
         type: 'message',
+        timestamp: new Date(now.getTime() - 60_000).toISOString(),
+        message: {
+          role: 'user',
+          content: 'Please inspect token usage.',
+        },
+      }),
+      JSON.stringify({
+        type: 'message',
         timestamp: new Date(now.getTime() - 45_000).toISOString(),
         message: {
           role: 'assistant',
           model: 'kimi-k2.6',
           provider: 'kimi',
-          content: 'First assistant response for the multi-turn usage session.',
+          content: '[Tool: shell]\nFirst assistant response for the multi-turn usage session.',
           usage: {
             total_tokens: 18,
             input_tokens: 12,
@@ -154,6 +168,8 @@ async function seedMultiTurnTokenUsageTranscript(homeDir: string): Promise<void>
             cache_read_tokens: 0,
             cache_write_tokens: 0,
             cost: {
+              input: 0.0008,
+              output: 0.001,
               total: 0.0018,
             },
           },
@@ -174,6 +190,8 @@ async function seedMultiTurnTokenUsageTranscript(homeDir: string): Promise<void>
             cache_read_tokens: 0,
             cache_write_tokens: 0,
             cost: {
+              input: 0.0014,
+              output: 0.0018,
               total: 0.0032,
             },
           },
@@ -273,10 +291,17 @@ test.describe('ClawX token usage history', () => {
     await expect(dialog).toContainText(MULTI_TURN_SESSION_ID);
     await expect(dialog).toContainText('50');
     await expect(dialog.getByTestId('token-usage-call-row')).toHaveCount(2);
+    await expect(dialog).toContainText('Session overview');
+    await expect(dialog).toContainText('Multi-turn usage review');
+    await expect(dialog).toContainText('Tool calls');
+    await expect(dialog).toContainText('shell');
+    await expect(dialog.getByTestId('token-usage-context-pie')).toBeVisible();
     await expect(dialog.getByTestId('token-usage-context-breakdown')).toContainText('System prompt');
     await expect(dialog.getByTestId('token-usage-context-breakdown')).toContainText('skill-a');
     await expect(dialog.getByTestId('token-usage-context-breakdown')).toContainText('tool-a');
     await expect(dialog.getByTestId('token-usage-context-breakdown')).toContainText('AGENTS.md');
+    await expect(dialog).toContainText('Cost breakdown');
+    await expect(dialog).toContainText('Content');
     await expect(dialog).toContainText('First assistant response');
     await expect(dialog).toContainText('Second assistant response');
   });

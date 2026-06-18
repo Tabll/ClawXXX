@@ -5,23 +5,32 @@ import { logger } from './logger';
 import {
   extractSessionIdFromTranscriptFileName,
   normalizeTokenUsageContextWeight,
+  normalizeTokenUsageSessionMetadata,
   parseUsageEntriesFromJsonl,
   type TokenUsageContextWeight,
   type TokenUsageHistoryEntry,
+  type TokenUsageSessionMetadata,
 } from './token-usage-core';
 import { listConfiguredAgentIds } from './agent-config';
 
 export {
   extractSessionIdFromTranscriptFileName,
   normalizeTokenUsageContextWeight,
+  normalizeTokenUsageSessionMetadata,
   parseUsageEntriesFromJsonl,
   type TokenUsageContextWeight,
   type TokenUsageHistoryEntry,
+  type TokenUsageSessionMetadata,
 } from './token-usage-core';
 
 type SessionStoreRecord = {
   key?: string;
   value: Record<string, unknown>;
+};
+
+type SessionUsageContext = {
+  contextWeight?: TokenUsageContextWeight;
+  sessionMeta?: TokenUsageSessionMetadata;
 };
 
 async function listAgentIdsWithSessionDirs(): Promise<string[]> {
@@ -154,10 +163,10 @@ function collectContextSessionIds(record: SessionStoreRecord): string[] {
   return [...ids];
 }
 
-async function loadSessionContextWeights(agentIds: string[]): Promise<Map<string, TokenUsageContextWeight>> {
+async function loadSessionContexts(agentIds: string[]): Promise<Map<string, SessionUsageContext>> {
   const openclawDir = getOpenClawConfigDir();
   const agentsDir = join(openclawDir, 'agents');
-  const contextBySession = new Map<string, TokenUsageContextWeight>();
+  const contextBySession = new Map<string, SessionUsageContext>();
 
   for (const agentId of agentIds) {
     const sessionsJsonPath = join(agentsDir, agentId, 'sessions', 'sessions.json');
@@ -171,9 +180,13 @@ async function loadSessionContextWeights(agentIds: string[]): Promise<Map<string
 
     for (const record of collectSessionStoreRecords(parsed)) {
       const contextWeight = normalizeTokenUsageContextWeight(record.value.systemPromptReport);
-      if (!contextWeight) continue;
+      const sessionMeta = normalizeTokenUsageSessionMetadata(record.value, record.key);
+      if (!contextWeight && !sessionMeta) continue;
       for (const sessionId of collectContextSessionIds(record)) {
-        contextBySession.set(`${agentId}::${sessionId}`, contextWeight);
+        contextBySession.set(`${agentId}::${sessionId}`, {
+          ...(contextWeight ? { contextWeight } : {}),
+          ...(sessionMeta ? { sessionMeta } : {}),
+        });
       }
     }
   }
@@ -183,7 +196,7 @@ async function loadSessionContextWeights(agentIds: string[]): Promise<Map<string
 
 export async function getRecentTokenUsageHistory(limit?: number): Promise<TokenUsageHistoryEntry[]> {
   const files = await listRecentSessionFiles();
-  const contextBySession = await loadSessionContextWeights([...new Set(files.map((file) => file.agentId))]);
+  const contextBySession = await loadSessionContexts([...new Set(files.map((file) => file.agentId))]);
   const results: TokenUsageHistoryEntry[] = [];
   const maxEntries = typeof limit === 'number' && Number.isFinite(limit)
     ? Math.max(Math.floor(limit), 0)
@@ -193,10 +206,12 @@ export async function getRecentTokenUsageHistory(limit?: number): Promise<TokenU
     if (results.length >= maxEntries) break;
     try {
       const content = await readFile(file.filePath, 'utf8');
+      const sessionContext = contextBySession.get(`${file.agentId}::${file.sessionId}`);
       const entries = parseUsageEntriesFromJsonl(content, {
         sessionId: file.sessionId,
         agentId: file.agentId,
-        contextWeight: contextBySession.get(`${file.agentId}::${file.sessionId}`),
+        ...(sessionContext?.contextWeight ? { contextWeight: sessionContext.contextWeight } : {}),
+        ...(sessionContext?.sessionMeta ? { sessionMeta: sessionContext.sessionMeta } : {}),
       }, Number.isFinite(maxEntries) ? maxEntries - results.length : undefined);
       results.push(...entries);
     } catch (error) {

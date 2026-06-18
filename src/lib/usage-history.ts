@@ -24,6 +24,47 @@ export type UsageContextWeight = {
   injectedWorkspaceFiles: UsageContextWeightEntry[];
 };
 
+export type UsageMessageCounts = {
+  total: number;
+  user: number;
+  assistant: number;
+  toolCalls: number;
+  toolResults: number;
+  errors: number;
+};
+
+export type UsageToolStat = {
+  name: string;
+  count: number;
+};
+
+export type UsageToolUsage = {
+  totalCalls: number;
+  uniqueTools: number;
+  tools: UsageToolStat[];
+};
+
+export type UsageSessionMetadata = {
+  key?: string;
+  label?: string;
+  channel?: string;
+  chatType?: string;
+  status?: string;
+  startedAt?: number;
+  endedAt?: number;
+  runtimeMs?: number;
+  updatedAt?: number;
+  usageFamilyKey?: string;
+  includedSessionIds?: string[];
+  modelOverride?: string;
+  providerOverride?: string;
+  modelProvider?: string;
+  originProvider?: string;
+  originModel?: string;
+  messageCounts?: UsageMessageCounts;
+  toolUsage?: UsageToolUsage;
+};
+
 export type UsageHistoryEntry = {
   timestamp: string;
   sessionId: string;
@@ -33,6 +74,7 @@ export type UsageHistoryEntry = {
   content?: string;
   recordKind?: 'assistant' | 'toolResult';
   contextWeight?: UsageContextWeight;
+  sessionMeta?: UsageSessionMetadata;
   usageStatus?: 'available' | 'missing' | 'error';
   inputTokens: number;
   outputTokens: number;
@@ -40,6 +82,10 @@ export type UsageHistoryEntry = {
   cacheWriteTokens: number;
   totalTokens: number;
   costUsd?: number;
+  inputCostUsd?: number;
+  outputCostUsd?: number;
+  cacheReadCostUsd?: number;
+  cacheWriteCostUsd?: number;
 };
 
 export type UsageWindow = '7d' | '30d' | 'all';
@@ -70,11 +116,18 @@ export type UsageSessionSummary = {
   cacheTokens: number;
   totalTokens: number;
   costUsd: number;
+  inputCostUsd: number;
+  outputCostUsd: number;
+  cacheReadCostUsd: number;
+  cacheWriteCostUsd: number;
   availableEntries: number;
   missingEntries: number;
   errorEntries: number;
   contentPreview?: string;
   contextWeight?: UsageContextWeight;
+  sessionMeta?: UsageSessionMetadata;
+  messageCounts?: UsageMessageCounts;
+  toolUsage?: UsageToolUsage;
 };
 
 export type UsageGroup = {
@@ -139,6 +192,11 @@ function getEntryCost(entry: UsageHistoryEntry): number {
   return typeof entry.costUsd === 'number' && Number.isFinite(entry.costUsd) ? entry.costUsd : 0;
 }
 
+function getEntryCostPart(entry: UsageHistoryEntry, key: 'inputCostUsd' | 'outputCostUsd' | 'cacheReadCostUsd' | 'cacheWriteCostUsd'): number {
+  const value = entry[key];
+  return typeof value === 'number' && Number.isFinite(value) ? value : 0;
+}
+
 function addBreakdownValue(
   map: Map<string, UsageSessionBreakdownItem>,
   label: string | undefined,
@@ -195,6 +253,10 @@ export function aggregateUsageSessions(entries: UsageHistoryEntry[]): UsageSessi
       cacheTokens: 0,
       totalTokens: 0,
       costUsd: 0,
+      inputCostUsd: 0,
+      outputCostUsd: 0,
+      cacheReadCostUsd: 0,
+      cacheWriteCostUsd: 0,
       availableEntries: 0,
       missingEntries: 0,
       errorEntries: 0,
@@ -208,6 +270,10 @@ export function aggregateUsageSessions(entries: UsageHistoryEntry[]): UsageSessi
     current.cacheTokens += entry.cacheReadTokens + entry.cacheWriteTokens;
     current.totalTokens += entry.totalTokens;
     current.costUsd += getEntryCost(entry);
+    current.inputCostUsd += getEntryCostPart(entry, 'inputCostUsd');
+    current.outputCostUsd += getEntryCostPart(entry, 'outputCostUsd');
+    current.cacheReadCostUsd += getEntryCostPart(entry, 'cacheReadCostUsd');
+    current.cacheWriteCostUsd += getEntryCostPart(entry, 'cacheWriteCostUsd');
     if (entry.usageStatus === 'missing') {
       current.missingEntries += 1;
     } else if (entry.usageStatus === 'error') {
@@ -222,6 +288,14 @@ export function aggregateUsageSessions(entries: UsageHistoryEntry[]): UsageSessi
     }
     if (entry.contextWeight) {
       current.contextWeight = entry.contextWeight;
+    }
+    if (entry.sessionMeta) {
+      current.sessionMeta = {
+        ...(current.sessionMeta ?? {}),
+        ...entry.sessionMeta,
+        messageCounts: entry.sessionMeta.messageCounts ?? current.sessionMeta?.messageCounts,
+        toolUsage: entry.sessionMeta.toolUsage ?? current.sessionMeta?.toolUsage,
+      };
     }
 
     sessions.set(id, current);
@@ -250,11 +324,20 @@ export function aggregateUsageSessions(entries: UsageHistoryEntry[]): UsageSessi
       cacheTokens: session.cacheTokens,
       totalTokens: session.totalTokens,
       costUsd: session.costUsd,
+      inputCostUsd: session.inputCostUsd,
+      outputCostUsd: session.outputCostUsd,
+      cacheReadCostUsd: session.cacheReadCostUsd,
+      cacheWriteCostUsd: session.cacheWriteCostUsd,
       availableEntries: session.availableEntries,
       missingEntries: session.missingEntries,
       errorEntries: session.errorEntries,
       ...(session.contentPreview ? { contentPreview: session.contentPreview } : {}),
       ...(session.contextWeight ? { contextWeight: session.contextWeight } : {}),
+      ...(session.sessionMeta ? {
+        sessionMeta: session.sessionMeta,
+        ...(session.sessionMeta.messageCounts ? { messageCounts: session.sessionMeta.messageCounts } : {}),
+        ...(session.sessionMeta.toolUsage ? { toolUsage: session.sessionMeta.toolUsage } : {}),
+      } : {}),
     };
   }).sort((a, b) => {
     const timeDiff = Date.parse(b.lastTimestamp) - Date.parse(a.lastTimestamp);
@@ -273,8 +356,17 @@ export function matchesUsageSession(session: UsageSessionSummary, rawQuery: stri
     session.model,
     session.provider,
     session.contentPreview,
+    session.sessionMeta?.key,
+    session.sessionMeta?.label,
+    session.sessionMeta?.channel,
+    session.sessionMeta?.chatType,
+    session.sessionMeta?.status,
+    session.sessionMeta?.modelOverride,
+    session.sessionMeta?.providerOverride,
+    session.sessionMeta?.modelProvider,
     ...session.models.map((item) => item.label),
     ...session.providers.map((item) => item.label),
+    ...(session.toolUsage?.tools.map((item) => item.name) ?? []),
     ...session.entries.flatMap((entry) => [
       entry.model,
       entry.provider,
