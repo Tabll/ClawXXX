@@ -19,6 +19,7 @@ export const initialChatState: Pick<
   | 'lastUserMessageAt'
   | 'pendingToolImages'
   | 'sessions'
+  | 'sessionDefaults'
   | 'currentSessionKey'
   | 'currentAgentId'
   | 'sessionLabels'
@@ -41,6 +42,7 @@ export const initialChatState: Pick<
   pendingToolImages: [],
 
   sessions: [],
+  sessionDefaults: {},
   currentSessionKey: DEFAULT_SESSION_KEY,
   currentAgentId: 'main',
   sessionLabels: {},

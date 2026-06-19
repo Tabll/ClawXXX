@@ -7,7 +7,7 @@
  * are sent with the message (no base64 over WebSocket).
  */
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { SendHorizontal, Square, X, Paperclip, FileText, Film, Music, FileArchive, File, FolderOpen, Loader2, AtSign, Search, ChevronDown, CornerDownRight, Trash2 } from 'lucide-react';
+import { SendHorizontal, Square, X, Paperclip, FileText, Film, Music, FileArchive, File, FolderOpen, Loader2, AtSign, Search, ChevronDown, CornerDownRight, Trash2, Archive, CheckCircle2, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -41,13 +41,34 @@ export interface FileAttachment {
   error?: string;
 }
 
+export interface ChatContextUsage {
+  usedTokens: number;
+  limitTokens: number;
+  percent: number;
+  warning: boolean;
+  compactRecommended: boolean;
+}
+
+export type ChatContextCompactionPhase = 'active' | 'complete' | 'skipped' | 'error';
+
+export interface ChatContextCompactionStatus {
+  phase: ChatContextCompactionPhase;
+  reason?: string;
+  tokensBefore?: number;
+  tokensAfter?: number;
+  completedAt?: number;
+}
+
 interface ChatInputProps {
   onSend: (text: string, attachments?: FileAttachment[], targetAgentId?: string | null) => void | Promise<void>;
   onSteer?: (text: string, attachments?: FileAttachment[]) => void | Promise<void>;
   onStop?: () => void;
+  onCompactContext?: () => void | Promise<void>;
   disabled?: boolean;
   sending?: boolean;
   compact?: boolean;
+  contextUsage?: ChatContextUsage | null;
+  contextCompactionStatus?: ChatContextCompactionStatus | null;
 }
 
 type ComposerQueueItemStatus = 'queued' | 'steering' | 'sending';
@@ -72,6 +93,10 @@ function formatFileSize(bytes: number): string {
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+}
+
+function formatTokenCount(tokens: number): string {
+  return new Intl.NumberFormat().format(Math.max(0, Math.round(tokens)));
 }
 
 function getSkillPrefix(skillName: string): string {
@@ -206,7 +231,17 @@ function readFileAsBase64(file: globalThis.File): Promise<string> {
 
 // ── Component ────────────────────────────────────────────────────
 
-export function ChatInput({ onSend, onSteer, onStop, disabled = false, sending = false, compact = false }: ChatInputProps) {
+export function ChatInput({
+  onSend,
+  onSteer,
+  onStop,
+  onCompactContext,
+  disabled = false,
+  sending = false,
+  compact = false,
+  contextUsage = null,
+  contextCompactionStatus = null,
+}: ChatInputProps) {
   const { t } = useTranslation('chat');
   const [input, setInput] = useState('');
   const [attachments, setAttachments] = useState<FileAttachment[]>([]);
@@ -611,6 +646,8 @@ export function ChatInput({ onSend, onSteer, onStop, disabled = false, sending =
   const hasFailedAttachments = attachments.some((a) => a.status === 'error');
   const canSend = Boolean(input.trim() || attachments.length > 0) && allReady && !inputDisabled;
   const canStop = sending && !inputDisabled && !!onStop;
+  const contextCompacting = contextCompactionStatus?.phase === 'active';
+  const canCompactContext = Boolean(onCompactContext) && !inputDisabled && !sending && !contextCompacting;
 
   useEffect(() => {
     if (sending || inputDisabled || dequeueInFlightRef.current) return;
@@ -1214,13 +1251,23 @@ export function ChatInput({ onSend, onSteer, onStop, disabled = false, sending =
               </div>
             )}
 
-            {/* Send Button — pushed to the right */}
+            {contextUsage && (
+              <ContextUsageControl
+                usage={contextUsage}
+                compacting={contextCompacting}
+                canCompact={canCompactContext}
+                onCompact={onCompactContext}
+                className="ml-auto"
+              />
+            )}
+
+            {/* Send Button */}
             <Button
               onClick={sending ? handleStop : handleSend}
               disabled={sending ? !canStop : !canSend}
               size="icon"
               data-testid="chat-composer-send"
-              className={`ml-auto h-8 w-8 shrink-0 rounded-full transition-colors ${
+              className={`${contextUsage ? '' : 'ml-auto'} h-8 w-8 shrink-0 rounded-full transition-colors ${
                 (sending || canSend)
                   ? 'bg-primary text-primary-foreground shadow-sm shadow-black/10 hover:bg-primary/90'
                   : 'text-muted-foreground/50 hover:bg-transparent bg-transparent'
@@ -1256,6 +1303,9 @@ export function ChatInput({ onSend, onSteer, onStop, disabled = false, sending =
             {chatComposerStatusComponents.map((Component, index) => (
               <Component key={`${index}`} gatewayStatus={gatewayStatus} />
             ))}
+            {contextCompactionStatus && (
+              <ContextCompactionStatusIndicator status={contextCompactionStatus} />
+            )}
           </div>
           {hasFailedAttachments && (
             <Button
@@ -1273,6 +1323,182 @@ export function ChatInput({ onSend, onSteer, onStop, disabled = false, sending =
         </div>
       </div>
     </div>
+  );
+}
+
+function ContextUsageControl({
+  usage,
+  compacting,
+  canCompact,
+  onCompact,
+  className,
+}: {
+  usage: ChatContextUsage;
+  compacting: boolean;
+  canCompact: boolean;
+  onCompact?: () => void | Promise<void>;
+  className?: string;
+}) {
+  const { t } = useTranslation('chat');
+  const percent = Math.min(Math.max(usage.percent, 0), 100);
+  const radius = 9.5;
+  const circumference = 2 * Math.PI * radius;
+  const dashOffset = circumference - (circumference * percent) / 100;
+  const toneClass = usage.compactRecommended
+    ? 'text-red-700 dark:text-red-400'
+    : usage.warning
+      ? 'text-yellow-700 dark:text-yellow-400'
+      : 'text-muted-foreground';
+  const formattedUsed = formatTokenCount(usage.usedTokens);
+  const formattedLimit = formatTokenCount(usage.limitTokens);
+
+  return (
+    <div
+      className={cn(
+        'group relative shrink-0 after:absolute after:bottom-full after:right-0 after:h-2 after:w-64 after:content-[""]',
+        className,
+      )}
+      data-testid="chat-context-usage"
+    >
+      <button
+        type="button"
+        className={cn(
+          'inline-flex h-8 w-8 items-center justify-center rounded-full border border-transparent bg-transparent transition-colors',
+          'hover:border-border/70 hover:bg-surface-input/40 focus-visible:border-ring/50 focus-visible:outline-none focus-visible:ring-0',
+          toneClass,
+        )}
+        aria-label={t('composer.contextUsage.aria', { percent })}
+        data-testid="chat-context-usage-ring"
+      >
+        <svg viewBox="0 0 24 24" className="h-5 w-5 -rotate-90" aria-hidden="true">
+          <circle
+            cx="12"
+            cy="12"
+            r={radius}
+            fill="none"
+            strokeWidth="2"
+            className="stroke-muted-foreground/20"
+          />
+          <circle
+            cx="12"
+            cy="12"
+            r={radius}
+            fill="none"
+            stroke="currentColor"
+            strokeLinecap="round"
+            strokeWidth="2"
+            style={{
+              strokeDasharray: circumference,
+              strokeDashoffset: dashOffset,
+            }}
+          />
+        </svg>
+      </button>
+
+      <div
+        role="tooltip"
+        data-testid="chat-context-usage-card"
+        className={cn(
+          'invisible absolute bottom-full right-0 z-40 mb-2 w-64 translate-y-1 rounded-xl border border-border/70 bg-popover/95 p-3 opacity-0 shadow-none backdrop-blur transition-all duration-150',
+          'pointer-events-none group-hover:visible group-hover:pointer-events-auto group-hover:translate-y-0 group-hover:opacity-100 group-focus-within:visible group-focus-within:pointer-events-auto group-focus-within:translate-y-0 group-focus-within:opacity-100',
+        )}
+      >
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="text-xs font-medium leading-4 text-popover-foreground">
+              {t('composer.contextUsage.title')}
+            </p>
+            <p className="mt-1 text-tiny leading-4 text-muted-foreground">
+              {t('composer.contextUsage.detail', { used: formattedUsed, limit: formattedLimit })}
+            </p>
+          </div>
+          <span className={cn('text-xs font-medium tabular-nums', toneClass)}>
+            {t('composer.contextUsage.percentValue', { percent })}
+          </span>
+        </div>
+
+        <div className="mt-3 space-y-2">
+          <ContextUsageDetail
+            label={t('composer.contextUsage.percentTitle')}
+            value={t('composer.contextUsage.percentValue', { percent })}
+          />
+          <ContextUsageDetail
+            label={t('composer.contextUsage.usedTitle')}
+            value={t('composer.contextUsage.tokenValue', { value: formattedUsed })}
+          />
+          <ContextUsageDetail
+            label={t('composer.contextUsage.limitTitle')}
+            value={t('composer.contextUsage.tokenValue', { value: formattedLimit })}
+          />
+        </div>
+
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          disabled={!canCompact}
+          onClick={() => void onCompact?.()}
+          className="mt-3 h-8 w-full justify-center gap-1.5 rounded-lg border-border/70 bg-transparent text-meta font-medium shadow-none hover:bg-black/5 dark:hover:bg-white/10"
+          data-testid="chat-context-compact-button"
+        >
+          {compacting ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <Archive className="h-3.5 w-3.5" />
+          )}
+          <span>
+            {compacting
+              ? t('composer.contextUsage.compactingButton')
+              : t('composer.contextUsage.compactButton')}
+          </span>
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function ContextUsageDetail({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-center justify-between gap-3 text-xs leading-4">
+      <span className="text-muted-foreground">{label}</span>
+      <span className="max-w-[9rem] truncate font-medium tabular-nums text-popover-foreground" title={value}>
+        {value}
+      </span>
+    </div>
+  );
+}
+
+function ContextCompactionStatusIndicator({ status }: { status: ChatContextCompactionStatus }) {
+  const { t } = useTranslation('chat');
+  const isActive = status.phase === 'active';
+  const isComplete = status.phase === 'complete';
+  const isError = status.phase === 'error';
+  const text = isActive
+    ? t('composer.contextUsage.compacting')
+    : isComplete
+      ? t('composer.contextUsage.compacted')
+      : status.phase === 'skipped'
+        ? t('composer.contextUsage.skipped')
+        : t('composer.contextUsage.failed');
+
+  return (
+    <span
+      className={cn(
+        'inline-flex items-center gap-1.5 text-tiny leading-none text-muted-foreground/60',
+        isError && 'text-destructive/80',
+      )}
+      title={status.reason}
+      data-testid="chat-context-compaction-status"
+    >
+      {isActive ? (
+        <Loader2 className="h-3 w-3 animate-spin" />
+      ) : isComplete ? (
+        <CheckCircle2 className="h-3 w-3" />
+      ) : (
+        <AlertCircle className="h-3 w-3" />
+      )}
+      <span>{text}</span>
+    </span>
   );
 }
 

@@ -208,6 +208,22 @@
         "skillPreviewTooltip": "Preview SKILL.md",
         "skillPreviewNotFound": "Could not find this skill. Open the skill picker to refresh the list.",
         "attachmentOnlyMessage": "Process the attached file(s).",
+        "contextUsage": {
+            "aria": "{{percent}}% context used",
+            "title": "Context",
+            "detail": "{{used}} / {{limit}}",
+            "percentTitle": "Ratio",
+            "usedTitle": "Used",
+            "limitTitle": "Window",
+            "percentValue": "{{percent}}%",
+            "tokenValue": "{{value}} tokens",
+            "compactButton": "Compact context",
+            "compactingButton": "Compacting",
+            "compacting": "Compacting context...",
+            "compacted": "Context compacted",
+            "skipped": "Context compaction skipped",
+            "failed": "Context compaction failed"
+        },
         "queue": {
             "steer": "Steer",
             "steering": "Steering",

@@ -208,6 +208,22 @@
         "skillPreviewTooltip": "预览 SKILL.md",
         "skillPreviewNotFound": "找不到该技能。请打开技能列表以刷新。",
         "attachmentOnlyMessage": "处理附件文件。",
+        "contextUsage": {
+            "aria": "上下文已使用 {{percent}}%",
+            "title": "上下文",
+            "detail": "{{used}} / {{limit}}",
+            "percentTitle": "比例",
+            "usedTitle": "已用",
+            "limitTitle": "窗口",
+            "percentValue": "{{percent}}%",
+            "tokenValue": "{{value}} tokens",
+            "compactButton": "压缩上下文",
+            "compactingButton": "压缩中",
+            "compacting": "上下文压缩中...",
+            "compacted": "上下文已压缩",
+            "skipped": "已跳过上下文压缩",
+            "failed": "上下文压缩失败"
+        },
         "queue": {
             "steer": "引导",
             "steering": "引导中",

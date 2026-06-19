@@ -208,6 +208,22 @@
         "skillPreviewTooltip": "SKILL.md をプレビュー",
         "skillPreviewNotFound": "この Skill が見つかりません。Skill ピッカーを開いて一覧を更新してください。",
         "attachmentOnlyMessage": "添付ファイルを処理してください。",
+        "contextUsage": {
+            "aria": "コンテキスト使用率 {{percent}}%",
+            "title": "コンテキスト",
+            "detail": "{{used}} / {{limit}}",
+            "percentTitle": "比率",
+            "usedTitle": "使用済み",
+            "limitTitle": "ウィンドウ",
+            "percentValue": "{{percent}}%",
+            "tokenValue": "{{value}} tokens",
+            "compactButton": "コンテキストを圧縮",
+            "compactingButton": "圧縮中",
+            "compacting": "コンテキストを圧縮中...",
+            "compacted": "コンテキストを圧縮しました",
+            "skipped": "コンテキスト圧縮をスキップしました",
+            "failed": "コンテキスト圧縮に失敗しました"
+        },
         "queue": {
             "steer": "誘導",
             "steering": "誘導中",

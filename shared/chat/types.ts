@@ -137,6 +137,15 @@ export interface ChatSession {
   updatedAt?: number;
   status?: string;
   hasActiveRun?: boolean;
+  totalTokens?: number;
+  totalTokensFresh?: boolean;
+  contextTokens?: number;
+  contextBudgetStatus?: string;
+  compactionCount?: number;
+}
+
+export interface ChatSessionDefaults {
+  contextTokens?: number;
 }
 
 export interface ToolStatus {
@@ -185,6 +194,7 @@ export interface ChatState {
 
   // Sessions
   sessions: ChatSession[];
+  sessionDefaults: ChatSessionDefaults;
   currentSessionKey: string;
   currentAgentId: string;
   /** First user message text per session key, used as display label */

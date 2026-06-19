@@ -1748,6 +1748,15 @@ function parseSessionStatus(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim() ? value.trim().toLowerCase() : undefined;
 }
 
+function parseOptionalFiniteNumber(value: unknown): number | undefined {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string' && value.trim()) {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return undefined;
+}
+
 function sessionIndicatesIdle(session: ChatSession | undefined): boolean {
   if (!session) return false;
   if (session.hasActiveRun === false) return true;
@@ -2602,6 +2611,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   runtimeRuns: {},
 
   sessions: [],
+  sessionDefaults: {},
   currentSessionKey: DEFAULT_SESSION_KEY,
   currentAgentId: 'main',
   sessionLabels: {},
@@ -2626,6 +2636,12 @@ export const useChatStore = create<ChatState>((set, get) => ({
         const data = await fetchChatSessionsList();
         if (data) {
           const rawSessions = Array.isArray(data.sessions) ? data.sessions : [];
+          const rawDefaults = data.defaults && typeof data.defaults === 'object'
+            ? data.defaults as Record<string, unknown>
+            : {};
+          const sessionDefaults = {
+            contextTokens: parseOptionalFiniteNumber(rawDefaults.contextTokens),
+          };
           const sessions: ChatSession[] = rawSessions.map((s: Record<string, unknown>) => ({
             key: String(s.key || ''),
             label: s.label ? String(s.label) : undefined,
@@ -2637,6 +2653,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
             updatedAt: parseSessionUpdatedAtMs(s.updatedAt),
             status: parseSessionStatus(s.status),
             hasActiveRun: typeof s.hasActiveRun === 'boolean' ? s.hasActiveRun : undefined,
+            totalTokens: parseOptionalFiniteNumber(s.totalTokens),
+            totalTokensFresh: typeof s.totalTokensFresh === 'boolean' ? s.totalTokensFresh : undefined,
+            contextTokens: parseOptionalFiniteNumber(s.contextTokens),
+            contextBudgetStatus: typeof s.contextBudgetStatus === 'string' ? s.contextBudgetStatus : undefined,
+            compactionCount: parseOptionalFiniteNumber(s.compactionCount),
           })).filter((s: ChatSession) => s.key);
 
           const canonicalBySuffix = new Map<string, string>();
@@ -2703,6 +2724,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
             set((state) => ({
               ...buildSessionSwitchPatch(state, nextSessionKey),
               sessions: sessionsWithCurrent,
+              sessionDefaults,
               sessionLastActivity: {
                 ...state.sessionLastActivity,
                 ...discoveredActivity,
@@ -2711,6 +2733,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
           } else {
             set((state) => ({
               sessions: sessionsWithCurrent,
+              sessionDefaults,
               currentSessionKey: nextSessionKey,
               currentAgentId: getAgentIdFromSessionKey(nextSessionKey),
               sessionLastActivity: {

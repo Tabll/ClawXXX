@@ -208,6 +208,22 @@
         "skillPreviewTooltip": "Предпросмотр SKILL.md",
         "skillPreviewNotFound": "Skill не найден. Откройте список Skill, чтобы обновить его.",
         "attachmentOnlyMessage": "Обработай прикреплённые файлы.",
+        "contextUsage": {
+            "aria": "Использовано контекста: {{percent}}%",
+            "title": "Контекст",
+            "detail": "{{used}} / {{limit}}",
+            "percentTitle": "Доля",
+            "usedTitle": "Использовано",
+            "limitTitle": "Окно",
+            "percentValue": "{{percent}}%",
+            "tokenValue": "{{value}} tokens",
+            "compactButton": "Сжать контекст",
+            "compactingButton": "Сжатие",
+            "compacting": "Сжатие контекста...",
+            "compacted": "Контекст сжат",
+            "skipped": "Сжатие контекста пропущено",
+            "failed": "Не удалось сжать контекст"
+        },
         "queue": {
             "steer": "Направить",
             "steering": "Направляется",

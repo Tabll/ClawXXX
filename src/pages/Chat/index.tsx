@@ -6,7 +6,7 @@
  */
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AlertCircle, ArrowDownToLine, Loader2, Sparkles } from 'lucide-react';
-import { useChatStore, type ChatRuntimeRunState, type RawMessage } from '@/stores/chat';
+import { useChatStore, type ChatRuntimeRunState, type ChatSession, type RawMessage } from '@/stores/chat';
 import { isInternalMessage } from '@/stores/chat/helpers';
 import { buildBaselineRunKey, getBaseline } from '@/stores/baseline-cache';
 import { useGatewayStore } from '@/stores/gateway';
@@ -15,7 +15,12 @@ import { useArtifactPanel } from '@/stores/artifact-panel';
 import { hostApi } from '@/lib/host-api';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { ChatMessage } from './ChatMessage';
-import { ChatInput, type FileAttachment } from './ChatInput';
+import {
+  ChatInput,
+  type ChatContextCompactionStatus,
+  type ChatContextUsage,
+  type FileAttachment,
+} from './ChatInput';
 import { ExecutionGraphCard } from './ExecutionGraphCard';
 import { ChatToolbar } from './ChatToolbar';
 import { extractImages, extractText, extractThinking, extractToolUse, isInternalAssistantReplyText, isInternalProcessNarration, normalizeMessageRole, sanitizeAssistantReplyText, stripProcessMessagePrefix } from './message-utils';
@@ -90,6 +95,54 @@ type QuestionDirectoryItem = {
 };
 
 const QUESTION_DIRECTORY_RENDER_LIMIT = 300;
+const CONTEXT_USAGE_WARNING_RATIO = 0.85;
+const CONTEXT_USAGE_COMPACT_RATIO = 0.9;
+
+type SessionsCompactResponse = {
+  ok?: boolean;
+  key?: string;
+  compacted?: boolean;
+  reason?: string;
+  result?: {
+    tokensBefore?: number | string;
+    tokensAfter?: number | string;
+  };
+};
+
+function parseOptionalNumber(value: unknown): number | undefined {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string' && value.trim()) {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return undefined;
+}
+
+function deriveContextUsage(
+  session: ChatSession | undefined,
+  fallbackContextTokens?: number,
+): ChatContextUsage | null {
+  if (session?.totalTokensFresh === false) return null;
+  const usedTokens = parseOptionalNumber(session?.totalTokens);
+  const limitTokens = parseOptionalNumber(session?.contextTokens ?? fallbackContextTokens);
+  if (
+    usedTokens == null
+    || limitTokens == null
+    || usedTokens < 0
+    || limitTokens <= 0
+  ) {
+    return null;
+  }
+
+  const ratio = usedTokens / limitTokens;
+  return {
+    usedTokens,
+    limitTokens,
+    percent: Math.min(Math.round(ratio * 100), 100),
+    warning: ratio >= CONTEXT_USAGE_WARNING_RATIO,
+    compactRecommended: ratio >= CONTEXT_USAGE_COMPACT_RATIO,
+  };
+}
 
 function getPrimaryMessageStepTexts(steps: TaskStep[]): string[] {
   return steps
@@ -169,6 +222,8 @@ export function Chat() {
   const messages = useChatStore((s) => s.messages);
   const currentSessionKey = useChatStore((s) => s.currentSessionKey);
   const currentAgentId = useChatStore((s) => s.currentAgentId);
+  const sessions = useChatStore((s) => s.sessions);
+  const sessionDefaults = useChatStore((s) => s.sessionDefaults);
   const sessionLabels = useChatStore((s) => s.sessionLabels);
   const loading = useChatStore((s) => s.loading);
   const loadingMoreHistory = useChatStore((s) => s.loadingMoreHistory);
@@ -184,6 +239,8 @@ export function Chat() {
   const runtimeRuns = useChatStore((s) => s.runtimeRuns ?? {});
   const sendMessage = useChatStore((s) => s.sendMessage);
   const abortRun = useChatStore((s) => s.abortRun);
+  const loadSessions = useChatStore((s) => s.loadSessions);
+  const loadHistory = useChatStore((s) => s.loadHistory);
   const clearError = useChatStore((s) => s.clearError);
   const fetchAgents = useAgentsStore((s) => s.fetchAgents);
   const agents = useAgentsStore((s) => s.agents);
@@ -266,6 +323,81 @@ export function Chat() {
       120_000,
     );
   }, [currentSessionKey, t]);
+
+  const [contextCompactionStatus, setContextCompactionStatus] = useState<ChatContextCompactionStatus | null>(null);
+  const currentSession = useMemo(
+    () => sessions.find((session) => session.key === currentSessionKey),
+    [currentSessionKey, sessions],
+  );
+  const contextUsage = useMemo(
+    () => deriveContextUsage(currentSession, sessionDefaults.contextTokens),
+    [currentSession, sessionDefaults.contextTokens],
+  );
+
+  useEffect(() => {
+    setContextCompactionStatus(null);
+  }, [currentSessionKey]);
+
+  useEffect(() => {
+    if (!contextCompactionStatus || contextCompactionStatus.phase === 'active') return;
+    const timer = window.setTimeout(() => {
+      setContextCompactionStatus((current) => (
+        current === contextCompactionStatus ? null : current
+      ));
+    }, 6_000);
+    return () => window.clearTimeout(timer);
+  }, [contextCompactionStatus]);
+
+  const handleCompactContext = useCallback(async () => {
+    if (!currentSessionKey || contextCompactionStatus?.phase === 'active') return;
+    setContextCompactionStatus({ phase: 'active' });
+
+    try {
+      const response = await hostApi.gateway.rpc<SessionsCompactResponse>(
+        'sessions.compact',
+        { key: currentSessionKey },
+        180_000,
+      );
+      const tokensBefore = parseOptionalNumber(response?.result?.tokensBefore);
+      const tokensAfter = parseOptionalNumber(response?.result?.tokensAfter);
+
+      if (response?.compacted) {
+        if (tokensAfter != null) {
+          useChatStore.setState((state) => ({
+            sessions: state.sessions.map((session) => (
+              session.key === currentSessionKey
+                ? { ...session, totalTokens: tokensAfter, totalTokensFresh: true }
+                : session
+            )),
+          }));
+        }
+        setContextCompactionStatus({
+          phase: 'complete',
+          tokensBefore,
+          tokensAfter,
+          completedAt: Date.now(),
+        });
+        await Promise.allSettled([
+          loadSessions(),
+          loadHistory(true),
+        ]);
+        return;
+      }
+
+      setContextCompactionStatus({
+        phase: 'skipped',
+        reason: response?.reason,
+        completedAt: Date.now(),
+      });
+      await loadSessions();
+    } catch (error) {
+      setContextCompactionStatus({
+        phase: 'error',
+        reason: error instanceof Error ? error.message : String(error),
+        completedAt: Date.now(),
+      });
+    }
+  }, [contextCompactionStatus?.phase, currentSessionKey, loadHistory, loadSessions]);
   // Persistent per-run override for the Execution Graph's expanded/collapsed
   // state. Keyed by a stable run id (trigger message id, or a fallback of
   // `${sessionKey}:${triggerIdx}`) so user toggles survive the `loadHistory`
@@ -1202,9 +1334,12 @@ export function Chat() {
         onSend={sendMessage}
         onSteer={steerActiveRunMessage}
         onStop={abortRun}
+        onCompactContext={handleCompactContext}
         disabled={!isGatewayRunning}
         sending={inputRunActive}
         compact={isEmpty}
+        contextUsage={contextUsage}
+        contextCompactionStatus={contextCompactionStatus}
       />
       </div>
 
