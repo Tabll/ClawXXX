@@ -1757,6 +1757,31 @@ function parseOptionalFiniteNumber(value: unknown): number | undefined {
   return undefined;
 }
 
+function parseThinkingOptions(value: unknown): Array<{ id: string; label: string }> | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const options = value
+    .map((entry) => {
+      if (typeof entry === 'string') {
+        const id = entry.trim();
+        return id ? { id, label: id } : null;
+      }
+      if (!entry || typeof entry !== 'object') return null;
+      const record = entry as Record<string, unknown>;
+      const id = typeof record.id === 'string' && record.id.trim()
+        ? record.id.trim()
+        : typeof record.value === 'string' && record.value.trim()
+          ? record.value.trim()
+          : null;
+      if (!id) return null;
+      const label = typeof record.label === 'string' && record.label.trim()
+        ? record.label.trim()
+        : id;
+      return { id, label };
+    })
+    .filter((entry): entry is { id: string; label: string } => entry != null);
+  return options.length > 0 ? options : undefined;
+}
+
 function sessionIndicatesIdle(session: ChatSession | undefined): boolean {
   if (!session) return false;
   if (session.hasActiveRun === false) return true;
@@ -2643,6 +2668,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
             contextTokens: parseOptionalFiniteNumber(rawDefaults.contextTokens),
             model: rawDefaults.model ? String(rawDefaults.model) : undefined,
             modelProvider: rawDefaults.modelProvider ? String(rawDefaults.modelProvider) : undefined,
+            thinkingDefault: rawDefaults.thinkingDefault ? String(rawDefaults.thinkingDefault) : undefined,
+            thinkingOptions: parseThinkingOptions(rawDefaults.thinkingOptions),
+            thinkingLevels: parseThinkingOptions(rawDefaults.thinkingLevels),
           };
           const sessions: ChatSession[] = rawSessions.map((s: Record<string, unknown>) => ({
             key: String(s.key || ''),
@@ -2651,6 +2679,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
             derivedTitle: s.derivedTitle ? String(s.derivedTitle) : undefined,
             lastMessagePreview: s.lastMessagePreview ? String(s.lastMessagePreview) : undefined,
             thinkingLevel: s.thinkingLevel ? String(s.thinkingLevel) : undefined,
+            thinkingDefault: s.thinkingDefault ? String(s.thinkingDefault) : undefined,
+            thinkingOptions: parseThinkingOptions(s.thinkingOptions),
+            thinkingLevels: parseThinkingOptions(s.thinkingLevels),
             model: s.model ? String(s.model) : undefined,
             modelProvider: s.modelProvider ? String(s.modelProvider) : undefined,
             updatedAt: parseSessionUpdatedAtMs(s.updatedAt),

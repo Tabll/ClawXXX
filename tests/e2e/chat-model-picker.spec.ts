@@ -12,6 +12,7 @@ test.describe('ClawX chat model picker', () => {
         const { ipcMain } = process.mainModule!.require('electron') as typeof import('electron');
 
         let sessionModelRef: string | null = null;
+        let sessionThinkingLevel: string | null = null;
         const hostRequests: Array<{ path: string; method: string; body: unknown }> = [];
         const now = new Date().toISOString();
         const originalHostInvoke = (ipcMain as unknown as {
@@ -36,13 +37,25 @@ test.describe('ClawX chat model picker', () => {
           sessions: [{
             key: 'agent:main:main',
             displayName: 'main',
+            thinkingLevel: sessionThinkingLevel ?? undefined,
             ...toSessionModelPatch(sessionModelRef),
           }],
-          defaults: toSessionModelPatch(refs.alphaModelRef),
+          defaults: {
+            ...toSessionModelPatch(refs.alphaModelRef),
+            thinkingDefault: 'low',
+            thinkingOptions: [
+              { id: 'off', label: 'off' },
+              { id: 'minimal', label: 'minimal' },
+              { id: 'low', label: 'low' },
+              { id: 'medium', label: 'medium' },
+              { id: 'high', label: 'high' },
+            ],
+          },
         });
         const modelCatalogSnapshot = () => ({
           models: [
-            { id: 'model-alpha', provider: 'custom-alpha123', label: 'model-alpha (Alpha)' },
+            { id: 'model-alpha', provider: 'custom-alpha123', label: 'model-alpha (Alpha)', reasoning: true },
+            { id: 'provider/model-beta', provider: 'custom-beta5678', reasoning: true },
             { id: 'provider/model-beta', provider: 'custom-beta5678', label: 'provider/model-beta (Beta)' },
           ],
         });
@@ -85,8 +98,13 @@ test.describe('ClawX chat model picker', () => {
             return { success: true, result: { messages: [] } };
           }
           if (method === 'sessions.patch') {
-            const body = params as { model?: string | null } | null;
-            sessionModelRef = typeof body?.model === 'string' ? body.model : null;
+            const body = params as { model?: string | null; thinkingLevel?: string | null } | null;
+            if (body && Object.prototype.hasOwnProperty.call(body, 'model')) {
+              sessionModelRef = typeof body.model === 'string' ? body.model : null;
+            }
+            if (body && Object.prototype.hasOwnProperty.call(body, 'thinkingLevel')) {
+              sessionThinkingLevel = typeof body.thinkingLevel === 'string' ? body.thinkingLevel : null;
+            }
             return { success: true, result: { resolved: toSessionModelPatch(sessionModelRef) } };
           }
           return { success: true, result: {} };
@@ -114,20 +132,25 @@ test.describe('ClawX chat model picker', () => {
             const params = body?.params ?? null;
             hostRequests.push({ path: `gateway:${method}`, method: 'RPC', body: params });
             if (method === 'sessions.list') {
-              return makeResponse(request.id, { success: true, result: sessionsSnapshot() });
+              return makeResponse(request.id, sessionsSnapshot());
             }
             if (method === 'models.list') {
-              return makeResponse(request.id, { success: true, result: modelCatalogSnapshot() });
+              return makeResponse(request.id, modelCatalogSnapshot());
             }
             if (method === 'chat.history') {
-              return makeResponse(request.id, { success: true, result: { messages: [] } });
+              return makeResponse(request.id, { messages: [] });
             }
             if (method === 'sessions.patch') {
-              const patch = params as { model?: string | null } | null;
-              sessionModelRef = typeof patch?.model === 'string' ? patch.model : null;
-              return makeResponse(request.id, { success: true, result: { resolved: toSessionModelPatch(sessionModelRef) } });
+              const patch = params as { model?: string | null; thinkingLevel?: string | null } | null;
+              if (patch && Object.prototype.hasOwnProperty.call(patch, 'model')) {
+                sessionModelRef = typeof patch.model === 'string' ? patch.model : null;
+              }
+              if (patch && Object.prototype.hasOwnProperty.call(patch, 'thinkingLevel')) {
+                sessionThinkingLevel = typeof patch.thinkingLevel === 'string' ? patch.thinkingLevel : null;
+              }
+              return makeResponse(request.id, { resolved: toSessionModelPatch(sessionModelRef) });
             }
-            return makeResponse(request.id, { success: true, result: {} });
+            return makeResponse(request.id, {});
           }
           if (request?.module === 'agents' && request.action === 'list') {
             return makeResponse(request.id, agentsSnapshot());
@@ -196,12 +219,22 @@ test.describe('ClawX chat model picker', () => {
         win?.webContents.send('gateway:status-changed', { state: 'running', port: 18789, pid: 12345, gatewayReady: true });
       });
 
-      await expect(page.getByTestId('chat-model-picker-button')).toContainText('Default (model-alpha (Alpha))');
+      await expect(page.getByTestId('chat-model-picker-button')).toContainText('model-alpha (Alpha)');
+      await expect(page.getByTestId('chat-model-picker-button')).toContainText('Low');
       await page.getByTestId('chat-model-picker-button').click();
       await expect(page.getByTestId('chat-model-picker-menu')).toBeVisible();
       await expect(page.getByTestId('chat-model-picker-menu')).toContainText('provider/model-beta (Beta)');
+      await expect(page.getByTestId('chat-model-picker-menu')).toContainText('Thinking');
+      await expect(page.getByTestId('chat-model-picker-menu').getByRole('button', { name: 'provider/model-beta (Beta)' })).toHaveCount(1);
       await page.getByTestId('chat-model-picker-menu').getByRole('button', { name: 'provider/model-beta (Beta)' }).click();
       await expect(page.getByTestId('chat-model-picker-button')).toContainText('provider/model-beta (Beta)');
+      await expect(page.getByTestId('chat-model-picker-button')).toContainText('Low');
+
+      await page.getByTestId('chat-model-picker-button').click();
+      await expect(page.getByTestId('chat-model-picker-menu')).toBeVisible();
+      await page.getByTestId('chat-model-picker-menu').getByRole('button', { name: 'High' }).click();
+      await expect(page.getByTestId('chat-model-picker-button')).toContainText('provider/model-beta (Beta)');
+      await expect(page.getByTestId('chat-model-picker-button')).toContainText('High');
 
       const requests = await app.evaluate(() => (
         (globalThis as typeof globalThis & { __chatModelPickerRequests?: Array<{ path: string; method: string; body: unknown }> }).__chatModelPickerRequests ?? []
@@ -215,6 +248,11 @@ test.describe('ClawX chat model picker', () => {
         path: 'gateway:sessions.patch',
         method: 'RPC',
         body: { key: 'agent:main:main', agentId: 'main', model: betaModelRef },
+      });
+      expect(requests).toContainEqual({
+        path: 'gateway:sessions.patch',
+        method: 'RPC',
+        body: { key: 'agent:main:main', agentId: 'main', thinkingLevel: 'high' },
       });
       expect(requests.some((request) => request.path === 'agents:updateModel' || request.path === '/api/agents/main/model')).toBe(false);
       expect(requests.some((request) =>

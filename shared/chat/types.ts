@@ -133,6 +133,9 @@ export interface ChatSession {
   derivedTitle?: string;
   lastMessagePreview?: string;
   thinkingLevel?: string;
+  thinkingDefault?: string;
+  thinkingOptions?: ChatThinkingOption[];
+  thinkingLevels?: ChatThinkingOption[];
   model?: string;
   modelProvider?: string;
   updatedAt?: number;
@@ -149,6 +152,14 @@ export interface ChatSessionDefaults {
   contextTokens?: number;
   model?: string;
   modelProvider?: string;
+  thinkingDefault?: string;
+  thinkingOptions?: ChatThinkingOption[];
+  thinkingLevels?: ChatThinkingOption[];
+}
+
+export interface ChatThinkingOption {
+  id: string;
+  label: string;
 }
 
 export interface ToolStatus {

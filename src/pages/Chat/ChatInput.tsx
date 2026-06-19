@@ -7,7 +7,7 @@
  * are sent with the message (no base64 over WebSocket).
  */
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { SendHorizontal, Square, X, Paperclip, FileText, Film, Music, FileArchive, File, FolderOpen, Loader2, AtSign, Search, ChevronDown, CornerDownRight, Trash2, Archive, CheckCircle2, AlertCircle } from 'lucide-react';
+import { SendHorizontal, Square, X, Paperclip, FileText, Film, Music, FileArchive, File, FolderOpen, Loader2, AtSign, Search, ChevronDown, CornerDownRight, Trash2, Archive, CheckCircle2, AlertCircle, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -27,6 +27,7 @@ import { toast } from 'sonner';
 import { rendererExtensionRegistry } from '@/extensions/registry';
 import { collectDroppedFiles } from '@/lib/collect-dropped-files';
 import { fetchQuickAccessSkills } from '@/lib/quick-access-skills';
+import type { ChatSession, ChatSessionDefaults, ChatThinkingOption } from '@/stores/chat/types';
 
 // ── Types ────────────────────────────────────────────────────────
 
@@ -88,6 +89,17 @@ interface ComposerQueueItem {
 const DIRECTORY_MIME_TYPE = 'application/x-directory';
 const MAX_COMPOSER_QUEUE_ITEMS = 5;
 const DEFAULT_MODEL_OPTION_VALUE = '';
+const DEFAULT_THINKING_OPTION_VALUE = '';
+const BASE_THINKING_LEVELS = ['off', 'minimal', 'low', 'medium', 'high'] as const;
+
+interface ModelCatalogEntry {
+  id: string;
+  provider?: string;
+  name?: string;
+  alias?: string;
+  label?: string;
+  reasoning?: boolean;
+}
 
 interface ModelPickerModelOption {
   modelRef: string;
@@ -97,6 +109,12 @@ interface ModelPickerModelOption {
 interface ModelPickerOption {
   value: string;
   modelRef: string | null;
+  label: string;
+  isDefault?: boolean;
+}
+
+interface ThinkingPickerOption {
+  value: string;
   label: string;
   isDefault?: boolean;
 }
@@ -122,11 +140,26 @@ function composeModelRef(provider: string | null | undefined, model: string | nu
   const safeModel = (model || '').trim();
   if (!safeModel) return null;
   const safeProvider = (provider || '').trim();
-  if (!safeProvider || safeModel.startsWith(`${safeProvider}/`)) return safeModel;
+  if (!safeProvider || safeModel.toLowerCase().startsWith(`${safeProvider.toLowerCase()}/`)) return safeModel;
   return `${safeProvider}/${safeModel}`;
 }
 
-function normalizeGatewayModelOption(entry: unknown): ModelPickerModelOption | null {
+function normalizeModelRefKey(value: string | null | undefined): string {
+  return (value || '').trim().toLowerCase();
+}
+
+function splitModelRef(value: string | null | undefined): { provider: string | null; model: string | null } {
+  const modelRef = (value || '').trim();
+  if (!modelRef) return { provider: null, model: null };
+  const separatorIndex = modelRef.indexOf('/');
+  if (separatorIndex <= 0) return { provider: null, model: modelRef };
+  return {
+    provider: modelRef.slice(0, separatorIndex),
+    model: modelRef.slice(separatorIndex + 1),
+  };
+}
+
+function normalizeGatewayModelCatalogEntry(entry: unknown): ModelCatalogEntry | null {
   if (!entry || typeof entry !== 'object') return null;
   const record = entry as Record<string, unknown>;
   const modelId = readCatalogString(record.id)
@@ -138,44 +171,233 @@ function normalizeGatewayModelOption(entry: unknown): ModelPickerModelOption | n
   const provider = readCatalogProvider(record.provider)
     || readCatalogString(record.providerId)
     || readCatalogString(record.providerKey);
-  const modelRef = composeModelRef(provider, modelId);
-  if (!modelRef) return null;
-
-  const label = readCatalogString(record.label)
-    || readCatalogString(record.displayName)
-    || readCatalogString(record.title)
-    || formatModelRefLabel(modelRef);
-  return { modelRef, label };
+  return {
+    id: modelId,
+    provider: provider ?? undefined,
+    name: readCatalogString(record.name)
+      || readCatalogString(record.displayName)
+      || readCatalogString(record.title)
+      || undefined,
+    alias: readCatalogString(record.alias) ?? undefined,
+    label: readCatalogString(record.label) ?? undefined,
+    reasoning: typeof record.reasoning === 'boolean' ? record.reasoning : undefined,
+  };
 }
 
-function mergeModelOptions(...groups: ModelPickerModelOption[][]): ModelPickerModelOption[] {
-  const deduped = new Map<string, ModelPickerModelOption>();
-  for (const group of groups) {
-    for (const option of group) {
-      const modelRef = option.modelRef.trim();
-      if (!modelRef || deduped.has(modelRef)) continue;
-      deduped.set(modelRef, {
-        modelRef,
-        label: option.label.trim() || formatModelRefLabel(modelRef),
-      });
+function getCatalogEntryModelRef(entry: ModelCatalogEntry): string | null {
+  return composeModelRef(entry.provider, entry.id);
+}
+
+function getCatalogEntryKey(entry: ModelCatalogEntry): string {
+  return normalizeModelRefKey(getCatalogEntryModelRef(entry));
+}
+
+function getCatalogDisplayName(entry: ModelCatalogEntry): string {
+  return (entry.alias || entry.name || entry.label || '').trim();
+}
+
+function formatCatalogFallbackLabel(entry: ModelCatalogEntry): string {
+  const id = entry.id.trim();
+  const provider = (entry.provider || '').trim();
+  if (id && provider) return `${id} · ${provider}`;
+  return id || provider || formatModelRefLabel(getCatalogEntryModelRef(entry));
+}
+
+function buildModelCatalogLabelMap(catalog: ModelCatalogEntry[]): Map<string, string> {
+  const nameCounts = new Map<string, number>();
+  const providerNameCounts = new Map<string, Map<string, number>>();
+
+  for (const entry of catalog) {
+    const name = getCatalogDisplayName(entry);
+    if (!name) continue;
+    const nameKey = name.toLowerCase();
+    const providerKey = (entry.provider || '').trim().toLowerCase();
+    nameCounts.set(nameKey, (nameCounts.get(nameKey) ?? 0) + 1);
+    if (providerKey) {
+      const providerCounts = providerNameCounts.get(providerKey) ?? new Map<string, number>();
+      providerCounts.set(nameKey, (providerCounts.get(nameKey) ?? 0) + 1);
+      providerNameCounts.set(providerKey, providerCounts);
     }
   }
-  return [...deduped.values()];
+
+  const labelMap = new Map<string, string>();
+  for (const entry of catalog) {
+    const key = getCatalogEntryKey(entry);
+    if (!key) continue;
+    const name = getCatalogDisplayName(entry);
+    if (!name) {
+      labelMap.set(key, formatCatalogFallbackLabel(entry));
+      continue;
+    }
+
+    const nameKey = name.toLowerCase();
+    const provider = (entry.provider || '').trim();
+    const providerKey = provider.toLowerCase();
+    if ((nameCounts.get(nameKey) ?? 0) <= 1) {
+      labelMap.set(key, name);
+      continue;
+    }
+
+    const providerSpecificCount = providerKey
+      ? providerNameCounts.get(providerKey)?.get(nameKey)
+      : undefined;
+    if (provider && providerSpecificCount === 1) {
+      labelMap.set(key, `${name} · ${provider}`);
+    } else {
+      labelMap.set(key, `${name} · ${formatCatalogFallbackLabel(entry)}`);
+    }
+  }
+
+  return labelMap;
 }
 
-function ensureModelOption(
+function buildCatalogModelOption(
+  entry: ModelCatalogEntry,
+  labelMap: Map<string, string>,
+): ModelPickerModelOption | null {
+  const modelRef = getCatalogEntryModelRef(entry);
+  if (!modelRef) return null;
+  return {
+    modelRef,
+    label: labelMap.get(normalizeModelRefKey(modelRef)) || formatCatalogFallbackLabel(entry),
+  };
+}
+
+function addModelOption(
   options: ModelPickerModelOption[],
+  seen: Set<string>,
+  option: ModelPickerModelOption | null,
+): void {
+  if (!option) return;
+  const modelRef = option.modelRef.trim();
+  const key = normalizeModelRefKey(modelRef);
+  if (!modelRef || !key || seen.has(key)) return;
+  seen.add(key);
+  options.push({
+    modelRef,
+    label: option.label.trim() || formatModelRefLabel(modelRef),
+  });
+}
+
+function addModelRefOption(
+  options: ModelPickerModelOption[],
+  seen: Set<string>,
   modelRef: string | null | undefined,
-): ModelPickerModelOption[] {
+  labelMap?: Map<string, string>,
+): void {
   const value = (modelRef || '').trim();
-  if (!value || options.some((option) => option.modelRef === value)) return options;
-  return [
-    ...options,
-    {
-      modelRef: value,
-      label: formatModelRefLabel(value),
-    },
-  ];
+  if (!value) return;
+  addModelOption(options, seen, {
+    modelRef: value,
+    label: labelMap?.get(normalizeModelRefKey(value)) || formatModelRefLabel(value),
+  });
+}
+
+function buildSourceModelOptions(
+  catalog: ModelCatalogEntry[],
+  currentModelRef: string | null,
+  defaultModelRef: string | null,
+  fallbackOptions: ModelPickerModelOption[],
+): ModelPickerModelOption[] {
+  const options: ModelPickerModelOption[] = [];
+  const seen = new Set<string>();
+  const labelMap = buildModelCatalogLabelMap(catalog);
+
+  if (catalog.length > 0) {
+    for (const entry of catalog) {
+      addModelOption(options, seen, buildCatalogModelOption(entry, labelMap));
+    }
+  } else {
+    for (const option of fallbackOptions) {
+      addModelOption(options, seen, option);
+    }
+  }
+
+  addModelRefOption(options, seen, currentModelRef, labelMap);
+  addModelRefOption(options, seen, defaultModelRef, labelMap);
+  return options;
+}
+
+function normalizeThinkingLevel(value: string | null | undefined): string | null {
+  const trimmed = (value || '').trim();
+  if (!trimmed) return null;
+  const key = trimmed.toLowerCase().replace(/\s+/g, '');
+  if (key === 'adaptive' || key === 'auto') return 'adaptive';
+  if (key === 'max') return 'max';
+  if (key === 'xhigh' || key === 'x-high' || key === 'extrahigh' || key === 'extra-high') return 'xhigh';
+  if (key === 'off' || key === 'none') return 'off';
+  if (key === 'on' || key === 'enable' || key === 'enabled') return 'low';
+  if (key === 'min' || key === 'minimal' || key === 'think') return 'minimal';
+  if (key === 'low' || key === 'thinkhard' || key === 'think-hard' || key === 'think_hard') return 'low';
+  if (key === 'mid' || key === 'med' || key === 'medium' || key === 'thinkharder' || key === 'think-harder' || key === 'harder') return 'medium';
+  if (key === 'high' || key === 'ultra' || key === 'ultrathink' || key === 'thinkhardest' || key === 'highest') return 'high';
+  return key;
+}
+
+function sessionUsesDefaultModel(
+  session: ChatSession | null,
+  defaults: ChatSessionDefaults,
+): boolean {
+  return (!session?.modelProvider || session.modelProvider === defaults.modelProvider)
+    && (!session?.model || session.model === defaults.model);
+}
+
+function findModelCatalogEntry(
+  catalog: ModelCatalogEntry[],
+  provider: string | null,
+  model: string | null,
+  modelRef: string | null,
+): ModelCatalogEntry | null {
+  const providerKey = (provider || '').trim();
+  const modelKey = (model || '').trim();
+  if (providerKey && modelKey) {
+    const exact = catalog.find((entry) => entry.provider === providerKey && entry.id === modelKey);
+    if (exact) return exact;
+  }
+  const refKey = normalizeModelRefKey(modelRef);
+  if (!refKey) return null;
+  return catalog.find((entry) => getCatalogEntryKey(entry) === refKey) ?? null;
+}
+
+function isOffThinkingOption(option: ChatThinkingOption): boolean {
+  return normalizeThinkingLevel(option.id) === 'off';
+}
+
+function getBaseThinkingOptions(): ChatThinkingOption[] {
+  return BASE_THINKING_LEVELS.map((level) => ({ id: level, label: level }));
+}
+
+function resolveThinkingOptions(
+  session: ChatSession | null,
+  defaults: ChatSessionDefaults,
+  provider: string | null,
+  model: string | null,
+  modelRef: string | null,
+  catalog: ModelCatalogEntry[],
+): ChatThinkingOption[] {
+  const catalogEntry = findModelCatalogEntry(catalog, provider, model, modelRef);
+  const usesDefaultModel = !session || sessionUsesDefaultModel(session, defaults);
+  const thinkingLevels = session?.thinkingLevels ?? (usesDefaultModel ? defaults.thinkingLevels : undefined);
+  if (thinkingLevels) {
+    if (catalogEntry?.reasoning === false && thinkingLevels.every(isOffThinkingOption)) return [];
+    return thinkingLevels;
+  }
+
+  const thinkingOptions = session?.thinkingOptions ?? (usesDefaultModel ? defaults.thinkingOptions : undefined);
+  if (catalogEntry?.reasoning === false && (!thinkingOptions || thinkingOptions.every(isOffThinkingOption))) {
+    return [];
+  }
+  return thinkingOptions ?? getBaseThinkingOptions();
+}
+
+function inferDefaultThinkingLevel(
+  provider: string | null,
+  model: string | null,
+  modelRef: string | null,
+  catalog: ModelCatalogEntry[],
+): string {
+  const catalogEntry = findModelCatalogEntry(catalog, provider, model, modelRef);
+  return catalogEntry?.reasoning ? 'low' : 'off';
 }
 
 function formatFileSize(bytes: number): string {
@@ -346,7 +568,9 @@ export function ChatInput({
   const [selectedSkill, setSelectedSkill] = useState<QuickAccessSkill | null>(null);
   const [switchingModelValue, setSwitchingModelValue] = useState<string | null>(null);
   const [optimisticModelValue, setOptimisticModelValue] = useState<string | null>(null);
-  const [gatewayModelOptions, setGatewayModelOptions] = useState<ModelPickerModelOption[]>([]);
+  const [switchingThinkingValue, setSwitchingThinkingValue] = useState<string | null>(null);
+  const [optimisticThinkingValue, setOptimisticThinkingValue] = useState<string | null>(null);
+  const [gatewayModelCatalog, setGatewayModelCatalog] = useState<ModelCatalogEntry[]>([]);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const pickerRef = useRef<HTMLDivElement>(null);
   const skillPickerRef = useRef<HTMLDivElement>(null);
@@ -401,13 +625,14 @@ export function ChatInput({
   );
   const modelOptions = useMemo(
     () => {
-      let options = mergeModelOptions(gatewayModelOptions, providerModelOptions);
-      options = ensureModelOption(options, sessionModelRef);
-      options = ensureModelOption(options, defaultSessionModelRef);
-      options = ensureModelOption(options, currentAgent?.modelRef);
-      return options;
+      return buildSourceModelOptions(
+        gatewayModelCatalog,
+        sessionModelRef,
+        defaultSessionModelRef,
+        providerModelOptions,
+      );
     },
-    [currentAgent?.modelRef, defaultSessionModelRef, gatewayModelOptions, providerModelOptions, sessionModelRef],
+    [defaultSessionModelRef, gatewayModelCatalog, providerModelOptions, sessionModelRef],
   );
   const selectedModelValue = optimisticModelValue ?? sessionModelRef ?? DEFAULT_MODEL_OPTION_VALUE;
   const effectiveModelRef = selectedModelValue || defaultSessionModelRef || modelOptions[0]?.modelRef || null;
@@ -438,6 +663,128 @@ export function ChatInput({
     const matchedOption = modelOptions.find((option) => option.modelRef === effectiveModelRef);
     return matchedOption?.label || formatModelRefLabel(effectiveModelRef);
   }, [defaultModelLabel, effectiveModelRef, modelOptions, selectedModelValue, t]);
+  const formatThinkingLevelLabel = useCallback((value: string | null | undefined, fallbackLabel?: string) => {
+    const normalized = normalizeThinkingLevel(value);
+    switch (normalized) {
+      case 'off':
+        return t('composer.thinkingLevelOff');
+      case 'minimal':
+        return t('composer.thinkingLevelMinimal');
+      case 'low':
+        return t('composer.thinkingLevelLow');
+      case 'medium':
+        return t('composer.thinkingLevelMedium');
+      case 'high':
+        return t('composer.thinkingLevelHigh');
+      case 'xhigh':
+        return t('composer.thinkingLevelXHigh');
+      case 'adaptive':
+        return t('composer.thinkingLevelAdaptive');
+      case 'max':
+        return t('composer.thinkingLevelMax');
+      default:
+        return fallbackLabel?.trim() || (value || '').trim() || t('composer.thinkingLevelOff');
+    }
+  }, [t]);
+  const activeThinkingModel = useMemo(() => {
+    const activeRef = selectedModelValue === DEFAULT_MODEL_OPTION_VALUE
+      ? defaultSessionModelRef
+      : effectiveModelRef;
+    return {
+      modelRef: activeRef,
+      ...splitModelRef(activeRef),
+    };
+  }, [defaultSessionModelRef, effectiveModelRef, selectedModelValue]);
+  const availableThinkingOptions = useMemo(
+    () => resolveThinkingOptions(
+      currentSession,
+      sessionDefaults,
+      activeThinkingModel.provider,
+      activeThinkingModel.model,
+      activeThinkingModel.modelRef,
+      gatewayModelCatalog,
+    ),
+    [
+      activeThinkingModel.model,
+      activeThinkingModel.modelRef,
+      activeThinkingModel.provider,
+      currentSession,
+      gatewayModelCatalog,
+      sessionDefaults,
+    ],
+  );
+  const defaultThinkingValue = useMemo(() => {
+    const inheritedDefault = (!currentSession || sessionUsesDefaultModel(currentSession, sessionDefaults))
+      ? sessionDefaults.thinkingDefault
+      : undefined;
+    return normalizeThinkingLevel(currentSession?.thinkingDefault)
+      || normalizeThinkingLevel(inheritedDefault)
+      || inferDefaultThinkingLevel(
+        activeThinkingModel.provider,
+        activeThinkingModel.model,
+        activeThinkingModel.modelRef,
+        gatewayModelCatalog,
+      );
+  }, [
+    activeThinkingModel.model,
+    activeThinkingModel.modelRef,
+    activeThinkingModel.provider,
+    currentSession,
+    gatewayModelCatalog,
+    sessionDefaults,
+  ]);
+  const defaultThinkingLabel = useMemo(
+    () => formatThinkingLevelLabel(defaultThinkingValue),
+    [defaultThinkingValue, formatThinkingLevelLabel],
+  );
+  const selectedThinkingValue = useMemo(() => {
+    const normalizedOverride = optimisticThinkingValue !== null
+      ? normalizeThinkingLevel(optimisticThinkingValue)
+      : normalizeThinkingLevel(currentSession?.thinkingLevel);
+    const override = normalizedOverride ?? DEFAULT_THINKING_OPTION_VALUE;
+    if (availableThinkingOptions.length === 0 && override === 'off') return DEFAULT_THINKING_OPTION_VALUE;
+    return override;
+  }, [availableThinkingOptions.length, currentSession?.thinkingLevel, optimisticThinkingValue]);
+  const thinkingPickerOptions = useMemo<ThinkingPickerOption[]>(() => {
+    if (availableThinkingOptions.length === 0) return [];
+    const options: ThinkingPickerOption[] = [{
+      value: DEFAULT_THINKING_OPTION_VALUE,
+      label: t('composer.thinkingDefaultShort'),
+      isDefault: true,
+    }];
+    const seen = new Set<string>();
+
+    for (const option of availableThinkingOptions) {
+      const value = normalizeThinkingLevel(option.id) ?? option.id.trim().toLowerCase();
+      if (!value || seen.has(value)) continue;
+      seen.add(value);
+      options.push({
+        value,
+        label: formatThinkingLevelLabel(value, option.label),
+      });
+    }
+
+    if (selectedThinkingValue && !seen.has(selectedThinkingValue)) {
+      options.push({
+        value: selectedThinkingValue,
+        label: formatThinkingLevelLabel(selectedThinkingValue),
+      });
+    }
+
+    return options;
+  }, [availableThinkingOptions, formatThinkingLevelLabel, selectedThinkingValue, t]);
+  const currentThinkingLabel = useMemo(() => {
+    if (selectedThinkingValue === DEFAULT_THINKING_OPTION_VALUE) return defaultThinkingLabel;
+    const matchedOption = thinkingPickerOptions.find((option) => option.value === selectedThinkingValue);
+    return matchedOption?.label || formatThinkingLevelLabel(selectedThinkingValue);
+  }, [defaultThinkingLabel, formatThinkingLevelLabel, selectedThinkingValue, thinkingPickerOptions]);
+  const showThinkingPicker = thinkingPickerOptions.length > 0;
+  const currentModelSummaryLabel = selectedModelValue === DEFAULT_MODEL_OPTION_VALUE
+    ? defaultModelLabel
+    : currentModelLabel;
+  const modelPickerButtonLabel = showThinkingPicker
+    ? `${currentModelSummaryLabel} · ${currentThinkingLabel}`
+    : currentModelSummaryLabel;
   const mentionableAgents = useMemo(
     () => (agents ?? []).filter((agent) => agent.id !== currentAgentId),
     [agents, currentAgentId],
@@ -493,8 +840,12 @@ export function ChatInput({
   }, [currentAgentId, currentSessionKey, sessionModelRef]);
 
   useEffect(() => {
+    setOptimisticThinkingValue(null);
+  }, [currentAgentId, currentSession?.thinkingLevel, currentSessionKey]);
+
+  useEffect(() => {
     if (!isGatewayUsable) {
-      setGatewayModelOptions([]);
+      setGatewayModelCatalog([]);
       return;
     }
 
@@ -503,13 +854,13 @@ export function ChatInput({
       .then((result) => {
         if (cancelled) return;
         const models = Array.isArray(result?.models) ? result.models : [];
-        setGatewayModelOptions(models
-          .map(normalizeGatewayModelOption)
-          .filter((option): option is ModelPickerModelOption => option != null));
+        setGatewayModelCatalog(models
+          .map(normalizeGatewayModelCatalogEntry)
+          .filter((option): option is ModelCatalogEntry => option != null));
       })
       .catch(() => {
         if (!cancelled) {
-          setGatewayModelOptions([]);
+          setGatewayModelCatalog([]);
         }
       });
 
@@ -661,7 +1012,7 @@ export function ChatInput({
   }, [skillPickerOpen, loadQuickSkills]);
 
   const handleSelectModel = useCallback(async (modelValue: string) => {
-    if (!currentAgent || !currentSessionKey || switchingModelValue !== null) return;
+    if (!currentAgent || !currentSessionKey || switchingModelValue !== null || switchingThinkingValue !== null) return;
     if (modelValue === selectedModelValue) {
       setModelPickerOpen(false);
       textareaRef.current?.focus();
@@ -698,6 +1049,50 @@ export function ChatInput({
     optimisticModelValue,
     selectedModelValue,
     switchingModelValue,
+    switchingThinkingValue,
+    t,
+  ]);
+
+  const handleSelectThinking = useCallback(async (thinkingValue: string) => {
+    if (!currentAgent || !currentSessionKey || switchingModelValue !== null || switchingThinkingValue !== null) return;
+    if (thinkingValue === selectedThinkingValue) {
+      setModelPickerOpen(false);
+      textareaRef.current?.focus();
+      return;
+    }
+
+    const nextThinkingValue = normalizeThinkingLevel(thinkingValue) ?? DEFAULT_THINKING_OPTION_VALUE;
+    const previousThinkingValue = optimisticThinkingValue;
+    setSwitchingThinkingValue(nextThinkingValue);
+    setOptimisticThinkingValue(nextThinkingValue);
+    setModelPickerOpen(false);
+    try {
+      await hostApi.gateway.rpc(
+        'sessions.patch',
+        {
+          key: currentSessionKey,
+          agentId: currentAgentId,
+          thinkingLevel: nextThinkingValue || null,
+        },
+        120_000,
+      );
+      await loadSessions();
+    } catch (error) {
+      setOptimisticThinkingValue(previousThinkingValue);
+      toast.error(t('composer.thinkingSwitchFailed', { error: String(error) }));
+    } finally {
+      setSwitchingThinkingValue(null);
+      textareaRef.current?.focus();
+    }
+  }, [
+    currentAgent,
+    currentAgentId,
+    currentSessionKey,
+    loadSessions,
+    optimisticThinkingValue,
+    selectedThinkingValue,
+    switchingModelValue,
+    switchingThinkingValue,
     t,
   ]);
 
@@ -1377,49 +1772,95 @@ export function ChatInput({
                   data-testid="chat-model-picker-button"
                   className={cn(
                     'inline-flex h-8 max-w-[220px] items-center gap-1 rounded-full px-2 text-meta font-medium text-muted-foreground transition-colors hover:bg-black/5 hover:text-foreground focus-visible:outline-none focus-visible:ring-0 disabled:pointer-events-none disabled:opacity-50 dark:hover:bg-white/10',
-                    (modelPickerOpen || switchingModelValue !== null) && 'text-foreground',
+                    (modelPickerOpen || switchingModelValue !== null || switchingThinkingValue !== null) && 'text-foreground',
                   )}
                   onClick={() => {
                     setPickerOpen(false);
                     setSkillPickerOpen(false);
                     setModelPickerOpen((open) => !open);
                   }}
-                  disabled={inputDisabled || !currentAgent || switchingModelValue !== null}
+                  disabled={inputDisabled || !currentAgent || switchingModelValue !== null || switchingThinkingValue !== null}
                   title={t('composer.pickModel')}
                 >
-                  {switchingModelValue !== null ? (
+                  {switchingModelValue !== null || switchingThinkingValue !== null ? (
                     <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" />
                   ) : null}
-                  <span className="truncate">{currentModelLabel}</span>
+                  <span className="truncate">{modelPickerButtonLabel}</span>
                   <ChevronDown className={cn('h-3.5 w-3.5 shrink-0 transition-transform', modelPickerOpen && 'rotate-180')} />
                 </button>
                 {modelPickerOpen && (
                   <div
-                    className="absolute bottom-full left-0 z-20 mb-3 w-72 overflow-hidden rounded-2xl border border-border/70 bg-surface-modal p-1.5 shadow-xl shadow-black/10"
+                    className="absolute bottom-full left-0 z-20 mb-3 grid w-[min(34rem,calc(100vw-2rem))] max-w-[calc(100vw-2rem)] gap-1.5 overflow-hidden rounded-2xl border border-border/70 bg-surface-modal p-1.5 shadow-xl shadow-black/10 sm:grid-cols-[minmax(0,1fr)_12rem]"
                     data-testid="chat-model-picker-menu"
                   >
-                    <div className="px-3 py-2 text-tiny font-medium text-muted-foreground/80">
-                      {t('composer.modelPickerTitle')}
+                    <div className="min-w-0">
+                      <div className="px-3 py-2 text-tiny font-medium text-muted-foreground/80">
+                        {t('composer.modelPickerTitle')}
+                      </div>
+                      <div className="px-3 pb-1 text-tiny font-medium text-muted-foreground/70">
+                        {t('composer.modelPickerModelSection')}
+                      </div>
+                      <div className="max-h-64 overflow-y-auto pr-0.5">
+                        {modelPickerOptions.map((option) => {
+                          const selected = option.value === selectedModelValue;
+                          const label = option.isDefault && selected ? defaultModelLabel : option.label;
+                          return (
+                            <button
+                              key={option.isDefault ? 'default' : option.value}
+                              type="button"
+                              onClick={() => void handleSelectModel(option.value)}
+                              className={cn(
+                                'flex w-full items-center justify-between gap-3 rounded-xl px-3 py-2 text-left text-sm font-medium transition-colors',
+                                selected ? 'bg-primary/10 text-foreground' : 'hover:bg-black/5 dark:hover:bg-white/10'
+                              )}
+                              data-testid={`chat-model-picker-option-${option.label}`}
+                            >
+                              <span className="truncate">{label}</span>
+                              {selected && (
+                                <ChevronDown className="h-3.5 w-3.5 shrink-0 -rotate-90 text-primary" />
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
                     </div>
-                    <div className="max-h-64 overflow-y-auto">
-                      {modelPickerOptions.map((option) => (
-                        <button
-                          key={option.isDefault ? 'default' : option.value}
-                          type="button"
-                          onClick={() => void handleSelectModel(option.value)}
-                          className={cn(
-                            'flex w-full items-center justify-between gap-3 rounded-xl px-3 py-2 text-left text-sm font-medium transition-colors',
-                            option.value === selectedModelValue ? 'bg-primary/10 text-foreground' : 'hover:bg-black/5 dark:hover:bg-white/10'
-                          )}
-                          data-testid={`chat-model-picker-option-${option.label}`}
-                        >
-                          <span className="truncate">{option.label}</span>
-                          {option.value === selectedModelValue && (
-                            <span className="h-1.5 w-1.5 rounded-full bg-primary" />
-                          )}
-                        </button>
-                      ))}
-                    </div>
+                    {showThinkingPicker && (
+                      <div
+                        className={cn(
+                          'min-w-0 rounded-xl border border-border/70 bg-surface-input/70 p-1.5',
+                          switchingModelValue !== null && 'pointer-events-none opacity-60',
+                        )}
+                        role="listbox"
+                        aria-label={t('composer.thinkingPickerTitle')}
+                      >
+                        <div className="px-3 pb-1 pt-1 text-tiny font-medium text-muted-foreground/70">
+                          {t('composer.thinkingPickerTitle')}
+                        </div>
+                        <div className="space-y-1">
+                          {thinkingPickerOptions.map((option) => {
+                            const selected = option.value === selectedThinkingValue;
+                            return (
+                              <button
+                                key={option.isDefault ? 'thinking-default' : `thinking-${option.value}`}
+                                type="button"
+                                onClick={() => void handleSelectThinking(option.value)}
+                                className={cn(
+                                  'flex w-full items-center justify-between gap-2 rounded-lg px-3 py-2 text-left text-sm font-medium transition-colors',
+                                  selected ? 'bg-primary/10 text-foreground' : 'hover:bg-black/5 dark:hover:bg-white/10',
+                                  switchingThinkingValue !== null && 'pointer-events-none opacity-70',
+                                )}
+                                data-testid={`chat-thinking-picker-option-${option.label}`}
+                              >
+                                <span className="truncate">{option.label}</span>
+                                {selected && (
+                                  <Check className="h-3.5 w-3.5 shrink-0 text-primary" />
+                                )}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
