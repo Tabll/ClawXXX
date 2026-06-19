@@ -29,6 +29,19 @@
     "runError": {
         "title": "Ошибка вызова модели"
     },
+    "messageMeta": {
+        "modelTitle": "Модель",
+        "model": "Модель: {{value}}",
+        "readTitle": "Чтение",
+        "read": "Чтение: {{value}} tokens",
+        "writeTitle": "Запись",
+        "write": "Запись: {{value}} tokens",
+        "cacheReadTitle": "Чтение кэша",
+        "cacheRead": "Чтение кэша: {{value}} tokens",
+        "cacheWriteTitle": "Запись кэша",
+        "cacheWrite": "Запись кэша: {{value}} tokens",
+        "tokenValue": "{{value}} tokens"
+    },
     "artifactPanel": {
         "tabs": {
             "changes": "Изменения",

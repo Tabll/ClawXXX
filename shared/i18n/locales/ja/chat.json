@@ -29,6 +29,19 @@
     "runError": {
         "title": "モデル呼び出しに失敗しました"
     },
+    "messageMeta": {
+        "modelTitle": "モデル",
+        "model": "モデル: {{value}}",
+        "readTitle": "読み取り",
+        "read": "読み取り: {{value}} tokens",
+        "writeTitle": "書き込み",
+        "write": "書き込み: {{value}} tokens",
+        "cacheReadTitle": "キャッシュ読み取り",
+        "cacheRead": "キャッシュ読み取り: {{value}} tokens",
+        "cacheWriteTitle": "キャッシュ書き込み",
+        "cacheWrite": "キャッシュ書き込み: {{value}} tokens",
+        "tokenValue": "{{value}} tokens"
+    },
     "artifactPanel": {
         "tabs": {
             "changes": "変更",

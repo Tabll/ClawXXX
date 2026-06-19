@@ -29,6 +29,19 @@
     "runError": {
         "title": "模型调用失败"
     },
+    "messageMeta": {
+        "modelTitle": "模型",
+        "model": "模型：{{value}}",
+        "readTitle": "读取",
+        "read": "读取：{{value}} tokens",
+        "writeTitle": "写入",
+        "write": "写入：{{value}} tokens",
+        "cacheReadTitle": "缓存读",
+        "cacheRead": "缓存读取：{{value}} tokens",
+        "cacheWriteTitle": "缓存写",
+        "cacheWrite": "缓存写入：{{value}} tokens",
+        "tokenValue": "{{value}} tokens"
+    },
     "artifactPanel": {
         "tabs": {
             "changes": "变更",

@@ -6,7 +6,29 @@
  * surfaced via ExecutionGraphCard, not inside message bubbles.
  */
 import { useState, useCallback, useEffect, memo } from 'react';
-import { Sparkles, Copy, Check, Wrench, FileText, Film, Music, FileArchive, File, X, FolderOpen, ZoomIn, Loader2, CheckCircle2, AlertCircle } from 'lucide-react';
+import {
+  Sparkles,
+  Copy,
+  Check,
+  Wrench,
+  FileText,
+  Film,
+  Music,
+  FileArchive,
+  File,
+  X,
+  FolderOpen,
+  ZoomIn,
+  Loader2,
+  CheckCircle2,
+  AlertCircle,
+  Cpu,
+  ArrowDownToLine,
+  ArrowUpFromLine,
+  HardDriveDownload,
+  HardDriveUpload,
+  type LucideIcon,
+} from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -14,6 +36,7 @@ import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import { createPortal } from 'react-dom';
 import { Button } from '@/components/ui/button';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { statFile } from '@/lib/file-preview-client';
 import { hostApi } from '@/lib/host-api';
@@ -482,7 +505,12 @@ export const ChatMessage = memo(function ChatMessage({
 
         {/* Hover row for assistant messages */}
         {showAssistantHoverBar && (
-          <AssistantHoverBar text={text} timestamp={message.timestamp} imageCopyTarget={imageCopyTarget} />
+          <AssistantHoverBar
+            message={message}
+            text={text}
+            timestamp={message.timestamp}
+            imageCopyTarget={imageCopyTarget}
+          />
         )}
       </div>
 
@@ -578,18 +606,166 @@ function resolvePrimaryImageCopyTarget(
   return null;
 }
 
+type MessageMetaItem = {
+  key: string;
+  Icon: LucideIcon;
+  value: string;
+  title: string;
+  detail: string;
+  ariaLabel: string;
+};
+
+type MessageMeta = {
+  items: MessageMetaItem[];
+};
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === 'object' && !Array.isArray(value);
+}
+
+function normalizeNumber(value: unknown): number | undefined {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string') {
+    const parsed = Number(value.trim());
+    return Number.isFinite(parsed) ? parsed : undefined;
+  }
+  return undefined;
+}
+
+function firstNumber(record: Record<string, unknown> | undefined, keys: string[]): number | undefined {
+  if (!record) return undefined;
+  for (const key of keys) {
+    const parsed = normalizeNumber(record[key]);
+    if (parsed !== undefined) return parsed;
+  }
+  return undefined;
+}
+
+function normalizeText(value: unknown): string | null {
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
+function formatTokenCount(value: number): string {
+  return new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 }).format(Math.max(0, Math.floor(value)));
+}
+
+function formatCompactTokenCount(value: number): string {
+  return new Intl.NumberFormat(undefined, {
+    notation: 'compact',
+    maximumFractionDigits: 1,
+  }).format(Math.max(0, Math.floor(value)));
+}
+
+function buildMessageMeta(message: RawMessage, t: ReturnType<typeof useTranslation<'chat'>>['t']): MessageMeta | null {
+  const usage = isRecord(message.usage) ? message.usage : undefined;
+  const inputTokens = firstNumber(usage, [
+    'input',
+    'read',
+    'readTokens',
+    'read_tokens',
+    'readTokenCount',
+    'read_token_count',
+    'promptTokens',
+    'prompt_tokens',
+    'input_tokens',
+    'inputTokenCount',
+    'input_token_count',
+    'promptTokenCount',
+    'prompt_token_count',
+  ]);
+  const outputTokens = firstNumber(usage, [
+    'output',
+    'write',
+    'writeTokens',
+    'write_tokens',
+    'writeTokenCount',
+    'write_token_count',
+    'completionTokens',
+    'completion_tokens',
+    'output_tokens',
+    'outputTokenCount',
+    'output_token_count',
+    'completionTokenCount',
+    'completion_token_count',
+  ]);
+  const cacheReadTokens = firstNumber(usage, [
+    'cacheRead',
+    'cache_read',
+    'cacheReadTokens',
+    'cache_read_tokens',
+    'cacheReadTokenCount',
+    'cache_read_token_count',
+    'cacheReadInputTokens',
+    'cache_read_input_tokens',
+  ]);
+  const cacheWriteTokens = firstNumber(usage, [
+    'cacheWrite',
+    'cache_write',
+    'cacheWriteTokens',
+    'cache_write_tokens',
+    'cacheWriteTokenCount',
+    'cache_write_token_count',
+    'cacheCreationInputTokens',
+    'cache_creation_input_tokens',
+  ]);
+  const provider = normalizeText(message.provider);
+  const model = normalizeText(message.model) ?? normalizeText(message.modelRef);
+  const modelLabel = model
+    ? provider && !model.includes('/') ? `${provider}/${model}` : model
+    : provider;
+
+  const items: MessageMetaItem[] = [];
+  const pushItem = (item: MessageMetaItem) => {
+    items.push(item);
+  };
+  const pushTokenItem = (key: string, tokens: number | undefined, Icon: LucideIcon, ariaKey: string) => {
+    if (tokens === undefined || tokens < 0) return;
+    const value = formatCompactTokenCount(tokens);
+    pushItem({
+      key,
+      Icon,
+      value,
+      title: t(`${ariaKey}Title`),
+      detail: t('messageMeta.tokenValue', { value: formatTokenCount(tokens) }),
+      ariaLabel: t(ariaKey, { value: formatTokenCount(tokens) }),
+    });
+  };
+
+  if (modelLabel) {
+    pushItem({
+      key: 'model',
+      Icon: Cpu,
+      value: modelLabel,
+      title: t('messageMeta.modelTitle'),
+      detail: modelLabel,
+      ariaLabel: t('messageMeta.model', { value: modelLabel }),
+    });
+  }
+
+  pushTokenItem('write', outputTokens, ArrowUpFromLine, 'messageMeta.write');
+  pushTokenItem('read', inputTokens, ArrowDownToLine, 'messageMeta.read');
+  pushTokenItem('cache-read', cacheReadTokens, HardDriveDownload, 'messageMeta.cacheRead');
+  pushTokenItem('cache-write', cacheWriteTokens, HardDriveUpload, 'messageMeta.cacheWrite');
+
+  return items.length > 0 ? { items } : null;
+}
+
 // ── Assistant hover bar (timestamp + copy, shown on group hover) ─
 
 function AssistantHoverBar({
+  message,
   text,
   timestamp,
   imageCopyTarget,
 }: {
+  message: RawMessage;
   text: string;
   timestamp?: number;
   imageCopyTarget?: ImageCopyTarget | null;
 }) {
+  const { t } = useTranslation('chat');
   const [copied, setCopied] = useState(false);
+  const meta = buildMessageMeta(message, t);
 
   const copyContent = useCallback(async () => {
     if (imageCopyTarget) {
@@ -607,14 +783,49 @@ function AssistantHoverBar({
   }, [text, imageCopyTarget]);
 
   return (
-    <div className="flex items-center justify-between w-full opacity-0 group-hover:opacity-100 transition-opacity duration-200 select-none px-1">
-      <span className="text-xs text-muted-foreground">
+    <div
+      className="flex w-full items-center gap-2 px-1 text-xs text-muted-foreground opacity-0 transition-opacity duration-200 group-hover:opacity-100 select-none"
+      data-testid="chat-message-hover-bar"
+    >
+      <span className="shrink-0" data-testid="chat-message-timestamp">
         {timestamp ? formatTimestamp(timestamp) : ''}
       </span>
+      {meta && (
+        <span
+          className="flex min-w-0 flex-1 flex-wrap items-center gap-2"
+          data-testid="chat-message-meta"
+        >
+          {meta.items.map((item) => (
+            <Tooltip key={item.key}>
+              <TooltipTrigger asChild>
+                <span
+                  className="inline-flex min-w-0 -my-0.5 items-center gap-1 whitespace-nowrap rounded-md border border-transparent px-1 py-0.5 transition-colors hover:border-border/70 hover:bg-surface-input/60 focus-visible:border-border/70 focus-visible:bg-surface-input/60 focus-visible:outline-none"
+                  aria-label={item.ariaLabel}
+                  tabIndex={0}
+                  data-testid={`chat-message-meta-${item.key}`}
+                >
+                  <item.Icon className="h-3 w-3 shrink-0" aria-hidden="true" />
+                  <span className="min-w-0 truncate">{item.value}</span>
+                </span>
+              </TooltipTrigger>
+              <TooltipContent
+                side="top"
+                align="center"
+                sideOffset={8}
+                className="max-w-[260px] rounded-lg border border-border/60 bg-popover/95 px-3 py-2 text-xs shadow-lg shadow-black/10 backdrop-blur"
+                data-testid={`chat-message-meta-tooltip-${item.key}`}
+              >
+                <p className="text-[11px] font-medium leading-none text-muted-foreground">{item.title}</p>
+                <p className="mt-1.5 truncate font-medium leading-none text-popover-foreground tabular-nums">{item.detail}</p>
+              </TooltipContent>
+            </Tooltip>
+          ))}
+        </span>
+      )}
       <Button
         variant="ghost"
         size="icon"
-        className="h-6 w-6"
+        className="ml-auto h-6 w-6 shrink-0"
         onClick={copyContent}
       >
         {copied ? <Check className="h-3 w-3 text-green-500" /> : <Copy className="h-3 w-3" />}

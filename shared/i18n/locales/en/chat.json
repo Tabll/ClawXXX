@@ -29,6 +29,19 @@
     "runError": {
         "title": "Model call failed"
     },
+    "messageMeta": {
+        "modelTitle": "Model",
+        "model": "Model: {{value}}",
+        "readTitle": "Read",
+        "read": "Read: {{value}} tokens",
+        "writeTitle": "Write",
+        "write": "Write: {{value}} tokens",
+        "cacheReadTitle": "Cache read",
+        "cacheRead": "Cache read: {{value}} tokens",
+        "cacheWriteTitle": "Cache write",
+        "cacheWrite": "Cache write: {{value}} tokens",
+        "tokenValue": "{{value}} tokens"
+    },
     "artifactPanel": {
         "tabs": {
             "changes": "Changes",
