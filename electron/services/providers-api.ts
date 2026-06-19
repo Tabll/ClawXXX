@@ -342,6 +342,9 @@ async function updateAccount(payload: ProviderPayload<'updateAccount'>, gatewayM
     }
     const hasPatchChanges = hasObjectChanges(existing as unknown as Record<string, unknown>, updates as Record<string, unknown>);
     if (!hasPatchChanges && apiKey === undefined) {
+      if (updates.modelCapabilities !== undefined) {
+        await syncUpdatedProviderToRuntime(providerAccountToConfig(existing), undefined, gatewayManager);
+      }
       return { success: true, noChange: true, account: existing };
     }
     const account = await providerService.updateAccount(accountId, updates, apiKey);

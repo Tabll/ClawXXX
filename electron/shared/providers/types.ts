@@ -114,6 +114,7 @@ export interface ProviderConfig {
   apiProtocol?: ProviderProtocol;
   headers?: Record<string, string>;
   model?: string;
+  modelCapabilities?: ProviderModelCapabilities;
   fallbackModels?: string[];
   fallbackProviderIds?: string[];
   enabled: boolean;
@@ -152,6 +153,11 @@ export interface ProviderModelEntry extends Record<string, unknown> {
   name: string;
 }
 
+export interface ProviderModelCapabilities {
+  reasoning?: boolean;
+  imageInput?: boolean;
+}
+
 export interface ProviderBackendConfig {
   baseUrl: string;
   api: OpenClawApiProtocol;
@@ -178,6 +184,7 @@ export interface ProviderAccount {
   apiProtocol?: ProviderProtocol;
   headers?: Record<string, string>;
   model?: string;
+  modelCapabilities?: ProviderModelCapabilities;
   fallbackModels?: string[];
   fallbackAccountIds?: string[];
   enabled: boolean;

@@ -336,6 +336,49 @@ describe('provider-runtime-sync refresh strategy', () => {
     expect(gateway.debouncedReload).toHaveBeenCalledTimes(1);
   });
 
+  it('syncs configured model capabilities to OpenClaw and agent model registries', async () => {
+    const customProvider = createProvider({
+      id: 'qwenlocal',
+      type: 'custom',
+      name: 'Qwen Local',
+      model: 'qwen/qwen3.6-35b-a3b',
+      baseUrl: 'http://127.0.0.1:1234/v1',
+      apiProtocol: 'openai-completions',
+      modelCapabilities: {
+        reasoning: true,
+        imageInput: false,
+      },
+    });
+
+    const gateway = createGateway('running');
+    await syncSavedProviderToRuntime(customProvider, undefined, gateway as GatewayManager);
+
+    expect(mocks.syncProviderConfigToOpenClaw).toHaveBeenCalledWith(
+      'custom-qwenloca',
+      'qwen/qwen3.6-35b-a3b',
+      expect.objectContaining({
+        baseUrl: 'http://127.0.0.1:1234/v1',
+        api: 'openai-completions',
+        modelCapabilities: {
+          reasoning: true,
+          imageInput: false,
+        },
+      }),
+    );
+    expect(mocks.updateAgentModelProvider).toHaveBeenCalledWith(
+      'custom-qwenloca',
+      expect.objectContaining({
+        models: [
+          expect.objectContaining({
+            id: 'qwen/qwen3.6-35b-a3b',
+            reasoning: true,
+            input: ['text'],
+          }),
+        ],
+      }),
+    );
+  });
+
   it('syncs Ollama as default provider with correct baseUrl and api protocol', async () => {
     const ollamaProvider = createProvider({
       id: 'ollamafd',

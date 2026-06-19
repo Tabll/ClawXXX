@@ -284,6 +284,7 @@ export type ProviderConfig = {
   apiProtocol?: ProviderProtocol;
   headers?: Record<string, string>;
   model?: string;
+  modelCapabilities?: ProviderModelCapabilities;
   fallbackModels?: string[];
   fallbackProviderIds?: string[];
   enabled: boolean;
@@ -332,6 +333,7 @@ export type ProviderAccount = {
   apiProtocol?: ProviderProtocol;
   headers?: Record<string, string>;
   model?: string;
+  modelCapabilities?: ProviderModelCapabilities;
   fallbackModels?: string[];
   fallbackAccountIds?: string[];
   enabled: boolean;
@@ -344,6 +346,10 @@ export type ProviderAccount = {
   };
   createdAt: string;
   updatedAt: string;
+};
+export type ProviderModelCapabilities = {
+  reasoning?: boolean;
+  imageInput?: boolean;
 };
 export type ProviderAccountKeyInfo = {
   accountId: string;

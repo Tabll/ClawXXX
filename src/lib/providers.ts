@@ -61,6 +61,7 @@ export interface ProviderConfig {
   apiProtocol?: ProviderProtocol;
   headers?: Record<string, string>;
   model?: string;
+  modelCapabilities?: ProviderModelCapabilities;
   fallbackModels?: string[];
   fallbackProviderIds?: string[];
   enabled: boolean;
@@ -112,6 +113,11 @@ export type ProviderVendorCategory =
   | 'local'
   | 'custom';
 
+export interface ProviderModelCapabilities {
+  reasoning?: boolean;
+  imageInput?: boolean;
+}
+
 export interface ProviderVendorInfo extends ProviderTypeInfo {
   category: ProviderVendorCategory;
   envVar?: string;
@@ -129,6 +135,7 @@ export interface ProviderAccount {
   apiProtocol?: ProviderProtocol;
   headers?: Record<string, string>;
   model?: string;
+  modelCapabilities?: ProviderModelCapabilities;
   fallbackModels?: string[];
   fallbackAccountIds?: string[];
   enabled: boolean;

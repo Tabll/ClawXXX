@@ -16,3 +16,12 @@ explicitly owns that field.
 
 New model IDs may receive deterministic capability defaults, but metadata from a
 different model ID must never be copied onto them.
+
+When Settings > Models exposes provider model capability controls, user choices
+for reasoning support and image-input support are explicit metadata ownership.
+Those choices must be persisted through the typed host provider account APIs and
+must override automatic inference for the configured provider/model pair.
+
+Per-agent `models.json` synchronization must carry the same configured
+capability fields for the matching model row so chat model catalogs and
+reasoning controls observe the user's model configuration.

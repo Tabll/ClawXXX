@@ -6,6 +6,7 @@ import type {
   ProviderAccount,
   ProviderConfig,
   ProviderDefinition,
+  ProviderModelCapabilities,
   ProviderType,
 } from '../../shared/providers/types';
 import { BUILTIN_PROVIDER_TYPES } from '../../shared/providers/types';
@@ -74,6 +75,73 @@ function inferProviderVendorIdFromOpenClawEntry(
   }
 
   return ((BUILTIN_PROVIDER_TYPES as readonly string[]).includes(key) ? key : 'custom') as ProviderType | 'custom';
+}
+
+function stripRuntimeProviderPrefix(modelRef: string | undefined, providerKey: string): string | undefined {
+  if (!modelRef) {
+    return undefined;
+  }
+  return modelRef.startsWith(`${providerKey}/`)
+    ? modelRef.slice(providerKey.length + 1)
+    : modelRef;
+}
+
+function resolveModelCapabilitiesFromOpenClawEntry(
+  providerKey: string,
+  entry: Record<string, unknown> | undefined,
+  modelRef: string | undefined,
+): ProviderModelCapabilities | undefined {
+  if (!entry || !Array.isArray(entry.models)) {
+    return undefined;
+  }
+
+  const modelId = stripRuntimeProviderPrefix(modelRef, providerKey);
+  if (!modelId) {
+    return undefined;
+  }
+
+  const model = (entry.models as unknown[])
+    .filter((candidate): candidate is Record<string, unknown> => (
+      typeof candidate === 'object' && candidate !== null && !Array.isArray(candidate)
+    ))
+    .find((candidate) => candidate.id === modelId || candidate.id === modelRef);
+  if (!model) {
+    return undefined;
+  }
+
+  const capabilities: ProviderModelCapabilities = {};
+  if (typeof model.reasoning === 'boolean') {
+    capabilities.reasoning = model.reasoning;
+  }
+  if (Array.isArray(model.input)) {
+    capabilities.imageInput = model.input.includes('image');
+  }
+
+  return Object.keys(capabilities).length > 0 ? capabilities : undefined;
+}
+
+function mergeAccountModelCapabilities(
+  account: ProviderAccount,
+  providerKey: string,
+  entry: Record<string, unknown> | undefined,
+  defaultModel: string | undefined,
+): ProviderAccount {
+  const openClawCapabilities = resolveModelCapabilitiesFromOpenClawEntry(
+    providerKey,
+    entry,
+    account.model || defaultModel,
+  );
+  if (!openClawCapabilities) {
+    return account;
+  }
+
+  return {
+    ...account,
+    modelCapabilities: {
+      ...openClawCapabilities,
+      ...account.modelCapabilities,
+    },
+  };
 }
 
 export class ProviderService {
@@ -147,7 +215,12 @@ export class ProviderService {
         const aliasAccounts = storeGroup.filter((a) => a.vendorId !== key);
         const candidates = aliasAccounts.length > 0 ? aliasAccounts : storeGroup;
         candidates.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
-        result.push(candidates[0]);
+        result.push(mergeAccountModelCapabilities(
+          candidates[0],
+          key,
+          openClawProviders[key],
+          defaultModel,
+        ));
 
         // Clean up orphaned duplicates from the store.
         const kept = candidates[0];
@@ -262,6 +335,7 @@ export class ProviderService {
           ? (entry.headers as Record<string, string>)
           : undefined),
         model,
+        modelCapabilities: resolveModelCapabilitiesFromOpenClawEntry(key, entry, model),
         enabled: true,
         isDefault: false,
         createdAt: now,

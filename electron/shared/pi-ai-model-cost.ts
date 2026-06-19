@@ -1,3 +1,5 @@
+import type { ModelInputModality } from './providers/model-capabilities';
+
 /**
  * Per-million-token rates expected by `@mariozechner/pi-ai` `calculateCost`.
  * Custom / synced catalog rows often omit pricing; zeros keep accounting stable
@@ -17,6 +19,17 @@ export type PiAiModelCostRates = {
   cacheRead: number;
   cacheWrite: number;
 };
+
+export type PiAiModelMetadata = {
+  reasoning?: boolean;
+  input?: ModelInputModality[];
+};
+
+export type PiAiModelEntry = {
+  id: string;
+  name: string;
+  cost: PiAiModelCostRates;
+} & PiAiModelMetadata;
 
 export function normalizePiAiModelCost(existing: unknown): PiAiModelCostRates {
   if (!existing || typeof existing !== 'object') {
@@ -38,6 +51,7 @@ export function normalizePiAiModelCost(existing: unknown): PiAiModelCostRates {
 export function piAiModelsJsonModelEntry(
   id: string,
   name: string = id,
-): { id: string; name: string; cost: PiAiModelCostRates } {
-  return { id, name, cost: normalizePiAiModelCost(undefined) };
+  metadata?: PiAiModelMetadata,
+): PiAiModelEntry {
+  return { id, name, cost: normalizePiAiModelCost(undefined), ...metadata };
 }

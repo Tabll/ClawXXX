@@ -23,8 +23,9 @@ import {
 } from '../../utils/openclaw-auth';
 import {
   piAiModelsJsonModelEntry,
-  type PiAiModelCostRates,
+  type PiAiModelEntry,
 } from '../../shared/pi-ai-model-cost';
+import { providerModelCapabilitiesToModelMetadata } from '../../shared/providers/model-capabilities';
 import { logger } from '../../utils/logger';
 import { listAgentsSnapshot } from '../../utils/agent-config';
 
@@ -78,7 +79,7 @@ function normalizeProviderBaseUrl(
 }
 
 function shouldUseExplicitDefaultOverride(config: ProviderConfig, runtimeProviderKey: string): boolean {
-  return Boolean(config.baseUrl || config.apiProtocol || runtimeProviderKey !== config.type);
+  return Boolean(config.baseUrl || config.apiProtocol || config.modelCapabilities || runtimeProviderKey !== config.type);
 }
 
 export function getOpenClawProviderKey(type: string, providerId: string): string {
@@ -143,6 +144,39 @@ export function getProviderModelRef(config: ProviderConfig): string | undefined 
   return defaultModel.startsWith(`${providerKey}/`)
     ? defaultModel
     : `${providerKey}/${defaultModel}`;
+}
+
+function stripProviderPrefix(modelRef: string | undefined, providerKey: string): string | undefined {
+  if (!modelRef) {
+    return undefined;
+  }
+  return modelRef.startsWith(`${providerKey}/`)
+    ? modelRef.slice(providerKey.length + 1)
+    : modelRef;
+}
+
+function modelCapabilitiesForModel(
+  config: ProviderConfig,
+  runtimeProviderKey: string,
+  modelId: string,
+): ReturnType<typeof providerModelCapabilitiesToModelMetadata> {
+  const configuredModelId = stripProviderPrefix(config.model, runtimeProviderKey);
+  if (!configuredModelId || configuredModelId !== modelId) {
+    return undefined;
+  }
+  return providerModelCapabilitiesToModelMetadata(config.modelCapabilities);
+}
+
+function piAiModelEntryForProviderModel(
+  config: ProviderConfig,
+  runtimeProviderKey: string,
+  modelId: string,
+): PiAiModelEntry {
+  return piAiModelsJsonModelEntry(
+    modelId,
+    modelId,
+    modelCapabilitiesForModel(config, runtimeProviderKey, modelId),
+  );
 }
 
 export async function getProviderFallbackModelRefs(config: ProviderConfig): Promise<string[]> {
@@ -322,6 +356,7 @@ async function syncRuntimeProviderConfig(
     api: context.api,
     apiKeyEnv: context.meta?.apiKeyEnv,
     headers: config.headers ?? context.meta?.headers,
+    ...(config.modelCapabilities ? { modelCapabilities: config.modelCapabilities } : {}),
   });
 }
 
@@ -339,11 +374,11 @@ async function syncCustomProviderAgentModel(
     return;
   }
 
-  const modelId = config.model;
+  const modelId = stripProviderPrefix(config.model, runtimeProviderKey);
   await updateAgentModelProvider(runtimeProviderKey, {
     baseUrl: normalizeProviderBaseUrl(config, config.baseUrl, config.apiProtocol || 'openai-completions'),
     api: config.apiProtocol || 'openai-completions',
-    models: modelId ? [piAiModelsJsonModelEntry(modelId)] : [],
+    models: modelId ? [piAiModelEntryForProviderModel(config, runtimeProviderKey, modelId)] : [],
     apiKey: resolvedKey,
   });
 }
@@ -428,11 +463,12 @@ async function buildRuntimeProviderConfigMap(): Promise<Map<string, ProviderConf
 
 async function buildAgentModelProviderEntry(
   config: ProviderConfig,
+  runtimeProviderKey: string,
   modelId: string,
 ): Promise<{
   baseUrl?: string;
   api?: string;
-  models?: Array<{ id: string; name: string; cost: PiAiModelCostRates }>;
+  models?: PiAiModelEntry[];
   apiKey?: string;
   authHeader?: boolean;
 } | null> {
@@ -461,7 +497,7 @@ async function buildAgentModelProviderEntry(
   return {
     baseUrl,
     api,
-    models: [piAiModelsJsonModelEntry(modelId)],
+    models: [piAiModelEntryForProviderModel(config, runtimeProviderKey, modelId)],
     apiKey,
     authHeader,
   };
@@ -491,7 +527,7 @@ async function syncAgentModelsToRuntime(agentIds?: Set<string>): Promise<void> {
       continue;
     }
 
-    const entry = await buildAgentModelProviderEntry(providerConfig, parsed.modelId);
+    const entry = await buildAgentModelProviderEntry(providerConfig, parsed.providerKey, parsed.modelId);
     if (!entry) {
       continue;
     }
@@ -550,6 +586,7 @@ export async function syncUpdatedProviderToRuntime(
           api: context.api,
           apiKeyEnv: context.meta?.apiKeyEnv,
           headers: config.headers ?? context.meta?.headers,
+          ...(config.modelCapabilities ? { modelCapabilities: config.modelCapabilities } : {}),
         }, fallbackModels);
       } else {
         await setOpenClawDefaultModel(ock, modelOverride, fallbackModels);
@@ -559,6 +596,7 @@ export async function syncUpdatedProviderToRuntime(
         baseUrl: normalizeProviderBaseUrl(config, config.baseUrl, config.apiProtocol || 'openai-completions'),
         api: config.apiProtocol || 'openai-completions',
         headers: config.headers,
+        ...(config.modelCapabilities ? { modelCapabilities: config.modelCapabilities } : {}),
       }, fallbackModels);
     }
   }
@@ -676,6 +714,7 @@ export async function syncDefaultProviderToRuntime(
         baseUrl: normalizeProviderBaseUrl(provider, provider.baseUrl, provider.apiProtocol || 'openai-completions'),
         api: provider.apiProtocol || 'openai-completions',
         headers: provider.headers,
+        ...(provider.modelCapabilities ? { modelCapabilities: provider.modelCapabilities } : {}),
       }, fallbackModels);
     } else if (shouldUseExplicitDefaultOverride(provider, ock)) {
       await setOpenClawDefaultModelWithOverride(ock, modelOverride, {
@@ -687,6 +726,7 @@ export async function syncDefaultProviderToRuntime(
         api: provider.apiProtocol || getProviderConfig(provider.type)?.api,
         apiKeyEnv: getProviderConfig(provider.type)?.apiKeyEnv,
         headers: provider.headers ?? getProviderConfig(provider.type)?.headers,
+        ...(provider.modelCapabilities ? { modelCapabilities: provider.modelCapabilities } : {}),
       }, fallbackModels);
     } else {
       await setOpenClawDefaultModel(ock, modelOverride, fallbackModels);
@@ -722,6 +762,7 @@ export async function syncDefaultProviderToRuntime(
         {
           baseUrl: OPENAI_CODEX_OAUTH_PROVIDER_CONFIG.baseUrl,
           api: OPENAI_CODEX_OAUTH_PROVIDER_CONFIG.api,
+          ...(provider.modelCapabilities ? { modelCapabilities: provider.modelCapabilities } : {}),
         },
         fallbackModels.map((fallback) => fallback.replace(/^openai-codex\//, `${browserOAuthRuntimeProvider}/`)),
       );
@@ -755,18 +796,19 @@ export async function syncDefaultProviderToRuntime(
       api,
       authHeader: targetProviderKey === 'minimax-portal' ? true : undefined,
       apiKeyEnv: targetProviderKey === 'minimax-portal' ? 'minimax-oauth' : 'qwen-oauth',
+      ...(provider.modelCapabilities ? { modelCapabilities: provider.modelCapabilities } : {}),
     }, fallbackModels);
 
     logger.info(`Configured openclaw.json for OAuth provider "${provider.type}"`);
 
     try {
-      const defaultModelId = provider.model?.split('/').pop();
+      const defaultModelId = stripProviderPrefix(provider.model, targetProviderKey);
       await updateAgentModelProvider(targetProviderKey, {
         baseUrl,
         api,
         authHeader: targetProviderKey === 'minimax-portal' ? true : undefined,
         apiKey: targetProviderKey === 'minimax-portal' ? 'minimax-oauth' : 'qwen-oauth',
-        models: defaultModelId ? [piAiModelsJsonModelEntry(defaultModelId)] : [],
+        models: defaultModelId ? [piAiModelEntryForProviderModel(provider, targetProviderKey, defaultModelId)] : [],
       });
     } catch (err) {
       logger.warn(`Failed to update models.json for OAuth provider "${targetProviderKey}":`, err);
@@ -778,11 +820,11 @@ export async function syncDefaultProviderToRuntime(
     providerKey &&
     provider.baseUrl
   ) {
-    const modelId = provider.model;
+    const modelId = stripProviderPrefix(provider.model, ock);
     await updateAgentModelProvider(ock, {
       baseUrl: normalizeProviderBaseUrl(provider, provider.baseUrl, provider.apiProtocol || 'openai-completions'),
       api: provider.apiProtocol || 'openai-completions',
-      models: modelId ? [piAiModelsJsonModelEntry(modelId)] : [],
+      models: modelId ? [piAiModelEntryForProviderModel(provider, ock, modelId)] : [],
       apiKey: providerKey,
     });
   }

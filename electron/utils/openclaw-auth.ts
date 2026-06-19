@@ -35,7 +35,11 @@ import {
   assertValidApiProtocol,
   normalizeOpenClawApiProtocol,
 } from '../shared/providers/types';
-import { inferCustomModelInputModalities } from '../shared/providers/model-capabilities';
+import {
+  inferCustomModelInputModalities,
+  providerModelCapabilitiesToModelMetadata,
+  type ProviderModelCapabilities,
+} from '../shared/providers/model-capabilities';
 import {
   CLAWX_OPENAI_IMAGE_DEFAULT_MODEL,
   CLAWX_OPENAI_IMAGE_PROVIDER_KEY,
@@ -1517,6 +1521,7 @@ interface RuntimeProviderConfigOverride {
   apiKeyEnv?: string;
   headers?: Record<string, string>;
   authHeader?: boolean;
+  modelCapabilities?: ProviderModelCapabilities;
 }
 
 type ProviderEntryBuildOptions = {
@@ -1530,6 +1535,7 @@ type ProviderEntryBuildOptions = {
   includeRegistryModels?: boolean;
   mergeExistingModels?: boolean;
   inferRuntimeModelInputs?: boolean;
+  modelMetadataById?: Record<string, Record<string, unknown>>;
 };
 
 function normalizeModelRef(provider: string, modelOverride?: string): string | undefined {
@@ -1548,6 +1554,17 @@ function extractFallbackModelIds(provider: string, fallbackModels: string[]): st
     .map((fallback) => fallback.slice(provider.length + 1));
 }
 
+function buildPrimaryModelMetadataById(
+  modelId: string | undefined,
+  capabilities: ProviderModelCapabilities | undefined,
+): Record<string, Record<string, unknown>> | undefined {
+  const metadata = providerModelCapabilitiesToModelMetadata(capabilities);
+  if (!modelId || !metadata) {
+    return undefined;
+  }
+  return { [modelId]: metadata };
+}
+
 function mergeProviderModels(
   ...groups: Array<Array<Record<string, unknown>>>
 ): Array<Record<string, unknown>> {
@@ -1563,6 +1580,21 @@ function mergeProviderModels(
     }
   }
   return merged;
+}
+
+function applyModelMetadataOverrides(
+  models: Array<Record<string, unknown>>,
+  metadataById: Record<string, Record<string, unknown>> | undefined,
+): Array<Record<string, unknown>> {
+  if (!metadataById) {
+    return models;
+  }
+
+  return models.map((model) => {
+    const id = typeof model.id === 'string' ? model.id : '';
+    const metadata = id ? metadataById[id] : undefined;
+    return metadata ? { ...model, ...metadata } : model;
+  });
 }
 
 /**
@@ -1830,8 +1862,12 @@ function upsertOpenClawProviderEntry(
     ...(options.inferRuntimeModelInputs
       ? { input: inferCustomModelInputModalities(id) }
       : {}),
+    ...(options.modelMetadataById?.[id] ?? {}),
   }));
-  let mergedModels = mergeProviderModels(registryModels, existingModels, runtimeModels);
+  let mergedModels = applyModelMetadataOverrides(
+    mergeProviderModels(registryModels, existingModels, runtimeModels),
+    options.modelMetadataById,
+  );
   if (options.api === 'anthropic-messages') {
     mergedModels = mergedModels.map((model) => ensureAnthropicMessagesModelEntry(model, provider, existingProvider));
   }
@@ -2003,6 +2039,7 @@ export async function syncProviderConfigToOpenClaw(
         modelIds: modelId ? [modelId] : [],
         mergeExistingModels: true,
         inferRuntimeModelInputs: true,
+        modelMetadataById: buildPrimaryModelMetadataById(modelId, override.modelCapabilities),
       });
     }
 
@@ -2194,6 +2231,7 @@ export async function setOpenClawDefaultModelWithOverride(
         modelIds: [modelId, ...fallbackModelIds],
         mergeExistingModels: true,
         inferRuntimeModelInputs: true,
+        modelMetadataById: buildPrimaryModelMetadataById(modelId, override.modelCapabilities),
       });
     }
 
