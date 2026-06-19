@@ -184,6 +184,7 @@
         "targetChip": "@{{agent}}",
         "agentPickerTitle": "将下一条消息直接发送给其他 Agent",
         "gatewayDisconnectedPlaceholder": "网关未连接...",
+        "followUpPlaceholder": "要求后续变更",
         "send": "发送",
         "stop": "停止",
         "gatewayConnected": "已连接",
@@ -192,7 +193,20 @@
         "folderDropUnsupported": "无法添加此文件夹。请重新拖入，或在消息中粘贴文件夹路径。",
         "folderAttachment": "文件夹",
         "skillPreviewTooltip": "预览 SKILL.md",
-        "skillPreviewNotFound": "找不到该技能。请打开技能列表以刷新。"
+        "skillPreviewNotFound": "找不到该技能。请打开技能列表以刷新。",
+        "attachmentOnlyMessage": "处理附件文件。",
+        "queue": {
+            "steer": "引导",
+            "steering": "引导中",
+            "sending": "发送中",
+            "remove": "移除队列消息",
+            "limitReached": "最多只能排队 {{count}} 条消息。",
+            "steerFailed": "引导失败：{{error}}",
+            "steerFailedFallback": "引导消息失败",
+            "attachmentFallback": "附件",
+            "attachmentPreview": "{{file}} 等 {{count}} 个附件",
+            "emptyPreview": "排队的后续消息"
+        }
     },
     "historyBuckets": {
         "today": "今天",

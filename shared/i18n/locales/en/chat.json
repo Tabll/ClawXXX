@@ -184,6 +184,7 @@
         "modelPickerTitle": "Switch model for this chat",
         "modelSwitchFailed": "Failed to switch model: {{error}}",
         "gatewayDisconnectedPlaceholder": "Gateway not connected...",
+        "followUpPlaceholder": "Request follow-up changes",
         "send": "Send",
         "stop": "Stop",
         "gatewayConnected": "connected",
@@ -192,7 +193,20 @@
         "folderDropUnsupported": "Couldn't attach this folder. Drag it again, or paste the folder path into your message.",
         "folderAttachment": "Folder",
         "skillPreviewTooltip": "Preview SKILL.md",
-        "skillPreviewNotFound": "Could not find this skill. Open the skill picker to refresh the list."
+        "skillPreviewNotFound": "Could not find this skill. Open the skill picker to refresh the list.",
+        "attachmentOnlyMessage": "Process the attached file(s).",
+        "queue": {
+            "steer": "Steer",
+            "steering": "Steering",
+            "sending": "Sending",
+            "remove": "Remove queued message",
+            "limitReached": "You can queue up to {{count}} messages.",
+            "steerFailed": "Failed to steer: {{error}}",
+            "steerFailedFallback": "Failed to steer message",
+            "attachmentFallback": "attachment",
+            "attachmentPreview": "{{file}} and {{count}} attachments",
+            "emptyPreview": "Queued follow-up"
+        }
     },
     "historyBuckets": {
         "today": "Today",

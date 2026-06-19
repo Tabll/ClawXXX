@@ -353,7 +353,7 @@ export const ChatMessage = memo(function ChatMessage({
           sit alongside a single line of text. */}
       {!isUser && (
         <div className="flex h-6 shrink-0 items-center">
-          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-surface-input/70 text-foreground">
+          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-surface-tint text-foreground shadow-sm shadow-black/5">
             <Sparkles className="h-4 w-4" />
           </div>
         </div>
@@ -529,7 +529,7 @@ function ToolStatusBar({
           <div
             key={tool.toolCallId || tool.id || tool.name}
             className={cn(
-              'flex items-center gap-2 rounded-lg border px-3 py-2 text-xs transition-colors',
+              'clawx-chat-soft-bubble flex items-center gap-2 border px-3 py-2 text-xs transition-colors',
               isRunning && 'border-primary/30 bg-primary/5 text-foreground',
               !isRunning && !isError && 'border-border/50 bg-surface-input/20 text-muted-foreground',
               isError && 'border-destructive/30 bg-destructive/5 text-destructive',
@@ -631,7 +631,7 @@ function UserMessageBubble({
   text: string;
 }) {
   return (
-    <div className="relative rounded-lg px-4 py-3 bg-brand text-primary-foreground shadow-sm">
+    <div className="clawx-chat-user-bubble relative bg-primary px-4 py-3 text-primary-foreground">
       <p className="whitespace-pre-wrap break-words text-sm">{text}</p>
     </div>
   );
@@ -657,7 +657,7 @@ function AssistantMarkdown({
             const isInline = !match && !className;
             if (isInline) {
               return (
-                <code className="bg-surface-input/70 px-1.5 py-0.5 rounded text-sm font-mono break-words break-all" {...props}>
+                <code className="rounded-md bg-surface-input/70 px-1.5 py-0.5 font-mono text-sm break-words break-all" {...props}>
                   {children}
                 </code>
               );
@@ -671,7 +671,7 @@ function AssistantMarkdown({
           pre({ children, ...props }) {
             return (
               <pre
-                className="bg-surface-input/70 rounded-lg p-4 overflow-x-auto whitespace-pre-wrap break-words"
+                className="overflow-x-auto whitespace-pre-wrap break-words rounded-2xl border border-border/40 bg-surface-input/60 p-4"
                 {...props}
               >
                 {children}
@@ -688,7 +688,7 @@ function AssistantMarkdown({
           img({ src, alt }) {
             if (!src || isUnresolvableImageUrl(String(src))) return null;
             return (
-              <img src={String(src)} alt={typeof alt === 'string' ? alt : 'image'} className="max-w-full rounded-lg" />
+              <img src={String(src)} alt={typeof alt === 'string' ? alt : 'image'} className="max-w-full rounded-2xl" />
             );
           },
         }}
@@ -734,8 +734,8 @@ function FileCard({ file, onOpen }: { file: AttachedFileMeta; onOpen?: (file: At
   return (
     <div 
       className={cn(
-        "flex items-center gap-3 rounded-lg border border-border/80 px-3 py-2.5 bg-surface-input/70 max-w-[220px]",
-        file.filePath && "cursor-pointer hover:bg-surface-modal transition-colors"
+        "clawx-chat-soft-bubble flex max-w-[220px] items-center gap-3 border border-border/60 bg-surface-input/60 px-3 py-2.5 shadow-sm shadow-black/5",
+        file.filePath && "cursor-pointer transition-colors hover:border-ring/30 hover:bg-surface-modal"
       )}
       onClick={handleOpen}
       title={file.filePath ? "Open file" : undefined}
@@ -761,7 +761,7 @@ function ImagePreviewPlaceholder({ file }: { file: AttachedFileMeta }) {
   return (
     <div
       className={cn(
-        'flex h-36 w-36 flex-col items-center justify-center gap-2 rounded-lg border border-border/80 bg-surface-input/70 px-3 text-center text-muted-foreground ',
+        'clawx-chat-soft-bubble flex h-36 w-36 flex-col items-center justify-center gap-2 border border-border/60 bg-surface-input/60 px-3 text-center text-muted-foreground',
         unavailable && 'border-amber-500/30 bg-amber-500/5 text-amber-700 dark:text-amber-400',
       )}
       data-testid={unavailable ? 'image-preview-unavailable' : 'image-preview-loading'}
@@ -797,12 +797,12 @@ function ImageThumbnail({
   void filePath; void base64; void mimeType;
   return (
     <div
-      className="relative w-36 h-36 rounded-lg border overflow-hidden border-border/80 bg-surface-input/70 group/img cursor-zoom-in"
+      className="group/img clawx-chat-soft-bubble relative h-36 w-36 cursor-zoom-in overflow-hidden border border-border/60 bg-surface-input/60"
       onClick={onPreview}
     >
-      <img src={src} alt={fileName} className="w-full h-full object-cover" />
-      <div className="absolute inset-0 bg-black/0 group-hover/img:bg-black/25 transition-colors flex items-center justify-center">
-        <ZoomIn className="h-6 w-6 text-white opacity-0 group-hover/img:opacity-100 transition-opacity drop-shadow" />
+      <img src={src} alt={fileName} className="h-full w-full object-cover" />
+      <div className="absolute inset-0 flex items-center justify-center bg-black/0 transition-colors group-hover/img:bg-black/25">
+        <ZoomIn className="h-6 w-6 text-white opacity-0 drop-shadow transition-opacity group-hover/img:opacity-100" />
       </div>
     </div>
   );
@@ -828,12 +828,12 @@ function ImagePreviewCard({
   void filePath; void base64; void mimeType;
   return (
     <div
-      className="relative max-w-xs rounded-lg border overflow-hidden border-border/80 bg-surface-input/70 group/img cursor-zoom-in"
+      className="group/img clawx-chat-soft-bubble relative max-w-xs cursor-zoom-in overflow-hidden border border-border/60 bg-surface-input/60"
       onClick={onPreview}
     >
       <img src={src} alt={fileName} className="block w-full" />
-      <div className="absolute inset-0 bg-black/0 group-hover/img:bg-black/20 transition-colors flex items-center justify-center">
-        <ZoomIn className="h-6 w-6 text-white opacity-0 group-hover/img:opacity-100 transition-opacity drop-shadow" />
+      <div className="absolute inset-0 flex items-center justify-center bg-black/0 transition-colors group-hover/img:bg-black/20">
+        <ZoomIn className="h-6 w-6 text-white opacity-0 drop-shadow transition-opacity group-hover/img:opacity-100" />
       </div>
     </div>
   );
@@ -885,7 +885,7 @@ function ImageLightbox({
         <img
           src={src}
           alt={fileName}
-          className="max-w-[90vw] max-h-[85vh] rounded-lg shadow-2xl object-contain"
+          className="max-h-[85vh] max-w-[90vw] rounded-2xl object-contain shadow-2xl"
         />
 
         {/* Action buttons below image */}

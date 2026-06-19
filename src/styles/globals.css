@@ -176,10 +176,12 @@
      *                                      slightly darker than --background
      *                                      so fields feel inset
      *   --surface-sidebar = sidebar neutral left navigation rail (often /60)
+     *   --surface-tint    = primary-derived pale wash for calm page canvases
      * ─────────────────────────────────────────────────────────── */
     --surface-modal: 0 0% 99%;
     --surface-input: 0 0% 93%;
     --surface-sidebar: 0 0% 91%;
+    --surface-tint: 0 0% 94%;
 
     /* ── ClawX usage accents (light) ─────────────────────────────
      *
@@ -237,6 +239,7 @@
     --surface-modal: 0 0% 10%;
     --surface-input: 0 0% 14%;
     --surface-sidebar: 0 0% 7%;
+    --surface-tint: 0 0% 12%;
 
     /* Usage accents — lifted *-400-ish shades so bars stay vivid
      * against the deep-gray dark surfaces (see light block above
@@ -389,12 +392,102 @@
     animation: clawx-dialog-content-out 80ms ease-in both;
   }
 
+  .clawx-chat-canvas {
+    background:
+      radial-gradient(circle at 50% -12rem, hsl(var(--surface-tint) / 0.96), transparent 34rem),
+      linear-gradient(180deg, hsl(var(--surface-tint) / 0.52), hsl(var(--background)) 42%);
+  }
+
+  .clawx-chat-soft-bubble {
+    border-radius: 1.25rem;
+    corner-shape: squircle;
+  }
+
+  .clawx-chat-user-bubble {
+    border-radius: 1.35rem;
+    border-bottom-right-radius: 0.62rem;
+    corner-shape: squircle;
+    box-shadow:
+      0 16px 32px -24px hsl(var(--primary) / 0.68),
+      inset 0 1px 0 hsl(var(--primary-foreground) / 0.14);
+  }
+
+  .clawx-chat-composer {
+    --clawx-chat-composer-fill: hsl(0 0% 100%);
+    --clawx-chat-composer-flow-angle: 0deg;
+    --clawx-chat-composer-flow-visibility: 0%;
+    position: relative;
+    isolation: isolate;
+    border: 1px solid hsl(var(--border) / 0.7);
+    border-radius: 1.75rem;
+    corner-shape: squircle;
+    background:
+      linear-gradient(var(--clawx-chat-composer-fill), var(--clawx-chat-composer-fill)) padding-box,
+      conic-gradient(
+        from var(--clawx-chat-composer-flow-angle),
+        color-mix(in srgb, hsl(var(--primary) / 0.16) var(--clawx-chat-composer-flow-visibility), transparent) 0deg,
+        color-mix(in srgb, hsl(var(--primary) / 0.88) var(--clawx-chat-composer-flow-visibility), transparent) 42deg,
+        color-mix(in srgb, hsl(var(--foreground) / 0.24) var(--clawx-chat-composer-flow-visibility), transparent) 94deg,
+        color-mix(in srgb, hsl(var(--primary) / 0.68) var(--clawx-chat-composer-flow-visibility), transparent) 152deg,
+        color-mix(in srgb, hsl(var(--border) / 0.5) var(--clawx-chat-composer-flow-visibility), transparent) 218deg,
+        color-mix(in srgb, hsl(var(--primary) / 0.9) var(--clawx-chat-composer-flow-visibility), transparent) 292deg,
+        color-mix(in srgb, hsl(var(--primary) / 0.16) var(--clawx-chat-composer-flow-visibility), transparent) 360deg
+      ) border-box;
+    box-shadow:
+      0 22px 52px -38px hsl(var(--foreground) / 0.46),
+      0 1px 0 hsl(var(--foreground) / 0.04),
+      inset 0 1px 0 hsl(var(--card) / 0.92);
+    transition:
+      background-color 260ms ease,
+      border-color 520ms ease,
+      box-shadow 520ms ease,
+      --clawx-chat-composer-flow-visibility 680ms cubic-bezier(0.22, 1, 0.36, 1);
+    animation: clawx-chat-composer-flow 4.2s linear infinite;
+  }
+
+  .clawx-chat-composer:hover,
+  .clawx-chat-composer:focus-within,
+  .clawx-chat-composer-active {
+    border-color: hsl(var(--primary));
+  }
+
+  .clawx-chat-composer-running,
+  .clawx-chat-composer-running:hover,
+  .clawx-chat-composer-running:focus-within,
+  .clawx-chat-composer-running.clawx-chat-composer-active {
+    --clawx-chat-composer-flow-visibility: 100%;
+    border-color: transparent;
+  }
+
+  .dark .clawx-chat-composer {
+    --clawx-chat-composer-fill: hsl(var(--surface-modal));
+    box-shadow:
+      0 22px 58px -40px hsl(0 0% 0% / 0.88),
+      inset 0 1px 0 hsl(0 0% 100% / 0.06);
+  }
+
   @media (prefers-reduced-motion: reduce) {
     .clawx-dialog-overlay[data-state],
     .clawx-dialog-content[data-state] {
       animation: none;
     }
+
+    .clawx-chat-composer {
+      animation: none;
+    }
   }
+}
+
+@property --clawx-chat-composer-flow-visibility {
+  syntax: "<percentage>";
+  inherits: false;
+  initial-value: 0%;
+}
+
+@property --clawx-chat-composer-flow-angle {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
 }
 
 @keyframes clawx-dialog-overlay-in {
@@ -414,6 +507,12 @@
 
   to {
     opacity: 0;
+  }
+}
+
+@keyframes clawx-chat-composer-flow {
+  to {
+    --clawx-chat-composer-flow-angle: 360deg;
   }
 }
 

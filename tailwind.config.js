@@ -21,7 +21,7 @@
  *      ...) we add three ClawX-private groups:
  *        - brand        : user-selected accent colour used for branded surfaces
  *        - skill        : inline /skill chip highlight derived from primary
- *        - surface.{modal,input,sidebar}: a 3-layer neutral background
+ *        - surface.{modal,input,sidebar,tint}: neutral background layers
  *                          system in light mode. In dark mode each layer
  *                          collapses to an existing shadcn token through
  *                          CSS variables, so callers don't need to write
@@ -147,7 +147,7 @@ module.exports = {
        *      from globals.css. Kept fully compatible.
        *   B. ClawX brand tokens (brand / skill) — CSS-variable driven
        *      accents that follow the active appearance colour.
-       *   C. ClawX surface tokens (surface.{modal,input,sidebar}) — use
+       *   C. ClawX surface tokens (surface.{modal,input,sidebar,tint}) — use
        *      `hsl(var(--surface-xxx) / <alpha-value>)` so the alpha
        *      modifier still works (e.g. `bg-surface-sidebar/60`). The
        *      actual values live in globals.css, where dark mode redirects
@@ -164,6 +164,7 @@ module.exports = {
        *   - bg-surface-modal        → large rounded modal panels
        *   - bg-surface-input        → input fields / code panes
        *   - bg-surface-sidebar/60   → translucent left rail
+       *   - bg-surface-tint         → primary-derived pale wash
        * ────────────────────────────────────────────────────────────── */
       colors: {
         // ── A. shadcn semantic tokens (do NOT rename — Radix/shadcn
@@ -233,6 +234,7 @@ module.exports = {
           modal: 'hsl(var(--surface-modal) / <alpha-value>)',
           input: 'hsl(var(--surface-input) / <alpha-value>)',
           sidebar: 'hsl(var(--surface-sidebar) / <alpha-value>)',
+          tint: 'hsl(var(--surface-tint) / <alpha-value>)',
         },
 
         // ── D. ClawX usage accents ──────────────────────────────────

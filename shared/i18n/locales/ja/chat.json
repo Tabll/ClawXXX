@@ -184,6 +184,7 @@
         "targetChip": "@{{agent}}",
         "agentPickerTitle": "次のメッセージを別の Agent に直接送信します",
         "gatewayDisconnectedPlaceholder": "ゲートウェイ未接続...",
+        "followUpPlaceholder": "後続の変更を依頼",
         "send": "送信",
         "stop": "停止",
         "gatewayConnected": "接続済み",
@@ -192,7 +193,20 @@
         "folderDropUnsupported": "このフォルダを添付できませんでした。もう一度ドラッグするか、メッセージにフォルダパスを貼り付けてください。",
         "folderAttachment": "フォルダ",
         "skillPreviewTooltip": "SKILL.md をプレビュー",
-        "skillPreviewNotFound": "この Skill が見つかりません。Skill ピッカーを開いて一覧を更新してください。"
+        "skillPreviewNotFound": "この Skill が見つかりません。Skill ピッカーを開いて一覧を更新してください。",
+        "attachmentOnlyMessage": "添付ファイルを処理してください。",
+        "queue": {
+            "steer": "誘導",
+            "steering": "誘導中",
+            "sending": "送信中",
+            "remove": "キュー内メッセージを削除",
+            "limitReached": "キューに入れられるメッセージは最大 {{count}} 件です。",
+            "steerFailed": "誘導に失敗しました: {{error}}",
+            "steerFailedFallback": "メッセージの誘導に失敗しました",
+            "attachmentFallback": "添付",
+            "attachmentPreview": "{{file}} ほか {{count}} 件の添付",
+            "emptyPreview": "キュー内のフォローアップ"
+        }
     },
     "historyBuckets": {
         "today": "今日",

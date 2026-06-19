@@ -45,7 +45,7 @@ export function ChatToolbar({
 
   return (
     <div className="flex items-center gap-2">
-      <div className="hidden sm:flex items-center gap-1.5 rounded-lg border border-border/80 bg-surface-modal/80 px-3 py-1.5 text-xs font-medium text-foreground/85 shadow-sm">
+      <div className="hidden items-center gap-1.5 rounded-full border border-border/60 bg-surface-modal/70 px-3 py-1.5 text-xs font-medium text-foreground/85 shadow-sm shadow-black/5 backdrop-blur sm:flex">
         <Bot className="h-3.5 w-3.5 text-primary" />
         <span>{t('toolbar.currentAgent', { agent: currentAgentName })}</span>
       </div>
@@ -56,7 +56,7 @@ export function ChatToolbar({
               variant="ghost"
               size="icon"
               className={cn(
-                'h-8 w-8 hover:bg-surface-input hover:text-foreground',
+                'h-8 w-8 rounded-full text-muted-foreground hover:bg-black/5 hover:text-foreground dark:hover:bg-white/10',
                 browserActive && 'bg-primary/10 text-primary',
               )}
               onClick={() => (browserActive ? closePanel() : openBrowser())}
@@ -78,7 +78,7 @@ export function ChatToolbar({
             variant="ghost"
             size="icon"
             className={cn(
-              'h-8 w-8 hover:bg-surface-input hover:text-foreground',
+              'h-8 w-8 rounded-full text-muted-foreground hover:bg-black/5 hover:text-foreground dark:hover:bg-white/10',
               questionDirectoryOpen && 'bg-primary/10 text-primary',
             )}
             onClick={onToggleQuestionDirectory}
@@ -98,7 +98,7 @@ export function ChatToolbar({
           <Button
             variant="ghost"
             size="icon"
-            className="h-8 w-8 hover:bg-surface-input hover:text-foreground"
+            className="h-8 w-8 rounded-full text-muted-foreground hover:bg-black/5 hover:text-foreground dark:hover:bg-white/10"
             onClick={() => refresh()}
             disabled={loading}
             aria-label={t('toolbar.refresh')}

@@ -15,7 +15,7 @@ import { useArtifactPanel } from '@/stores/artifact-panel';
 import { hostApi } from '@/lib/host-api';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { ChatMessage } from './ChatMessage';
-import { ChatInput } from './ChatInput';
+import { ChatInput, type FileAttachment } from './ChatInput';
 import { ExecutionGraphCard } from './ExecutionGraphCard';
 import { ChatToolbar } from './ChatToolbar';
 import { extractImages, extractText, extractThinking, extractToolUse, isInternalAssistantReplyText, isInternalProcessNarration, normalizeMessageRole, sanitizeAssistantReplyText, stripProcessMessagePrefix } from './message-utils';
@@ -228,6 +228,44 @@ export function Chat() {
     const target = buildPreviewTarget(file.filePath, file.fileName, file.fileSize);
     openPreview(target);
   }, [openPreview, t]);
+
+  const steerActiveRunMessage = useCallback(async (text: string, attachments?: FileAttachment[]) => {
+    const trimmed = text.trim();
+    const readyAttachments = (attachments ?? []).filter((attachment) => attachment.status === 'ready');
+    if (!trimmed && readyAttachments.length === 0) return;
+
+    const idempotencyKey = crypto.randomUUID();
+    const message = trimmed || t('composer.attachmentOnlyMessage');
+
+    if (readyAttachments.length > 0) {
+      const result = await hostApi.chat.sendWithMedia({
+        sessionKey: currentSessionKey,
+        message,
+        deliver: false,
+        idempotencyKey,
+        media: readyAttachments.map((attachment) => ({
+          filePath: attachment.stagedPath,
+          mimeType: attachment.mimeType,
+          fileName: attachment.fileName,
+        })),
+      });
+      if (!result.success) {
+        throw new Error(result.error || t('composer.queue.steerFailedFallback'));
+      }
+      return;
+    }
+
+    await hostApi.gateway.rpc(
+      'chat.send',
+      {
+        sessionKey: currentSessionKey,
+        message,
+        deliver: false,
+        idempotencyKey,
+      },
+      120_000,
+    );
+  }, [currentSessionKey, t]);
   // Persistent per-run override for the Execution Graph's expanded/collapsed
   // state. Keyed by a stable run id (trigger message id, or a fallback of
   // `${sessionKey}:${triggerIdx}`) so user toggles survive the `loadHistory`
@@ -901,7 +939,7 @@ export function Chat() {
       data-testid="chat-page"
       className={cn(
         'relative flex min-h-0 -m-6 overflow-hidden transition-colors duration-500',
-        'bg-background',
+        'clawx-chat-canvas bg-background',
         // Stack above MainLayout's mac-main-drag-region (z-10) so the right-hand
         // artifact/preview pane stays clickable; window drag is handled by the
         // sidebar + chat-toolbar drag strips instead.
@@ -913,7 +951,7 @@ export function Chat() {
       {/* Left column: chat */}
       <div className="flex min-w-0 flex-1 flex-col">
       {/* Toolbar */}
-      <div className="relative flex shrink-0 items-center justify-end px-4 py-2">
+      <div className="relative flex shrink-0 items-center justify-end px-5 py-3 sm:px-6">
         <div data-testid="chat-toolbar-drag-region" className="drag-region absolute inset-0 z-0" aria-hidden="true" />
         <div data-testid="chat-toolbar-actions" className="no-drag relative z-10">
           <ChatToolbar
@@ -929,14 +967,14 @@ export function Chat() {
       </div>
 
       {/* Messages Area */}
-      <div className="relative min-h-0 flex-1 overflow-hidden px-4 py-4">
-        <div className="mx-auto flex h-full min-h-0 w-full max-w-7xl flex-col gap-4 lg:flex-row lg:items-stretch">
+      <div className="relative min-h-0 flex-1 overflow-hidden px-5 pb-4 pt-1 sm:px-6">
+        <div className="mx-auto flex h-full min-h-0 w-full max-w-7xl flex-col gap-5 lg:flex-row lg:items-stretch">
           <div ref={scrollRef} className="min-h-0 min-w-0 flex-1 overflow-y-auto" data-testid="chat-scroll-container">
             <div
               ref={contentRef}
               className={cn(
-                "mx-auto space-y-4",
-                isEmpty ? "w-full max-w-3xl" : "max-w-4xl",
+                "mx-auto space-y-5 py-2",
+                isEmpty ? "w-full max-w-4xl" : "max-w-4xl",
               )}
             >
               {isEmpty ? (
@@ -949,7 +987,7 @@ export function Chat() {
                         type="button"
                         onClick={() => void loadMoreHistory()}
                         disabled={loadingMoreHistory}
-                        className="inline-flex items-center gap-2 rounded-lg border border-border/80 bg-surface-modal/80 px-3 py-1.5 text-xs text-muted-foreground shadow-sm transition-colors hover:bg-surface-input hover:text-foreground disabled:cursor-not-allowed disabled:opacity-60"
+                        className="inline-flex items-center gap-2 rounded-full border border-border/60 bg-surface-modal/80 px-3.5 py-1.5 text-xs font-medium text-muted-foreground shadow-sm shadow-black/5 backdrop-blur transition-colors hover:border-ring/30 hover:bg-surface-modal hover:text-foreground disabled:cursor-not-allowed disabled:opacity-60"
                         data-testid="chat-load-more-history"
                       >
                         {loadingMoreHistory && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
@@ -1099,7 +1137,7 @@ export function Chat() {
             <button
               type="button"
               onClick={() => void scrollToBottom({ animation: 'smooth', ignoreEscapes: true })}
-              className="absolute bottom-4 right-4 z-20 inline-flex items-center gap-2 rounded-full border border-border bg-background/95 px-3 py-1.5 text-xs font-medium text-foreground shadow-lg shadow-black/10 backdrop-blur transition-colors hover:bg-surface-input focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 dark:shadow-black/30"
+              className="absolute bottom-5 right-5 z-20 inline-flex items-center gap-2 rounded-full border border-border/70 bg-surface-modal/90 px-3.5 py-1.5 text-xs font-medium text-foreground shadow-lg shadow-black/10 backdrop-blur transition-colors hover:border-ring/30 hover:bg-surface-modal focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 dark:shadow-black/30"
               aria-label={t('scrollToLatest')}
               title={t('scrollToLatest')}
               data-testid="chat-scroll-to-latest"
@@ -1119,7 +1157,7 @@ export function Chat() {
       {/* Run error callout */}
       {runError && (
         <div className="px-4 pt-2" data-testid="chat-run-error">
-          <div className="max-w-4xl mx-auto rounded-lg border border-destructive/20 bg-destructive/10 px-4 py-3">
+          <div className="mx-auto max-w-4xl rounded-2xl border border-destructive/20 bg-destructive/10 px-4 py-3 shadow-sm shadow-black/5">
             <div className="flex items-start justify-between gap-3">
               <p className="text-sm font-medium text-destructive flex items-center gap-2">
                 <AlertCircle className="h-4 w-4 shrink-0" />
@@ -1143,8 +1181,8 @@ export function Chat() {
 
       {/* Error bar */}
       {error && (
-        <div className="px-4 py-2 bg-destructive/10 border-t border-destructive/20">
-          <div className="max-w-4xl mx-auto flex items-center justify-between">
+        <div className="border-t border-destructive/20 bg-destructive/10 px-4 py-2">
+          <div className="mx-auto flex max-w-4xl items-center justify-between">
             <p className="text-sm text-destructive flex items-center gap-2">
               <AlertCircle className="h-4 w-4" />
               {error}
@@ -1162,9 +1200,11 @@ export function Chat() {
       {/* Input Area */}
       <ChatInput
         onSend={sendMessage}
+        onSteer={steerActiveRunMessage}
         onStop={abortRun}
         disabled={!isGatewayRunning}
         sending={inputRunActive}
+        compact={isEmpty}
       />
       </div>
 
@@ -1202,8 +1242,8 @@ export function Chat() {
 
       {/* Transparent loading overlay */}
       {minLoading && !sending && (
-        <div className="absolute inset-0 z-50 flex items-center justify-center bg-background/20 backdrop-blur-[1px] rounded-lg pointer-events-auto">
-          <div className="bg-background shadow-lg rounded-full p-2.5 border border-border">
+        <div className="pointer-events-auto absolute inset-0 z-50 flex items-center justify-center rounded-2xl bg-background/20 backdrop-blur-[1px]">
+          <div className="rounded-full border border-border bg-surface-modal p-2.5 shadow-lg shadow-black/10">
             <LoadingSpinner size="md" />
           </div>
         </div>
@@ -1262,12 +1302,12 @@ function QuestionDirectory({ items }: { items: QuestionDirectoryItem[] }) {
       className="flex min-h-0 w-full shrink-0 self-stretch lg:w-64 xl:w-72"
       aria-label={t('questionDirectory.title')}
     >
-      <div className="sticky top-2 flex min-h-0 w-full flex-1 flex-col rounded-lg border border-border/70 bg-surface-modal/70 p-3 shadow-sm">
+      <div className="sticky top-2 flex min-h-0 w-full flex-1 flex-col rounded-2xl border border-border/60 bg-surface-modal/75 p-3 shadow-sm shadow-black/5 backdrop-blur">
         <div className="mb-2 flex shrink-0 items-center justify-between gap-2 px-1">
-          <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          <h2 className="text-xs font-semibold uppercase text-muted-foreground">
             {t('questionDirectory.title')}
           </h2>
-          <span className="rounded-lg bg-surface-input px-2 py-0.5 text-2xs font-medium text-muted-foreground">
+          <span className="rounded-full bg-surface-tint px-2 py-0.5 text-2xs font-medium text-muted-foreground">
             {items.length}
           </span>
         </div>
@@ -1279,8 +1319,8 @@ function QuestionDirectory({ items }: { items: QuestionDirectoryItem[] }) {
               data-testid={`chat-question-directory-item-${item.index}`}
               onClick={() => handleJumpToMessage(item.index)}
               className={cn(
-                'group flex w-full items-start gap-2 rounded-lg px-2 py-2 text-left transition-colors',
-                'text-muted-foreground hover:bg-surface-input hover:text-foreground',
+                'group flex w-full items-start gap-2 rounded-xl px-2.5 py-2 text-left transition-colors',
+                'text-muted-foreground hover:bg-black/5 hover:text-foreground dark:hover:bg-white/10',
               )}
               title={item.title}
             >
@@ -1311,16 +1351,16 @@ function WelcomeScreen() {
   ];
 
   return (
-    <div className="flex flex-col items-center justify-center text-center h-[60vh]">
-      <h1 className="text-3xl md:text-4xl font-semibold text-foreground/85 mb-6 tracking-tight">
+    <div className="flex h-[60vh] flex-col items-center justify-center text-center">
+      <h1 className="mb-7 max-w-2xl text-3xl font-semibold tracking-normal text-foreground/90 md:text-4xl">
         {t('welcome.subtitle')}
       </h1>
 
-      <div className="flex flex-wrap items-center justify-center gap-2.5 max-w-lg w-full">
+      <div className="flex w-full max-w-xl flex-wrap items-center justify-center gap-2.5">
         {quickActions.map(({ key, label }) => (
           <button 
             key={key}
-            className="px-4 py-1.5 rounded-full border border-border/80 text-meta font-medium text-muted-foreground hover:bg-surface-input transition-colors bg-black/[0.02]"
+            className="rounded-full border border-border/60 bg-surface-modal/70 px-4 py-1.5 text-meta font-medium text-muted-foreground shadow-sm shadow-black/5 transition-colors hover:border-ring/30 hover:bg-surface-modal hover:text-foreground"
           >
             {label}
           </button>
@@ -1335,14 +1375,14 @@ function WelcomeScreen() {
 function TypingIndicator() {
   return (
     <div className="flex gap-3" data-testid="chat-typing-indicator">
-      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full mt-1 bg-surface-input/70 text-foreground">
+      <div className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-surface-tint text-foreground">
         <Sparkles className="h-4 w-4" />
       </div>
-      <div className="bg-surface-input/70 text-foreground rounded-lg px-4 py-3">
+      <div className="clawx-chat-soft-bubble border border-border/40 bg-surface-modal/70 px-4 py-3 text-foreground shadow-sm shadow-black/5">
         <div className="flex gap-1">
-          <span className="w-2 h-2 bg-muted-foreground/50 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-          <span className="w-2 h-2 bg-muted-foreground/50 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-          <span className="w-2 h-2 bg-muted-foreground/50 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+          <span className="h-2 w-2 animate-bounce rounded-full bg-muted-foreground/50" style={{ animationDelay: '0ms' }} />
+          <span className="h-2 w-2 animate-bounce rounded-full bg-muted-foreground/50" style={{ animationDelay: '150ms' }} />
+          <span className="h-2 w-2 animate-bounce rounded-full bg-muted-foreground/50" style={{ animationDelay: '300ms' }} />
         </div>
       </div>
     </div>
@@ -1355,10 +1395,10 @@ function ActivityIndicator({ phase }: { phase: 'tool_processing' }) {
   void phase;
   return (
     <div className="flex gap-3" data-testid="chat-activity-indicator">
-      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full mt-1 bg-surface-input/70 text-foreground">
+      <div className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-surface-tint text-foreground">
         <Sparkles className="h-4 w-4" />
       </div>
-      <div className="bg-surface-input/70 text-foreground rounded-lg px-4 py-3">
+      <div className="clawx-chat-soft-bubble border border-border/40 bg-surface-modal/70 px-4 py-3 text-foreground shadow-sm shadow-black/5">
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
           <span>Processing tool results…</span>
@@ -1372,10 +1412,10 @@ function ImageGeneratingIndicator() {
   const { t } = useTranslation('chat');
   return (
     <div className="flex gap-3" data-testid="chat-image-generating-indicator">
-      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full mt-1 bg-surface-input/70 text-foreground">
+      <div className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-surface-tint text-foreground">
         <Sparkles className="h-4 w-4" />
       </div>
-      <div className="bg-surface-input/70 text-foreground rounded-lg px-4 py-3">
+      <div className="clawx-chat-soft-bubble border border-border/40 bg-surface-modal/70 px-4 py-3 text-foreground shadow-sm shadow-black/5">
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
           <span>{t('imageGeneration.generating')}</span>

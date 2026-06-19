@@ -7,7 +7,7 @@
  * are sent with the message (no base64 over WebSocket).
  */
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { SendHorizontal, Square, X, Paperclip, FileText, Film, Music, FileArchive, File, FolderOpen, Loader2, AtSign, Search, ChevronDown } from 'lucide-react';
+import { SendHorizontal, Square, X, Paperclip, FileText, Film, Music, FileArchive, File, FolderOpen, Loader2, AtSign, Search, ChevronDown, CornerDownRight, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -42,15 +42,30 @@ export interface FileAttachment {
 }
 
 interface ChatInputProps {
-  onSend: (text: string, attachments?: FileAttachment[], targetAgentId?: string | null) => void;
+  onSend: (text: string, attachments?: FileAttachment[], targetAgentId?: string | null) => void | Promise<void>;
+  onSteer?: (text: string, attachments?: FileAttachment[]) => void | Promise<void>;
   onStop?: () => void;
   disabled?: boolean;
   sending?: boolean;
+  compact?: boolean;
+}
+
+type ComposerQueueItemStatus = 'queued' | 'steering' | 'sending';
+
+interface ComposerQueueItem {
+  id: string;
+  text: string;
+  attachments?: FileAttachment[];
+  targetAgentId?: string | null;
+  createdAt: number;
+  status: ComposerQueueItemStatus;
+  error?: string;
 }
 
 // ── Helpers ──────────────────────────────────────────────────────
 
 const DIRECTORY_MIME_TYPE = 'application/x-directory';
+const MAX_COMPOSER_QUEUE_ITEMS = 5;
 
 function formatFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -191,7 +206,7 @@ function readFileAsBase64(file: globalThis.File): Promise<string> {
 
 // ── Component ────────────────────────────────────────────────────
 
-export function ChatInput({ onSend, onStop, disabled = false, sending = false }: ChatInputProps) {
+export function ChatInput({ onSend, onSteer, onStop, disabled = false, sending = false, compact = false }: ChatInputProps) {
   const { t } = useTranslation('chat');
   const [input, setInput] = useState('');
   const [attachments, setAttachments] = useState<FileAttachment[]>([]);
@@ -211,6 +226,7 @@ export function ChatInput({ onSend, onStop, disabled = false, sending = false }:
   const skillPickerRef = useRef<HTMLDivElement>(null);
   const modelPickerRef = useRef<HTMLDivElement>(null);
   const isComposingRef = useRef(false);
+  const dequeueInFlightRef = useRef(false);
   const gatewayStatus = useGatewayStore((s) => s.status);
   const agents = useAgentsStore((s) => s.agents);
   const updateAgentModel = useAgentsStore((s) => s.updateAgentModel);
@@ -221,6 +237,8 @@ export function ChatInput({ onSend, onStop, disabled = false, sending = false }:
   const providerVendors = useProviderStore((s) => s.vendors);
   const refreshProviderSnapshot = useProviderStore((s) => s.refreshProviderSnapshot);
   const currentAgentId = useChatStore((s) => s.currentAgentId);
+  const currentSessionKey = useChatStore((s) => s.currentSessionKey);
+  const [queuedItems, setQueuedItems] = useState<ComposerQueueItem[]>([]);
   const currentAgent = useMemo(
     () => (agents ?? []).find((agent) => agent.id === currentAgentId) ?? null,
     [agents, currentAgentId],
@@ -275,6 +293,11 @@ export function ChatInput({ onSend, onStop, disabled = false, sending = false }:
   useEffect(() => {
     void refreshProviderSnapshot();
   }, [refreshProviderSnapshot]);
+
+  useEffect(() => {
+    dequeueInFlightRef.current = false;
+    setQueuedItems([]);
+  }, [currentSessionKey]);
 
   useEffect(() => {
     if (gatewayStatus.state === 'running') return;
@@ -586,14 +609,60 @@ export function ChatInput({ onSend, onStop, disabled = false, sending = false }:
 
   const allReady = attachments.length === 0 || attachments.every(a => a.status === 'ready');
   const hasFailedAttachments = attachments.some((a) => a.status === 'error');
-  const canSend = (input.trim() || attachments.length > 0) && allReady && !inputDisabled && !sending;
+  const canSend = Boolean(input.trim() || attachments.length > 0) && allReady && !inputDisabled;
   const canStop = sending && !inputDisabled && !!onStop;
+
+  useEffect(() => {
+    if (sending || inputDisabled || dequeueInFlightRef.current) return;
+    const nextItem = queuedItems.find((item) => item.status === 'queued');
+    if (!nextItem) return;
+
+    dequeueInFlightRef.current = true;
+    setQueuedItems((prev) => prev.map((item) =>
+      item.id === nextItem.id ? { ...item, status: 'sending' } : item,
+    ));
+
+    void Promise.resolve(onSend(nextItem.text, nextItem.attachments, nextItem.targetAgentId)).finally(() => {
+      setQueuedItems((prev) => prev.filter((item) => item.id !== nextItem.id));
+      dequeueInFlightRef.current = false;
+    });
+  }, [inputDisabled, onSend, queuedItems, sending]);
+
+  const removeQueuedItem = useCallback((id: string) => {
+    setQueuedItems((prev) => prev.filter((item) => item.id !== id || item.status === 'sending'));
+  }, []);
+
+  const handleSteerQueuedItem = useCallback(async (id: string) => {
+    if (!sending || !onSteer) return;
+    const item = queuedItems.find((candidate) => candidate.id === id);
+    if (!item || item.status !== 'queued') return;
+
+    setQueuedItems((prev) => prev.map((candidate) =>
+      candidate.id === id ? { ...candidate, status: 'steering', error: undefined } : candidate,
+    ));
+
+    try {
+      await onSteer(item.text, item.attachments);
+      setQueuedItems((prev) => prev.filter((candidate) => candidate.id !== id));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setQueuedItems((prev) => prev.map((candidate) =>
+        candidate.id === id ? { ...candidate, status: 'queued', error: message } : candidate,
+      ));
+      toast.error(t('composer.queue.steerFailed', { error: message }));
+    }
+  }, [onSteer, queuedItems, sending, t]);
 
   const handleSend = useCallback(async () => {
     if (!canSend) return;
     const readyAttachments = attachments.filter(a => a.status === 'ready');
     const textToSend = input.trim();
     const attachmentsToSend = readyAttachments.length > 0 ? readyAttachments : undefined;
+
+    if (sending && queuedItems.length >= MAX_COMPOSER_QUEUE_ITEMS) {
+      toast.error(t('composer.queue.limitReached', { count: MAX_COMPOSER_QUEUE_ITEMS }));
+      return;
+    }
 
     if (rendererExtensionRegistry.hasChatBeforeSendHooks()) {
       const guard = await rendererExtensionRegistry.runChatBeforeSend({
@@ -625,11 +694,25 @@ export function ChatInput({ onSend, onStop, disabled = false, sending = false }:
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
     }
-    onSend(textToSend, attachmentsToSend, targetAgentId);
+    if (sending) {
+      setQueuedItems((prev) => [
+        ...prev,
+        {
+          id: crypto.randomUUID(),
+          text: textToSend,
+          attachments: attachmentsToSend,
+          targetAgentId,
+          createdAt: Date.now(),
+          status: 'queued',
+        },
+      ]);
+    } else {
+      void onSend(textToSend, attachmentsToSend, targetAgentId);
+    }
     setTargetAgentId(null);
     setPickerOpen(false);
     setSkillPickerOpen(false);
-  }, [input, attachments, canSend, onSend, targetAgentId]);
+  }, [attachments, canSend, input, onSend, queuedItems.length, sending, t, targetAgentId]);
 
   const handleStop = useCallback(() => {
     if (!canStop) return;
@@ -764,13 +847,99 @@ export function ChatInput({ onSend, onStop, disabled = false, sending = false }:
   return (
     <div
       className={cn(
-        "p-4 pb-6 w-full mx-auto max-w-3xl"
+        'mx-auto w-full px-5 pb-6 pt-2 transition-[max-width] duration-500 ease-out sm:px-6',
+        compact ? 'max-w-3xl' : 'max-w-4xl',
       )}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
       <div className="w-full">
+        {queuedItems.length > 0 && (
+          <div className="mb-2 space-y-1.5" data-testid="chat-composer-queue">
+            {queuedItems.map((item, index) => {
+              const attachmentCount = item.attachments?.length ?? 0;
+              const previewText = item.text.trim()
+                || (attachmentCount === 1
+                  ? item.attachments?.[0]?.fileName
+                  : attachmentCount > 1
+                    ? t('composer.queue.attachmentPreview', {
+                        file: item.attachments?.[0]?.fileName ?? t('composer.queue.attachmentFallback'),
+                        count: attachmentCount,
+                      })
+                    : t('composer.queue.emptyPreview'));
+              const canSteerItem = sending && item.status === 'queued' && !!onSteer;
+
+              return (
+                <div
+                  key={item.id}
+                  className={cn(
+                    'group flex min-h-12 items-center gap-3 rounded-[1.625rem] border border-border/70 bg-surface-modal/95 px-4 py-2.5 shadow-sm shadow-black/5 transition-colors duration-300',
+                    'hover:border-primary hover:bg-surface-modal',
+                    item.error && 'border-destructive/30 bg-destructive/5 hover:border-destructive/50',
+                  )}
+                  data-testid={`chat-composer-queue-item-${index}`}
+                >
+                  <CornerDownRight className="h-4 w-4 shrink-0 text-muted-foreground/70" />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium leading-5 text-foreground/72" title={previewText}>
+                      {previewText}
+                    </p>
+                    {item.error && (
+                      <p className="truncate text-2xs leading-4 text-destructive/80" title={item.error}>
+                        {item.error}
+                      </p>
+                    )}
+                  </div>
+                  <div className="ml-auto flex shrink-0 items-center gap-1">
+                    {item.status !== 'sending' && (
+                      <button
+                        type="button"
+                        onClick={() => void handleSteerQueuedItem(item.id)}
+                        disabled={!canSteerItem}
+                        className={cn(
+                          'inline-flex h-8 items-center gap-1.5 rounded-full px-2.5 text-meta font-medium transition-colors',
+                          canSteerItem
+                            ? 'text-foreground/75 hover:bg-black/5 hover:text-foreground dark:hover:bg-white/10'
+                            : 'text-muted-foreground/45',
+                        )}
+                        title={t('composer.queue.steer')}
+                      >
+                        {item.status === 'steering' ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <CornerDownRight className="h-3.5 w-3.5" />
+                        )}
+                        <span>{item.status === 'steering' ? t('composer.queue.steering') : t('composer.queue.steer')}</span>
+                      </button>
+                    )}
+                    {item.status === 'sending' && (
+                      <div className="inline-flex h-8 items-center gap-1.5 rounded-full px-2.5 text-meta font-medium text-muted-foreground">
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        <span>{t('composer.queue.sending')}</span>
+                      </div>
+                    )}
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <button
+                          type="button"
+                          onClick={() => removeQueuedItem(item.id)}
+                          disabled={item.status === 'sending'}
+                          className="inline-flex h-8 w-8 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-black/5 hover:text-foreground disabled:pointer-events-none disabled:opacity-40 dark:hover:bg-white/10"
+                          aria-label={t('composer.queue.remove')}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent>{t('composer.queue.remove')}</TooltipContent>
+                    </Tooltip>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
         {/* Attachment Previews */}
         {attachments.length > 0 && (
           <div className="flex gap-2 mb-3 flex-wrap">
@@ -785,13 +954,19 @@ export function ChatInput({ onSend, onStop, disabled = false, sending = false }:
         )}
 
         {/* Input Container */}
-        <div className={`relative bg-surface-modal rounded-lg shadow-sm border px-3 pt-2.5 pb-1.5 transition-all ${dragOver ? 'border-primary ring-1 ring-primary' : 'border-border/80'}`}>
+        <div
+          className={cn(
+            'clawx-chat-composer relative px-4 pb-2.5 pt-3',
+            dragOver && 'clawx-chat-composer-active',
+            sending && 'clawx-chat-composer-running',
+          )}
+        >
           {selectedTarget && (
             <div className="flex flex-wrap gap-2 pb-1.5">
               <button
                 type="button"
                 onClick={() => setTargetAgentId(null)}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-primary/20 bg-primary/5 px-2.5 py-1 text-meta font-medium text-foreground transition-colors hover:bg-primary/10"
+                className="inline-flex items-center gap-1.5 rounded-full border border-primary/20 bg-primary/5 px-2.5 py-1 text-meta font-medium text-foreground transition-colors hover:bg-primary/10"
                 title={t('composer.clearTarget')}
               >
                 <span>{t('composer.targetChip', { agent: selectedTarget.name })}</span>
@@ -801,7 +976,7 @@ export function ChatInput({ onSend, onStop, disabled = false, sending = false }:
           )}
 
           {/* Text Row — flush-left */}
-          <div className="relative min-h-[48px]">
+          <div className="relative min-h-[56px]">
             {skillTokenRanges.length > 0 && (
               <div
                 aria-hidden="true"
@@ -829,11 +1004,17 @@ export function ChatInput({ onSend, onStop, disabled = false, sending = false }:
                 isComposingRef.current = false;
               }}
               onPaste={handlePaste}
-              placeholder={inputDisabled ? t('composer.gatewayDisconnectedPlaceholder') : ''}
+              placeholder={
+                inputDisabled
+                  ? t('composer.gatewayDisconnectedPlaceholder')
+                  : sending
+                    ? t('composer.followUpPlaceholder')
+                    : ''
+              }
               disabled={inputDisabled}
               data-testid="chat-composer-input"
               className={cn(
-                'relative min-h-[48px] max-h-[240px] resize-none border-0 focus-visible:ring-0 focus-visible:ring-offset-0 shadow-none bg-transparent p-0 text-sm leading-relaxed placeholder:text-muted-foreground/60',
+                'relative min-h-[56px] max-h-[240px] resize-none !border-0 !bg-transparent p-0 text-sm leading-relaxed !shadow-none placeholder:text-muted-foreground/60 focus-visible:ring-0 focus-visible:ring-offset-0',
                 skillTokenRanges.length > 0 ? 'z-0 text-transparent caret-foreground selection:bg-primary/20' : 'z-10',
               )}
               rows={1}
@@ -841,14 +1022,14 @@ export function ChatInput({ onSend, onStop, disabled = false, sending = false }:
           </div>
 
           {/* Action Row — icons on their own line */}
-          <div className="mt-1.5 flex items-center gap-1">
+          <div className="mt-2 flex items-center gap-1">
             {/* Attach Button */}
             <Button
               variant="ghost"
               size="icon"
-              className="shrink-0 h-8 w-8 rounded-lg text-muted-foreground hover:bg-surface-input hover:text-foreground transition-colors"
+              className="h-8 w-8 shrink-0 rounded-full text-muted-foreground transition-colors hover:bg-black/5 hover:text-foreground dark:hover:bg-white/10"
               onClick={pickFiles}
-              disabled={inputDisabled || sending}
+              disabled={inputDisabled}
               title={t('composer.attachFiles')}
             >
               <Paperclip className="h-3.5 w-3.5" />
@@ -861,20 +1042,20 @@ export function ChatInput({ onSend, onStop, disabled = false, sending = false }:
                   size="icon"
                   data-testid="chat-composer-agent"
                   className={cn(
-                    'h-8 w-8 rounded-lg text-muted-foreground hover:bg-surface-input hover:text-foreground transition-colors',
+                    'h-8 w-8 rounded-full text-muted-foreground transition-colors hover:bg-black/5 hover:text-foreground dark:hover:bg-white/10',
                     (pickerOpen || selectedTarget) && 'bg-primary/10 text-primary hover:bg-primary/20'
                   )}
                   onClick={() => {
                     setSkillPickerOpen(false);
                     setPickerOpen((open) => !open);
                   }}
-                  disabled={inputDisabled || sending}
+                  disabled={inputDisabled}
                   title={t('composer.pickAgent')}
                 >
                   <AtSign className="h-3.5 w-3.5" />
                 </Button>
                 {pickerOpen && (
-                  <div className="absolute left-0 bottom-full z-20 mb-2 w-72 overflow-hidden rounded-lg border border-border/80 bg-surface-modal p-1.5 shadow-xl ">
+                  <div className="absolute bottom-full left-0 z-20 mb-3 w-72 overflow-hidden rounded-2xl border border-border/70 bg-surface-modal p-1.5 shadow-xl shadow-black/10">
                     <div className="px-3 py-2 text-tiny font-medium text-muted-foreground/80">
                       {t('composer.agentPickerTitle', { currentAgent: currentAgentName })}
                     </div>
@@ -902,22 +1083,22 @@ export function ChatInput({ onSend, onStop, disabled = false, sending = false }:
                 type="button"
                 data-testid="chat-composer-skill"
                 className={cn(
-                  'inline-flex h-8 items-center gap-1 rounded-lg px-1.5 text-meta font-medium text-muted-foreground transition-colors hover:bg-transparent hover:text-foreground focus-visible:outline-none focus-visible:ring-0 disabled:pointer-events-none disabled:opacity-50',
+                  'inline-flex h-8 items-center gap-1 rounded-full px-2 text-meta font-medium text-muted-foreground transition-colors hover:bg-black/5 hover:text-foreground focus-visible:outline-none focus-visible:ring-0 disabled:pointer-events-none disabled:opacity-50 dark:hover:bg-white/10',
                   (skillPickerOpen || selectedSkill) && 'text-foreground',
                 )}
                 onClick={() => {
                   setPickerOpen(false);
                   setSkillPickerOpen((open) => !open);
                 }}
-                disabled={inputDisabled || sending}
+                disabled={inputDisabled}
                 title={t('composer.pickSkill')}
               >
                 <span>{t('composer.skillButton')}</span>
                 <ChevronDown className={cn('h-3.5 w-3.5 transition-transform', skillPickerOpen && 'rotate-180')} />
               </button>
               {skillPickerOpen && (
-                <div className="absolute left-0 bottom-full z-20 mb-2 w-80 overflow-hidden rounded-lg border border-border/80 bg-surface-modal p-1.5 shadow-xl ">
-                  <div className="flex items-center gap-2 rounded-lg border border-border/80 bg-surface-input/70 px-3 py-2  ">
+                <div className="absolute bottom-full left-0 z-20 mb-3 w-80 overflow-hidden rounded-2xl border border-border/70 bg-surface-modal p-1.5 shadow-xl shadow-black/10">
+                  <div className="flex items-center gap-2 rounded-xl border border-border/70 bg-surface-input/70 px-3 py-2">
                     <Search className="h-3.5 w-3.5 text-muted-foreground" />
                     <input
                       value={skillQuery}
@@ -984,7 +1165,7 @@ export function ChatInput({ onSend, onStop, disabled = false, sending = false }:
                   type="button"
                   data-testid="chat-model-picker-button"
                   className={cn(
-                    'inline-flex h-8 max-w-[220px] items-center gap-1 rounded-lg px-1.5 text-meta font-medium text-muted-foreground transition-colors hover:bg-transparent hover:text-foreground focus-visible:outline-none focus-visible:ring-0 disabled:pointer-events-none disabled:opacity-50',
+                    'inline-flex h-8 max-w-[220px] items-center gap-1 rounded-full px-2 text-meta font-medium text-muted-foreground transition-colors hover:bg-black/5 hover:text-foreground focus-visible:outline-none focus-visible:ring-0 disabled:pointer-events-none disabled:opacity-50 dark:hover:bg-white/10',
                     (modelPickerOpen || switchingModelRef) && 'text-foreground',
                   )}
                   onClick={() => {
@@ -992,7 +1173,7 @@ export function ChatInput({ onSend, onStop, disabled = false, sending = false }:
                     setSkillPickerOpen(false);
                     setModelPickerOpen((open) => !open);
                   }}
-                  disabled={inputDisabled || sending || !currentAgent || !!switchingModelRef}
+                  disabled={inputDisabled || !currentAgent || !!switchingModelRef}
                   title={t('composer.pickModel')}
                 >
                   {switchingModelRef ? (
@@ -1003,7 +1184,7 @@ export function ChatInput({ onSend, onStop, disabled = false, sending = false }:
                 </button>
                 {modelPickerOpen && (
                   <div
-                    className="absolute left-0 bottom-full z-20 mb-2 w-72 overflow-hidden rounded-lg border border-border/80 bg-surface-modal p-1.5 shadow-xl "
+                    className="absolute bottom-full left-0 z-20 mb-3 w-72 overflow-hidden rounded-2xl border border-border/70 bg-surface-modal p-1.5 shadow-xl shadow-black/10"
                     data-testid="chat-model-picker-menu"
                   >
                     <div className="px-3 py-2 text-tiny font-medium text-muted-foreground/80">
@@ -1016,8 +1197,8 @@ export function ChatInput({ onSend, onStop, disabled = false, sending = false }:
                           type="button"
                           onClick={() => void handleSelectModel(option.modelRef)}
                           className={cn(
-                            'flex w-full items-center justify-between gap-3 rounded-lg px-3 py-2 text-left text-sm font-medium transition-colors',
-                            option.modelRef === effectiveModelRef ? 'bg-primary/10 text-foreground' : 'hover:bg-surface-input'
+                            'flex w-full items-center justify-between gap-3 rounded-xl px-3 py-2 text-left text-sm font-medium transition-colors',
+                            option.modelRef === effectiveModelRef ? 'bg-primary/10 text-foreground' : 'hover:bg-black/5 dark:hover:bg-white/10'
                           )}
                           data-testid={`chat-model-picker-option-${option.label}`}
                         >
@@ -1039,9 +1220,9 @@ export function ChatInput({ onSend, onStop, disabled = false, sending = false }:
               disabled={sending ? !canStop : !canSend}
               size="icon"
               data-testid="chat-composer-send"
-              className={`ml-auto shrink-0 h-8 w-8 rounded-lg transition-colors ${
+              className={`ml-auto h-8 w-8 shrink-0 rounded-full transition-colors ${
                 (sending || canSend)
-                  ? 'bg-primary/10 text-primary hover:bg-primary/15'
+                  ? 'bg-primary text-primary-foreground shadow-sm shadow-black/10 hover:bg-primary/90'
                   : 'text-muted-foreground/50 hover:bg-transparent bg-transparent'
               }`}
               variant="ghost"
@@ -1055,7 +1236,7 @@ export function ChatInput({ onSend, onStop, disabled = false, sending = false }:
             </Button>
           </div>
         </div>
-        <div className="mt-2.5 flex items-center justify-between gap-2 text-tiny text-muted-foreground/60 px-4">
+        <div className="mt-2.5 flex items-center justify-between gap-2 px-5 text-tiny text-muted-foreground/60">
           <div className="flex items-center gap-1.5">
             <div className={cn(
               "w-1.5 h-1.5 rounded-full",
@@ -1108,19 +1289,19 @@ function AttachmentPreview({
   const isImage = attachment.mimeType.startsWith('image/') && attachment.preview;
 
   return (
-    <div className="relative group rounded-lg overflow-hidden border border-border">
+    <div className="group clawx-chat-soft-bubble relative overflow-hidden border border-border/60 bg-surface-modal shadow-sm shadow-black/5">
       {isImage ? (
         // Image thumbnail
-        <div className="w-16 h-16">
+        <div className="h-16 w-16">
           <img
             src={attachment.preview!}
             alt={attachment.fileName}
-            className="w-full h-full object-cover"
+            className="h-full w-full object-cover"
           />
         </div>
       ) : (
         // Generic file card
-        <div className="flex items-center gap-2 px-3 py-2 bg-surface-input/50 max-w-[200px]">
+        <div className="flex max-w-[200px] items-center gap-2 bg-surface-input/50 px-3 py-2">
           <FileIcon mimeType={attachment.mimeType} className="h-5 w-5 shrink-0 text-muted-foreground" />
           <div className="min-w-0 overflow-hidden">
             <p className="text-xs font-medium truncate">{attachment.fileName}</p>
@@ -1137,22 +1318,22 @@ function AttachmentPreview({
 
       {/* Staging overlay */}
       {attachment.status === 'staging' && (
-        <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
-          <Loader2 className="h-4 w-4 text-white animate-spin" />
+        <div className="absolute inset-0 flex items-center justify-center bg-black/40">
+          <Loader2 className="h-4 w-4 animate-spin text-white" />
         </div>
       )}
 
       {/* Error overlay */}
       {attachment.status === 'error' && (
-        <div className="absolute inset-0 bg-destructive/20 flex items-center justify-center">
-          <span className="text-2xs text-destructive font-medium px-1">Error</span>
+        <div className="absolute inset-0 flex items-center justify-center bg-destructive/20">
+          <span className="px-1 text-2xs font-medium text-destructive">Error</span>
         </div>
       )}
 
       {/* Remove button */}
       <button
         onClick={onRemove}
-        className="absolute -top-1 -right-1 bg-destructive text-destructive-foreground rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+        className="absolute -right-1 -top-1 rounded-full bg-destructive p-0.5 text-destructive-foreground opacity-0 transition-opacity group-hover:opacity-100"
       >
         <X className="h-3 w-3" />
       </button>
@@ -1174,8 +1355,8 @@ function AgentPickerItem({
       type="button"
       onClick={onSelect}
       className={cn(
-        'flex w-full flex-col items-start rounded-lg px-3 py-2 text-left transition-colors',
-        selected ? 'bg-primary/10 text-foreground' : 'hover:bg-surface-input'
+        'flex w-full flex-col items-start rounded-xl px-3 py-2 text-left transition-colors',
+        selected ? 'bg-primary/10 text-foreground' : 'hover:bg-black/5 dark:hover:bg-white/10'
       )}
     >
       <span className="text-sm font-medium text-foreground">{agent.name}</span>
@@ -1203,8 +1384,8 @@ function SkillPickerItem({
           data-testid={`chat-composer-skill-option-${skill.name}`}
           onClick={onSelect}
           className={cn(
-            'flex w-full items-center justify-between gap-3 rounded-lg px-3 py-2 text-left transition-colors',
-            selected ? 'bg-primary/10 text-foreground' : 'hover:bg-surface-input',
+            'flex w-full items-center justify-between gap-3 rounded-xl px-3 py-2 text-left transition-colors',
+            selected ? 'bg-primary/10 text-foreground' : 'hover:bg-black/5 dark:hover:bg-white/10',
           )}
         >
           <div className="min-w-0">
@@ -1215,7 +1396,7 @@ function SkillPickerItem({
               {skill.sourceLabel}
             </div>
           </div>
-          <span className="rounded-lg border border-border/70 bg-surface-input/80 px-2 py-0.5 text-2xs font-medium text-muted-foreground  ">
+          <span className="rounded-full border border-border/60 bg-surface-input/80 px-2 py-0.5 text-2xs font-medium text-muted-foreground">
             {skill.sourceLabel}
           </span>
         </button>

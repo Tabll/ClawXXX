@@ -184,6 +184,7 @@
         "targetChip": "@{{agent}}",
         "agentPickerTitle": "Направить следующее сообщение другому агенту",
         "gatewayDisconnectedPlaceholder": "Шлюз не подключён...",
+        "followUpPlaceholder": "Запросить последующие изменения",
         "send": "Отправить",
         "stop": "Остановить",
         "gatewayConnected": "подключён",
@@ -192,7 +193,20 @@
         "folderDropUnsupported": "Не удалось прикрепить эту папку. Перетащите её снова или вставьте путь к папке в сообщение.",
         "folderAttachment": "Папка",
         "skillPreviewTooltip": "Предпросмотр SKILL.md",
-        "skillPreviewNotFound": "Skill не найден. Откройте список Skill, чтобы обновить его."
+        "skillPreviewNotFound": "Skill не найден. Откройте список Skill, чтобы обновить его.",
+        "attachmentOnlyMessage": "Обработай прикреплённые файлы.",
+        "queue": {
+            "steer": "Направить",
+            "steering": "Направляется",
+            "sending": "Отправка",
+            "remove": "Удалить сообщение из очереди",
+            "limitReached": "В очереди может быть не больше {{count}} сообщений.",
+            "steerFailed": "Не удалось направить: {{error}}",
+            "steerFailedFallback": "Не удалось направить сообщение",
+            "attachmentFallback": "вложение",
+            "attachmentPreview": "{{file}} и ещё вложений: {{count}}",
+            "emptyPreview": "Последующее сообщение в очереди"
+        }
     },
     "historyBuckets": {
         "today": "Сегодня",
