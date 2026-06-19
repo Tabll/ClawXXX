@@ -2641,6 +2641,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
             : {};
           const sessionDefaults = {
             contextTokens: parseOptionalFiniteNumber(rawDefaults.contextTokens),
+            model: rawDefaults.model ? String(rawDefaults.model) : undefined,
+            modelProvider: rawDefaults.modelProvider ? String(rawDefaults.modelProvider) : undefined,
           };
           const sessions: ChatSession[] = rawSessions.map((s: Record<string, unknown>) => ({
             key: String(s.key || ''),
@@ -2650,6 +2652,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
             lastMessagePreview: s.lastMessagePreview ? String(s.lastMessagePreview) : undefined,
             thinkingLevel: s.thinkingLevel ? String(s.thinkingLevel) : undefined,
             model: s.model ? String(s.model) : undefined,
+            modelProvider: s.modelProvider ? String(s.modelProvider) : undefined,
             updatedAt: parseSessionUpdatedAtMs(s.updatedAt),
             status: parseSessionStatus(s.status),
             hasActiveRun: typeof s.hasActiveRun === 'boolean' ? s.hasActiveRun : undefined,

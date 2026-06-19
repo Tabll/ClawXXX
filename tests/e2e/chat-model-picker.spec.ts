@@ -4,14 +4,14 @@ const alphaModelRef = 'custom-alpha123/model-alpha';
 const betaModelRef = 'custom-beta5678/provider/model-beta';
 
 test.describe('ClawX chat model picker', () => {
-  test('switches the current agent model without requesting a gateway refresh', async ({ launchElectronApp }) => {
+  test('switches the current chat session model without requesting a gateway refresh', async ({ launchElectronApp }) => {
     const app = await launchElectronApp({ skipSetup: true });
 
     try {
       await app.evaluate(async ({ app: _app }, refs) => {
         const { ipcMain } = process.mainModule!.require('electron') as typeof import('electron');
 
-        let currentModelRef = refs.alphaModelRef;
+        let sessionModelRef: string | null = null;
         const hostRequests: Array<{ path: string; method: string; body: unknown }> = [];
         const now = new Date().toISOString();
         const originalHostInvoke = (ipcMain as unknown as {
@@ -22,6 +22,30 @@ test.describe('ClawX chat model picker', () => {
           ok: true,
           data,
         });
+        const toSessionModelPatch = (modelRef: string | null) => {
+          if (!modelRef) return {};
+          const separatorIndex = modelRef.indexOf('/');
+          return separatorIndex > 0
+            ? {
+              modelProvider: modelRef.slice(0, separatorIndex),
+              model: modelRef.slice(separatorIndex + 1),
+            }
+            : { model: modelRef };
+        };
+        const sessionsSnapshot = () => ({
+          sessions: [{
+            key: 'agent:main:main',
+            displayName: 'main',
+            ...toSessionModelPatch(sessionModelRef),
+          }],
+          defaults: toSessionModelPatch(refs.alphaModelRef),
+        });
+        const modelCatalogSnapshot = () => ({
+          models: [
+            { id: 'model-alpha', provider: 'custom-alpha123', label: 'model-alpha (Alpha)' },
+            { id: 'provider/model-beta', provider: 'custom-beta5678', label: 'provider/model-beta (Beta)' },
+          ],
+        });
 
         const agentsSnapshot = () => ({
           success: true,
@@ -29,9 +53,9 @@ test.describe('ClawX chat model picker', () => {
             id: 'main',
             name: 'Main',
             isDefault: true,
-            modelDisplay: currentModelRef.split('/').slice(1).join('/'),
-            modelRef: currentModelRef,
-            overrideModelRef: currentModelRef,
+            modelDisplay: 'model-alpha',
+            modelRef: refs.alphaModelRef,
+            overrideModelRef: null,
             inheritedModel: false,
             workspace: '~/.openclaw/workspace',
             agentDir: '~/.openclaw/agents/main/agent',
@@ -52,10 +76,18 @@ test.describe('ClawX chat model picker', () => {
         ipcMain.handle('gateway:rpc', async (_event: unknown, method: string, params: unknown) => {
           hostRequests.push({ path: `gateway:${method}`, method: 'RPC', body: params ?? null });
           if (method === 'sessions.list') {
-            return { success: true, result: { sessions: [{ key: 'agent:main:main', displayName: 'main' }] } };
+            return { success: true, result: sessionsSnapshot() };
+          }
+          if (method === 'models.list') {
+            return { success: true, result: modelCatalogSnapshot() };
           }
           if (method === 'chat.history') {
             return { success: true, result: { messages: [] } };
+          }
+          if (method === 'sessions.patch') {
+            const body = params as { model?: string | null } | null;
+            sessionModelRef = typeof body?.model === 'string' ? body.model : null;
+            return { success: true, result: { resolved: toSessionModelPatch(sessionModelRef) } };
           }
           return { success: true, result: {} };
         });
@@ -82,10 +114,18 @@ test.describe('ClawX chat model picker', () => {
             const params = body?.params ?? null;
             hostRequests.push({ path: `gateway:${method}`, method: 'RPC', body: params });
             if (method === 'sessions.list') {
-              return makeResponse(request.id, { success: true, result: { sessions: [{ key: 'agent:main:main', displayName: 'main' }] } });
+              return makeResponse(request.id, { success: true, result: sessionsSnapshot() });
+            }
+            if (method === 'models.list') {
+              return makeResponse(request.id, { success: true, result: modelCatalogSnapshot() });
             }
             if (method === 'chat.history') {
               return makeResponse(request.id, { success: true, result: { messages: [] } });
+            }
+            if (method === 'sessions.patch') {
+              const patch = params as { model?: string | null } | null;
+              sessionModelRef = typeof patch?.model === 'string' ? patch.model : null;
+              return makeResponse(request.id, { success: true, result: { resolved: toSessionModelPatch(sessionModelRef) } });
             }
             return makeResponse(request.id, { success: true, result: {} });
           }
@@ -93,13 +133,7 @@ test.describe('ClawX chat model picker', () => {
             return makeResponse(request.id, agentsSnapshot());
           }
           if (request?.module === 'agents' && request.action === 'updateModel') {
-            currentModelRef = typeof body?.modelRef === 'string' ? body.modelRef : refs.alphaModelRef;
-            hostRequests.push({
-              path: '/api/agents/main/model',
-              method: 'PUT',
-              body: { modelRef: currentModelRef },
-            });
-            return makeResponse(request.id, agentsSnapshot());
+            throw new Error('chat model picker should patch the current session, not the agent model');
           }
           if (request?.module === 'providers' && request.action === 'accounts') {
             return makeResponse(request.id, [
@@ -162,7 +196,7 @@ test.describe('ClawX chat model picker', () => {
         win?.webContents.send('gateway:status-changed', { state: 'running', port: 18789, pid: 12345, gatewayReady: true });
       });
 
-      await expect(page.getByTestId('chat-model-picker-button')).toContainText('model-alpha (Alpha)');
+      await expect(page.getByTestId('chat-model-picker-button')).toContainText('Default (model-alpha (Alpha))');
       await page.getByTestId('chat-model-picker-button').click();
       await expect(page.getByTestId('chat-model-picker-menu')).toBeVisible();
       await expect(page.getByTestId('chat-model-picker-menu')).toContainText('provider/model-beta (Beta)');
@@ -173,10 +207,16 @@ test.describe('ClawX chat model picker', () => {
         (globalThis as typeof globalThis & { __chatModelPickerRequests?: Array<{ path: string; method: string; body: unknown }> }).__chatModelPickerRequests ?? []
       ));
       expect(requests).toContainEqual({
-        path: '/api/agents/main/model',
-        method: 'PUT',
-        body: { modelRef: betaModelRef },
+        path: 'gateway:models.list',
+        method: 'RPC',
+        body: { view: 'configured' },
       });
+      expect(requests).toContainEqual({
+        path: 'gateway:sessions.patch',
+        method: 'RPC',
+        body: { key: 'agent:main:main', agentId: 'main', model: betaModelRef },
+      });
+      expect(requests.some((request) => request.path === 'agents:updateModel' || request.path === '/api/agents/main/model')).toBe(false);
       expect(requests.some((request) =>
         request.path === '/api/gateway/restart'
         || request.path === '/api/gateway/start'

@@ -134,6 +134,7 @@ export interface ChatSession {
   lastMessagePreview?: string;
   thinkingLevel?: string;
   model?: string;
+  modelProvider?: string;
   updatedAt?: number;
   status?: string;
   hasActiveRun?: boolean;
@@ -146,6 +147,8 @@ export interface ChatSession {
 
 export interface ChatSessionDefaults {
   contextTokens?: number;
+  model?: string;
+  modelProvider?: string;
 }
 
 export interface ToolStatus {

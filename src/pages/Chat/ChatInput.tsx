@@ -19,7 +19,7 @@ import { useChatStore } from '@/stores/chat';
 import { useArtifactPanel } from '@/stores/artifact-panel';
 import { buildPreviewTarget } from '@/components/file-preview/build-preview-target';
 import { useProviderStore } from '@/stores/providers';
-import { buildConfiguredModelOptions, formatModelRefLabel, isConfiguredModelRefAvailable, resolveConfiguredModelRef } from '@/lib/model-options';
+import { buildConfiguredModelOptions, formatModelRefLabel } from '@/lib/model-options';
 import type { AgentSummary } from '@/types/agent';
 import type { QuickAccessSkill } from '@/types/skill';
 import { useTranslation } from 'react-i18next';
@@ -87,6 +87,96 @@ interface ComposerQueueItem {
 
 const DIRECTORY_MIME_TYPE = 'application/x-directory';
 const MAX_COMPOSER_QUEUE_ITEMS = 5;
+const DEFAULT_MODEL_OPTION_VALUE = '';
+
+interface ModelPickerModelOption {
+  modelRef: string;
+  label: string;
+}
+
+interface ModelPickerOption {
+  value: string;
+  modelRef: string | null;
+  label: string;
+  isDefault?: boolean;
+}
+
+function readCatalogString(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  return trimmed || null;
+}
+
+function readCatalogProvider(value: unknown): string | null {
+  const direct = readCatalogString(value);
+  if (direct) return direct;
+  if (!value || typeof value !== 'object') return null;
+  const record = value as Record<string, unknown>;
+  return readCatalogString(record.id)
+    || readCatalogString(record.key)
+    || readCatalogString(record.name)
+    || readCatalogString(record.provider);
+}
+
+function composeModelRef(provider: string | null | undefined, model: string | null | undefined): string | null {
+  const safeModel = (model || '').trim();
+  if (!safeModel) return null;
+  const safeProvider = (provider || '').trim();
+  if (!safeProvider || safeModel.startsWith(`${safeProvider}/`)) return safeModel;
+  return `${safeProvider}/${safeModel}`;
+}
+
+function normalizeGatewayModelOption(entry: unknown): ModelPickerModelOption | null {
+  if (!entry || typeof entry !== 'object') return null;
+  const record = entry as Record<string, unknown>;
+  const modelId = readCatalogString(record.id)
+    || readCatalogString(record.model)
+    || readCatalogString(record.modelId)
+    || readCatalogString(record.name);
+  if (!modelId) return null;
+
+  const provider = readCatalogProvider(record.provider)
+    || readCatalogString(record.providerId)
+    || readCatalogString(record.providerKey);
+  const modelRef = composeModelRef(provider, modelId);
+  if (!modelRef) return null;
+
+  const label = readCatalogString(record.label)
+    || readCatalogString(record.displayName)
+    || readCatalogString(record.title)
+    || formatModelRefLabel(modelRef);
+  return { modelRef, label };
+}
+
+function mergeModelOptions(...groups: ModelPickerModelOption[][]): ModelPickerModelOption[] {
+  const deduped = new Map<string, ModelPickerModelOption>();
+  for (const group of groups) {
+    for (const option of group) {
+      const modelRef = option.modelRef.trim();
+      if (!modelRef || deduped.has(modelRef)) continue;
+      deduped.set(modelRef, {
+        modelRef,
+        label: option.label.trim() || formatModelRefLabel(modelRef),
+      });
+    }
+  }
+  return [...deduped.values()];
+}
+
+function ensureModelOption(
+  options: ModelPickerModelOption[],
+  modelRef: string | null | undefined,
+): ModelPickerModelOption[] {
+  const value = (modelRef || '').trim();
+  if (!value || options.some((option) => option.modelRef === value)) return options;
+  return [
+    ...options,
+    {
+      modelRef: value,
+      label: formatModelRefLabel(value),
+    },
+  ];
+}
 
 function formatFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -254,8 +344,9 @@ export function ChatInput({
   const [skillsLoading, setSkillsLoading] = useState(false);
   const [skillsError, setSkillsError] = useState<string | null>(null);
   const [selectedSkill, setSelectedSkill] = useState<QuickAccessSkill | null>(null);
-  const [switchingModelRef, setSwitchingModelRef] = useState<string | null>(null);
-  const [optimisticModelRef, setOptimisticModelRef] = useState<string | null>(null);
+  const [switchingModelValue, setSwitchingModelValue] = useState<string | null>(null);
+  const [optimisticModelValue, setOptimisticModelValue] = useState<string | null>(null);
+  const [gatewayModelOptions, setGatewayModelOptions] = useState<ModelPickerModelOption[]>([]);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const pickerRef = useRef<HTMLDivElement>(null);
   const skillPickerRef = useRef<HTMLDivElement>(null);
@@ -264,7 +355,6 @@ export function ChatInput({
   const dequeueInFlightRef = useRef(false);
   const gatewayStatus = useGatewayStore((s) => s.status);
   const agents = useAgentsStore((s) => s.agents);
-  const updateAgentModel = useAgentsStore((s) => s.updateAgentModel);
   const defaultModelRef = useAgentsStore((s) => s.defaultModelRef);
   const providerAccounts = useProviderStore((s) => s.accounts);
   const providerStatuses = useProviderStore((s) => s.statuses);
@@ -273,6 +363,9 @@ export function ChatInput({
   const refreshProviderSnapshot = useProviderStore((s) => s.refreshProviderSnapshot);
   const currentAgentId = useChatStore((s) => s.currentAgentId);
   const currentSessionKey = useChatStore((s) => s.currentSessionKey);
+  const sessions = useChatStore((s) => s.sessions);
+  const sessionDefaults = useChatStore((s) => s.sessionDefaults);
+  const loadSessions = useChatStore((s) => s.loadSessions);
   const [queuedItems, setQueuedItems] = useState<ComposerQueueItem[]>([]);
   const currentAgent = useMemo(
     () => (agents ?? []).find((agent) => agent.id === currentAgentId) ?? null,
@@ -282,7 +375,7 @@ export function ChatInput({
     () => currentAgent?.name ?? currentAgentId,
     [currentAgent, currentAgentId],
   );
-  const modelOptions = useMemo(
+  const providerModelOptions = useMemo(
     () => buildConfiguredModelOptions(
       providerAccounts,
       providerStatuses,
@@ -291,15 +384,60 @@ export function ChatInput({
     ),
     [providerAccounts, providerDefaultAccountId, providerStatuses, providerVendors],
   );
-  const configuredModelRef = useMemo(
-    () => resolveConfiguredModelRef(currentAgent?.modelRef, defaultModelRef, modelOptions),
-    [currentAgent?.modelRef, defaultModelRef, modelOptions],
+  const currentSession = useMemo(
+    () => (sessions ?? []).find((session) => session.key === currentSessionKey) ?? null,
+    [currentSessionKey, sessions],
   );
-  const effectiveModelRef = optimisticModelRef || configuredModelRef;
+  const sessionModelRef = useMemo(
+    () => composeModelRef(currentSession?.modelProvider, currentSession?.model),
+    [currentSession?.model, currentSession?.modelProvider],
+  );
+  const defaultSessionModelRef = useMemo(
+    () => composeModelRef(sessionDefaults.modelProvider, sessionDefaults.model)
+      || (defaultModelRef || '').trim()
+      || providerModelOptions[0]?.modelRef
+      || null,
+    [defaultModelRef, providerModelOptions, sessionDefaults.model, sessionDefaults.modelProvider],
+  );
+  const modelOptions = useMemo(
+    () => {
+      let options = mergeModelOptions(gatewayModelOptions, providerModelOptions);
+      options = ensureModelOption(options, sessionModelRef);
+      options = ensureModelOption(options, defaultSessionModelRef);
+      options = ensureModelOption(options, currentAgent?.modelRef);
+      return options;
+    },
+    [currentAgent?.modelRef, defaultSessionModelRef, gatewayModelOptions, providerModelOptions, sessionModelRef],
+  );
+  const selectedModelValue = optimisticModelValue ?? sessionModelRef ?? DEFAULT_MODEL_OPTION_VALUE;
+  const effectiveModelRef = selectedModelValue || defaultSessionModelRef || modelOptions[0]?.modelRef || null;
+  const defaultModelLabel = useMemo(() => {
+    const matchedOption = modelOptions.find((option) => option.modelRef === defaultSessionModelRef);
+    return matchedOption?.label || formatModelRefLabel(defaultSessionModelRef);
+  }, [defaultSessionModelRef, modelOptions]);
+  const modelPickerOptions = useMemo<ModelPickerOption[]>(
+    () => [
+      {
+        value: DEFAULT_MODEL_OPTION_VALUE,
+        modelRef: null,
+        label: t('composer.modelDefaultOption', { model: defaultModelLabel }),
+        isDefault: true,
+      },
+      ...modelOptions.map((option) => ({
+        value: option.modelRef,
+        modelRef: option.modelRef,
+        label: option.label,
+      })),
+    ],
+    [defaultModelLabel, modelOptions, t],
+  );
   const currentModelLabel = useMemo(() => {
+    if (selectedModelValue === DEFAULT_MODEL_OPTION_VALUE) {
+      return t('composer.modelDefaultOption', { model: defaultModelLabel });
+    }
     const matchedOption = modelOptions.find((option) => option.modelRef === effectiveModelRef);
     return matchedOption?.label || formatModelRefLabel(effectiveModelRef);
-  }, [effectiveModelRef, modelOptions]);
+  }, [defaultModelLabel, effectiveModelRef, modelOptions, selectedModelValue, t]);
   const mentionableAgents = useMemo(
     () => (agents ?? []).filter((agent) => agent.id !== currentAgentId),
     [agents, currentAgentId],
@@ -318,7 +456,7 @@ export function ChatInput({
     );
   }, [quickSkills, skillQuery]);
   const showAgentPicker = mentionableAgents.length > 0;
-  const showModelPicker = modelOptions.length > 1;
+  const showModelPicker = modelOptions.length > 0;
   const chatComposerStatusComponents = rendererExtensionRegistry.getChatComposerStatusComponents();
   const isGatewayUsable = gatewayStatus.state === 'running' && gatewayStatus.gatewayReady !== false;
   const inputDisabled = disabled || !isGatewayUsable;
@@ -351,15 +489,34 @@ export function ChatInput({
   }, [gatewayStatus.state, refreshProviderSnapshot]);
 
   useEffect(() => {
-    setOptimisticModelRef(null);
-  }, [currentAgent?.modelRef, currentAgentId]);
+    setOptimisticModelValue(null);
+  }, [currentAgentId, currentSessionKey, sessionModelRef]);
 
   useEffect(() => {
-    if (!currentAgent || switchingModelRef || optimisticModelRef) return;
-    const override = (currentAgent.overrideModelRef || '').trim();
-    if (!override || isConfiguredModelRefAvailable(override, modelOptions)) return;
-    void updateAgentModel(currentAgent.id, null).catch(() => {});
-  }, [currentAgent, modelOptions, optimisticModelRef, switchingModelRef, updateAgentModel]);
+    if (!isGatewayUsable) {
+      setGatewayModelOptions([]);
+      return;
+    }
+
+    let cancelled = false;
+    hostApi.gateway.rpc<{ models?: unknown[] }>('models.list', { view: 'configured' }, 30_000)
+      .then((result) => {
+        if (cancelled) return;
+        const models = Array.isArray(result?.models) ? result.models : [];
+        setGatewayModelOptions(models
+          .map(normalizeGatewayModelOption)
+          .filter((option): option is ModelPickerModelOption => option != null));
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setGatewayModelOptions([]);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isGatewayUsable]);
 
   // Auto-resize textarea
   useEffect(() => {
@@ -503,29 +660,46 @@ export function ChatInput({
     void loadQuickSkills();
   }, [skillPickerOpen, loadQuickSkills]);
 
-  const handleSelectModel = useCallback(async (modelRef: string) => {
-    if (!currentAgent || switchingModelRef) return;
-    if (modelRef === effectiveModelRef) {
+  const handleSelectModel = useCallback(async (modelValue: string) => {
+    if (!currentAgent || !currentSessionKey || switchingModelValue !== null) return;
+    if (modelValue === selectedModelValue) {
       setModelPickerOpen(false);
       textareaRef.current?.focus();
       return;
     }
 
-    const previousModelRef = effectiveModelRef;
-    const desiredOverride = modelRef === (defaultModelRef || '').trim() ? null : modelRef;
-    setSwitchingModelRef(modelRef);
-    setOptimisticModelRef(modelRef);
+    const previousModelValue = optimisticModelValue;
+    setSwitchingModelValue(modelValue);
+    setOptimisticModelValue(modelValue);
     setModelPickerOpen(false);
     try {
-      await updateAgentModel(currentAgent.id, desiredOverride);
+      await hostApi.gateway.rpc(
+        'sessions.patch',
+        {
+          key: currentSessionKey,
+          agentId: currentAgentId,
+          model: modelValue || null,
+        },
+        120_000,
+      );
+      await loadSessions();
     } catch (error) {
-      setOptimisticModelRef(previousModelRef);
+      setOptimisticModelValue(previousModelValue);
       toast.error(t('composer.modelSwitchFailed', { error: String(error) }));
     } finally {
-      setSwitchingModelRef(null);
+      setSwitchingModelValue(null);
       textareaRef.current?.focus();
     }
-  }, [currentAgent, defaultModelRef, effectiveModelRef, switchingModelRef, t, updateAgentModel]);
+  }, [
+    currentAgent,
+    currentAgentId,
+    currentSessionKey,
+    loadSessions,
+    optimisticModelValue,
+    selectedModelValue,
+    switchingModelValue,
+    t,
+  ]);
 
   // ── File staging via native dialog / Electron drag-drop paths ──
 
@@ -1203,17 +1377,17 @@ export function ChatInput({
                   data-testid="chat-model-picker-button"
                   className={cn(
                     'inline-flex h-8 max-w-[220px] items-center gap-1 rounded-full px-2 text-meta font-medium text-muted-foreground transition-colors hover:bg-black/5 hover:text-foreground focus-visible:outline-none focus-visible:ring-0 disabled:pointer-events-none disabled:opacity-50 dark:hover:bg-white/10',
-                    (modelPickerOpen || switchingModelRef) && 'text-foreground',
+                    (modelPickerOpen || switchingModelValue !== null) && 'text-foreground',
                   )}
                   onClick={() => {
                     setPickerOpen(false);
                     setSkillPickerOpen(false);
                     setModelPickerOpen((open) => !open);
                   }}
-                  disabled={inputDisabled || !currentAgent || !!switchingModelRef}
+                  disabled={inputDisabled || !currentAgent || switchingModelValue !== null}
                   title={t('composer.pickModel')}
                 >
-                  {switchingModelRef ? (
+                  {switchingModelValue !== null ? (
                     <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" />
                   ) : null}
                   <span className="truncate">{currentModelLabel}</span>
@@ -1228,19 +1402,19 @@ export function ChatInput({
                       {t('composer.modelPickerTitle')}
                     </div>
                     <div className="max-h-64 overflow-y-auto">
-                      {modelOptions.map((option) => (
+                      {modelPickerOptions.map((option) => (
                         <button
-                          key={option.modelRef}
+                          key={option.isDefault ? 'default' : option.value}
                           type="button"
-                          onClick={() => void handleSelectModel(option.modelRef)}
+                          onClick={() => void handleSelectModel(option.value)}
                           className={cn(
                             'flex w-full items-center justify-between gap-3 rounded-xl px-3 py-2 text-left text-sm font-medium transition-colors',
-                            option.modelRef === effectiveModelRef ? 'bg-primary/10 text-foreground' : 'hover:bg-black/5 dark:hover:bg-white/10'
+                            option.value === selectedModelValue ? 'bg-primary/10 text-foreground' : 'hover:bg-black/5 dark:hover:bg-white/10'
                           )}
                           data-testid={`chat-model-picker-option-${option.label}`}
                         >
                           <span className="truncate">{option.label}</span>
-                          {option.modelRef === effectiveModelRef && (
+                          {option.value === selectedModelValue && (
                             <span className="h-1.5 w-1.5 rounded-full bg-primary" />
                           )}
                         </button>

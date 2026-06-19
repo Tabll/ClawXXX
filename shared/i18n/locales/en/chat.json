@@ -195,6 +195,7 @@
         "targetChip": "@{{agent}}",
         "agentPickerTitle": "Route the next message to another agent",
         "modelPickerTitle": "Switch model for this chat",
+        "modelDefaultOption": "Default ({{model}})",
         "modelSwitchFailed": "Failed to switch model: {{error}}",
         "gatewayDisconnectedPlaceholder": "Gateway not connected...",
         "followUpPlaceholder": "Request follow-up changes",

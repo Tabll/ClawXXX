@@ -192,6 +192,7 @@
         "pickAgent": "Agent を選択",
         "pickModel": "モデルを選択",
         "modelPickerTitle": "モデルを切り替え",
+        "modelDefaultOption": "デフォルト（{{model}}）",
         "modelSwitchFailed": "モデルの切り替えに失敗しました: {{error}}",
         "clearTarget": "送信先 Agent をクリア",
         "targetChip": "@{{agent}}",

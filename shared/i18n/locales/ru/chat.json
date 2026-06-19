@@ -192,6 +192,7 @@
         "pickAgent": "Выбрать агента",
         "pickModel": "Выбрать модель",
         "modelPickerTitle": "Переключить модель",
+        "modelDefaultOption": "По умолчанию ({{model}})",
         "modelSwitchFailed": "Не удалось переключить модель: {{error}}",
         "clearTarget": "Очистить целевого агента",
         "targetChip": "@{{agent}}",
