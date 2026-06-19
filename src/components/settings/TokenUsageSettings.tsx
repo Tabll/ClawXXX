@@ -48,6 +48,7 @@ const USAGE_AUTO_REFRESH_INTERVAL_MS = 15_000;
 const USAGE_PAGE_SIZE = 8;
 const HIDDEN_USAGE_MARKERS = ['gateway-injected', 'delivery-mirror'];
 const CONTEXT_TOKEN_CHAR_RATIO = 4;
+const MONOTONE_USAGE_BAR_BACKGROUND = 'linear-gradient(90deg, hsl(var(--usage-input) / 0.58), hsl(var(--usage-input)))';
 
 type FetchState = {
   status: 'idle' | 'loading' | 'done';
@@ -1078,8 +1079,12 @@ function UsageBreakdown({
               </div>
               <div className="h-3 overflow-hidden rounded-full bg-surface-input/75">
                 <div
-                  className="h-full rounded-full bg-[linear-gradient(90deg,hsl(var(--usage-output)),hsl(var(--usage-input)),hsl(var(--usage-cache)))]"
-                  style={{ width: `${width}%` }}
+                  data-testid="token-usage-group-bar"
+                  className="h-full rounded-full"
+                  style={{
+                    width: `${width}%`,
+                    backgroundImage: MONOTONE_USAGE_BAR_BACKGROUND,
+                  }}
                 />
               </div>
               <div className="flex flex-wrap gap-x-4 gap-y-1 text-tiny font-medium text-muted-foreground">
@@ -1542,8 +1547,12 @@ function UsageBreakdownPanel({ title, items }: { title: string; items: UsageSess
             </div>
             <div className="h-2 overflow-hidden rounded-full bg-surface-input/70">
               <div
-                className="h-full rounded-full bg-[linear-gradient(90deg,hsl(var(--usage-output)),hsl(var(--usage-input)),hsl(var(--usage-cache)))]"
-                style={{ width: `${item.totalTokens > 0 ? Math.max((item.totalTokens / maxTokens) * 100, 4) : 0}%` }}
+                data-testid="token-usage-breakdown-bar"
+                className="h-full rounded-full"
+                style={{
+                  width: `${item.totalTokens > 0 ? Math.max((item.totalTokens / maxTokens) * 100, 4) : 0}%`,
+                  backgroundImage: MONOTONE_USAGE_BAR_BACKGROUND,
+                }}
               />
             </div>
             <div className="flex items-center justify-between gap-3 text-tiny font-medium text-muted-foreground">

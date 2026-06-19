@@ -278,6 +278,13 @@ test.describe('ClawX token usage history', () => {
     await page.getByTestId('settings-nav-tokenUsage').click();
     await expect(page.getByTestId('settings-token-usage-section')).toBeVisible();
 
+    const groupBar = page.getByTestId('token-usage-group-bar').first();
+    await expect(groupBar).toBeVisible();
+    const groupBarStyle = await groupBar.evaluate((element) => element.getAttribute('style') ?? '');
+    expect(groupBarStyle).toContain('--usage-input');
+    expect(groupBarStyle).not.toContain('--usage-output');
+    expect(groupBarStyle).not.toContain('--usage-cache');
+
     await page.getByTestId('token-usage-search').fill(MULTI_TURN_SESSION_ID);
 
     const usageEntryRows = page.getByTestId('token-usage-entry');
@@ -301,6 +308,16 @@ test.describe('ClawX token usage history', () => {
     await expect(dialog.getByTestId('token-usage-context-breakdown')).toContainText('tool-a');
     await expect(dialog.getByTestId('token-usage-context-breakdown')).toContainText('AGENTS.md');
     await expect(dialog).toContainText('Cost breakdown');
+    const breakdownBars = dialog.getByTestId('token-usage-breakdown-bar');
+    await expect(breakdownBars).toHaveCount(2);
+    const breakdownBarStyles = await breakdownBars.evaluateAll((elements) =>
+      elements.map((element) => element.getAttribute('style') ?? ''),
+    );
+    for (const style of breakdownBarStyles) {
+      expect(style).toContain('--usage-input');
+      expect(style).not.toContain('--usage-output');
+      expect(style).not.toContain('--usage-cache');
+    }
     await expect(dialog).toContainText('Content');
     await expect(dialog).toContainText('First assistant response');
     await expect(dialog).toContainText('Second assistant response');
