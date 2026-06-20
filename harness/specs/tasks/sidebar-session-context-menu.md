@@ -1,9 +1,9 @@
 ---
 id: sidebar-session-context-menu
-title: Sidebar conversation context menu pin and rename
+title: Sidebar conversation history actions
 scenario: gateway-backend-communication
 taskType: runtime-bridge
-intent: Let users right-click sidebar conversation history items to pin/unpin them at the top of history and start the existing rename flow without bypassing the Main-owned host API boundary.
+intent: Let users act on sidebar conversation history through context actions, header search, and the More menu without bypassing the Main-owned host API boundary.
 touchedAreas:
   - harness/specs/tasks/sidebar-session-context-menu.md
   - src/components/layout/Sidebar.tsx
@@ -32,6 +32,10 @@ expectedUserBehavior:
   - Unpinned conversations return to the normal date buckets.
   - The context menu offers Rename and reuses the existing inline rename input, save, cancel, Enter, Escape, and blur behavior.
   - Pin state is persisted to the conversation's sessions.json metadata through the typed Main sessions service.
+  - The sidebar header exposes a localized search button that opens a conversation search dialog.
+  - Typing a keyword filters conversation history by visible title, stored title/display name, agent, or session key.
+  - Clicking a search result switches to that conversation and returns to the chat route.
+  - The sidebar header exposes a localized More settings button with a Batch operation option.
 requiredProfiles:
   - fast
   - comms
@@ -49,10 +53,12 @@ acceptance:
   - The existing session rename action remains the only rename implementation used by Sidebar.
   - Pin metadata supports both array-shaped and object-keyed sessions.json entries.
   - Local store state updates immediately after a successful pin/unpin so the sidebar reorders without requiring a Gateway refresh.
+  - Search reads the already loaded sidebar session list and does not add renderer-side direct Gateway HTTP or IPC calls.
+  - The Batch operation entry is present in the More settings menu for the initial batch-workflow affordance.
 docs:
   required: true
 ---
 
-Use this task spec for the sidebar conversation history context menu that adds
-pin/unpin and rename actions while keeping session metadata writes in the
-typed Electron Main host service.
+Use this task spec for sidebar conversation history controls, including the
+context menu, search dialog, and header More menu, while keeping session
+metadata writes in the typed Electron Main host service.

@@ -278,4 +278,107 @@ test.describe('ClawX chat session date grouping', () => {
       await closeElectronApp(app);
     }
   });
+
+  test('sidebar header opens more settings and searches sessions', async ({ launchElectronApp }) => {
+    const app = await launchElectronApp({ skipSetup: true });
+    const nowMs = Date.now();
+    const searchSessionKey = `agent:main:session-${nowMs - 2 * DAY_MS}`;
+    const otherSessionKey = `agent:main:session-${nowMs - 3 * DAY_MS}`;
+    const sessions = [
+      { key: MAIN_SESSION_KEY, displayName: 'Today conversation', label: 'Today conversation', updatedAt: nowMs },
+      { key: searchSessionKey, displayName: 'Roadmap research', label: 'Roadmap research', updatedAt: nowMs - 2 * DAY_MS },
+      { key: otherSessionKey, displayName: 'Budget notes', label: 'Budget notes', updatedAt: nowMs - 3 * DAY_MS },
+    ];
+
+    try {
+      await installIpcMocks(app, {
+        gatewayStatus: { state: 'running', port: 18789, pid: 12345, connectedAt: nowMs },
+        gatewayRpc: {
+          [stableStringify(['sessions.list', SESSIONS_LIST_PAYLOAD])]: {
+            success: true,
+            result: { sessions },
+          },
+          [stableStringify(['chat.history', { sessionKey: MAIN_SESSION_KEY, limit: 200, maxChars: 500000 }])]: {
+            success: true,
+            result: { messages: [] },
+          },
+          [stableStringify(['chat.history', { sessionKey: MAIN_SESSION_KEY, limit: 1000, maxChars: 500000 }])]: {
+            success: true,
+            result: { messages: [] },
+          },
+          [stableStringify(['chat.history', { sessionKey: searchSessionKey, limit: 200, maxChars: 500000 }])]: {
+            success: true,
+            result: {
+              messages: [
+                { role: 'user', content: 'Roadmap research kickoff', timestamp: nowMs - 2 * DAY_MS },
+              ],
+            },
+          },
+        },
+        hostApi: {
+          [stableStringify(['sessions', 'summaries', {
+            sessionKeys: sessions.map((session) => session.key),
+            metadataOnly: true,
+          }])]: {
+            success: true,
+            summaries: sessions.map((session) => ({
+              sessionKey: session.key,
+              firstUserText: null,
+              lastTimestamp: null,
+              pinned: false,
+            })),
+          },
+          [stableStringify(['/api/gateway/status', 'GET'])]: {
+            ok: true,
+            data: {
+              status: 200,
+              ok: true,
+              json: { state: 'running', port: 18789, pid: 12345, connectedAt: nowMs },
+            },
+          },
+          [stableStringify(['/api/agents', 'GET'])]: {
+            ok: true,
+            data: {
+              status: 200,
+              ok: true,
+              json: { success: true, agents: [{ id: 'main', name: 'Main' }] },
+            },
+          },
+        },
+      });
+
+      const page = await getStableWindow(app);
+      try {
+        await page.reload();
+      } catch (error) {
+        if (!String(error).includes('ERR_FILE_NOT_FOUND')) {
+          throw error;
+        }
+      }
+
+      await expect(page.getByTestId('session-bucket-withinWeek').getByText('Roadmap research')).toBeVisible();
+
+      await page.getByTestId('sidebar-more-button').click();
+      await expect(page.getByTestId('sidebar-more-menu')).toBeVisible();
+      await expect(page.getByTestId('sidebar-batch-operation-option')).toHaveText('Batch operation');
+      await page.getByTestId('sidebar-batch-operation-option').click();
+      await expect(page.getByTestId('sidebar-more-menu')).toHaveCount(0);
+
+      await page.getByTestId('sidebar-search-button').click();
+      await expect(page.getByTestId('sidebar-session-search-dialog')).toBeVisible();
+      await page.getByTestId('sidebar-session-search-input').fill('roadmap');
+
+      const result = page.getByTestId(`sidebar-session-search-result-${searchSessionKey}`);
+      await expect(result).toBeVisible();
+      await expect(result).toContainText('Roadmap research');
+      await expect(page.getByTestId(`sidebar-session-search-result-${otherSessionKey}`)).toHaveCount(0);
+
+      await result.click();
+
+      await expect(page.getByTestId('sidebar-session-search-dialog')).toHaveCount(0);
+      await expect(page.getByTestId(`sidebar-session-${searchSessionKey}`).locator('button').first()).toHaveClass(/clawx-nav-item-active/);
+    } finally {
+      await closeElectronApp(app);
+    }
+  });
 });

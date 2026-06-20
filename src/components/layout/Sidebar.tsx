@@ -25,6 +25,9 @@ import {
   Moon,
   ChevronRight,
   Loader2,
+  Search,
+  MoreHorizontal,
+  ListChecks,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { isGatewayRestarting } from '@/lib/gateway-status';
@@ -37,6 +40,12 @@ import { getSessionActivityMs, getSessionBucket, type SessionBucketKey } from '.
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { hostApi } from '@/lib/host-api';
 import { SIDEBAR_COLLAPSED_WIDTH, MAC_SIDEBAR_CHROME_HEIGHT } from '@shared/sidebar-layout';
@@ -199,6 +208,10 @@ export function Sidebar() {
     y: number;
   } | null>(null);
   const sessionContextMenuRef = useRef<HTMLDivElement | null>(null);
+  const [sidebarMoreMenuOpen, setSidebarMoreMenuOpen] = useState(false);
+  const sidebarMoreMenuRef = useRef<HTMLDivElement | null>(null);
+  const [sessionSearchOpen, setSessionSearchOpen] = useState(false);
+  const [sessionSearchQuery, setSessionSearchQuery] = useState('');
   const [nowMs, setNowMs] = useState(INITIAL_NOW_MS);
   const [expandedSessionBuckets, setExpandedSessionBuckets] = useState<Record<SidebarSessionBucketKey, boolean>>(
     () => ({ ...DEFAULT_EXPANDED_SESSION_BUCKETS }),
@@ -223,6 +236,10 @@ export function Sidebar() {
 
   const closeSessionContextMenu = useCallback(() => {
     setSessionContextMenu(null);
+  }, []);
+
+  const closeSidebarMoreMenu = useCallback(() => {
+    setSidebarMoreMenuOpen(false);
   }, []);
 
   useEffect(() => {
@@ -252,6 +269,34 @@ export function Sidebar() {
       window.removeEventListener('scroll', closeSessionContextMenu, true);
     };
   }, [closeSessionContextMenu, sessionContextMenu]);
+
+  useEffect(() => {
+    if (!sidebarMoreMenuOpen) return;
+
+    const handlePointerDown = (event: PointerEvent) => {
+      if (
+        event.target instanceof Node
+        && sidebarMoreMenuRef.current?.contains(event.target)
+      ) {
+        return;
+      }
+      closeSidebarMoreMenu();
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') closeSidebarMoreMenu();
+    };
+
+    window.addEventListener('pointerdown', handlePointerDown);
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('resize', closeSidebarMoreMenu);
+    window.addEventListener('scroll', closeSidebarMoreMenu, true);
+    return () => {
+      window.removeEventListener('pointerdown', handlePointerDown);
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('resize', closeSidebarMoreMenu);
+      window.removeEventListener('scroll', closeSidebarMoreMenu, true);
+    };
+  }, [closeSidebarMoreMenu, sidebarMoreMenuOpen]);
 
   const handleStartRename = (key: string, currentLabel: string) => {
     closeSessionContextMenu();
@@ -301,6 +346,20 @@ export function Sidebar() {
       y: event.clientY,
     });
   };
+
+  const openSession = useCallback((sessionKey: string) => {
+    if (currentSessionKey === sessionKey) {
+      void loadHistory(false);
+    } else {
+      switchSession(sessionKey);
+    }
+    navigate('/');
+  }, [currentSessionKey, loadHistory, navigate, switchSession]);
+
+  const handleSessionSearchOpenChange = useCallback((open: boolean) => {
+    setSessionSearchOpen(open);
+    if (!open) setSessionSearchQuery('');
+  }, []);
 
   const handleContextMenuPinToggle = async () => {
     const target = sessionContextMenu;
@@ -395,6 +454,51 @@ export function Sidebar() {
     ...dateSessionBuckets,
   ];
 
+  const searchableSessions = useMemo(() => sessions.map((session) => {
+    const agentId = getAgentIdFromSessionKey(session.key);
+    const agentName = agentNameById[agentId] || agentId;
+    const label = sessionLabels[session.key] ?? session.label ?? session.displayName ?? session.key;
+    const activityMs = getSessionActivityMs(session, sessionLastActivity);
+    return {
+      key: session.key,
+      label,
+      agentName,
+      pinned: Boolean(session.pinned),
+      activityMs,
+      searchText: [
+        label,
+        session.label,
+        session.displayName,
+        session.key,
+        agentName,
+      ].filter(Boolean).join(' ').toLowerCase(),
+    };
+  }).sort((a, b) => {
+    const pinnedDelta = Number(b.pinned) - Number(a.pinned);
+    return pinnedDelta || b.activityMs - a.activityMs;
+  }), [agentNameById, sessionLabels, sessionLastActivity, sessions]);
+
+  const normalizedSessionSearchQuery = sessionSearchQuery.trim().toLowerCase();
+  const sessionSearchResults = useMemo(() => {
+    const results = normalizedSessionSearchQuery
+      ? searchableSessions.filter((session) => session.searchText.includes(normalizedSessionSearchQuery))
+      : searchableSessions;
+    return results.slice(0, normalizedSessionSearchQuery ? 30 : 12);
+  }, [normalizedSessionSearchQuery, searchableSessions]);
+
+  const openSearchResult = useCallback((sessionKey: string) => {
+    openSession(sessionKey);
+    handleSessionSearchOpenChange(false);
+  }, [handleSessionSearchOpenChange, openSession]);
+
+  const handleSessionSearchKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
+    if (event.key !== 'Enter') return;
+    const firstResult = sessionSearchResults[0];
+    if (!firstResult) return;
+    event.preventDefault();
+    openSearchResult(firstResult.key);
+  };
+
   const hiddenRoutes = rendererExtensionRegistry.getHiddenRoutes();
   const extraNavItems = rendererExtensionRegistry.getExtraNavItems();
 
@@ -449,30 +553,80 @@ export function Sidebar() {
       <div
         className={cn(
           'flex shrink-0 items-center p-2 h-8',
-          sidebarCollapsed ? 'justify-center' : 'justify-between',
+          sidebarCollapsed ? 'justify-center' : 'justify-between gap-1',
         )}
       >
         {!sidebarCollapsed && (
-          <div className="flex items-center gap-2 px-2 overflow-hidden">
+          <div className="flex min-w-0 items-center gap-2 overflow-hidden px-2">
             <img src={logoSvg} alt="ClawX" className="h-5 w-auto shrink-0" />
             <span className="text-sm font-semibold truncate whitespace-nowrap text-foreground/90">
               ClawX
             </span>
           </div>
         )}
-        <Button
-          data-testid="sidebar-collapse-toggle"
-          variant="ghost"
-          size="icon"
-          className="no-drag h-8 w-8 shrink-0 rounded-lg text-foreground/85"
-          onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-        >
-          {sidebarCollapsed ? (
-            <PanelLeft className="h-[18px] w-[18px]" />
-          ) : (
-            <PanelLeftClose className="h-[18px] w-[18px]" />
+        <div className="flex shrink-0 items-center gap-1">
+          {!sidebarCollapsed && (
+            <>
+              <button
+                type="button"
+                data-testid="sidebar-search-button"
+                aria-label={t('common:sidebar.searchSessions')}
+                className="no-drag clawx-icon-button h-7 w-7 shrink-0"
+                onClick={() => handleSessionSearchOpenChange(true)}
+              >
+                <Search className="h-4 w-4" />
+              </button>
+              <div ref={sidebarMoreMenuRef} className="relative">
+                <button
+                  type="button"
+                  data-testid="sidebar-more-button"
+                  aria-label={t('common:sidebar.moreSettings')}
+                  aria-haspopup="menu"
+                  aria-expanded={sidebarMoreMenuOpen}
+                  className="no-drag clawx-icon-button h-7 w-7 shrink-0"
+                  onClick={() => setSidebarMoreMenuOpen((open) => !open)}
+                >
+                  <MoreHorizontal className="h-4 w-4" />
+                </button>
+                {sidebarMoreMenuOpen && (
+                  <div
+                    role="menu"
+                    data-testid="sidebar-more-menu"
+                    aria-label={t('common:sidebar.moreSettings')}
+                    className={cn(
+                      'absolute right-0 top-full z-40 mt-1 w-44 rounded-lg border border-border/70 bg-surface-modal/95 p-1',
+                      'text-meta text-foreground shadow-xl shadow-black/10 backdrop-blur-xl dark:shadow-black/35',
+                    )}
+                  >
+                    <button
+                      type="button"
+                      role="menuitem"
+                      data-testid="sidebar-batch-operation-option"
+                      className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-foreground/85 transition-colors hover:bg-black/5 hover:text-foreground dark:hover:bg-white/10"
+                      onClick={closeSidebarMoreMenu}
+                    >
+                      <ListChecks className="h-3.5 w-3.5 shrink-0" />
+                      <span className="truncate">{t('common:sidebar.batchOperation')}</span>
+                    </button>
+                  </div>
+                )}
+              </div>
+            </>
           )}
-        </Button>
+          <Button
+            data-testid="sidebar-collapse-toggle"
+            variant="ghost"
+            size="icon"
+            className="no-drag h-8 w-8 shrink-0 rounded-lg text-foreground/85"
+            onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+          >
+            {sidebarCollapsed ? (
+              <PanelLeft className="h-[18px] w-[18px]" />
+            ) : (
+              <PanelLeftClose className="h-[18px] w-[18px]" />
+            )}
+          </Button>
+        </div>
       </div>
 
       {/* Navigation */}
@@ -574,14 +728,7 @@ export function Sidebar() {
                       ) : (
                         <>
                           <button
-                            onClick={() => {
-                              if (currentSessionKey === s.key) {
-                                void loadHistory(false);
-                              } else {
-                                switchSession(s.key);
-                              }
-                              navigate('/');
-                            }}
+                            onClick={() => openSession(s.key)}
                             onDoubleClick={() => handleStartRename(s.key, sessionLabel)}
                             className={cn(
                               'clawx-nav-item w-full pr-16 text-left text-meta',
@@ -779,6 +926,65 @@ export function Sidebar() {
           </button>
         </div>
       )}
+
+      <Dialog open={sessionSearchOpen} onOpenChange={handleSessionSearchOpenChange}>
+        <DialogContent
+          data-testid="sidebar-session-search-dialog"
+          className="w-[calc(100vw-2rem)] max-w-lg overflow-hidden rounded-lg border border-border/70 bg-surface-modal p-0 shadow-2xl shadow-black/15 dark:shadow-black/45"
+        >
+          <DialogTitle className="sr-only">{t('common:sidebar.searchSessions')}</DialogTitle>
+          <DialogDescription className="sr-only">
+            {t('common:sidebar.searchSessionsDescription')}
+          </DialogDescription>
+          <div className="border-b border-border/70 p-3">
+            <div className="flex items-center gap-2 rounded-lg border border-border/70 bg-surface-input/70 px-2.5">
+              <Search className="h-4 w-4 shrink-0 text-muted-foreground" />
+              <Input
+                data-testid="sidebar-session-search-input"
+                autoFocus
+                value={sessionSearchQuery}
+                onChange={(event) => setSessionSearchQuery(event.target.value)}
+                onKeyDown={handleSessionSearchKeyDown}
+                placeholder={t('common:sidebar.searchSessionsPlaceholder')}
+                className="h-9 min-w-0 flex-1 border-0 bg-transparent px-0 text-sm shadow-none focus-visible:border-transparent focus-visible:ring-0"
+              />
+            </div>
+          </div>
+          <div
+            data-testid="sidebar-session-search-results"
+            className="max-h-80 overflow-y-auto p-1.5"
+          >
+            {sessionSearchResults.length > 0 ? (
+              sessionSearchResults.map((session) => (
+                <button
+                  key={session.key}
+                  type="button"
+                  data-testid={`sidebar-session-search-result-${session.key}`}
+                  className="flex w-full min-w-0 items-center gap-2 rounded-lg px-2.5 py-2 text-left transition-colors hover:bg-black/5 focus-visible:bg-black/5 focus-visible:outline-none dark:hover:bg-white/10 dark:focus-visible:bg-white/10"
+                  onClick={() => openSearchResult(session.key)}
+                >
+                  <span className="shrink-0 rounded-lg bg-surface-input px-2 py-0.5 text-2xs font-medium text-muted-foreground">
+                    {session.agentName}
+                  </span>
+                  <span className="min-w-0 flex-1 truncate text-sm text-foreground/85">
+                    {session.label}
+                  </span>
+                  {session.pinned && (
+                    <Pin
+                      aria-hidden="true"
+                      className="h-3.5 w-3.5 shrink-0 text-muted-foreground/65"
+                    />
+                  )}
+                </button>
+              ))
+            ) : (
+              <div className="px-3 py-6 text-center text-meta text-muted-foreground">
+                {t('common:sidebar.noSessionSearchResults')}
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <ConfirmDialog
         open={deleteDialogOpen}
