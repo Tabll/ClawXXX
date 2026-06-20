@@ -50,6 +50,43 @@ vi.mock('@/lib/host-api', () => ({
   },
 }));
 
+function getSummaryRequestBody(init: unknown): Record<string, unknown> {
+  if (!init || typeof init !== 'object') return {};
+  const body = (init as { body?: unknown }).body;
+  if (typeof body !== 'string') return {};
+  try {
+    return JSON.parse(body) as Record<string, unknown>;
+  } catch {
+    return {};
+  }
+}
+
+function isMetadataOnlySummaryRequest(init: unknown): boolean {
+  return getSummaryRequestBody(init).metadataOnly === true;
+}
+
+function metadataOnlySummaryResponse(init: unknown) {
+  const body = getSummaryRequestBody(init);
+  const sessionKeys = Array.isArray(body.sessionKeys)
+    ? body.sessionKeys.filter((key): key is string => typeof key === 'string')
+    : [];
+  return {
+    success: true,
+    summaries: sessionKeys.map((sessionKey) => ({
+      sessionKey,
+      firstUserText: null,
+      lastTimestamp: null,
+      pinned: false,
+    })),
+  };
+}
+
+function getLabelSummaryCalls() {
+  return hostApiFetchMock.mock.calls.filter(([path, init]) => (
+    path === '/api/sessions/summaries' && !isMetadataOnlySummaryRequest(init)
+  ));
+}
+
 describe('chat store session label summary hydration', () => {
   beforeEach(() => {
     vi.resetModules();
@@ -398,7 +435,7 @@ describe('chat store session label summary hydration', () => {
     await Promise.resolve();
     await Promise.resolve();
 
-    const summaryCalls = hostApiFetchMock.mock.calls.filter(([path]) => path === '/api/sessions/summaries');
+    const summaryCalls = getLabelSummaryCalls();
     expect(summaryCalls).toHaveLength(1);
   });
 
@@ -425,7 +462,7 @@ describe('chat store session label summary hydration', () => {
     });
 
     let summaryCall = 0;
-    hostApiFetchMock.mockImplementation(async (path: string) => {
+    hostApiFetchMock.mockImplementation(async (path: string, init?: unknown) => {
       if (path === '/api/chat/history') {
         throw new Error('No route for mocked chat host API');
       }
@@ -439,6 +476,9 @@ describe('chat store session label summary hydration', () => {
             ],
           },
         };
+      }
+      if (isMetadataOnlySummaryRequest(init)) {
+        return metadataOnlySummaryResponse(init);
       }
       summaryCall += 1;
       return summaryCall === 1
@@ -489,7 +529,7 @@ describe('chat store session label summary hydration', () => {
     await Promise.resolve();
     await Promise.resolve();
 
-    const summaryCalls = hostApiFetchMock.mock.calls.filter(([path]) => path === '/api/sessions/summaries');
+    const summaryCalls = getLabelSummaryCalls();
     expect(summaryCalls[0]).toEqual([
       '/api/sessions/summaries',
       {

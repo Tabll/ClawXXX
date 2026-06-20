@@ -733,17 +733,19 @@ export type SessionHistoryPayload = {
 export type SessionHistoryResult = OptionalHostSuccess & {
   messages?: RawMessage[];
 };
-export type SessionSummariesPayload = { sessionKeys?: string[]; limit?: number };
+export type SessionSummariesPayload = { sessionKeys?: string[]; limit?: number; metadataOnly?: boolean };
 export type SessionLabelSummary = {
   sessionKey: string;
   firstUserText: string | null;
   lastTimestamp: number | null;
+  pinned?: boolean;
 };
 export type SessionSummariesResult = HostSuccess & {
   summaries?: SessionLabelSummary[];
 };
 export type SessionDeletePayload = { id: string };
 export type SessionRenamePayload = { id: string; title: string };
+export type SessionPinPayload = { id: string; pinned: boolean };
 
 export type ChatMediaItem = { filePath: string; mimeType?: string; fileName?: string };
 export type ChatSendWithMediaPayload = {
@@ -990,6 +992,7 @@ export type HostApiContract = {
   sessions: {
     delete: (payload: SessionDeletePayload) => HostSuccess;
     rename: (payload: SessionRenamePayload) => HostSuccess;
+    pin: (payload: SessionPinPayload) => HostSuccess;
     summaries: (payload?: SessionSummariesPayload) => SessionSummariesResult;
     history: (payload: SessionHistoryPayload) => SessionHistoryResult;
   };

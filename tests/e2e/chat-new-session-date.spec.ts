@@ -61,6 +61,18 @@ test.describe('ClawX chat session date grouping', () => {
               json: { success: true, agents: [{ id: 'main', name: 'Main' }] },
             },
           },
+          [stableStringify(['sessions', 'summaries', {
+            sessionKeys: sessions.map((session) => session.key),
+            metadataOnly: true,
+          }])]: {
+            success: true,
+            summaries: sessions.map((session) => ({
+              sessionKey: session.key,
+              firstUserText: null,
+              lastTimestamp: null,
+              pinned: false,
+            })),
+          },
         },
       });
 
@@ -140,6 +152,18 @@ test.describe('ClawX chat session date grouping', () => {
               json: { success: true, agents: [{ id: 'main', name: 'Main' }] },
             },
           },
+          [stableStringify(['sessions', 'summaries', {
+            sessionKeys: [MAIN_SESSION_KEY],
+            metadataOnly: true,
+          }])]: {
+            success: true,
+            summaries: [{
+              sessionKey: MAIN_SESSION_KEY,
+              firstUserText: null,
+              lastTimestamp: null,
+              pinned: false,
+            }],
+          },
         },
       });
 
@@ -158,6 +182,98 @@ test.describe('ClawX chat session date grouping', () => {
 
       await expect(page.getByTestId('session-bucket-today').getByText(/agent:main:session-/)).toBeVisible();
       await expect(page.getByTestId('session-bucket-older')).toBeVisible();
+    } finally {
+      await closeElectronApp(app);
+    }
+  });
+
+  test('right-click session menu pins and starts rename', async ({ launchElectronApp }) => {
+    const app = await launchElectronApp({ skipSetup: true });
+    const nowMs = Date.now();
+    const sessionKey = `agent:main:session-${nowMs - 2 * DAY_MS}`;
+    const sessions = [
+      { key: MAIN_SESSION_KEY, displayName: 'Today conversation', label: 'Today conversation', updatedAt: nowMs },
+      { key: sessionKey, displayName: 'Pin candidate', label: 'Pin candidate', updatedAt: nowMs - 2 * DAY_MS },
+    ];
+
+    try {
+      await installIpcMocks(app, {
+        gatewayStatus: { state: 'running', port: 18789, pid: 12345, connectedAt: nowMs },
+        gatewayRpc: {
+          [stableStringify(['sessions.list', SESSIONS_LIST_PAYLOAD])]: {
+            success: true,
+            result: { sessions },
+          },
+          [stableStringify(['chat.history', { sessionKey: MAIN_SESSION_KEY, limit: 200, maxChars: 500000 }])]: {
+            success: true,
+            result: { messages: [] },
+          },
+          [stableStringify(['chat.history', { sessionKey: MAIN_SESSION_KEY, limit: 1000, maxChars: 500000 }])]: {
+            success: true,
+            result: { messages: [] },
+          },
+        },
+        hostApi: {
+          [stableStringify(['sessions', 'pin', { id: sessionKey, pinned: true }])]: {
+            success: true,
+          },
+          [stableStringify(['sessions', 'rename', { id: sessionKey, title: 'Pinned plan' }])]: {
+            success: true,
+          },
+          [stableStringify(['sessions', 'summaries', {
+            sessionKeys: sessions.map((session) => session.key),
+            metadataOnly: true,
+          }])]: {
+            success: true,
+            summaries: sessions.map((session) => ({
+              sessionKey: session.key,
+              firstUserText: null,
+              lastTimestamp: null,
+              pinned: false,
+            })),
+          },
+          [stableStringify(['/api/gateway/status', 'GET'])]: {
+            ok: true,
+            data: {
+              status: 200,
+              ok: true,
+              json: { state: 'running', port: 18789, pid: 12345, connectedAt: nowMs },
+            },
+          },
+          [stableStringify(['/api/agents', 'GET'])]: {
+            ok: true,
+            data: {
+              status: 200,
+              ok: true,
+              json: { success: true, agents: [{ id: 'main', name: 'Main' }] },
+            },
+          },
+        },
+      });
+
+      const page = await getStableWindow(app);
+      try {
+        await page.reload();
+      } catch (error) {
+        if (!String(error).includes('ERR_FILE_NOT_FOUND')) {
+          throw error;
+        }
+      }
+
+      await expect(page.getByTestId('session-bucket-withinWeek').getByText('Pin candidate')).toBeVisible();
+
+      await page.getByTestId(`sidebar-session-${sessionKey}`).click({ button: 'right' });
+      await expect(page.getByTestId('sidebar-session-context-menu')).toBeVisible();
+      await page.getByTestId(`sidebar-session-context-pin-${sessionKey}`).click();
+
+      await expect(page.getByTestId('session-bucket-pinned').getByText('Pin candidate')).toBeVisible();
+
+      await page.getByTestId(`sidebar-session-${sessionKey}`).click({ button: 'right' });
+      await page.getByTestId(`sidebar-session-context-rename-${sessionKey}`).click();
+      await page.getByTestId('sidebar-session-rename-input').fill('Pinned plan');
+      await page.getByTestId('sidebar-session-rename-input').press('Enter');
+
+      await expect(page.getByTestId('session-bucket-pinned').getByText('Pinned plan')).toBeVisible();
     } finally {
       await closeElectronApp(app);
     }

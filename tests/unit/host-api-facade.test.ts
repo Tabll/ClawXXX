@@ -261,6 +261,18 @@ describe('hostApi facade', () => {
     }));
   });
 
+  it('calls sessions.pin through hostInvoke', async () => {
+    hostInvoke.mockResolvedValueOnce({ id: 'req', ok: true, data: { success: true } });
+    const { hostApi } = await import('@/lib/host-api');
+
+    await hostApi.sessions.pin('agent:main:session-a', true);
+    expect(hostInvoke).toHaveBeenCalledWith(expect.objectContaining({
+      module: 'sessions',
+      action: 'pin',
+      payload: { id: 'agent:main:session-a', pinned: true },
+    }));
+  });
+
   it('calls cron.list through hostInvoke', async () => {
     hostInvoke.mockResolvedValueOnce({ id: 'req', ok: true, data: [] });
     const { hostApi } = await import('@/lib/host-api');

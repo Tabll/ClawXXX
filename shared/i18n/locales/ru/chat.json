@@ -252,6 +252,7 @@
         }
     },
     "historyBuckets": {
+        "pinned": "Закреплённые",
         "today": "Сегодня",
         "withinWeek": "За последние 7 дней",
         "withinMonth": "За последние 30 дней",

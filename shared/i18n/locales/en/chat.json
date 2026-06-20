@@ -252,6 +252,7 @@
         }
     },
     "historyBuckets": {
+        "pinned": "Pinned",
         "today": "Today",
         "withinWeek": "Last 7 days",
         "withinMonth": "Last 30 days",

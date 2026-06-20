@@ -185,7 +185,7 @@ function resolveModelCapabilitiesDraft(
 function buildModelCapabilities(
   reasoning: boolean,
   imageInput: boolean,
-): NonNullable<ProviderAccount['modelCapabilities']> {
+): ModelCapabilitiesDraft {
   return { reasoning, imageInput };
 }
 

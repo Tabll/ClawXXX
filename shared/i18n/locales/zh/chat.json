@@ -252,6 +252,7 @@
         }
     },
     "historyBuckets": {
+        "pinned": "已置顶",
         "today": "今天",
         "withinWeek": "一周内",
         "withinMonth": "一月内",

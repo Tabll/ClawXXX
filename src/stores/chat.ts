@@ -172,10 +172,36 @@ function applySessionBackendLabels(set: ChatSet, sessions: ChatSession[]): void 
   }));
 }
 
-async function fetchSessionLabelSummaries(sessionKeys: string[]): Promise<SessionLabelSummary[]> {
+async function fetchSessionLabelSummaries(
+  sessionKeys: string[],
+  options?: { metadataOnly?: boolean },
+): Promise<SessionLabelSummary[]> {
   if (sessionKeys.length === 0) return [];
-  const response = await hostApi.sessions.summaries({ sessionKeys });
+  const response = await hostApi.sessions.summaries({ sessionKeys, ...options });
   return Array.isArray(response?.summaries) ? response.summaries : [];
+}
+
+async function hydrateSessionPinMetadata(sessions: ChatSession[]): Promise<ChatSession[]> {
+  const sessionKeys = sessions.map((session) => session.key).filter((key) => key.startsWith('agent:'));
+  if (sessionKeys.length === 0) return sessions;
+
+  try {
+    const summaries = await fetchSessionLabelSummaries(sessionKeys, { metadataOnly: true });
+    const pinnedBySessionKey = new Map(
+      summaries
+        .filter((summary) => typeof summary.pinned === 'boolean')
+        .map((summary) => [summary.sessionKey, summary.pinned!] as const),
+    );
+    if (pinnedBySessionKey.size === 0) return sessions;
+    return sessions.map((session) => (
+      pinnedBySessionKey.has(session.key)
+        ? { ...session, pinned: pinnedBySessionKey.get(session.key) }
+        : session
+    ));
+  } catch (error) {
+    console.warn('Failed to hydrate session pin metadata:', error);
+    return sessions;
+  }
 }
 
 function applySessionLabelSummaries(
@@ -186,6 +212,7 @@ function applySessionLabelSummaries(
   set((state) => {
     let nextLabels = state.sessionLabels;
     let nextActivity = state.sessionLastActivity;
+    let nextSessions = state.sessions;
     let changed = false;
 
     for (const summary of summaries) {
@@ -210,10 +237,22 @@ function applySessionLabelSummaries(
           changed = true;
         }
       }
+
+      if (typeof summary.pinned === 'boolean') {
+        const index = nextSessions.findIndex((session) => session.key === summary.sessionKey);
+        if (index !== -1 && Boolean(nextSessions[index]?.pinned) !== summary.pinned) {
+          if (nextSessions === state.sessions) {
+            nextSessions = [...state.sessions];
+          }
+          nextSessions[index] = { ...nextSessions[index], pinned: summary.pinned };
+          changed = true;
+        }
+      }
     }
 
     return changed
       ? {
+        sessions: nextSessions,
         sessionLabels: nextLabels,
         sessionLastActivity: nextActivity,
       }
@@ -2685,6 +2724,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
             model: s.model ? String(s.model) : undefined,
             modelProvider: s.modelProvider ? String(s.modelProvider) : undefined,
             updatedAt: parseSessionUpdatedAtMs(s.updatedAt),
+            pinned: s.pinned === true,
             status: parseSessionStatus(s.status),
             hasActiveRun: typeof s.hasActiveRun === 'boolean' ? s.hasActiveRun : undefined,
             totalTokens: parseOptionalFiniteNumber(s.totalTokens),
@@ -2740,9 +2780,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
               { key: nextSessionKey, displayName: nextSessionKey },
             ]
             : dedupedSessions;
+          const sessionsWithMetadata = await hydrateSessionPinMetadata(sessionsWithCurrent);
 
           const discoveredActivity = Object.fromEntries(
-            sessionsWithCurrent
+            sessionsWithMetadata
               .filter((session) => typeof session.updatedAt === 'number' && Number.isFinite(session.updatedAt))
               .map((session) => [session.key, session.updatedAt!]),
           );
@@ -2757,7 +2798,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
             clearHistoryPoll();
             set((state) => ({
               ...buildSessionSwitchPatch(state, nextSessionKey),
-              sessions: sessionsWithCurrent,
+              sessions: sessionsWithMetadata,
               sessionDefaults,
               sessionLastActivity: {
                 ...state.sessionLastActivity,
@@ -2766,7 +2807,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
             }));
           } else {
             set((state) => ({
-              sessions: sessionsWithCurrent,
+              sessions: sessionsWithMetadata,
               sessionDefaults,
               currentSessionKey: nextSessionKey,
               currentAgentId: getAgentIdFromSessionKey(nextSessionKey),
@@ -2776,8 +2817,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
               },
             }));
           }
-          reconcileCurrentSessionIdleFromBackend(set, get, sessionsWithCurrent);
-          applySessionBackendLabels(set, sessionsWithCurrent);
+          reconcileCurrentSessionIdleFromBackend(set, get, sessionsWithMetadata);
+          applySessionBackendLabels(set, sessionsWithMetadata);
 
           // Background: fetch first user message for every non-main session to populate labels upfront.
           // This uses the Host API local transcript summary route, not Gateway
@@ -2785,7 +2826,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
           // foreground history load during startup/restart.
           const existingSessionLabels = get().sessionLabels;
           const existingSessionActivity = get().sessionLastActivity;
-          const sessionsToLabel = sessionsWithCurrent
+          const sessionsToLabel = sessionsWithMetadata
             .map((session) => ({
               session,
               candidate: getSessionLabelHydrationCandidate(
@@ -2985,6 +3026,26 @@ export const useChatStore = create<ChatState>((set, get) => ({
         entry.key === key ? { ...entry, label: normalized } : entry,
       ),
       sessionLabels: { ...s.sessionLabels, [key]: normalized },
+    }));
+  },
+
+  // ── Pin session ──
+
+  setSessionPinned: async (key: string, pinned: boolean) => {
+    try {
+      const result = await hostApi.sessions.pin(key, pinned);
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to update session pin state');
+      }
+    } catch (err) {
+      console.error(`[setSessionPinned] API call failed for ${key}:`, err);
+      throw err;
+    }
+
+    set((s) => ({
+      sessions: s.sessions.map((entry) =>
+        entry.key === key ? { ...entry, pinned } : entry,
+      ),
     }));
   },
 

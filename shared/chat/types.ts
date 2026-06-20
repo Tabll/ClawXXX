@@ -137,7 +137,6 @@ export interface ContentBlock {
   name?: string;
   input?: unknown;
   arguments?: unknown;
-  content?: unknown;
 }
 
 /** Session from sessions.list */
@@ -154,6 +153,7 @@ export interface ChatSession {
   model?: string;
   modelProvider?: string;
   updatedAt?: number;
+  pinned?: boolean;
   status?: string;
   hasActiveRun?: boolean;
   totalTokens?: number;
@@ -240,6 +240,7 @@ export interface ChatState {
   newSession: () => void;
   deleteSession: (key: string) => Promise<void>;
   renameSession: (key: string, label: string) => Promise<void>;
+  setSessionPinned: (key: string, pinned: boolean) => Promise<void>;
   cleanupEmptySession: () => void;
   loadHistory: (quiet?: boolean) => Promise<void>;
   loadMoreHistory: () => Promise<void>;

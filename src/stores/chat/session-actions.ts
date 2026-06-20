@@ -140,7 +140,7 @@ function reconcileCurrentSessionIdleFromBackend(set: ChatSet, get: ChatGet, sess
 export function createSessionActions(
   set: ChatSet,
   get: ChatGet,
-): Pick<SessionHistoryActions, 'loadSessions' | 'switchSession' | 'newSession' | 'deleteSession' | 'renameSession' | 'cleanupEmptySession'> {
+): Pick<SessionHistoryActions, 'loadSessions' | 'switchSession' | 'newSession' | 'deleteSession' | 'renameSession' | 'setSessionPinned' | 'cleanupEmptySession'> {
   return {
     loadSessions: async () => {
       try {
@@ -178,6 +178,7 @@ export function createSessionActions(
             model: s.model ? String(s.model) : undefined,
             modelProvider: s.modelProvider ? String(s.modelProvider) : undefined,
             updatedAt: parseSessionUpdatedAtMs(s.updatedAt),
+            pinned: s.pinned === true,
             status: parseSessionStatus(s.status),
             hasActiveRun: typeof s.hasActiveRun === 'boolean' ? s.hasActiveRun : undefined,
             totalTokens: parseOptionalFiniteNumber(s.totalTokens),
@@ -479,6 +480,26 @@ export function createSessionActions(
           session.key === key ? { ...session, label: normalized } : session,
         ),
         sessionLabels: { ...s.sessionLabels, [key]: normalized },
+      }));
+    },
+
+    // ── Pin session ──
+
+    setSessionPinned: async (key: string, pinned: boolean) => {
+      try {
+        const result = await hostApi.sessions.pin(key, pinned);
+        if (!result.success) {
+          throw new Error(result.error || 'Failed to update session pin state');
+        }
+      } catch (err) {
+        console.error(`[setSessionPinned] IPC call failed for ${key}:`, err);
+        throw err;
+      }
+
+      set((s) => ({
+        sessions: s.sessions.map((session) =>
+          session.key === key ? { ...session, pinned } : session,
+        ),
       }));
     },
 

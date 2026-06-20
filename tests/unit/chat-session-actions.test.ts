@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const gatewayRpcMock = vi.fn();
 const sessionDeleteMock = vi.fn();
 const sessionRenameMock = vi.fn();
+const sessionPinMock = vi.fn();
 
 vi.mock('@/lib/host-api', () => ({
   hostApi: {
@@ -22,13 +23,14 @@ vi.mock('@/lib/host-api', () => ({
     sessions: {
       delete: (id: string) => sessionDeleteMock(id),
       rename: (id: string, title: string) => sessionRenameMock(id, title),
+      pin: (id: string, pinned: boolean) => sessionPinMock(id, pinned),
     },
   },
 }));
 
 type ChatLikeState = {
   currentSessionKey: string;
-  sessions: Array<{ key: string; displayName?: string; updatedAt?: number; status?: string; hasActiveRun?: boolean }>;
+  sessions: Array<{ key: string; displayName?: string; updatedAt?: number; pinned?: boolean; status?: string; hasActiveRun?: boolean }>;
   messages: Array<{ role: string; timestamp?: number; content?: unknown }>;
   sessionLabels: Record<string, string>;
   sessionLastActivity: Record<string, number>;
@@ -77,6 +79,7 @@ describe('chat session actions', () => {
     gatewayRpcMock.mockResolvedValue({ success: true });
     sessionDeleteMock.mockResolvedValue({ success: true });
     sessionRenameMock.mockResolvedValue({ success: true });
+    sessionPinMock.mockResolvedValue({ success: true });
   });
 
   it('switchSession preserves non-main session that has activity history', async () => {
@@ -165,6 +168,19 @@ describe('chat session actions', () => {
     nowSpy.mockRestore();
   });
 
+  it('setSessionPinned persists through hostApi and updates local sessions', async () => {
+    const { createSessionActions } = await import('@/stores/chat/session-actions');
+    const h = makeHarness({
+      sessions: [{ key: 'agent:foo:session-a', pinned: false }, { key: 'agent:foo:main' }],
+    });
+    const actions = createSessionActions(h.set as never, h.get as never);
+
+    await actions.setSessionPinned('agent:foo:session-a', true);
+
+    expect(sessionPinMock).toHaveBeenCalledWith('agent:foo:session-a', true);
+    expect(h.read().sessions.find((s) => s.key === 'agent:foo:session-a')?.pinned).toBe(true);
+  });
+
   it('seeds sessionLastActivity from backend updatedAt metadata', async () => {
     const { createSessionActions } = await import('@/stores/chat/session-actions');
     const h = makeHarness({
@@ -186,6 +202,7 @@ describe('chat session actions', () => {
             key: 'agent:main:cron:job-1',
             label: 'Cron: Drink water',
             updatedAt: 1773281731621,
+            pinned: true,
           },
         ],
       },
@@ -196,6 +213,7 @@ describe('chat session actions', () => {
     expect(h.read().sessionLastActivity['agent:main:main']).toBe(1773281700000);
     expect(h.read().sessionLastActivity['agent:main:cron:job-1']).toBe(1773281731621);
     expect(h.read().sessions.find((session) => session.key === 'agent:main:cron:job-1')?.updatedAt).toBe(1773281731621);
+    expect(h.read().sessions.find((session) => session.key === 'agent:main:cron:job-1')?.pinned).toBe(true);
   });
 
   it('clears stale current-run state when sessions.list reports the current session is idle', async () => {

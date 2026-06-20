@@ -18,6 +18,8 @@ import {
   ExternalLink,
   Trash2,
   Pencil,
+  Pin,
+  PinOff,
   Check,
   X,
   Moon,
@@ -89,7 +91,10 @@ function NavItem({ to, icon, label, badge, collapsed, onClick, testId }: NavItem
 }
 
 const INITIAL_NOW_MS = Date.now();
-const DEFAULT_EXPANDED_SESSION_BUCKETS: Record<SessionBucketKey, boolean> = {
+type SidebarSessionBucketKey = 'pinned' | SessionBucketKey;
+
+const DEFAULT_EXPANDED_SESSION_BUCKETS: Record<SidebarSessionBucketKey, boolean> = {
+  pinned: true,
   today: true,
   withinWeek: true,
   withinMonth: false,
@@ -119,6 +124,7 @@ export function Sidebar() {
   const switchSession = useChatStore((s) => s.switchSession);
   const deleteSession = useChatStore((s) => s.deleteSession);
   const renameSession = useChatStore((s) => s.renameSession);
+  const setSessionPinned = useChatStore((s) => s.setSessionPinned);
   const loadSessions = useChatStore((s) => s.loadSessions);
   const loadHistory = useChatStore((s) => s.loadHistory);
   const handleNewChat = useNewChatAction();
@@ -185,8 +191,16 @@ export function Sidebar() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [editingSessionKey, setEditingSessionKey] = useState<string | null>(null);
   const [editingLabel, setEditingLabel] = useState('');
+  const [sessionContextMenu, setSessionContextMenu] = useState<{
+    key: string;
+    label: string;
+    pinned: boolean;
+    x: number;
+    y: number;
+  } | null>(null);
+  const sessionContextMenuRef = useRef<HTMLDivElement | null>(null);
   const [nowMs, setNowMs] = useState(INITIAL_NOW_MS);
-  const [expandedSessionBuckets, setExpandedSessionBuckets] = useState<Record<SessionBucketKey, boolean>>(
+  const [expandedSessionBuckets, setExpandedSessionBuckets] = useState<Record<SidebarSessionBucketKey, boolean>>(
     () => ({ ...DEFAULT_EXPANDED_SESSION_BUCKETS }),
   );
 
@@ -207,7 +221,40 @@ export function Sidebar() {
     return () => window.clearTimeout(timer);
   }, [deleteDialogOpen, sessionToDelete]);
 
+  const closeSessionContextMenu = useCallback(() => {
+    setSessionContextMenu(null);
+  }, []);
+
+  useEffect(() => {
+    if (!sessionContextMenu) return;
+
+    const handlePointerDown = (event: PointerEvent) => {
+      if (
+        event.target instanceof Node
+        && sessionContextMenuRef.current?.contains(event.target)
+      ) {
+        return;
+      }
+      closeSessionContextMenu();
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') closeSessionContextMenu();
+    };
+
+    window.addEventListener('pointerdown', handlePointerDown);
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('resize', closeSessionContextMenu);
+    window.addEventListener('scroll', closeSessionContextMenu, true);
+    return () => {
+      window.removeEventListener('pointerdown', handlePointerDown);
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('resize', closeSessionContextMenu);
+      window.removeEventListener('scroll', closeSessionContextMenu, true);
+    };
+  }, [closeSessionContextMenu, sessionContextMenu]);
+
   const handleStartRename = (key: string, currentLabel: string) => {
+    closeSessionContextMenu();
     setEditingSessionKey(key);
     setEditingLabel(currentLabel);
   };
@@ -238,7 +285,35 @@ export function Sidebar() {
     }
   };
 
-  const toggleSessionBucket = (bucketKey: SessionBucketKey) => {
+  const handleSessionContextMenu = (
+    event: React.MouseEvent,
+    key: string,
+    label: string,
+    pinned: boolean,
+  ) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setSessionContextMenu({
+      key,
+      label,
+      pinned,
+      x: event.clientX,
+      y: event.clientY,
+    });
+  };
+
+  const handleContextMenuPinToggle = async () => {
+    const target = sessionContextMenu;
+    if (!target) return;
+    closeSessionContextMenu();
+    try {
+      await setSessionPinned(target.key, !target.pinned);
+    } catch (err) {
+      console.error('Failed to update session pin state:', err);
+    }
+  };
+
+  const toggleSessionBucket = (bucketKey: SidebarSessionBucketKey) => {
     setExpandedSessionBuckets((current) => ({
       ...current,
       [bucketKey]: !current[bucketKey],
@@ -288,16 +363,17 @@ export function Sidebar() {
     () => Object.fromEntries((agents ?? []).map((agent) => [agent.id, agent.name])),
     [agents],
   );
-  const sessionBuckets: Array<{ key: SessionBucketKey; label: string; sessions: typeof sessions }> = [
+  const dateSessionBuckets: Array<{ key: SessionBucketKey; label: string; sessions: typeof sessions }> = [
     { key: 'today', label: t('chat:historyBuckets.today'), sessions: [] },
     { key: 'withinWeek', label: t('chat:historyBuckets.withinWeek'), sessions: [] },
     { key: 'withinMonth', label: t('chat:historyBuckets.withinMonth'), sessions: [] },
     { key: 'older', label: t('chat:historyBuckets.older'), sessions: [] },
   ];
-  const sessionBucketMap = Object.fromEntries(sessionBuckets.map((bucket) => [bucket.key, bucket])) as Record<
+  const sessionBucketMap = Object.fromEntries(dateSessionBuckets.map((bucket) => [bucket.key, bucket])) as Record<
     SessionBucketKey,
-    (typeof sessionBuckets)[number]
+    (typeof dateSessionBuckets)[number]
   >;
+  const pinnedSessions: typeof sessions = [];
 
   for (const { session, activityMs } of sessions
     .map((session) => ({
@@ -305,9 +381,19 @@ export function Sidebar() {
       activityMs: getSessionActivityMs(session, sessionLastActivity),
     }))
     .sort((a, b) => b.activityMs - a.activityMs)) {
+    if (session.pinned) {
+      pinnedSessions.push(session);
+      continue;
+    }
     const bucketKey = getSessionBucket(activityMs, nowMs);
     sessionBucketMap[bucketKey].sessions.push(session);
   }
+  const sessionBuckets: Array<{ key: SidebarSessionBucketKey; label: string; sessions: typeof sessions }> = [
+    ...(pinnedSessions.length > 0
+      ? [{ key: 'pinned' as const, label: t('chat:historyBuckets.pinned'), sessions: pinnedSessions }]
+      : []),
+    ...dateSessionBuckets,
+  ];
 
   const hiddenRoutes = rendererExtensionRegistry.getHiddenRoutes();
   const extraNavItems = rendererExtensionRegistry.getExtraNavItems();
@@ -333,6 +419,13 @@ export function Sidebar() {
       testId: item.testId,
     })),
   ];
+
+  const contextMenuLeft = sessionContextMenu
+    ? Math.min(sessionContextMenu.x, Math.max(8, window.innerWidth - 188))
+    : 0;
+  const contextMenuTop = sessionContextMenu
+    ? Math.min(sessionContextMenu.y, Math.max(8, window.innerHeight - 92))
+    : 0;
 
   return (
     <aside
@@ -440,10 +533,21 @@ export function Sidebar() {
                   const isEditing = editingSessionKey === s.key;
                   const sessionLabel = getSessionLabel(s.key, s.displayName, s.label);
                   return (
-                    <div key={s.key} className="group relative flex items-center">
+                    <div
+                      key={s.key}
+                      data-testid={`sidebar-session-${s.key}`}
+                      className="group relative flex items-center"
+                      onContextMenu={(event) => handleSessionContextMenu(
+                        event,
+                        s.key,
+                        sessionLabel,
+                        Boolean(s.pinned),
+                      )}
+                    >
                       {isEditing ? (
                         <div className="flex w-full items-center gap-1 px-1.5 py-1">
                           <Input
+                            data-testid="sidebar-session-rename-input"
                             autoFocus
                             value={editingLabel}
                             onChange={(e) => setEditingLabel(e.target.value)}
@@ -491,6 +595,12 @@ export function Sidebar() {
                                 {agentName}
                               </span>
                               <span className="truncate">{sessionLabel}</span>
+                              {s.pinned && (
+                                <Pin
+                                  aria-hidden="true"
+                                  className="h-3 w-3 shrink-0 text-muted-foreground/65"
+                                />
+                              )}
                             </div>
                           </button>
                           <div className={cn(
@@ -620,6 +730,53 @@ export function Sidebar() {
             aria-hidden
             className="pointer-events-none absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-transparent transition-colors group-hover:bg-primary/40"
           />
+        </div>
+      )}
+
+      {sessionContextMenu && (
+        <div
+          ref={sessionContextMenuRef}
+          role="menu"
+          aria-label={t('common:sidebar.sessionContextMenu', { label: sessionContextMenu.label })}
+          data-testid="sidebar-session-context-menu"
+          className={cn(
+            'fixed z-50 w-44 rounded-lg border border-border/70 bg-surface-modal/95 p-1',
+            'text-meta text-foreground shadow-xl shadow-black/10 backdrop-blur-xl dark:shadow-black/35',
+          )}
+          style={{ left: contextMenuLeft, top: contextMenuTop }}
+          onContextMenu={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+          }}
+        >
+          <button
+            type="button"
+            role="menuitem"
+            data-testid={`sidebar-session-context-pin-${sessionContextMenu.key}`}
+            className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-foreground/85 transition-colors hover:bg-black/5 hover:text-foreground dark:hover:bg-white/10"
+            onClick={() => void handleContextMenuPinToggle()}
+          >
+            {sessionContextMenu.pinned ? (
+              <PinOff className="h-3.5 w-3.5 shrink-0" />
+            ) : (
+              <Pin className="h-3.5 w-3.5 shrink-0" />
+            )}
+            <span className="truncate">
+              {sessionContextMenu.pinned
+                ? t('common:sidebar.unpinSession')
+                : t('common:sidebar.pinSession')}
+            </span>
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            data-testid={`sidebar-session-context-rename-${sessionContextMenu.key}`}
+            className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-foreground/85 transition-colors hover:bg-black/5 hover:text-foreground dark:hover:bg-white/10"
+            onClick={() => handleStartRename(sessionContextMenu.key, sessionContextMenu.label)}
+          >
+            <Pencil className="h-3.5 w-3.5 shrink-0" />
+            <span className="truncate">{t('common:sidebar.renameSession')}</span>
+          </button>
         </div>
       )}
 

@@ -1,0 +1,58 @@
+---
+id: sidebar-session-context-menu
+title: Sidebar conversation context menu pin and rename
+scenario: gateway-backend-communication
+taskType: runtime-bridge
+intent: Let users right-click sidebar conversation history items to pin/unpin them at the top of history and start the existing rename flow without bypassing the Main-owned host API boundary.
+touchedAreas:
+  - harness/specs/tasks/sidebar-session-context-menu.md
+  - src/components/layout/Sidebar.tsx
+  - src/components/settings/ProvidersSettings.tsx
+  - src/stores/chat.ts
+  - src/stores/chat/session-actions.ts
+  - src/lib/host-api.ts
+  - shared/chat/types.ts
+  - shared/host-api/contract.ts
+  - electron/services/sessions-api.ts
+  - shared/i18n/locales/*/common.json
+  - shared/i18n/locales/*/chat.json
+  - README.md
+  - README.zh-CN.md
+  - README.ja-JP.md
+  - README.ru-RU.md
+  - tests/unit/chat-session-actions.test.ts
+  - tests/unit/chat-store-session-label-fetch.test.ts
+  - tests/unit/host-api-facade.test.ts
+  - tests/unit/host-services.test.ts
+  - tests/e2e/chat-new-session-date.spec.ts
+expectedUserBehavior:
+  - Right-clicking a visible sidebar conversation opens a localized context menu.
+  - The context menu offers Pin to top for unpinned conversations and Unpin for pinned conversations.
+  - Pinned conversations move into a Pinned bucket above date buckets and remain visible regardless of activity date.
+  - Unpinned conversations return to the normal date buckets.
+  - The context menu offers Rename and reuses the existing inline rename input, save, cancel, Enter, Escape, and blur behavior.
+  - Pin state is persisted to the conversation's sessions.json metadata through the typed Main sessions service.
+requiredProfiles:
+  - fast
+  - comms
+requiredRules:
+  - renderer-main-boundary
+  - backend-communication-boundary
+  - api-client-transport-policy
+requiredTests:
+  - tests/unit/chat-session-actions.test.ts
+  - tests/unit/host-services.test.ts
+  - tests/e2e/chat-new-session-date.spec.ts
+acceptance:
+  - Renderer code continues to call `src/lib/host-api.ts`; no new direct `window.electron.ipcRenderer.invoke(...)` or direct Gateway HTTP calls are added.
+  - Main validates agent ids parsed from session keys before writing sessions.json.
+  - The existing session rename action remains the only rename implementation used by Sidebar.
+  - Pin metadata supports both array-shaped and object-keyed sessions.json entries.
+  - Local store state updates immediately after a successful pin/unpin so the sidebar reorders without requiring a Gateway refresh.
+docs:
+  required: true
+---
+
+Use this task spec for the sidebar conversation history context menu that adds
+pin/unpin and rename actions while keeping session metadata writes in the
+typed Electron Main host service.

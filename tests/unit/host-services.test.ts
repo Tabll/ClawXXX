@@ -1,4 +1,4 @@
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -952,6 +952,7 @@ describe('host services', () => {
           sessionKey: 'agent:main:abc123',
           firstUserText: 'Hello from transcript',
           lastTimestamp: 1001000,
+          pinned: false,
         }],
       });
     await expect(sessionsApi.history({ sessionKey: 'agent:main:abc123', limit: 5 }))
@@ -962,5 +963,54 @@ describe('host services', () => {
           { role: 'assistant', content: 'Hi', timestamp: 1001 },
         ],
       });
+  });
+
+  it('pins session metadata through the typed sessions service', async () => {
+    const sessionsDir = join(testOpenClawConfigDir, 'agents', 'main', 'sessions');
+    mkdirSync(sessionsDir, { recursive: true });
+    const sessionsJsonPath = join(sessionsDir, 'sessions.json');
+    writeFileSync(sessionsJsonPath, JSON.stringify({
+      sessions: [
+        {
+          key: 'agent:main:array-session',
+          file: 'array-session.jsonl',
+        },
+      ],
+      'agent:main:object-session': {
+        sessionFile: 'object-session.jsonl',
+      },
+    }));
+    const { createSessionsApi } = await import('@electron/services/sessions-api');
+    const sessionsApi = createSessionsApi();
+
+    await expect(sessionsApi.pin({ id: 'agent:main:array-session', pinned: true }))
+      .resolves.toEqual({ success: true });
+    await expect(sessionsApi.pin({ id: 'agent:main:object-session', pinned: true }))
+      .resolves.toEqual({ success: true });
+
+    const afterPin = JSON.parse(readFileSync(sessionsJsonPath, 'utf8')) as {
+      sessions: Array<{ key: string; pinned?: boolean }>;
+      [key: string]: unknown;
+    };
+    expect(afterPin.sessions.find((entry) => entry.key === 'agent:main:array-session')?.pinned).toBe(true);
+    expect((afterPin['agent:main:object-session'] as { pinned?: boolean }).pinned).toBe(true);
+
+    await expect(sessionsApi.summaries({ sessionKeys: ['agent:main:array-session'] }))
+      .resolves.toEqual({
+        success: true,
+        summaries: [{
+          sessionKey: 'agent:main:array-session',
+          firstUserText: null,
+          lastTimestamp: null,
+          pinned: true,
+        }],
+      });
+
+    await expect(sessionsApi.pin({ id: 'agent:main:array-session', pinned: false }))
+      .resolves.toEqual({ success: true });
+    const afterUnpin = JSON.parse(readFileSync(sessionsJsonPath, 'utf8')) as {
+      sessions: Array<{ key: string; pinned?: boolean }>;
+    };
+    expect(afterUnpin.sessions.find((entry) => entry.key === 'agent:main:array-session')?.pinned).toBe(false);
   });
 });

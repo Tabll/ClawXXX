@@ -252,6 +252,7 @@
         }
     },
     "historyBuckets": {
+        "pinned": "固定済み",
         "today": "今日",
         "withinWeek": "過去7日間",
         "withinMonth": "過去30日間",
