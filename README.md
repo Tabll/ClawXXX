@@ -102,7 +102,7 @@ Complete the entire setup—from installation to your first AI interaction—thr
 Communicate with AI agents through a modern chat experience. Support for multiple conversation contexts, message history, rich content rendering with Markdown (including GitHub-flavored tables and KaTeX-powered LaTeX math: `$inline$`, `$$block$$`, `\(inline\)`, and `\[block\]`), and direct `@agent` routing in the main composer for multi-agent setups.
 Skills you insert from the composer appear as `/skill-name` chips; click a chip to open the preview sidebar and read that skill's `SKILL.md`.
 Right-click a conversation in the sidebar history to pin it to the top or rename it inline.
-The sidebar also includes conversation search and a More menu entry for batch operations.
+The sidebar history header also includes conversation search and a More menu entry for multi-select batch deletion.
 When you target another agent with `@agent`, ClawX switches into that agent's own conversation context directly instead of relaying through the default agent. Agent workspaces stay separate by default, and stronger isolation depends on OpenClaw sandbox settings.
 The chat composer can switch the active conversation's model and thinking level from the configured OpenClaw runtime catalog without changing the agent's saved default.
 Each agent can also override its own `provider/model` runtime setting; agents without overrides continue inheriting the global default model.

@@ -3,7 +3,7 @@ id: sidebar-session-context-menu
 title: Sidebar conversation history actions
 scenario: gateway-backend-communication
 taskType: runtime-bridge
-intent: Let users act on sidebar conversation history through context actions, header search, and the More menu without bypassing the Main-owned host API boundary.
+intent: Let users act on sidebar conversation history through context actions, the active history-group header search, and the More menu without bypassing the Main-owned host API boundary.
 touchedAreas:
   - harness/specs/tasks/sidebar-session-context-menu.md
   - src/components/layout/Sidebar.tsx
@@ -32,10 +32,13 @@ expectedUserBehavior:
   - Unpinned conversations return to the normal date buckets.
   - The context menu offers Rename and reuses the existing inline rename input, save, cancel, Enter, Escape, and blur behavior.
   - Pin state is persisted to the conversation's sessions.json metadata through the typed Main sessions service.
-  - The sidebar header exposes a localized search button that opens a conversation search dialog.
+  - The top visible sidebar history group header exposes a localized search button that opens a conversation search dialog.
   - Typing a keyword filters conversation history by visible title, stored title/display name, agent, or session key.
   - Clicking a search result switches to that conversation and returns to the chat route.
-  - The sidebar header exposes a localized More settings button with a Batch operation option.
+  - The top visible sidebar history group header exposes a localized More settings button with a Batch operation option.
+  - When pinned conversations exist, the Pinned bucket remains sticky above the scrolling date buckets.
+  - Batch operation mode changes history rows into multi-select rows.
+  - Users can select multiple conversations, confirm once, and delete the selected conversations in sequence.
 requiredProfiles:
   - fast
   - comms
@@ -54,7 +57,8 @@ acceptance:
   - Pin metadata supports both array-shaped and object-keyed sessions.json entries.
   - Local store state updates immediately after a successful pin/unpin so the sidebar reorders without requiring a Gateway refresh.
   - Search reads the already loaded sidebar session list and does not add renderer-side direct Gateway HTTP or IPC calls.
-  - The Batch operation entry is present in the More settings menu for the initial batch-workflow affordance.
+  - The Batch operation entry switches the sidebar into a selectable batch workflow with delete and exit controls.
+  - Batch deletion reuses the existing `deleteSession` action and typed Main sessions delete service.
 docs:
   required: true
 ---

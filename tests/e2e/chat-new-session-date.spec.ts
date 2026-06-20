@@ -266,7 +266,11 @@ test.describe('ClawX chat session date grouping', () => {
       await expect(page.getByTestId('sidebar-session-context-menu')).toBeVisible();
       await page.getByTestId(`sidebar-session-context-pin-${sessionKey}`).click();
 
-      await expect(page.getByTestId('session-bucket-pinned').getByText('Pin candidate')).toBeVisible();
+      const pinnedBucket = page.getByTestId('session-bucket-pinned');
+      await expect(pinnedBucket).toHaveClass(/sticky/);
+      await expect(pinnedBucket.getByTestId('sidebar-search-button')).toBeVisible();
+      await expect(pinnedBucket.getByTestId('sidebar-more-button')).toBeVisible();
+      await expect(pinnedBucket.getByText('Pin candidate')).toBeVisible();
 
       await page.getByTestId(`sidebar-session-${sessionKey}`).click({ button: 'right' });
       await page.getByTestId(`sidebar-session-context-rename-${sessionKey}`).click();
@@ -279,7 +283,7 @@ test.describe('ClawX chat session date grouping', () => {
     }
   });
 
-  test('sidebar header opens more settings and searches sessions', async ({ launchElectronApp }) => {
+  test('history header searches sessions and supports batch delete', async ({ launchElectronApp }) => {
     const app = await launchElectronApp({ skipSetup: true });
     const nowMs = Date.now();
     const searchSessionKey = `agent:main:session-${nowMs - 2 * DAY_MS}`;
@@ -316,6 +320,12 @@ test.describe('ClawX chat session date grouping', () => {
           },
         },
         hostApi: {
+          [stableStringify(['sessions', 'delete', { id: searchSessionKey }])]: {
+            success: true,
+          },
+          [stableStringify(['sessions', 'delete', { id: otherSessionKey }])]: {
+            success: true,
+          },
           [stableStringify(['sessions', 'summaries', {
             sessionKeys: sessions.map((session) => session.key),
             metadataOnly: true,
@@ -358,13 +368,10 @@ test.describe('ClawX chat session date grouping', () => {
 
       await expect(page.getByTestId('session-bucket-withinWeek').getByText('Roadmap research')).toBeVisible();
 
-      await page.getByTestId('sidebar-more-button').click();
-      await expect(page.getByTestId('sidebar-more-menu')).toBeVisible();
-      await expect(page.getByTestId('sidebar-batch-operation-option')).toHaveText('Batch operation');
-      await page.getByTestId('sidebar-batch-operation-option').click();
-      await expect(page.getByTestId('sidebar-more-menu')).toHaveCount(0);
-
-      await page.getByTestId('sidebar-search-button').click();
+      const topHistoryBucket = page.getByTestId('session-bucket-today');
+      await expect(topHistoryBucket.getByTestId('sidebar-search-button')).toBeVisible();
+      await expect(topHistoryBucket.getByTestId('sidebar-more-button')).toBeVisible();
+      await topHistoryBucket.getByTestId('sidebar-search-button').click();
       await expect(page.getByTestId('sidebar-session-search-dialog')).toBeVisible();
       await page.getByTestId('sidebar-session-search-input').fill('roadmap');
 
@@ -377,6 +384,26 @@ test.describe('ClawX chat session date grouping', () => {
 
       await expect(page.getByTestId('sidebar-session-search-dialog')).toHaveCount(0);
       await expect(page.getByTestId(`sidebar-session-${searchSessionKey}`).locator('button').first()).toHaveClass(/clawx-nav-item-active/);
+
+      await topHistoryBucket.getByTestId('sidebar-more-button').click();
+      await expect(page.getByTestId('sidebar-more-menu')).toBeVisible();
+      await expect(page.getByTestId('sidebar-batch-operation-option')).toHaveText('Batch operation');
+      await page.getByTestId('sidebar-batch-operation-option').click();
+      await expect(page.getByTestId('sidebar-more-menu')).toHaveCount(0);
+      await expect(page.getByTestId('sidebar-batch-toolbar')).toBeVisible();
+      await expect(page.getByTestId('sidebar-batch-selected-count')).toHaveText('0 selected');
+
+      await page.getByTestId(`sidebar-session-select-${searchSessionKey}`).check();
+      await page.getByTestId(`sidebar-session-select-${otherSessionKey}`).check();
+      await expect(page.getByTestId('sidebar-batch-selected-count')).toHaveText('2 selected');
+
+      await page.getByTestId('sidebar-batch-delete-button').click();
+      await expect(page.getByText('Delete 2 selected conversations?')).toBeVisible();
+      await page.getByTestId('confirm-dialog-confirm-button').click();
+
+      await expect(page.getByTestId(`sidebar-session-${searchSessionKey}`)).toHaveCount(0);
+      await expect(page.getByTestId(`sidebar-session-${otherSessionKey}`)).toHaveCount(0);
+      await expect(page.getByTestId('sidebar-batch-toolbar')).toHaveCount(0);
     } finally {
       await closeElectronApp(app);
     }

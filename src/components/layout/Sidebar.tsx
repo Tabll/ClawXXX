@@ -212,6 +212,9 @@ export function Sidebar() {
   const sidebarMoreMenuRef = useRef<HTMLDivElement | null>(null);
   const [sessionSearchOpen, setSessionSearchOpen] = useState(false);
   const [sessionSearchQuery, setSessionSearchQuery] = useState('');
+  const [batchMode, setBatchMode] = useState(false);
+  const [selectedSessionKeys, setSelectedSessionKeys] = useState<Set<string>>(() => new Set());
+  const [batchDeleteDialogOpen, setBatchDeleteDialogOpen] = useState(false);
   const [nowMs, setNowMs] = useState(INITIAL_NOW_MS);
   const [expandedSessionBuckets, setExpandedSessionBuckets] = useState<Record<SidebarSessionBucketKey, boolean>>(
     () => ({ ...DEFAULT_EXPANDED_SESSION_BUCKETS }),
@@ -233,6 +236,14 @@ export function Sidebar() {
     const timer = window.setTimeout(() => setSessionToDelete(null), 160);
     return () => window.clearTimeout(timer);
   }, [deleteDialogOpen, sessionToDelete]);
+
+  useEffect(() => {
+    const availableSessionKeys = new Set(sessions.map((session) => session.key));
+    setSelectedSessionKeys((current) => {
+      const next = new Set([...current].filter((key) => availableSessionKeys.has(key)));
+      return next.size === current.size ? current : next;
+    });
+  }, [sessions]);
 
   const closeSessionContextMenu = useCallback(() => {
     setSessionContextMenu(null);
@@ -338,6 +349,7 @@ export function Sidebar() {
   ) => {
     event.preventDefault();
     event.stopPropagation();
+    if (batchMode) return;
     setSessionContextMenu({
       key,
       label,
@@ -360,6 +372,55 @@ export function Sidebar() {
     setSessionSearchOpen(open);
     if (!open) setSessionSearchQuery('');
   }, []);
+
+  const enterBatchMode = useCallback(() => {
+    closeSidebarMoreMenu();
+    closeSessionContextMenu();
+    setEditingSessionKey(null);
+    setSelectedSessionKeys(new Set());
+    setExpandedSessionBuckets({
+      pinned: true,
+      today: true,
+      withinWeek: true,
+      withinMonth: true,
+      older: true,
+    });
+    setBatchMode(true);
+  }, [closeSessionContextMenu, closeSidebarMoreMenu]);
+
+  const exitBatchMode = useCallback(() => {
+    setBatchMode(false);
+    setSelectedSessionKeys(new Set());
+    setBatchDeleteDialogOpen(false);
+  }, []);
+
+  const toggleBatchSelection = useCallback((sessionKey: string) => {
+    setSelectedSessionKeys((current) => {
+      const next = new Set(current);
+      if (next.has(sessionKey)) {
+        next.delete(sessionKey);
+      } else {
+        next.add(sessionKey);
+      }
+      return next;
+    });
+  }, []);
+
+  const handleBatchDeleteConfirm = async () => {
+    const sessionKeys = [...selectedSessionKeys];
+    if (sessionKeys.length === 0) return;
+    try {
+      for (const sessionKey of sessionKeys) {
+        await deleteSession(sessionKey);
+      }
+      if (sessionKeys.includes(currentSessionKey)) navigate('/');
+      exitBatchMode();
+    } catch (err) {
+      console.error('Failed to batch delete sessions:', err);
+    } finally {
+      setBatchDeleteDialogOpen(false);
+    }
+  };
 
   const handleContextMenuPinToggle = async () => {
     const target = sessionContextMenu;
@@ -530,6 +591,234 @@ export function Sidebar() {
   const contextMenuTop = sessionContextMenu
     ? Math.min(sessionContextMenu.y, Math.max(8, window.innerHeight - 92))
     : 0;
+  const firstSessionBucketKey = sessionBuckets[0]?.key;
+  const selectedSessionCount = selectedSessionKeys.size;
+
+  const renderSessionHistoryControls = () => (
+    batchMode ? (
+      <div
+        data-testid="sidebar-batch-toolbar"
+        className="flex shrink-0 items-center gap-1"
+      >
+        <span
+          data-testid="sidebar-batch-selected-count"
+          className="max-w-20 truncate px-1 text-2xs font-medium text-muted-foreground"
+        >
+          {t('common:sidebar.selectedSessionsCount', { count: selectedSessionCount })}
+        </span>
+        <button
+          type="button"
+          data-testid="sidebar-batch-delete-button"
+          aria-label={t('common:sidebar.batchDeleteSessions')}
+          disabled={selectedSessionCount === 0}
+          className={cn(
+            'clawx-icon-button h-6 w-6 shrink-0 p-0.5',
+            selectedSessionCount > 0
+              ? 'hover:bg-destructive/10 hover:text-destructive'
+              : 'cursor-not-allowed opacity-45 hover:bg-transparent hover:text-muted-foreground dark:hover:bg-transparent',
+          )}
+          onClick={() => {
+            if (selectedSessionCount > 0) setBatchDeleteDialogOpen(true);
+          }}
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+        </button>
+        <button
+          type="button"
+          data-testid="sidebar-batch-cancel-button"
+          aria-label={t('common:sidebar.exitBatchOperation')}
+          className="clawx-icon-button h-6 w-6 shrink-0 p-0.5"
+          onClick={exitBatchMode}
+        >
+          <X className="h-3.5 w-3.5" />
+        </button>
+      </div>
+    ) : (
+      <div className="flex shrink-0 items-center gap-1">
+        <button
+          type="button"
+          data-testid="sidebar-search-button"
+          aria-label={t('common:sidebar.searchSessions')}
+          className="no-drag clawx-icon-button h-6 w-6 shrink-0"
+          onClick={() => handleSessionSearchOpenChange(true)}
+        >
+          <Search className="h-3.5 w-3.5" />
+        </button>
+        <div ref={sidebarMoreMenuRef} className="relative">
+          <button
+            type="button"
+            data-testid="sidebar-more-button"
+            aria-label={t('common:sidebar.moreSettings')}
+            aria-haspopup="menu"
+            aria-expanded={sidebarMoreMenuOpen}
+            className="no-drag clawx-icon-button h-6 w-6 shrink-0"
+            onClick={() => setSidebarMoreMenuOpen((open) => !open)}
+          >
+            <MoreHorizontal className="h-3.5 w-3.5" />
+          </button>
+          {sidebarMoreMenuOpen && (
+            <div
+              role="menu"
+              data-testid="sidebar-more-menu"
+              aria-label={t('common:sidebar.moreSettings')}
+              className={cn(
+                'absolute right-0 top-full z-40 mt-1 w-44 rounded-lg border border-border/70 bg-surface-modal/95 p-1',
+                'text-meta text-foreground shadow-xl shadow-black/10 backdrop-blur-xl dark:shadow-black/35',
+              )}
+            >
+              <button
+                type="button"
+                role="menuitem"
+                data-testid="sidebar-batch-operation-option"
+                className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-foreground/85 transition-colors hover:bg-black/5 hover:text-foreground dark:hover:bg-white/10"
+                onClick={enterBatchMode}
+              >
+                <ListChecks className="h-3.5 w-3.5 shrink-0" />
+                <span className="truncate">{t('common:sidebar.batchOperation')}</span>
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    )
+  );
+
+  const renderSessionRow = (s: (typeof sessions)[number]) => {
+    const agentId = getAgentIdFromSessionKey(s.key);
+    const agentName = agentNameById[agentId] || agentId;
+    const isEditing = editingSessionKey === s.key;
+    const sessionLabel = getSessionLabel(s.key, s.displayName, s.label);
+    const isBatchSelected = selectedSessionKeys.has(s.key);
+
+    return (
+      <div
+        key={s.key}
+        data-testid={`sidebar-session-${s.key}`}
+        className="group relative flex items-center"
+        onContextMenu={(event) => handleSessionContextMenu(
+          event,
+          s.key,
+          sessionLabel,
+          Boolean(s.pinned),
+        )}
+      >
+        {batchMode ? (
+          <label
+            className={cn(
+              'clawx-nav-item w-full cursor-pointer text-left text-meta',
+              isBatchSelected
+                ? 'clawx-nav-item-active font-medium'
+                : 'text-foreground/75',
+            )}
+          >
+            <input
+              type="checkbox"
+              data-testid={`sidebar-session-select-${s.key}`}
+              checked={isBatchSelected}
+              onChange={() => toggleBatchSelection(s.key)}
+              aria-label={t('common:sidebar.toggleSessionSelection', { label: sessionLabel })}
+              className="h-3.5 w-3.5 shrink-0 rounded border-border accent-primary"
+            />
+            <div className="flex min-w-0 flex-1 items-center gap-2">
+              <span className="shrink-0 rounded-lg bg-surface-input px-2 py-0.5 text-2xs font-medium text-muted-foreground">
+                {agentName}
+              </span>
+              <span className="truncate">{sessionLabel}</span>
+              {s.pinned && (
+                <Pin
+                  aria-hidden="true"
+                  className="h-3 w-3 shrink-0 text-muted-foreground/65"
+                />
+              )}
+            </div>
+          </label>
+        ) : isEditing ? (
+          <div className="flex w-full items-center gap-1 px-1.5 py-1">
+            <Input
+              data-testid="sidebar-session-rename-input"
+              autoFocus
+              value={editingLabel}
+              onChange={(e) => setEditingLabel(e.target.value)}
+              onKeyDown={handleRenameKeyDown}
+              onBlur={() => void handleRenameSubmit()}
+              className="h-7 min-w-0 flex-1 text-meta"
+              aria-label={t('common:sidebar.renameSessionPlaceholder')}
+            />
+            <button
+              aria-label={t('common:sidebar.saveSessionRename')}
+              onMouseDown={(e) => { e.preventDefault(); void handleRenameSubmit(); }}
+              className="clawx-icon-button h-6 w-6 shrink-0 p-0.5"
+            >
+              <Check className="h-3.5 w-3.5" />
+            </button>
+            <button
+              aria-label={t('common:sidebar.cancelSessionRename')}
+              onMouseDown={(e) => { e.preventDefault(); handleRenameCancel(); }}
+              className="clawx-icon-button h-6 w-6 shrink-0 p-0.5 hover:text-destructive"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        ) : (
+          <>
+            <button
+              onClick={() => openSession(s.key)}
+              onDoubleClick={() => handleStartRename(s.key, sessionLabel)}
+              className={cn(
+                'clawx-nav-item w-full pr-16 text-left text-meta',
+                isOnChat && currentSessionKey === s.key
+                  ? 'clawx-nav-item-active font-medium'
+                  : 'text-foreground/75',
+              )}
+            >
+              <div className="flex min-w-0 items-center gap-2">
+                <span className="shrink-0 rounded-lg bg-surface-input px-2 py-0.5 text-2xs font-medium text-muted-foreground">
+                  {agentName}
+                </span>
+                <span className="truncate">{sessionLabel}</span>
+                {s.pinned && (
+                  <Pin
+                    aria-hidden="true"
+                    className="h-3 w-3 shrink-0 text-muted-foreground/65"
+                  />
+                )}
+              </div>
+            </button>
+            <div className={cn(
+              'absolute right-1 flex items-center gap-0.5 transition-opacity',
+              'opacity-0 group-hover:opacity-100',
+            )}>
+              <button
+                aria-label={t('common:sidebar.renameSession')}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleStartRename(s.key, sessionLabel);
+                }}
+                className="clawx-icon-button h-6 w-6 p-0.5"
+              >
+                <Pencil className="h-3.5 w-3.5" />
+              </button>
+              <button
+                data-testid={`sidebar-session-delete-${s.key}`}
+                aria-label={t('common:sidebar.deleteSession')}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setSessionToDelete({
+                    key: s.key,
+                    label: sessionLabel,
+                  });
+                  setDeleteDialogOpen(true);
+                }}
+                className="clawx-icon-button h-6 w-6 p-0.5 hover:bg-destructive/10 hover:text-destructive"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    );
+  };
 
   return (
     <aside
@@ -564,69 +853,19 @@ export function Sidebar() {
             </span>
           </div>
         )}
-        <div className="flex shrink-0 items-center gap-1">
-          {!sidebarCollapsed && (
-            <>
-              <button
-                type="button"
-                data-testid="sidebar-search-button"
-                aria-label={t('common:sidebar.searchSessions')}
-                className="no-drag clawx-icon-button h-7 w-7 shrink-0"
-                onClick={() => handleSessionSearchOpenChange(true)}
-              >
-                <Search className="h-4 w-4" />
-              </button>
-              <div ref={sidebarMoreMenuRef} className="relative">
-                <button
-                  type="button"
-                  data-testid="sidebar-more-button"
-                  aria-label={t('common:sidebar.moreSettings')}
-                  aria-haspopup="menu"
-                  aria-expanded={sidebarMoreMenuOpen}
-                  className="no-drag clawx-icon-button h-7 w-7 shrink-0"
-                  onClick={() => setSidebarMoreMenuOpen((open) => !open)}
-                >
-                  <MoreHorizontal className="h-4 w-4" />
-                </button>
-                {sidebarMoreMenuOpen && (
-                  <div
-                    role="menu"
-                    data-testid="sidebar-more-menu"
-                    aria-label={t('common:sidebar.moreSettings')}
-                    className={cn(
-                      'absolute right-0 top-full z-40 mt-1 w-44 rounded-lg border border-border/70 bg-surface-modal/95 p-1',
-                      'text-meta text-foreground shadow-xl shadow-black/10 backdrop-blur-xl dark:shadow-black/35',
-                    )}
-                  >
-                    <button
-                      type="button"
-                      role="menuitem"
-                      data-testid="sidebar-batch-operation-option"
-                      className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-foreground/85 transition-colors hover:bg-black/5 hover:text-foreground dark:hover:bg-white/10"
-                      onClick={closeSidebarMoreMenu}
-                    >
-                      <ListChecks className="h-3.5 w-3.5 shrink-0" />
-                      <span className="truncate">{t('common:sidebar.batchOperation')}</span>
-                    </button>
-                  </div>
-                )}
-              </div>
-            </>
+        <Button
+          data-testid="sidebar-collapse-toggle"
+          variant="ghost"
+          size="icon"
+          className="no-drag h-8 w-8 shrink-0 rounded-lg text-foreground/85"
+          onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+        >
+          {sidebarCollapsed ? (
+            <PanelLeft className="h-[18px] w-[18px]" />
+          ) : (
+            <PanelLeftClose className="h-[18px] w-[18px]" />
           )}
-          <Button
-            data-testid="sidebar-collapse-toggle"
-            variant="ghost"
-            size="icon"
-            className="no-drag h-8 w-8 shrink-0 rounded-lg text-foreground/85"
-            onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-          >
-            {sidebarCollapsed ? (
-              <PanelLeft className="h-[18px] w-[18px]" />
-            ) : (
-              <PanelLeftClose className="h-[18px] w-[18px]" />
-            )}
-          </Button>
-        </div>
+        </Button>
       </div>
 
       {/* Navigation */}
@@ -657,134 +896,46 @@ export function Sidebar() {
 
       {/* Session list — below Settings, only when expanded */}
       {!sidebarCollapsed && sessions.length > 0 && (
-        <div className="mt-4 flex-1 overflow-y-auto overflow-x-hidden px-2 pb-2 space-y-1">
+        <div
+          data-testid="sidebar-session-list"
+          className="mt-4 flex-1 space-y-1 overflow-y-auto overflow-x-hidden px-2 pb-2"
+        >
           {sessionBuckets.map((bucket) => {
             const isBucketExpanded = expandedSessionBuckets[bucket.key] ?? false;
+            const isTopBucket = bucket.key === firstSessionBucketKey;
+            const isPinnedBucket = bucket.key === 'pinned';
             return (
-              <div key={bucket.key} data-testid={`session-bucket-${bucket.key}`} className="pt-2">
-                <button
-                  type="button"
-                  data-testid={`session-bucket-toggle-${bucket.key}`}
-                  aria-expanded={isBucketExpanded}
-                  onClick={() => toggleSessionBucket(bucket.key)}
-                  className={cn(
-                    'flex w-full items-center gap-1 rounded-lg px-2.5 py-1 text-left text-tiny font-medium',
-                    'text-muted-foreground/60 tracking-tight transition-colors',
-                    'hover:bg-black/5 hover:text-muted-foreground dark:hover:bg-white/10',
-                  )}
-                >
-                  <ChevronRight
+              <div
+                key={bucket.key}
+                data-testid={`session-bucket-${bucket.key}`}
+                className={cn(
+                  'pt-2',
+                  isPinnedBucket && 'sticky top-0 z-30 bg-surface-sidebar pb-1',
+                )}
+              >
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    data-testid={`session-bucket-toggle-${bucket.key}`}
+                    aria-expanded={isBucketExpanded}
+                    onClick={() => toggleSessionBucket(bucket.key)}
                     className={cn(
-                      'h-3 w-3 shrink-0 transition-transform',
-                      isBucketExpanded && 'rotate-90',
+                      'flex min-w-0 flex-1 items-center gap-1 rounded-lg px-2.5 py-1 text-left text-tiny font-medium',
+                      'text-muted-foreground/60 tracking-tight transition-colors',
+                      'hover:bg-black/5 hover:text-muted-foreground dark:hover:bg-white/10',
                     )}
-                  />
-                  <span>{bucket.label}</span>
-                </button>
-                {isBucketExpanded && bucket.sessions.map((s) => {
-                  const agentId = getAgentIdFromSessionKey(s.key);
-                  const agentName = agentNameById[agentId] || agentId;
-                  const isEditing = editingSessionKey === s.key;
-                  const sessionLabel = getSessionLabel(s.key, s.displayName, s.label);
-                  return (
-                    <div
-                      key={s.key}
-                      data-testid={`sidebar-session-${s.key}`}
-                      className="group relative flex items-center"
-                      onContextMenu={(event) => handleSessionContextMenu(
-                        event,
-                        s.key,
-                        sessionLabel,
-                        Boolean(s.pinned),
+                  >
+                    <ChevronRight
+                      className={cn(
+                        'h-3 w-3 shrink-0 transition-transform',
+                        isBucketExpanded && 'rotate-90',
                       )}
-                    >
-                      {isEditing ? (
-                        <div className="flex w-full items-center gap-1 px-1.5 py-1">
-                          <Input
-                            data-testid="sidebar-session-rename-input"
-                            autoFocus
-                            value={editingLabel}
-                            onChange={(e) => setEditingLabel(e.target.value)}
-                            onKeyDown={handleRenameKeyDown}
-                            onBlur={() => void handleRenameSubmit()}
-                            className="h-7 min-w-0 flex-1 text-meta"
-                            aria-label={t('common:sidebar.renameSessionPlaceholder')}
-                          />
-                          <button
-                            aria-label={t('common:sidebar.saveSessionRename')}
-                            onMouseDown={(e) => { e.preventDefault(); void handleRenameSubmit(); }}
-                            className="clawx-icon-button h-6 w-6 shrink-0 p-0.5"
-                          >
-                            <Check className="h-3.5 w-3.5" />
-                          </button>
-                          <button
-                            aria-label={t('common:sidebar.cancelSessionRename')}
-                            onMouseDown={(e) => { e.preventDefault(); handleRenameCancel(); }}
-                            className="clawx-icon-button h-6 w-6 shrink-0 p-0.5 hover:text-destructive"
-                          >
-                            <X className="h-3.5 w-3.5" />
-                          </button>
-                        </div>
-                      ) : (
-                        <>
-                          <button
-                            onClick={() => openSession(s.key)}
-                            onDoubleClick={() => handleStartRename(s.key, sessionLabel)}
-                            className={cn(
-                              'clawx-nav-item w-full pr-16 text-left text-meta',
-                              isOnChat && currentSessionKey === s.key
-                                ? 'clawx-nav-item-active font-medium'
-                                : 'text-foreground/75',
-                            )}
-                          >
-                            <div className="flex min-w-0 items-center gap-2">
-                              <span className="shrink-0 rounded-lg bg-surface-input px-2 py-0.5 text-2xs font-medium text-muted-foreground">
-                                {agentName}
-                              </span>
-                              <span className="truncate">{sessionLabel}</span>
-                              {s.pinned && (
-                                <Pin
-                                  aria-hidden="true"
-                                  className="h-3 w-3 shrink-0 text-muted-foreground/65"
-                                />
-                              )}
-                            </div>
-                          </button>
-                          <div className={cn(
-                            'absolute right-1 flex items-center gap-0.5 transition-opacity',
-                            'opacity-0 group-hover:opacity-100',
-                          )}>
-                            <button
-                              aria-label={t('common:sidebar.renameSession')}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleStartRename(s.key, sessionLabel);
-                              }}
-                              className="clawx-icon-button h-6 w-6 p-0.5"
-                            >
-                              <Pencil className="h-3.5 w-3.5" />
-                            </button>
-                            <button
-                              data-testid={`sidebar-session-delete-${s.key}`}
-                              aria-label={t('common:sidebar.deleteSession')}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setSessionToDelete({
-                                  key: s.key,
-                                  label: sessionLabel,
-                                });
-                                setDeleteDialogOpen(true);
-                              }}
-                              className="clawx-icon-button h-6 w-6 p-0.5 hover:bg-destructive/10 hover:text-destructive"
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </button>
-                          </div>
-                        </>
-                      )}
-                    </div>
-                  );
-                })}
+                    />
+                    <span className="truncate">{bucket.label}</span>
+                  </button>
+                  {isTopBucket && renderSessionHistoryControls()}
+                </div>
+                {isBucketExpanded && bucket.sessions.map((session) => renderSessionRow(session))}
               </div>
             );
           })}
@@ -1001,6 +1152,17 @@ export function Sidebar() {
           setDeleteDialogOpen(false);
         }}
         onCancel={() => setDeleteDialogOpen(false)}
+      />
+
+      <ConfirmDialog
+        open={batchDeleteDialogOpen}
+        title={t('common:sidebar.deleteSelectedSessions')}
+        message={t('common:sidebar.deleteSelectedSessionsConfirm', { count: selectedSessionCount })}
+        confirmLabel={t('common:actions.delete')}
+        cancelLabel={t('common:actions.cancel')}
+        variant="destructive"
+        onConfirm={handleBatchDeleteConfirm}
+        onCancel={() => setBatchDeleteDialogOpen(false)}
       />
     </aside>
   );
