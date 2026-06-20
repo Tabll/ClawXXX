@@ -152,7 +152,6 @@ function getPrimaryMessageStepTexts(steps: TaskStep[]): string[] {
 
 function sanitizeGraphSteps(steps: TaskStep[]): TaskStep[] {
   return steps.filter((step) => {
-    if (step.kind === 'thinking') return false;
     if (step.kind === 'message' && step.detail && isInternalProcessNarration(step.detail)) return false;
     return true;
   });
@@ -324,7 +323,10 @@ export function Chat() {
     );
   }, [currentSessionKey, t]);
 
-  const [contextCompactionStatus, setContextCompactionStatus] = useState<ChatContextCompactionStatus | null>(null);
+  const [contextCompactionState, setContextCompactionState] = useState<{
+    sessionKey: string;
+    status: ChatContextCompactionStatus;
+  } | null>(null);
   const currentSession = useMemo(
     () => sessions.find((session) => session.key === currentSessionKey),
     [currentSessionKey, sessions],
@@ -333,24 +335,23 @@ export function Chat() {
     () => deriveContextUsage(currentSession, sessionDefaults.contextTokens),
     [currentSession, sessionDefaults.contextTokens],
   );
+  const contextCompactionStatus = contextCompactionState?.sessionKey === currentSessionKey
+    ? contextCompactionState.status
+    : null;
 
   useEffect(() => {
-    setContextCompactionStatus(null);
-  }, [currentSessionKey]);
-
-  useEffect(() => {
-    if (!contextCompactionStatus || contextCompactionStatus.phase === 'active') return;
+    if (!contextCompactionState || contextCompactionState.status.phase === 'active') return;
     const timer = window.setTimeout(() => {
-      setContextCompactionStatus((current) => (
-        current === contextCompactionStatus ? null : current
+      setContextCompactionState((current) => (
+        current === contextCompactionState ? null : current
       ));
     }, 6_000);
     return () => window.clearTimeout(timer);
-  }, [contextCompactionStatus]);
+  }, [contextCompactionState]);
 
   const handleCompactContext = useCallback(async () => {
     if (!currentSessionKey || contextCompactionStatus?.phase === 'active') return;
-    setContextCompactionStatus({ phase: 'active' });
+    setContextCompactionState({ sessionKey: currentSessionKey, status: { phase: 'active' } });
 
     try {
       const response = await hostApi.gateway.rpc<SessionsCompactResponse>(
@@ -371,11 +372,14 @@ export function Chat() {
             )),
           }));
         }
-        setContextCompactionStatus({
-          phase: 'complete',
-          tokensBefore,
-          tokensAfter,
-          completedAt: Date.now(),
+        setContextCompactionState({
+          sessionKey: currentSessionKey,
+          status: {
+            phase: 'complete',
+            tokensBefore,
+            tokensAfter,
+            completedAt: Date.now(),
+          },
         });
         await Promise.allSettled([
           loadSessions(),
@@ -384,17 +388,23 @@ export function Chat() {
         return;
       }
 
-      setContextCompactionStatus({
-        phase: 'skipped',
-        reason: response?.reason,
-        completedAt: Date.now(),
+      setContextCompactionState({
+        sessionKey: currentSessionKey,
+        status: {
+          phase: 'skipped',
+          reason: response?.reason,
+          completedAt: Date.now(),
+        },
       });
       await loadSessions();
     } catch (error) {
-      setContextCompactionStatus({
-        phase: 'error',
-        reason: error instanceof Error ? error.message : String(error),
-        completedAt: Date.now(),
+      setContextCompactionState({
+        sessionKey: currentSessionKey,
+        status: {
+          phase: 'error',
+          reason: error instanceof Error ? error.message : String(error),
+          completedAt: Date.now(),
+        },
       });
     }
   }, [contextCompactionStatus?.phase, currentSessionKey, loadHistory, loadSessions]);

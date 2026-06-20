@@ -91,7 +91,31 @@ describe('deriveTaskSteps', () => {
       }),
     ]);
   });
-  it('builds running steps from streaming tool status without exposing chain-of-thought', () => {
+
+  it('projects runtime thinking deltas into active execution graph steps', () => {
+    const steps = deriveRuntimeTaskSteps({
+      runId: 'run-1',
+      status: 'running',
+      assistantText: '',
+      thinkingText: 'Compare the available files before reading the target.',
+      events: [
+        { type: 'run.started', runId: 'run-1', sessionKey: 'agent:main:main' },
+        { type: 'thinking.delta', runId: 'run-1', sessionKey: 'agent:main:main', text: 'Compare the available files before reading the target.' },
+      ],
+    });
+
+    expect(steps).toEqual([
+      expect.objectContaining({
+        id: 'run-1:thinking',
+        label: 'Thinking',
+        status: 'running',
+        kind: 'thinking',
+        detail: 'Compare the available files before reading the target.',
+      }),
+    ]);
+  });
+
+  it('builds running steps from streaming thinking and tool status', () => {
     const streamingTools: ToolStatus[] = [
       {
         name: 'web_search',
@@ -114,6 +138,13 @@ describe('deriveTaskSteps', () => {
     });
 
     expect(steps).toEqual([
+      expect.objectContaining({
+        id: 'stream-thinking-0',
+        label: 'Thinking',
+        status: 'running',
+        kind: 'thinking',
+        detail: 'Compare a few approaches before coding.',
+      }),
       expect.objectContaining({
         label: 'web_search',
         status: 'running',
@@ -261,6 +292,13 @@ describe('deriveTaskSteps', () => {
 
     expect(steps).toEqual([
       expect.objectContaining({
+        id: 'history-thinking-assistant-1-0',
+        label: 'Thinking',
+        status: 'completed',
+        kind: 'thinking',
+        detail: 'Reviewing the code path.',
+      }),
+      expect.objectContaining({
         id: 'tool-2',
         label: 'read_file',
         status: 'completed',
@@ -269,7 +307,83 @@ describe('deriveTaskSteps', () => {
     ]);
   });
 
-  it('does not expose streaming chain-of-thought in the execution graph', () => {
+  it('surfaces DeepSeek reasoning_content from assistant history', () => {
+    const steps = deriveTaskSteps({
+      messages: [
+        {
+          role: 'assistant',
+          id: 'deepseek-history',
+          reasoning_content: 'I should inspect the DeepSeek response shape first.',
+          content: [
+            { type: 'tool_use', id: 'tool-2', name: 'read_file', input: { path: 'src/App.tsx' } },
+          ],
+        },
+      ],
+      streamingMessage: null,
+      streamingTools: [],
+    });
+
+    expect(steps).toEqual([
+      expect.objectContaining({
+        id: 'history-thinking-deepseek-history-0',
+        label: 'Thinking',
+        status: 'completed',
+        kind: 'thinking',
+        detail: 'I should inspect the DeepSeek response shape first.',
+      }),
+      expect.objectContaining({
+        id: 'tool-2',
+        label: 'read_file',
+        status: 'completed',
+        kind: 'tool',
+      }),
+    ]);
+  });
+
+  it('surfaces OpenAI Responses reasoning blocks from assistant history', () => {
+    const steps = deriveTaskSteps({
+      messages: [
+        {
+          role: 'assistant',
+          id: 'responses-history',
+          content: [
+            {
+              type: 'reasoning',
+              summary: [{ text: 'Review the request.' }, { text: 'Plan the implementation.' }],
+            },
+            { type: 'tool_use', id: 'tool-3', name: 'grep', input: { pattern: 'reasoning_content' } },
+          ],
+        },
+      ],
+      streamingMessage: null,
+      streamingTools: [],
+    });
+
+    expect(steps).toEqual([
+      expect.objectContaining({
+        id: 'history-thinking-responses-history-0',
+        label: 'Thinking',
+        status: 'completed',
+        kind: 'thinking',
+        detail: 'Review the request.',
+      }),
+      expect.objectContaining({
+        id: 'history-thinking-responses-history-1',
+        label: 'Thinking',
+        status: 'completed',
+        kind: 'thinking',
+        detail: 'Plan the implementation.',
+      }),
+      expect.objectContaining({
+        id: 'tool-3',
+        label: 'grep',
+        status: 'completed',
+        kind: 'tool',
+      }),
+    ]);
+  });
+
+  it('surfaces streaming thinking segments in the execution graph', () => {
     const steps = deriveTaskSteps({
       messages: [],
       streamingMessage: {
@@ -283,7 +397,29 @@ describe('deriveTaskSteps', () => {
       streamingTools: [],
     });
 
-    expect(steps).toEqual([]);
+    expect(steps).toEqual([
+      expect.objectContaining({
+        id: 'stream-thinking-0',
+        label: 'Thinking',
+        status: 'completed',
+        kind: 'thinking',
+        detail: 'Reviewing X.',
+      }),
+      expect.objectContaining({
+        id: 'stream-thinking-1',
+        label: 'Thinking',
+        status: 'completed',
+        kind: 'thinking',
+        detail: 'Comparing Y.',
+      }),
+      expect.objectContaining({
+        id: 'stream-thinking-2',
+        label: 'Thinking',
+        status: 'running',
+        kind: 'thinking',
+        detail: 'Drafting answer.',
+      }),
+    ]);
   });
 
   it('skips internal assistant turns and hides NO_REPLY from the execution graph', () => {

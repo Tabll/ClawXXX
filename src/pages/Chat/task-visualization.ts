@@ -2,6 +2,7 @@ import {
   extractImages,
   extractText,
   extractTextSegments,
+  extractThinkingSegments,
   extractToolUse,
   isGeneratingStatusNarration,
   isInternalAssistantReplyText,
@@ -362,11 +363,18 @@ function runtimeDetail(value: unknown): string | undefined {
   }
 }
 
+function runtimeThinkingStatus(status: ChatRuntimeRunState['status']): TaskStepStatus {
+  if (status === 'running') return 'running';
+  if (status === 'error' || status === 'aborted') return 'error';
+  return 'completed';
+}
+
 export function deriveRuntimeTaskSteps(runState: ChatRuntimeRunState | null | undefined): TaskStep[] {
   if (!runState) return [];
 
   const steps: TaskStep[] = [];
   const stepIndexById = new Map<string, number>();
+  let runtimeThinkingText = '';
   const upsertStep = (step: TaskStep): void => {
     const existingIndex = stepIndexById.get(step.id);
     if (existingIndex == null) {
@@ -383,8 +391,30 @@ export function deriveRuntimeTaskSteps(runState: ChatRuntimeRunState | null | un
     };
   };
 
+  const upsertRuntimeThinkingStep = (text: string | null | undefined): void => {
+    const detail = normalizeText(text);
+    if (!detail || isInternalProcessNarration(detail)) return;
+    upsertStep({
+      id: `${runState.runId}:thinking`,
+      label: 'Thinking',
+      status: runtimeThinkingStatus(runState.status),
+      kind: 'thinking',
+      detail,
+      depth: 1,
+    });
+  };
+
   for (const event of runState.events) {
     switch (event.type) {
+      case 'thinking.delta': {
+        if (event.text) {
+          runtimeThinkingText = event.text;
+        } else if (event.delta) {
+          runtimeThinkingText = `${runtimeThinkingText}${event.delta}`;
+        }
+        upsertRuntimeThinkingStep(runtimeThinkingText);
+        break;
+      }
       case 'tool.started': {
         const input = event.args as Record<string, unknown> | undefined;
         const url = event.name === 'web_fetch' && typeof input?.url === 'string' ? input.url : undefined;
@@ -462,6 +492,8 @@ export function deriveRuntimeTaskSteps(runState: ChatRuntimeRunState | null | un
     }
   }
 
+  upsertRuntimeThinkingStep(runState.thinkingText);
+
   return attachTopology(steps);
 }
 
@@ -503,6 +535,14 @@ export function deriveTaskSteps({
     if (!message || message.role !== 'assistant') continue;
 
     const toolUses = extractToolUse(message);
+    appendDetailSegments(extractThinkingSegments(message), {
+      idPrefix: `history-thinking-${message.id || messageIndex}`,
+      label: 'Thinking',
+      kind: 'thinking',
+      running: false,
+      upsertStep,
+    });
+
     if (!isInternalMessage(message)) {
       // Fold any intermediate assistant text into the graph as a narration
       // step — including text that lives on a mixed `text + toolCall` message.
@@ -540,6 +580,14 @@ export function deriveTaskSteps({
   }
 
   if (streamMessage) {
+    appendDetailSegments(extractThinkingSegments(streamMessage), {
+      idPrefix: 'stream-thinking',
+      label: 'Thinking',
+      kind: 'thinking',
+      running: !omitLastStreamingMessageSegment,
+      upsertStep,
+    });
+
     // Stream-time narration should also appear in the execution graph so that
     // intermediate process output stays in P1 instead of leaking into the
     // assistant reply area.

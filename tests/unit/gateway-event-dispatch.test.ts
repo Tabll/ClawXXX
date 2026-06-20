@@ -134,6 +134,55 @@ describe('dispatchProtocolEvent', () => {
     });
   });
 
+  it('normalizes assistant reasoning streams as thinking deltas', () => {
+    const emitter = createMockEmitter();
+    dispatchProtocolEvent(emitter, 'agent', {
+      runId: 'run-1',
+      sessionKey: 'agent:main:main',
+      stream: 'assistant',
+      seq: 4,
+      ts: 11,
+      data: {
+        isReasoning: true,
+        text: 'I should inspect the DeepSeek response shape.',
+      },
+    });
+
+    expect(emitter.emit).toHaveBeenCalledWith('chat:runtime-event', {
+      type: 'thinking.delta',
+      runId: 'run-1',
+      sessionKey: 'agent:main:main',
+      seq: 4,
+      ts: 11,
+      text: 'I should inspect the DeepSeek response shape.',
+      delta: undefined,
+    });
+  });
+
+  it('normalizes DeepSeek reasoning_content streams as thinking deltas', () => {
+    const emitter = createMockEmitter();
+    dispatchProtocolEvent(emitter, 'agent', {
+      runId: 'run-1',
+      sessionKey: 'agent:main:main',
+      stream: 'assistant',
+      seq: 5,
+      ts: 12,
+      data: {
+        reasoning_content: 'Compare the available files before answering.',
+      },
+    });
+
+    expect(emitter.emit).toHaveBeenCalledWith('chat:runtime-event', {
+      type: 'thinking.delta',
+      runId: 'run-1',
+      sessionKey: 'agent:main:main',
+      seq: 5,
+      ts: 12,
+      text: 'Compare the available files before answering.',
+      delta: undefined,
+    });
+  });
+
   it('suppresses tick events', () => {
     const emitter = createMockEmitter();
     dispatchProtocolEvent(emitter, 'tick', {});

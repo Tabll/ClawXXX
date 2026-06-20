@@ -96,9 +96,24 @@ export interface RawMessage {
 
 /** Content block inside a message */
 export interface ContentBlock {
-  type: 'text' | 'image' | 'thinking' | 'tool_use' | 'tool_result' | 'toolCall' | 'toolResult';
+  type:
+    | 'text'
+    | 'image'
+    | 'thinking'
+    | 'reasoning'
+    | 'reasoning_text'
+    | 'reasoning.encrypted'
+    | 'tool_use'
+    | 'tool_result'
+    | 'toolCall'
+    | 'toolResult';
   text?: string;
   thinking?: string;
+  reasoning?: string;
+  reasoning_content?: string;
+  reasoning_text?: string;
+  summary?: unknown;
+  content?: unknown;
   source?: { type: string; media_type?: string; data?: string; url?: string };
   /** Flat image format from Gateway tool results (no source wrapper) */
   data?: string;

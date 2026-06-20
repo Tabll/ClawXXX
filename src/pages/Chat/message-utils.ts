@@ -177,6 +177,77 @@ function consumeLeadingSegment(text: string, segment: string): number {
   return match ? match[0].length : 0;
 }
 
+function maybeRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' ? value as Record<string, unknown> : null;
+}
+
+function appendReasoningValue(parts: string[], value: unknown): void {
+  if (typeof value === 'string') {
+    const cleaned = value.trim();
+    if (cleaned) parts.push(cleaned);
+    return;
+  }
+
+  if (Array.isArray(value)) {
+    value.forEach((item) => appendReasoningValue(parts, item));
+    return;
+  }
+
+  const record = maybeRecord(value);
+  if (!record) return;
+
+  appendReasoningValue(parts, record.text);
+  appendReasoningValue(parts, record.thinking);
+  appendReasoningValue(parts, record.reasoning_content);
+  appendReasoningValue(parts, record.reasoning_text);
+  appendReasoningValue(parts, record.content);
+  appendReasoningValue(parts, record.summary);
+}
+
+function collectReasoningParts(message: RawMessage | unknown): string[] {
+  if (!message || typeof message !== 'object') return [];
+  const msg = message as Record<string, unknown>;
+  const parts: string[] = [];
+
+  appendReasoningValue(parts, msg.reasoning_content);
+  appendReasoningValue(parts, msg.reasoningContent);
+  appendReasoningValue(parts, msg.reasoning_text);
+  appendReasoningValue(parts, msg.reasoningText);
+  appendReasoningValue(parts, msg.reasoning);
+
+  const content = msg.content;
+  if (!Array.isArray(content)) return parts;
+
+  for (const block of content as ContentBlock[]) {
+    const record = maybeRecord(block);
+    if (!record) continue;
+    const type = typeof record.type === 'string' ? record.type : '';
+    if (type === 'thinking') {
+      appendReasoningValue(parts, record.thinking);
+      appendReasoningValue(parts, record.text);
+      appendReasoningValue(parts, record.content);
+      continue;
+    }
+
+    if (type === 'reasoning' || type === 'reasoning_text') {
+      appendReasoningValue(parts, record.text);
+      appendReasoningValue(parts, record.content);
+      appendReasoningValue(parts, record.summary);
+      appendReasoningValue(parts, record.reasoning);
+      appendReasoningValue(parts, record.reasoning_content);
+      appendReasoningValue(parts, record.reasoning_text);
+      continue;
+    }
+
+    appendReasoningValue(parts, record.reasoning_content);
+    appendReasoningValue(parts, record.reasoningContent);
+    appendReasoningValue(parts, record.reasoning_text);
+    appendReasoningValue(parts, record.reasoningText);
+  }
+
+  return parts;
+}
+
 /** True for OpenClaw internal assistant tokens that must never appear in the chat UI. */
 export function isInternalAssistantReplyText(text: string): boolean {
   return /^(HEARTBEAT_OK|NO_REPLY)\s*$/i.test(text.trim());
@@ -363,44 +434,13 @@ export function extractTextSegments(message: RawMessage | unknown): string[] {
  * Returns null if no thinking content found.
  */
 export function extractThinking(message: RawMessage | unknown): string | null {
-  if (!message || typeof message !== 'object') return null;
-  const msg = message as Record<string, unknown>;
-  const content = msg.content;
-
-  if (!Array.isArray(content)) return null;
-
-  const parts: string[] = [];
-  for (const block of content as ContentBlock[]) {
-    if (block.type === 'thinking' && block.thinking) {
-      const cleaned = block.thinking.trim();
-      if (cleaned) {
-        parts.push(cleaned);
-      }
-    }
-  }
-
+  const parts = collectReasoningParts(message);
   const combined = compactProgressiveParts(parts).join('\n\n').trim();
   return combined.length > 0 ? combined : null;
 }
 
 export function extractThinkingSegments(message: RawMessage | unknown): string[] {
-  if (!message || typeof message !== 'object') return [];
-  const msg = message as Record<string, unknown>;
-  const content = msg.content;
-
-  if (!Array.isArray(content)) return [];
-
-  const parts: string[] = [];
-  for (const block of content as ContentBlock[]) {
-    if (block.type === 'thinking' && block.thinking) {
-      const cleaned = block.thinking.trim();
-      if (cleaned) {
-        parts.push(cleaned);
-      }
-    }
-  }
-
-  return splitProgressiveParts(parts);
+  return splitProgressiveParts(collectReasoningParts(message));
 }
 
 export function stripProcessMessagePrefix(text: string, processSegments: string[]): string {

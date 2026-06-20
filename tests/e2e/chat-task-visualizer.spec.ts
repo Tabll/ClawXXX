@@ -189,6 +189,36 @@ const errorRunHistory = [
   },
 ];
 
+const thinkingRunPrompt = 'Inspect the source before answering';
+const thinkingRunText = 'I will inspect the relevant source path before drafting the response.';
+const thinkingRunHistory = [
+  {
+    role: 'user',
+    content: [{ type: 'text', text: thinkingRunPrompt }],
+    timestamp: Date.now(),
+  },
+  {
+    role: 'assistant',
+    id: 'thinking-tool-turn',
+    reasoning_content: thinkingRunText,
+    content: [
+      {
+        type: 'toolCall',
+        id: 'read-thinking-source',
+        name: 'read',
+        arguments: { filePath: 'src/pages/Chat/task-visualization.ts' },
+      },
+    ],
+    timestamp: Date.now(),
+  },
+  {
+    role: 'assistant',
+    id: 'thinking-final',
+    content: [{ type: 'text', text: 'The source path is ready to inspect.' }],
+    timestamp: Date.now(),
+  },
+];
+
 test.describe('ClawX chat execution graph', () => {
   test('renders internal yield status and linked subagent branch from mocked IPC', async ({ launchElectronApp }) => {
     const app = await launchElectronApp({ skipSetup: true });
@@ -307,6 +337,106 @@ test.describe('ClawX chat execution graph', () => {
       await expect(execRow.locator('pre')).toBeVisible();
       await expect(page.locator('[data-testid="chat-execution-graph"]').getByText('I asked coder to break down the core blocks of ~/Velaria uncommitted changes; will give you the conclusion when it returns.')).toBeVisible();
       await expect(page.getByText('CHECKLIST.md')).toHaveCount(0);
+    } finally {
+      await closeElectronApp(app);
+    }
+  });
+
+  test('renders thinking content inside the execution graph from chat history', async ({ launchElectronApp }) => {
+    const app = await launchElectronApp({ skipSetup: true });
+
+    try {
+      await installIpcMocks(app, {
+        gatewayStatus: { state: 'running', port: 18789, pid: 12345 },
+        gatewayRpc: {
+          [stableStringify(['sessions.list', {}])]: {
+            success: true,
+            result: {
+              sessions: [{ key: PROJECT_MANAGER_SESSION_KEY, displayName: 'main' }],
+            },
+          },
+          [stableStringify(['chat.history', { sessionKey: PROJECT_MANAGER_SESSION_KEY, limit: 200, maxChars: 500000 }])]: {
+            success: true,
+            result: {
+              messages: thinkingRunHistory,
+            },
+          },
+          [stableStringify(['chat.history', { sessionKey: PROJECT_MANAGER_SESSION_KEY, limit: 1000, maxChars: 500000 }])]: {
+            success: true,
+            result: {
+              messages: thinkingRunHistory,
+            },
+          },
+        },
+        hostApi: {
+          [stableStringify(['/api/gateway/status', 'GET'])]: {
+            ok: true,
+            data: {
+              status: 200,
+              ok: true,
+              json: { state: 'running', port: 18789, pid: 12345 },
+            },
+          },
+          [stableStringify(['/api/chat/sessions', 'GET'])]: {
+            ok: true,
+            data: {
+              status: 200,
+              ok: true,
+              json: {
+                success: true,
+                result: {
+                  sessions: [{ key: PROJECT_MANAGER_SESSION_KEY, displayName: 'main' }],
+                },
+              },
+            },
+          },
+          [stableStringify(['/api/chat/history', 'POST'])]: {
+            ok: true,
+            data: {
+              status: 200,
+              ok: true,
+              json: {
+                success: true,
+                result: {
+                  messages: thinkingRunHistory,
+                },
+              },
+            },
+          },
+          [stableStringify(['/api/agents', 'GET'])]: {
+            ok: true,
+            data: {
+              status: 200,
+              ok: true,
+              json: {
+                success: true,
+                agents: [{ id: 'main', name: 'main' }],
+              },
+            },
+          },
+        },
+      });
+
+      const page = await getStableWindow(app);
+      try {
+        await page.reload();
+      } catch (error) {
+        if (!String(error).includes('ERR_FILE_NOT_FOUND')) {
+          throw error;
+        }
+      }
+
+      await expect(page.getByTestId('main-layout')).toBeVisible();
+      const graph = page.getByTestId('chat-execution-graph');
+      await expect(graph).toBeVisible({ timeout: 30_000 });
+      if ((await graph.getAttribute('data-collapsed')) === 'true') {
+        await graph.click();
+      }
+      await expect(page.getByTestId('chat-execution-graph')).toHaveAttribute('data-collapsed', 'false');
+      await expect(page.getByTestId('chat-execution-graph')).toContainText(thinkingRunText);
+      await expect(
+        page.locator('[data-testid="chat-execution-graph"] [data-testid="chat-execution-step"]').getByText('read', { exact: true }),
+      ).toBeVisible();
     } finally {
       await closeElectronApp(app);
     }

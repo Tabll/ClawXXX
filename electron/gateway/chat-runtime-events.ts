@@ -12,6 +12,21 @@ function readNumber(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
 }
 
+function readReasoningText(payload: Record<string, unknown>): string | undefined {
+  return readString(payload.reasoning_content)
+    ?? readString(payload.reasoningContent)
+    ?? readString(payload.reasoning_text)
+    ?? readString(payload.reasoningText)
+    ?? readString(payload.reasoning);
+}
+
+function hasReasoningMarker(raw: Record<string, unknown>, data: Record<string, unknown>): boolean {
+  return raw.isReasoning === true
+    || data.isReasoning === true
+    || readReasoningText(data) != null
+    || readReasoningText(raw) != null;
+}
+
 type ChatRuntimeEventType = ChatRuntimeEvent['type'];
 type ChatRuntimeEventFor<T extends ChatRuntimeEventType> = Extract<ChatRuntimeEvent, { type: T }>;
 type ChatRuntimeEventBaseFor<T extends ChatRuntimeEventType> = Pick<
@@ -98,6 +113,17 @@ export function normalizeGatewayChatRuntimeEvent(payload: unknown): ChatRuntimeE
     return null;
   }
 
+  if (stream === 'assistant' && hasReasoningMarker(raw, data)) {
+    const base = withBase('thinking.delta', raw);
+    return base
+      ? {
+          ...base,
+          text: readReasoningText(data) ?? readReasoningText(raw) ?? readString(data.text),
+          delta: readString(data.delta),
+        }
+      : null;
+  }
+
   if (stream === 'assistant') {
     const base = withBase('assistant.delta', raw);
     return base
@@ -114,12 +140,12 @@ export function normalizeGatewayChatRuntimeEvent(payload: unknown): ChatRuntimeE
       : null;
   }
 
-  if (stream === 'thinking') {
+  if (stream === 'thinking' || stream === 'reasoning') {
     const base = withBase('thinking.delta', raw);
     return base
       ? {
           ...base,
-          text: readString(data.text),
+          text: readString(data.text) ?? readReasoningText(data) ?? readReasoningText(raw),
           delta: readString(data.delta),
         }
       : null;
