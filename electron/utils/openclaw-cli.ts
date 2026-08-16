@@ -198,11 +198,14 @@ export function getOpenClawCliSpawnSpec(): OpenClawCliSpawnSpec {
 
 function getOpenClawEmbeddedExecPath(): { execPath: string; electronRunAsNode: boolean } {
   if (!app.isPackaged) {
+    // Keep embedded OpenClaw on the Node version pinned by Electron. A developer's
+    // shell PATH can contain a newer Node release that falls outside OpenClaw's
+    // supported version ranges, even though the Electron utility runtime is valid.
+    if (process.versions?.electron) {
+      return { execPath: process.execPath, electronRunAsNode: true };
+    }
     const nodeExecPath = getDevNodeExecPath();
     if (nodeExecPath) return { execPath: nodeExecPath, electronRunAsNode: false };
-    if (process.versions?.electron) {
-      throw new Error('Node executable not found on PATH for embedded OpenClaw launch');
-    }
   }
 
   if (app.isPackaged && process.platform === 'win32') {

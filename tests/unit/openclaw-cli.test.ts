@@ -6,6 +6,7 @@ const originalExecPath = process.execPath;
 const originalComSpec = process.env.ComSpec;
 const originalPath = process.env.PATH;
 const originalElectronRunAsNode = process.env.ELECTRON_RUN_AS_NODE;
+const originalElectronVersionDescriptor = Object.getOwnPropertyDescriptor(process.versions, 'electron');
 const mockedEntryPath = 'C:\\Program Files\\ClawX\\resources\\openclaw\\openclaw.mjs';
 
 const {
@@ -62,6 +63,17 @@ function setExecPath(execPath: string) {
   });
 }
 
+function setElectronVersion(version: string | undefined) {
+  if (version === undefined) {
+    delete (process.versions as NodeJS.ProcessVersions & { electron?: string }).electron;
+    return;
+  }
+  Object.defineProperty(process.versions, 'electron', {
+    value: version,
+    configurable: true,
+  });
+}
+
 function resetOpenClawCliMocks() {
   vi.resetModules();
   mockExistsSync.mockReset();
@@ -69,6 +81,11 @@ function resetOpenClawCliMocks() {
   setPlatform(originalPlatform);
   setResourcesPath(originalResourcesPath);
   setExecPath(originalExecPath);
+  if (originalElectronVersionDescriptor) {
+    Object.defineProperty(process.versions, 'electron', originalElectronVersionDescriptor);
+  } else {
+    setElectronVersion(undefined);
+  }
   if (originalComSpec === undefined) {
     delete process.env.ComSpec;
   } else {
@@ -255,10 +272,25 @@ describe('getOpenClawEmbeddedForkSpec', () => {
     });
   });
 
-  it('uses a real Node executable from PATH for dev embedded launches instead of Electron', async () => {
+  it('uses the Electron-pinned Node runtime for development Electron launches', async () => {
     const execPath = '/Users/zhuoxu/workspace/ClawX/node_modules/electron/dist/Electron.app/Contents/MacOS/Electron';
     setPlatform('darwin');
     setExecPath(execPath);
+    setElectronVersion('40.10.6');
+    process.env.PATH = '/opt/node/bin:/usr/bin';
+    mockExistsSync.mockImplementation((p: string) => p === '/opt/node/bin/node');
+
+    const { getOpenClawEmbeddedForkSpec } = await import('@electron/utils/openclaw-cli');
+    const spec = getOpenClawEmbeddedForkSpec(['acp']);
+
+    expect(spec.options.execPath).toBe(execPath);
+    expect(spec.options.execPath).not.toBe('/opt/node/bin/node');
+    expect(spec.options.env).toMatchObject({ ELECTRON_RUN_AS_NODE: '1' });
+  });
+
+  it('uses a real Node executable from PATH for non-Electron development tooling', async () => {
+    setPlatform('darwin');
+    setElectronVersion(undefined);
     process.env.PATH = '/opt/node/bin:/usr/bin';
     process.env.ELECTRON_RUN_AS_NODE = '1';
     mockExistsSync.mockImplementation((p: string) => p === '/opt/node/bin/node');
@@ -267,7 +299,6 @@ describe('getOpenClawEmbeddedForkSpec', () => {
     const spec = getOpenClawEmbeddedForkSpec(['acp']);
 
     expect(spec.options.execPath).toBe('/opt/node/bin/node');
-    expect(spec.options.execPath).not.toBe(execPath);
     expect(spec.options.env).not.toMatchObject({ ELECTRON_RUN_AS_NODE: '1' });
   });
 
