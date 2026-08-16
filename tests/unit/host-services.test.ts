@@ -146,6 +146,10 @@ vi.mock('@electron/main/launch-at-startup', () => ({
   syncLaunchAtStartupSettingFromStore: (...args: unknown[]) => syncLaunchAtStartupSettingFromStoreMock(...args),
 }));
 
+vi.mock('@electron/utils/control-ui-device-pairing', () => ({
+  approvePendingLocalDeviceRequests: vi.fn().mockResolvedValue([]),
+}));
+
 vi.mock('@electron/utils/logger', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@electron/utils/logger')>();
   return {
@@ -427,6 +431,24 @@ describe('host services', () => {
       'Invalid gateway RPC timeout',
     );
     expect(gatewayManager.rpc).toHaveBeenCalledTimes(1);
+  });
+
+  it('builds the typed Dreams Control UI URL and rejects unknown views', async () => {
+    getSettingMock.mockResolvedValue('clawx-test-token');
+    const gatewayManager = {
+      getStatus: vi.fn(() => ({ state: 'running', port: 18789 })),
+      rpc: vi.fn(),
+    };
+    const { createGatewayApi } = await import('@electron/services/gateway-api');
+    const gatewayApi = createGatewayApi(gatewayManager as never);
+
+    await expect(gatewayApi.controlUi({ view: 'dreams' })).resolves.toMatchObject({
+      success: true,
+      url: 'http://127.0.0.1:18789/dreaming#token=clawx-test-token',
+    });
+    await expect(gatewayApi.controlUi({ view: 'unknown' } as never)).rejects.toThrow(
+      'Invalid OpenClaw Control UI view',
+    );
   });
 
   it('exposes provider account snapshot actions through the typed providers service', async () => {

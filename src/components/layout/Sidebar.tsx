@@ -25,6 +25,7 @@ import {
   X,
   Cpu,
   ImagePlus,
+  Moon,
   ChevronRight,
   ChevronsUpDown,
   ChevronsDownUp,
@@ -200,7 +201,7 @@ export function Sidebar() {
     try {
       const result = await hostApi.gateway.controlUi();
       if (result.success && result.url) {
-        await window.electron.openExternal(result.url);
+        await hostApi.shell.openExternal(result.url);
       } else {
         console.error(`Failed to get ${label} URL:`, result.error);
       }
@@ -687,6 +688,12 @@ export function Sidebar() {
             icon: <ImagePlus className="h-4 w-4" strokeWidth={2} />,
             label: t('common:sidebar.imageGeneration'),
             testId: 'sidebar-nav-image-generation',
+          },
+          {
+            to: '/dreams',
+            icon: <Moon className="h-4 w-4" strokeWidth={2} />,
+            label: t('common:sidebar.openClawDreams'),
+            testId: 'sidebar-nav-dreams',
           },
         ]
       : []),

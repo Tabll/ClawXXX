@@ -107,6 +107,22 @@ describe('hostApi facade', () => {
     }));
   });
 
+  it('routes the typed Dreams Control UI view through hostInvoke', async () => {
+    hostInvoke.mockResolvedValueOnce({
+      id: 'req',
+      ok: true,
+      data: { success: true, url: 'http://127.0.0.1:18789/dreaming#token=test' },
+    });
+    const { hostApi } = await import('@/lib/host-api');
+
+    await expect(hostApi.gateway.controlUi('dreams')).resolves.toMatchObject({ success: true });
+    expect(hostInvoke).toHaveBeenCalledWith(expect.objectContaining({
+      module: 'gateway',
+      action: 'controlUi',
+      payload: { view: 'dreams' },
+    }));
+  });
+
   it('routes local HTML preview operations through hostInvoke', async () => {
     hostInvoke.mockResolvedValue({ id: 'req', ok: true, data: undefined });
     const { hostApi } = await import('@/lib/host-api');

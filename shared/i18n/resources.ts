@@ -11,6 +11,7 @@ import enSkills from './locales/en/skills.json';
 import enCron from './locales/en/cron.json';
 import enSetup from './locales/en/setup.json';
 import enMenu from './locales/en/menu.json';
+import enDreams from './locales/en/dreams.json';
 
 // ZH
 import zhCommon from './locales/zh/common.json';
@@ -23,6 +24,7 @@ import zhSkills from './locales/zh/skills.json';
 import zhCron from './locales/zh/cron.json';
 import zhSetup from './locales/zh/setup.json';
 import zhMenu from './locales/zh/menu.json';
+import zhDreams from './locales/zh/dreams.json';
 
 // JA
 import jaCommon from './locales/ja/common.json';
@@ -35,6 +37,7 @@ import jaSkills from './locales/ja/skills.json';
 import jaCron from './locales/ja/cron.json';
 import jaSetup from './locales/ja/setup.json';
 import jaMenu from './locales/ja/menu.json';
+import jaDreams from './locales/ja/dreams.json';
 
 // RU
 import ruCommon from './locales/ru/common.json';
@@ -47,6 +50,7 @@ import ruSkills from './locales/ru/skills.json';
 import ruCron from './locales/ru/cron.json';
 import ruSetup from './locales/ru/setup.json';
 import ruMenu from './locales/ru/menu.json';
+import ruDreams from './locales/ru/dreams.json';
 
 export const I18N_NAMESPACES = [
   'common',
@@ -59,6 +63,7 @@ export const I18N_NAMESPACES = [
   'cron',
   'setup',
   'menu',
+  'dreams',
 ] as const;
 
 export const I18N_RESOURCES = {
@@ -73,6 +78,7 @@ export const I18N_RESOURCES = {
     cron: enCron,
     setup: enSetup,
     menu: enMenu,
+    dreams: enDreams,
   },
   zh: {
     common: zhCommon,
@@ -85,6 +91,7 @@ export const I18N_RESOURCES = {
     cron: zhCron,
     setup: zhSetup,
     menu: zhMenu,
+    dreams: zhDreams,
   },
   ja: {
     common: jaCommon,
@@ -97,6 +104,7 @@ export const I18N_RESOURCES = {
     cron: jaCron,
     setup: jaSetup,
     menu: jaMenu,
+    dreams: jaDreams,
   },
   ru: {
     common: ruCommon,
@@ -109,6 +117,7 @@ export const I18N_RESOURCES = {
     cron: ruCron,
     setup: ruSetup,
     menu: ruMenu,
+    dreams: ruDreams,
   },
 } as const;
 

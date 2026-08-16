@@ -34,7 +34,8 @@
         "renameSessionPlaceholder": "Название сессии",
         "saveSessionRename": "Сохранить название",
         "cancelSessionRename": "Отменить переименование",
-        "imageGeneration": "Генерация изображений"
+        "imageGeneration": "Генерация изображений",
+        "openClawDreams": "Dreams"
     },
     "actions": {
         "save": "Сохранить",

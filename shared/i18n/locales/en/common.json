@@ -34,7 +34,8 @@
         "renameSessionPlaceholder": "Session title",
         "saveSessionRename": "Save session title",
         "cancelSessionRename": "Cancel renaming",
-        "imageGeneration": "Image Generation"
+        "imageGeneration": "Image Generation",
+        "openClawDreams": "Dreams"
     },
     "actions": {
         "save": "Save",

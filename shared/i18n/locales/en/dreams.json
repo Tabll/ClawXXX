@@ -1,0 +1,125 @@
+{
+    "title": "Dreams",
+    "subtitle": "Review OpenClaw memory signals, diary entries, and dreaming maintenance from ClawX.",
+    "openFullUi": "Open Full Dreams",
+    "gatewayNotReady": "OpenClaw Gateway is still starting or disconnected. Dreams data will load once the gateway is reachable.",
+    "accessibility": {
+        "mascot": "Sleeping OpenClaw character"
+    },
+    "tabs": {
+        "label": "Dream views",
+        "scene": "Scene",
+        "diary": "Diary",
+        "advanced": "Advanced"
+    },
+    "scene": {
+        "statusActive": "Dreaming",
+        "statusIdle": "Idle",
+        "nextSweep": "Next sweep {{time}}",
+        "noNextCycle": "No scheduled sweep"
+    },
+    "phrases": {
+        "consolidatingMemories": "consolidating memories",
+        "tidyingKnowledgeGraph": "tidying the knowledge graph",
+        "replayingConversations": "replaying conversations",
+        "weavingShortTerm": "weaving short-term traces",
+        "defragmentingMindPalace": "defragmenting the mind palace",
+        "filingLooseThoughts": "filing loose thoughts",
+        "connectingDots": "connecting dots",
+        "promotingHunches": "promoting hunches",
+        "forgettingNoise": "forgetting noise",
+        "dreamingEmbeddings": "dreaming in embeddings",
+        "indexingDay": "indexing the day",
+        "nurturingInsights": "nurturing insights"
+    },
+    "metrics": {
+        "shortTerm": "Short-term entries",
+        "grounded": "Grounded signals",
+        "signals": "Total signals",
+        "promotedToday": "Promoted today"
+    },
+    "diary": {
+        "title": "Dream Diary",
+        "latest": "Latest diary",
+        "notFound": "DREAMS.md has not been created yet.",
+        "empty": "No dream diary entries found yet.",
+        "undated": "Undated",
+        "waitingHint": "Dreams will appear here after memory consolidation runs."
+    },
+    "actions": {
+        "title": "Maintenance",
+        "description": "Run dream diary cleanup, cache repair, and replay reset tools.",
+        "enable": "Start Dreams",
+        "disable": "Stop Dreams",
+        "backfill": "Backfill Diary",
+        "dedupe": "Dedupe Diary",
+        "repair": "Repair Cache",
+        "resetGrounded": "Clear Replayed",
+        "resetDiary": "Reset Backfilled Diary",
+        "enableSuccess": "Dreams started. Gateway may restart to apply the managed schedule.",
+        "disableSuccess": "Dreams stopped. Gateway may restart to remove the managed schedule.",
+        "backfillSuccess": "Backfilled {{count}} dream diary entries.",
+        "dedupeSuccess": "Removed {{removed}} duplicate dream entries and kept {{kept}}.",
+        "repairSuccess": "Dream cache repair completed.",
+        "resetDiarySuccess": "Removed {{count}} backfilled dream diary entries.",
+        "resetGroundedSuccess": "Cleared {{count}} replayed short-term entries."
+    },
+    "confirmations": {
+        "dedupe": {
+            "title": "Dedupe Dream Diary?",
+            "message": "This rewrites DREAMS.md and removes only exact duplicate diary entries."
+        },
+        "repair": {
+            "title": "Repair Dream Cache?",
+            "message": "This archives derived dream cache files and rebuilds them from clean inputs. Your dream diary stays untouched."
+        },
+        "resetDiary": {
+            "title": "Reset Backfilled Diary?",
+            "message": "This removes backfilled diary entries from DREAMS.md. Manually written content is not the target."
+        },
+        "resetGrounded": {
+            "title": "Clear Replayed Short-Term Entries?",
+            "message": "This clears short-term entries that were already replayed into grounded memory signals."
+        }
+    },
+    "phases": {
+        "title": "Dream Phases",
+        "light": "Light",
+        "rem": "REM",
+        "deep": "Deep",
+        "noSchedule": "No managed schedule",
+        "off": "Off"
+    },
+    "advanced": {
+        "eyebrow": "Memory console",
+        "title": "Signals and artifacts",
+        "description": "Short-term traces, grounded signals, and promoted entries from the current dream store.",
+        "summary": "{{grounded}} grounded · {{shortTerm}} waiting · {{promoted}} promoted today",
+        "stagedTitle": "Grounded traces",
+        "stagedDescription": "Short-term entries already replayed into grounded memory signals.",
+        "emptyGrounded": "No grounded traces are waiting.",
+        "shortTermTitle": "Short-term signals",
+        "shortTermDescription": "Recent live and diary-backed signals queued for the dreaming loop.",
+        "emptyShortTerm": "No short-term signals are available.",
+        "promotedTitle": "Promoted memory",
+        "promotedDescription": "Entries that have graduated into longer-lived memory.",
+        "emptyPromoted": "No promoted memory entries are available.",
+        "originMixed": "mixed",
+        "originDailyLog": "daily log",
+        "originLive": "live",
+        "signalCount": "{{count}} signals"
+    },
+    "signals": {
+        "title": "Recent Signals",
+        "storageMode": "Storage: {{mode}}",
+        "noStorageMode": "Storage mode unavailable",
+        "empty": "No recent short-term or promoted dream signals.",
+        "unknownSource": "Unknown source",
+        "noSnippet": "No snippet available."
+    },
+    "errors": {
+        "openFullUi": "Unable to open the full OpenClaw Dreams UI.",
+        "configHashMissing": "Unable to update Dreams because the config base hash is unavailable.",
+        "memoryInitializing": "Dreams memory is still initializing. Please retry after Gateway finishes startup."
+    }
+}

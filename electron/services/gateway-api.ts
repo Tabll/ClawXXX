@@ -17,6 +17,10 @@ type RpcPayload = {
   timeoutMs?: unknown;
 };
 
+type ControlUiPayload = {
+  view?: unknown;
+};
+
 function parseTimeoutMs(timeoutMs: unknown): number | undefined {
   if (timeoutMs === undefined) return undefined;
   if (typeof timeoutMs !== 'number' || !Number.isFinite(timeoutMs) || timeoutMs <= 0) {
@@ -44,11 +48,19 @@ export function createGatewayApi(gatewayManager: GatewayManager): CompleteHostSe
       const body = isRecord(payload) ? payload as HealthPayload : {};
       return gatewayManager.checkHealth({ probe: body.probe === true });
     },
-    controlUi: async () => {
+    controlUi: async (payload) => {
+      const body = isRecord(payload) ? payload as ControlUiPayload : {};
+      if (body.view !== undefined && body.view !== 'dreams') {
+        throw new Error('Invalid OpenClaw Control UI view');
+      }
       const status = gatewayManager.getStatus();
       const token = await getSetting('gatewayToken');
       const port = status.port || PORTS.OPENCLAW_GATEWAY;
-      const url = buildOpenClawControlUiUrl(port, token);
+      const url = buildOpenClawControlUiUrl(
+        port,
+        token,
+        body.view === 'dreams' ? { view: body.view } : undefined,
+      );
       void approvePendingLocalDeviceRequests(gatewayManager).catch((error) => {
         logger.debug(`[gateway] Control UI device auto-approve skipped: ${String(error)}`);
       });

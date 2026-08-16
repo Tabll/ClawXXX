@@ -14,6 +14,7 @@ import type {
   EmbeddingSettingsPayload,
   FilePreviewTreeOptions,
   FileReadBinaryOptions,
+  GatewayControlUiView,
   ImageGenerationSettingsPayload,
   MediaThumbnailEntry,
   OpenClawDoctorMode,
@@ -170,7 +171,9 @@ export const hostApi = {
     stop: () => invokeHost('gateway', 'stop'),
     restart: () => invokeHost('gateway', 'restart'),
     health: (probe = false) => invokeHost('gateway', 'health', { probe }),
-    controlUi: () => invokeHost('gateway', 'controlUi'),
+    controlUi: (view?: GatewayControlUiView) => (
+      invokeHost('gateway', 'controlUi', view ? { view } : undefined)
+    ),
     rpc: <T = unknown>(method: string, params?: unknown, timeoutMs?: number) => (
       invokeHost('gateway', 'rpc', { method, params, timeoutMs }) as Promise<T>
     ),

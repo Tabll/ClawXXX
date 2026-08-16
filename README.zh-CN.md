@@ -81,6 +81,7 @@ ClawX 预置了最佳实践的模型供应商配置，原生支持 Windows 平�
 - **⏰ 定时任务自动化**：可视化定义触发器与时间间隔，让 AI 智能体 7×24 小时自动运行；支持周期（每小时/每天/工作日/每周/自定义 cron）与单次执行，并可将结果自动投递到外部频道。
 - **🧩 可扩展技能系统**：本地优先的技能管理，扫描托管与 workspace 技能目录，无需依赖 Gateway 即可启用或停用技能；预装文档处理技能（`pdf`、`xlsx`、`docx`、`pptx`）。
 - **🔐 安全的供应商集成**：支持 OpenAI、Anthropic、Z.AI / GLM 等供应商，凭证经系统原生密钥链安全存储；提供自定义 Provider、OAuth 登录和兼容网关降级探测，并可显式配置模型的思考/图片输入能力，同步到 OpenClaw 与各 Agent 的模型注册表。
+- **🌙 原生 Dreams 控制台**：开发者模式下提供 OpenClaw 记忆梦境仪表盘，可查看梦境阶段、信号和 `DREAMS.md` 日记，启停 dreaming 并执行需二次确认的维护操作，也可安全跳转到上游 `/dreaming` 完整视图。
 - **🌙 自适应主题**：支持浅色、深色与跟随系统主题。
 - **🚀 开机启动控制**：在 设置 → 通用 中开启开机自动启动。
 - **🔔 更新提示**：启动时自动检查新版本，由你决定是否下载或安装更新。
@@ -154,6 +155,7 @@ ClawX 采用 **双进程 + Host API 统一接入架构**：React 渲染进程只
 - **进程模型**：Electron 主进程负责窗口、网关进程监控、系统集成与自动更新；OpenClaw Gateway 作为独立运行时进程提供 AI 编排、频道和技能能力；渲染层不直接访问本地端点。
 - **配置交付**：Gateway 运行时由 Main 使用 `config.get` / `config.set`，停止或启动中则更新解析后的 JSON5 配置；普通 Provider/Agent/Skill/模型修改不会替换进程，凭据通过 `secrets.reload` 热更新；连续 4 次心跳无响应后才会请求受生命周期保护的自动恢复。
 - **ACP Chat**：Chat UI 基于 ACP ([Agent Client Protocol](https://agentclientprotocol.com)) 与 OpenClaw 交互，从而在高速迭代的 OpenClaw 前找到相对稳定的聊天协议面。ACP 走 Main 持有的 stdio bridge，支持配置热重载后的历史回放认证、跨页面持续流式输出、会话声明的模型/推理设置、上下文用量与手动压缩、顺序发送的跟进队列，以及由 Main 验证和加载的媒体/附件/文件活动（Changes）展示。会话 transcript 只用于有界补充悬停元数据和 ACP 尚未提供的资源，不会成为第二套聊天历史来源。当受保护的 Gateway 重启中断已接收的对话轮次时，补丁后的 OpenClaw 运行时会将恢复 run 显式关联到原 ACP prompt，使后续文本和工具活动继续进入同一个内存轮次；之后的历史回放也会以原生 ACP 更新恢复持久化的工具边界。
+- **Dreams**：开发者专用的原生 Dreams 页只通过类型化 Host API 调用 OpenClaw `doctor.memory.*` 和受保护的 `config.patch`；带认证的 Control UI URL 由 Electron Main 构造并将 Dreams 视图映射到 `/dreaming`，渲染层不直连 Gateway。
 - **设计原则**：前端调用单一入口、Main 掌控传输策略、优雅恢复（重连/超时/退避）、安全存储与 CORS 安全。
 
 > 完整架构说明（进程图、配置协调、ACP 文件活动语义与 Gateway 排障）请参阅 [docs/zh-CN/architecture.md](docs/zh-CN/architecture.md)。
