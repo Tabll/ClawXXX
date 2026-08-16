@@ -1,5 +1,26 @@
 export type ModelInputModality = 'text' | 'image';
 
+export interface ProviderModelCapabilities {
+  reasoning?: boolean;
+  imageInput?: boolean;
+}
+
+export function providerModelCapabilitiesToModelMetadata(
+  capabilities: ProviderModelCapabilities | undefined,
+): Record<string, unknown> | undefined {
+  if (!capabilities) return undefined;
+
+  const metadata: Record<string, unknown> = {};
+  if (typeof capabilities.reasoning === 'boolean') {
+    metadata.reasoning = capabilities.reasoning;
+  }
+  if (typeof capabilities.imageInput === 'boolean') {
+    metadata.input = capabilities.imageInput ? ['text', 'image'] : ['text'];
+  }
+
+  return Object.keys(metadata).length > 0 ? metadata : undefined;
+}
+
 type ContextWindowRule = {
   /** Human-readable family label; kept so the table reads as documentation. */
   label: string;

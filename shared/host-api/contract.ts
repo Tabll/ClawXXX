@@ -314,6 +314,10 @@ export type ProviderProtocol =
   | 'bedrock-converse-stream'
   | 'ollama'
   | 'azure-openai-responses';
+export type ProviderModelCapabilities = {
+  reasoning?: boolean;
+  imageInput?: boolean;
+};
 export type ProviderConfig = {
   id: string;
   name: string;
@@ -322,6 +326,7 @@ export type ProviderConfig = {
   apiProtocol?: ProviderProtocol;
   headers?: Record<string, string>;
   model?: string;
+  modelCapabilities?: ProviderModelCapabilities;
   fallbackModels?: string[];
   fallbackProviderIds?: string[];
   enabled: boolean;
@@ -370,6 +375,7 @@ export type ProviderAccount = {
   apiProtocol?: ProviderProtocol;
   headers?: Record<string, string>;
   model?: string;
+  modelCapabilities?: ProviderModelCapabilities;
   fallbackModels?: string[];
   fallbackAccountIds?: string[];
   enabled: boolean;

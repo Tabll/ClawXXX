@@ -86,7 +86,10 @@
       "save": "保存",
       "customDoc": "ドキュメント",
       "validate": "検証",
-      "failed": "失敗"
+      "failed": "失敗",
+      "modelCapabilities": "モデル機能",
+      "supportsThinking": "思考に対応",
+      "supportsImages": "画像入力に対応"
     },
     "card": {
       "default": "デフォルト",

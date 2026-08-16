@@ -1258,6 +1258,74 @@ describe('syncProviderConfigToOpenClaw', () => {
     ]);
   });
 
+  it('writes explicit reasoning and image-input capability overrides for configured models', async () => {
+    await writeOpenClawJson({ models: { providers: {} } });
+
+    const { syncProviderConfigToOpenClaw } = await import('@electron/utils/openclaw-auth');
+    await syncProviderConfigToOpenClaw('custom-example', 'qwen/qwen3.6-35b-a3b', {
+      baseUrl: 'https://example.com/v1',
+      api: 'openai-completions',
+      modelCapabilities: { reasoning: true, imageInput: false },
+    });
+
+    const result = await readOpenClawJson();
+    const providers = (result.models as Record<string, unknown>).providers as Record<string, unknown>;
+    const entry = providers['custom-example'] as Record<string, unknown>;
+    const models = entry.models as Array<Record<string, unknown>>;
+
+    expect(models).toEqual([
+      expect.objectContaining({
+        id: 'qwen/qwen3.6-35b-a3b',
+        reasoning: true,
+        input: ['text'],
+      }),
+    ]);
+  });
+
+  it('overrides matching capabilities while preserving unrelated model metadata', async () => {
+    await writeOpenClawJson({
+      models: {
+        providers: {
+          'custom-example': {
+            baseUrl: 'https://example.com/v1',
+            api: 'openai-completions',
+            models: [{
+              id: 'qwen/qwen3.6-35b-a3b',
+              name: 'Qwen Local',
+              input: ['text'],
+              reasoning: false,
+              contextWindow: 262144,
+              customField: 'keep-me',
+            }],
+          },
+        },
+      },
+    });
+
+    const { syncProviderConfigToOpenClaw } = await import('@electron/utils/openclaw-auth');
+    await syncProviderConfigToOpenClaw('custom-example', 'qwen/qwen3.6-35b-a3b', {
+      baseUrl: 'https://example.com/v1',
+      api: 'openai-completions',
+      modelCapabilities: { reasoning: true, imageInput: true },
+    });
+
+    const result = await readOpenClawJson();
+    const providers = (result.models as Record<string, unknown>).providers as Record<string, unknown>;
+    const entry = providers['custom-example'] as Record<string, unknown>;
+    const models = entry.models as Array<Record<string, unknown>>;
+
+    expect(models).toEqual([
+      expect.objectContaining({
+        id: 'qwen/qwen3.6-35b-a3b',
+        name: 'Qwen Local',
+        input: ['text', 'image'],
+        reasoning: true,
+        contextWindow: 262144,
+        customField: 'keep-me',
+      }),
+    ]);
+  });
+
   it('uses legacy minimax-portal-auth plugin registration when only the legacy plugin exists', async () => {
     await writeOpenClawJson({
       models: { providers: {} },

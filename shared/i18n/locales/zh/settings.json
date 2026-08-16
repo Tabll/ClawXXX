@@ -86,7 +86,10 @@
       "save": "保存",
       "customDoc": "查看文档",
       "validate": "验证",
-      "failed": "失败"
+      "failed": "失败",
+      "modelCapabilities": "模型能力",
+      "supportsThinking": "支持思考",
+      "supportsImages": "支持图片输入"
     },
     "card": {
       "default": "默认",

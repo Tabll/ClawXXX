@@ -6,6 +6,7 @@ import type {
   ProviderAccount,
   ProviderConfig,
   ProviderDefinition,
+  ProviderModelCapabilities,
   ProviderType,
 } from '../../shared/providers/types';
 import { BUILTIN_PROVIDER_TYPES } from '../../shared/providers/types';
@@ -83,6 +84,63 @@ function inferProviderVendorIdFromOpenClawEntry(
   }
 
   return ((BUILTIN_PROVIDER_TYPES as readonly string[]).includes(key) ? key : 'custom') as ProviderType | 'custom';
+}
+
+function stripRuntimeProviderPrefix(modelRef: string | undefined, providerKey: string): string | undefined {
+  if (!modelRef) return undefined;
+  return modelRef.startsWith(`${providerKey}/`)
+    ? modelRef.slice(providerKey.length + 1)
+    : modelRef;
+}
+
+function resolveModelCapabilitiesFromOpenClawEntry(
+  providerKey: string,
+  entry: Record<string, unknown> | undefined,
+  modelRef: string | undefined,
+): ProviderModelCapabilities | undefined {
+  if (!entry || !Array.isArray(entry.models)) return undefined;
+  const modelId = stripRuntimeProviderPrefix(modelRef, providerKey);
+  if (!modelId) return undefined;
+
+  const model = (entry.models as unknown[])
+    .filter((candidate): candidate is Record<string, unknown> => (
+      typeof candidate === 'object' && candidate !== null && !Array.isArray(candidate)
+    ))
+    .find((candidate) => candidate.id === modelId || candidate.id === modelRef);
+  if (!model) return undefined;
+
+  const capabilities: ProviderModelCapabilities = {};
+  if (typeof model.reasoning === 'boolean') capabilities.reasoning = model.reasoning;
+  if (Array.isArray(model.input)) capabilities.imageInput = model.input.includes('image');
+  return Object.keys(capabilities).length > 0 ? capabilities : undefined;
+}
+
+function mergeAccountModelCapabilities(
+  account: ProviderAccount,
+  providerKey: string,
+  entry: Record<string, unknown> | undefined,
+  defaultModel: string | undefined,
+): ProviderAccount {
+  const fromOpenClaw = resolveModelCapabilitiesFromOpenClawEntry(
+    providerKey,
+    entry,
+    account.model || defaultModel,
+  );
+  if (!fromOpenClaw) return account;
+  return {
+    ...account,
+    modelCapabilities: {
+      ...fromOpenClaw,
+      ...account.modelCapabilities,
+    },
+  };
+}
+
+function providerModelCapabilitiesEqual(
+  left: ProviderModelCapabilities | undefined,
+  right: ProviderModelCapabilities | undefined,
+): boolean {
+  return JSON.stringify(left ?? null) === JSON.stringify(right ?? null);
 }
 
 function providerMetadataEquals(
@@ -200,12 +258,20 @@ export class ProviderService {
             const nextMetadata = mergeSyncedProviderMetadata(kept.metadata, syncedAccount.metadata);
             const shouldSyncSelectedModel = defaultModel?.startsWith(`${key}/`) ?? false;
             const nextModel = shouldSyncSelectedModel ? syncedAccount.model : kept.model;
+            const nextCapabilities = mergeAccountModelCapabilities(
+              { ...kept, model: nextModel },
+              key,
+              entry,
+              defaultModel,
+            ).modelCapabilities;
             const shouldSyncModelState = kept.model !== nextModel
-              || !providerMetadataEquals(kept.metadata, nextMetadata);
+              || !providerMetadataEquals(kept.metadata, nextMetadata)
+              || !providerModelCapabilitiesEqual(kept.modelCapabilities, nextCapabilities);
             if (shouldSyncModelState) {
               kept = {
                 ...kept,
                 model: nextModel,
+                modelCapabilities: nextCapabilities,
                 metadata: nextMetadata,
                 updatedAt: new Date().toISOString(),
               };
@@ -327,6 +393,7 @@ export class ProviderService {
           ? (entry.headers as Record<string, string>)
           : undefined),
         model,
+        modelCapabilities: resolveModelCapabilitiesFromOpenClawEntry(key, entry, model),
         metadata: customModels && customModels.length > 0
           ? { customModels }
           : undefined,

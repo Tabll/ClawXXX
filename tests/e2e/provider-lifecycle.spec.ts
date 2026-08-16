@@ -357,4 +357,86 @@ test.describe('ClawX provider lifecycle', () => {
     await page.getByTestId('add-provider-codeplan-mode-tab').click();
     await expect(page.getByTestId('add-provider-base-url-input')).toHaveValue('https://api.z.ai/api/coding/paas/v4');
   });
+
+  test('saves model capability switches from provider model configuration', async ({ electronApp, page }) => {
+    await completeSetup(page);
+
+    await electronApp.evaluate(async ({ app: _app }) => {
+      const { ipcMain } = process.mainModule!.require('electron') as typeof import('electron');
+      let provider = {
+        id: 'capability-edit',
+        vendorId: 'custom',
+        label: 'Capability Edit',
+        authMode: 'api_key',
+        baseUrl: 'http://127.0.0.1:1234/v1',
+        apiProtocol: 'openai-completions',
+        model: 'qwen/qwen3.6-35b-a3b',
+        modelCapabilities: { reasoning: false, imageInput: false },
+        enabled: true,
+        isDefault: true,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      const keyInfo = [{ accountId: provider.id, hasKey: true, keyMasked: 'sk-***' }];
+      (globalThis as typeof globalThis & { __lastProviderCapabilityUpdate?: unknown })
+        .__lastProviderCapabilityUpdate = null;
+
+      const originalHostInvoke = (ipcMain as unknown as {
+        _invokeHandlers?: Map<string, (event: unknown, request: unknown) => Promise<unknown>>;
+      })._invokeHandlers?.get('host:invoke');
+      const respond = (id: unknown, data: unknown) => ({
+        id: typeof id === 'string' ? id : undefined,
+        ok: true,
+        data,
+      });
+
+      ipcMain.removeHandler('host:invoke');
+      ipcMain.handle('host:invoke', async (event: unknown, request: {
+        id?: string;
+        module?: string;
+        action?: string;
+        payload?: Record<string, unknown>;
+      }) => {
+        if (request?.module !== 'providers') {
+          return originalHostInvoke?.(event, request) ?? respond(request?.id, undefined);
+        }
+        const body = request.payload ?? {};
+        if (request.action === 'accounts') return respond(request.id, [provider]);
+        if (request.action === 'accountKeyInfo') return respond(request.id, keyInfo);
+        if (request.action === 'vendors') return respond(request.id, []);
+        if (request.action === 'getDefaultAccount') return respond(request.id, { accountId: provider.id });
+        if (request.action === 'list') return respond(request.id, [provider]);
+        if (request.action === 'updateAccount') {
+          (globalThis as typeof globalThis & { __lastProviderCapabilityUpdate?: unknown })
+            .__lastProviderCapabilityUpdate = body.updates;
+          provider = {
+            ...provider,
+            ...(body.updates as Record<string, unknown> | undefined),
+            updatedAt: new Date().toISOString(),
+          };
+          return respond(request.id, { success: true, account: provider });
+        }
+        return respond(request.id, {});
+      });
+    });
+
+    await openProviderSettings(page);
+    await expect(page.getByTestId('provider-card-capability-edit')).toBeVisible();
+    await page.getByTestId('provider-card-capability-edit').hover();
+    await page.getByTestId('provider-edit-capability-edit').click();
+    await expect(page.getByTestId('provider-edit-model-capabilities-capability-edit')).toBeVisible();
+
+    await page.getByTestId('provider-edit-supports-thinking-capability-edit').click();
+    await page.getByTestId('provider-edit-supports-images-capability-edit').click();
+    await page.getByTestId('provider-edit-save-capability-edit').click();
+    await expect(page.getByTestId('provider-edit-save-capability-edit')).toHaveCount(0);
+
+    const updates = await electronApp.evaluate(async () => (
+      (globalThis as typeof globalThis & { __lastProviderCapabilityUpdate?: unknown })
+        .__lastProviderCapabilityUpdate
+    ));
+    expect(updates).toMatchObject({
+      modelCapabilities: { reasoning: true, imageInput: true },
+    });
+  });
 });

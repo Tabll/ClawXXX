@@ -17,10 +17,13 @@ import {
   Copy,
   XCircle,
   ChevronDown,
+  Brain,
+  ImageIcon,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { Separator } from '@/components/ui/separator';
@@ -152,6 +155,44 @@ function getAuthModeLabel(
   }
 }
 
+type ModelCapabilitiesDraft = {
+  reasoning: boolean;
+  imageInput: boolean;
+};
+
+function inferModelImageInput(modelId: string | undefined): boolean {
+  const normalized = (modelId ?? '').trim().toLowerCase();
+  return (
+    /\b(?:gpt-4o|gpt-4\.1|gpt-[5-9]|o[134])\b/.test(normalized)
+    || /\bclaude-(?:3|4|fable|sonnet|opus|haiku)\b/.test(normalized)
+    || /\bgemini\b/.test(normalized)
+    || /\b(?:qwen[\w.-]*-?vl|qwen-vl)\b/.test(normalized)
+    || /\b(?:vision|llava|pixtral|internvl|mllama|minicpm-v|glm-4v)\b/.test(normalized)
+    || /(?:^|[-_/])vl(?:[-_/]|$)/.test(normalized)
+  );
+}
+
+function resolveModelCapabilitiesDraft(
+  capabilities: ProviderAccount['modelCapabilities'] | undefined,
+  modelId: string | undefined,
+): ModelCapabilitiesDraft {
+  return {
+    reasoning: capabilities?.reasoning ?? false,
+    imageInput: capabilities?.imageInput ?? inferModelImageInput(modelId),
+  };
+}
+
+function buildModelCapabilities(
+  reasoning: boolean,
+  imageInput: boolean,
+): ModelCapabilitiesDraft {
+  return { reasoning, imageInput };
+}
+
+function modelCapabilitiesEqual(left: ModelCapabilitiesDraft, right: ModelCapabilitiesDraft): boolean {
+  return left.reasoning === right.reasoning && left.imageInput === right.imageInput;
+}
+
 export function ProvidersSettings() {
   const { t } = useTranslation('settings');
   const devModeUnlocked = useSettingsStore((state) => state.devModeUnlocked);
@@ -193,6 +234,7 @@ export function ProvidersSettings() {
       authMode?: ProviderAccount['authMode'];
       apiProtocol?: ProviderAccount['apiProtocol'];
       headers?: Record<string, string>;
+      modelCapabilities?: ProviderAccount['modelCapabilities'];
     }
   ) => {
     const vendor = vendorMap.get(type);
@@ -208,6 +250,7 @@ export function ProvidersSettings() {
         apiProtocol: options?.apiProtocol,
         headers: options?.headers,
         model: options?.model,
+        modelCapabilities: options?.modelCapabilities,
         enabled: true,
         isDefault: false,
         createdAt: new Date().toISOString(),
@@ -292,6 +335,9 @@ export function ProvidersSettings() {
                   if (payload.updates.apiProtocol !== undefined) updates.apiProtocol = payload.updates.apiProtocol;
                   if (payload.updates.headers !== undefined) updates.headers = payload.updates.headers;
                   if (payload.updates.model !== undefined) updates.model = payload.updates.model;
+                  if (payload.updates.modelCapabilities !== undefined) {
+                    updates.modelCapabilities = payload.updates.modelCapabilities;
+                  }
                   if (payload.updates.fallbackModels !== undefined) updates.fallbackModels = payload.updates.fallbackModels;
                   if (payload.updates.fallbackProviderIds !== undefined) {
                     updates.fallbackAccountIds = payload.updates.fallbackProviderIds;
@@ -364,6 +410,12 @@ function ProviderCard({
   const [apiProtocol, setApiProtocol] = useState<ProviderAccount['apiProtocol']>(account.apiProtocol || 'openai-completions');
   const [userAgent, setUserAgent] = useState(getUserAgentHeader(account.headers));
   const [modelId, setModelId] = useState(account.model || '');
+  const [modelSupportsReasoning, setModelSupportsReasoning] = useState(
+    resolveModelCapabilitiesDraft(account.modelCapabilities, account.model).reasoning,
+  );
+  const [modelSupportsImages, setModelSupportsImages] = useState(
+    resolveModelCapabilitiesDraft(account.modelCapabilities, account.model).imageInput,
+  );
   const [fallbackModelsText, setFallbackModelsText] = useState(
     normalizeFallbackModels(account.fallbackModels).join('\n')
   );
@@ -400,6 +452,9 @@ function ProviderCard({
       setApiProtocol(account.apiProtocol || 'openai-completions');
       setUserAgent(getUserAgentHeader(account.headers));
       setModelId(account.model || '');
+      const capabilities = resolveModelCapabilitiesDraft(account.modelCapabilities, account.model);
+      setModelSupportsReasoning(capabilities.reasoning);
+      setModelSupportsImages(capabilities.imageInput);
       setFallbackModelsText(normalizeFallbackModels(account.fallbackModels).join('\n'));
       setFallbackProviderIds(normalizeFallbackProviderIds(account.fallbackAccountIds));
       setValidationError(null);
@@ -412,7 +467,7 @@ function ProviderCard({
         ) ? 'codeplan' : 'apikey'
       );
     }
-  }, [isEditing, account.baseUrl, account.headers, account.fallbackModels, account.fallbackAccountIds, account.model, account.apiProtocol, account.vendorId, typeInfo?.codePlanPresetBaseUrl, typeInfo?.codePlanPresetModelId]);
+  }, [isEditing, account.baseUrl, account.headers, account.fallbackModels, account.fallbackAccountIds, account.model, account.modelCapabilities, account.apiProtocol, account.vendorId, typeInfo?.codePlanPresetBaseUrl, typeInfo?.codePlanPresetModelId]);
 
   const fallbackOptions = allProviders.filter((candidate) => candidate.account.id !== account.id);
 
@@ -466,6 +521,11 @@ function ProviderCard({
         }
         if (!fallbackProviderIdsEqual(fallbackProviderIds, account.fallbackAccountIds)) {
           updates.fallbackProviderIds = normalizeFallbackProviderIds(fallbackProviderIds);
+        }
+        const previousCapabilities = resolveModelCapabilitiesDraft(account.modelCapabilities, account.model);
+        const nextCapabilities = buildModelCapabilities(modelSupportsReasoning, modelSupportsImages);
+        if (!modelCapabilitiesEqual(previousCapabilities, nextCapabilities)) {
+          updates.modelCapabilities = nextCapabilities;
         }
         if (Object.keys(updates).length > 0) {
           payload.updates = updates;
@@ -649,6 +709,40 @@ function ProviderCard({
                   >
                     {t('aiProviders.dialog.modelIdEditDisabled')}
                   </p>
+                </div>
+              )}
+              {showModelIdField && (
+                <div
+                  data-testid={`provider-edit-model-capabilities-${account.id}`}
+                  className="space-y-2 pt-2"
+                >
+                  <Label className={currentLabelClasses}>{t('aiProviders.dialog.modelCapabilities')}</Label>
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    <div className="flex items-center justify-between gap-3 rounded-lg border border-border/75 bg-surface-input/70 px-3 py-2 text-meta">
+                      <span className="flex min-w-0 items-center gap-2 text-muted-foreground">
+                        <Brain className="h-4 w-4 shrink-0" />
+                        <span className="truncate">{t('aiProviders.dialog.supportsThinking')}</span>
+                      </span>
+                      <Switch
+                        data-testid={`provider-edit-supports-thinking-${account.id}`}
+                        aria-label={t('aiProviders.dialog.supportsThinking')}
+                        checked={modelSupportsReasoning}
+                        onCheckedChange={setModelSupportsReasoning}
+                      />
+                    </div>
+                    <div className="flex items-center justify-between gap-3 rounded-lg border border-border/75 bg-surface-input/70 px-3 py-2 text-meta">
+                      <span className="flex min-w-0 items-center gap-2 text-muted-foreground">
+                        <ImageIcon className="h-4 w-4 shrink-0" />
+                        <span className="truncate">{t('aiProviders.dialog.supportsImages')}</span>
+                      </span>
+                      <Switch
+                        data-testid={`provider-edit-supports-images-${account.id}`}
+                        aria-label={t('aiProviders.dialog.supportsImages')}
+                        checked={modelSupportsImages}
+                        onCheckedChange={setModelSupportsImages}
+                      />
+                    </div>
+                  </div>
                 </div>
               )}
               {codePlanPreset && (
@@ -929,6 +1023,7 @@ interface AddProviderDialogProps {
       authMode?: ProviderAccount['authMode'];
       apiProtocol?: ProviderAccount['apiProtocol'];
       headers?: Record<string, string>;
+      modelCapabilities?: ProviderAccount['modelCapabilities'];
     }
   ) => Promise<void>;
   onValidateKey: (
@@ -954,6 +1049,9 @@ function AddProviderDialog({
   const [apiKey, setApiKey] = useState('');
   const [baseUrl, setBaseUrl] = useState('');
   const [modelId, setModelId] = useState('');
+  const [modelSupportsReasoning, setModelSupportsReasoning] = useState(false);
+  const [modelSupportsImages, setModelSupportsImages] = useState(false);
+  const [modelCapabilitiesTouched, setModelCapabilitiesTouched] = useState(false);
   const [apiProtocol, setApiProtocol] = useState<ProviderAccount['apiProtocol']>('openai-completions');
   const [showAdvancedConfig, setShowAdvancedConfig] = useState(false);
   const [userAgent, setUserAgent] = useState('');
@@ -990,6 +1088,9 @@ function AddProviderDialog({
       setApiKey('');
       setBaseUrl('');
       setModelId('');
+      setModelSupportsReasoning(false);
+      setModelSupportsImages(false);
+      setModelCapabilitiesTouched(false);
       setApiProtocol('openai-completions');
       setShowAdvancedConfig(false);
       setUserAgent('');
@@ -1269,6 +1370,7 @@ function AddProviderDialog({
           apiProtocol: (selectedType === 'custom' || selectedType === 'ollama') ? apiProtocol : undefined,
           headers: userAgent.trim() ? { 'User-Agent': userAgent.trim() } : undefined,
           model: resolveProviderModelForSave(typeInfo, modelId, devModeUnlocked),
+          modelCapabilities: buildModelCapabilities(modelSupportsReasoning, modelSupportsImages),
           authMode: useOAuthFlow ? (preferredOAuthMode || 'oauth_device') : selectedType === 'ollama'
             ? 'local'
             : (isOAuth && supportsApiKey && authMode === 'apikey')
@@ -1318,6 +1420,9 @@ function AddProviderDialog({
                     setName(type.id === 'custom' ? t('aiProviders.custom') : type.name);
                     setBaseUrl(type.defaultBaseUrl || '');
                     setModelId(type.defaultModelId || '');
+                    setModelSupportsReasoning(false);
+                    setModelSupportsImages(inferModelImageInput(type.defaultModelId));
+                    setModelCapabilitiesTouched(false);
                     setUserAgent('');
                     setShowAdvancedConfig(false);
                     setCodePlanMode('apikey');
@@ -1354,6 +1459,9 @@ function AddProviderDialog({
                     setValidationError(null);
                     setBaseUrl('');
                     setModelId('');
+                    setModelSupportsReasoning(false);
+                    setModelSupportsImages(false);
+                    setModelCapabilitiesTouched(false);
                     setUserAgent('');
                     setShowAdvancedConfig(false);
                     setCodePlanMode('apikey');
@@ -1488,11 +1596,52 @@ function AddProviderDialog({
                       placeholder={typeInfo?.modelIdPlaceholder || 'provider/model-id'}
                       value={modelId}
                       onChange={(e) => {
-                        setModelId(e.target.value);
+                        const nextModelId = e.target.value;
+                        setModelId(nextModelId);
+                        if (!modelCapabilitiesTouched) {
+                          setModelSupportsImages(inferModelImageInput(nextModelId));
+                        }
                         setValidationError(null);
                       }}
                       className={inputClasses}
                     />
+                  </div>
+                )}
+                {showModelIdField && (
+                  <div data-testid="add-provider-model-capabilities" className="space-y-2.5">
+                    <Label className={labelClasses}>{t('aiProviders.dialog.modelCapabilities')}</Label>
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                      <div className="flex items-center justify-between gap-3 rounded-lg border border-border/75 bg-surface-input/70 px-3 py-2 text-meta">
+                        <span className="flex min-w-0 items-center gap-2 text-muted-foreground">
+                          <Brain className="h-4 w-4 shrink-0" />
+                          <span className="truncate">{t('aiProviders.dialog.supportsThinking')}</span>
+                        </span>
+                        <Switch
+                          data-testid="add-provider-supports-thinking"
+                          aria-label={t('aiProviders.dialog.supportsThinking')}
+                          checked={modelSupportsReasoning}
+                          onCheckedChange={(checked) => {
+                            setModelSupportsReasoning(checked);
+                            setModelCapabilitiesTouched(true);
+                          }}
+                        />
+                      </div>
+                      <div className="flex items-center justify-between gap-3 rounded-lg border border-border/75 bg-surface-input/70 px-3 py-2 text-meta">
+                        <span className="flex min-w-0 items-center gap-2 text-muted-foreground">
+                          <ImageIcon className="h-4 w-4 shrink-0" />
+                          <span className="truncate">{t('aiProviders.dialog.supportsImages')}</span>
+                        </span>
+                        <Switch
+                          data-testid="add-provider-supports-images"
+                          aria-label={t('aiProviders.dialog.supportsImages')}
+                          checked={modelSupportsImages}
+                          onCheckedChange={(checked) => {
+                            setModelSupportsImages(checked);
+                            setModelCapabilitiesTouched(true);
+                          }}
+                        />
+                      </div>
+                    </div>
                   </div>
                 )}
                 {codePlanPreset && (
@@ -1520,7 +1669,11 @@ function AddProviderDialog({
                           setCodePlanMode('apikey');
                           setBaseUrl(typeInfo?.defaultBaseUrl || '');
                           if (modelId.trim() === codePlanPreset.modelId) {
-                            setModelId(typeInfo?.defaultModelId || '');
+                            const nextModelId = typeInfo?.defaultModelId || '';
+                            setModelId(nextModelId);
+                            if (!modelCapabilitiesTouched) {
+                              setModelSupportsImages(inferModelImageInput(nextModelId));
+                            }
                           }
                           setValidationError(null);
                         }}
@@ -1535,6 +1688,9 @@ function AddProviderDialog({
                           setCodePlanMode('codeplan');
                           setBaseUrl(codePlanPreset.baseUrl);
                           setModelId(codePlanPreset.modelId);
+                          if (!modelCapabilitiesTouched) {
+                            setModelSupportsImages(inferModelImageInput(codePlanPreset.modelId));
+                          }
                           setValidationError(null);
                         }}
                         className={cn("flex-1 py-1.5 px-3 rounded-lg border transition-colors", codePlanMode === 'codeplan' ? "bg-surface-modal border-black/20 dark:border-white/20 shadow-sm font-medium" : "border-transparent bg-black/5 dark:bg-white/5 text-muted-foreground hover:bg-black/10 dark:hover:bg-white/10")}

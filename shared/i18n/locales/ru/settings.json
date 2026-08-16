@@ -86,7 +86,10 @@
       "save": "Сохранить",
       "customDoc": "Документация",
       "validate": "Проверить",
-      "failed": "Ошибка"
+      "failed": "Ошибка",
+      "modelCapabilities": "Возможности модели",
+      "supportsThinking": "Поддерживает рассуждение",
+      "supportsImages": "Поддерживает ввод изображений"
     },
     "card": {
       "default": "По умолчанию",

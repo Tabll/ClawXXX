@@ -18,6 +18,14 @@ export type PiAiModelCostRates = {
   cacheWrite: number;
 };
 
+export type PiAiModelMetadata = Record<string, unknown>;
+
+export type PiAiModelEntry = {
+  id: string;
+  name: string;
+  cost: PiAiModelCostRates;
+} & PiAiModelMetadata;
+
 export function normalizePiAiModelCost(existing: unknown): PiAiModelCostRates {
   if (!existing || typeof existing !== 'object') {
     return { ...PI_AI_MODEL_ZERO_COST };
@@ -38,6 +46,7 @@ export function normalizePiAiModelCost(existing: unknown): PiAiModelCostRates {
 export function piAiModelsJsonModelEntry(
   id: string,
   name: string = id,
-): { id: string; name: string; cost: PiAiModelCostRates } {
-  return { id, name, cost: normalizePiAiModelCost(undefined) };
+  metadata?: PiAiModelMetadata,
+): PiAiModelEntry {
+  return { id, name, cost: normalizePiAiModelCost(undefined), ...metadata };
 }

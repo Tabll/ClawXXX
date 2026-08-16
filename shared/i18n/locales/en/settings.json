@@ -86,7 +86,10 @@
       "save": "Save",
       "customDoc": "Documentation",
       "validate": "Validate",
-      "failed": "Failed"
+      "failed": "Failed",
+      "modelCapabilities": "Model capabilities",
+      "supportsThinking": "Supports thinking",
+      "supportsImages": "Supports image input"
     },
     "card": {
       "default": "Default",

@@ -61,6 +61,28 @@ describe('provider-model-sync', () => {
     });
   });
 
+  it('includes configured model capabilities for the matching provider model', () => {
+    const payload = buildNonOAuthAgentProviderUpdate(
+      providerConfig({
+        type: 'moonshot',
+        id: 'moonshot',
+        model: 'moonshot/kimi-k2.6',
+        modelCapabilities: {
+          reasoning: true,
+          imageInput: true,
+        },
+      }),
+      'moonshot',
+      'moonshot/kimi-k2.6',
+    );
+
+    expect(payload?.entry.models[0]).toEqual(expect.objectContaining({
+      id: 'kimi-k2.6',
+      reasoning: true,
+      input: ['text', 'image'],
+    }));
+  });
+
   it('builds modelstudio payload and returns null for multi-instance providers', () => {
     expect(
       buildNonOAuthAgentProviderUpdate(

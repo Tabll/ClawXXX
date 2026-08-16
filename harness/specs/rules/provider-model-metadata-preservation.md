@@ -17,6 +17,11 @@ explicitly owns that field.
 New model IDs may receive deterministic capability defaults, but metadata from a
 different model ID must never be copied onto them.
 
+Reasoning and image-input choices made in Models are explicit user-owned
+metadata. They must flow through the typed provider-account APIs, override
+automatic inference for the selected provider/model pair, and be mirrored to
+the matching per-agent `models.json` row.
+
 Custom-provider model rows (`models.providers.custom-*`) must carry an explicit
 `contextWindow`: new rows receive a deterministic model-family default, and
 existing rows missing both `contextWindow` and `contextTokens` may be

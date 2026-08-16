@@ -6,7 +6,28 @@ import {
   LOCAL_MODEL_CONTEXT_WINDOW,
   inferCustomModelContextWindow,
   inferCustomModelInputModalities,
+  providerModelCapabilitiesToModelMetadata,
 } from '@electron/shared/providers/model-capabilities';
+
+describe('providerModelCapabilitiesToModelMetadata', () => {
+  it('maps explicit reasoning and image-input flags to OpenClaw model metadata', () => {
+    expect(providerModelCapabilitiesToModelMetadata({
+      reasoning: true,
+      imageInput: false,
+    })).toEqual({
+      reasoning: true,
+      input: ['text'],
+    });
+    expect(providerModelCapabilitiesToModelMetadata({ imageInput: true })).toEqual({
+      input: ['text', 'image'],
+    });
+  });
+
+  it('leaves unspecified capabilities untouched', () => {
+    expect(providerModelCapabilitiesToModelMetadata(undefined)).toBeUndefined();
+    expect(providerModelCapabilitiesToModelMetadata({})).toBeUndefined();
+  });
+});
 
 describe('inferCustomModelInputModalities', () => {
   it.each([
