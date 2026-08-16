@@ -137,6 +137,8 @@ export type DeleteSessionResult =
 
 export interface ChatState {
   sessions: ChatSession[];
+  /** True after the current Gateway generation has published a canonical sessions.list snapshot. */
+  sessionCatalogReady: boolean;
   currentSessionKey: string;
   currentAgentId: string;
   /** First user message text per session key, used as display label */

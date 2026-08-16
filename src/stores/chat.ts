@@ -72,6 +72,7 @@ function markLocalSessionCatalogMutation(): void {
 export function synchronizeGatewaySessionGeneration(generation: number): void {
   if (!Number.isFinite(generation) || generation <= sessionCatalogGeneration) return;
   sessionCatalogGeneration = generation;
+  useChatStore.setState({ sessionCatalogReady: false });
   latestSessionEventTsByKey.clear();
   successfulSessionListTsFloor = null;
   pendingGenerationSessionEvents = { generation, events: [] };
@@ -523,6 +524,7 @@ async function fetchChatSessionsList(): Promise<Record<string, unknown>> {
 
 export const useChatStore = create<ChatState>((set, get) => ({
   sessions: [],
+  sessionCatalogReady: false,
   currentSessionKey: DEFAULT_SESSION_KEY,
   currentAgentId: 'main',
   sessionLabels: {},
@@ -971,6 +973,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
                 }
                 return {
                   sessions: sessionsWithCurrent,
+                  sessionCatalogReady: true,
                   currentSessionKey: nextSessionKey,
                   currentAgentId: getAgentIdFromSessionKey(nextSessionKey),
                   sessionLabels,

@@ -18,6 +18,7 @@ touchedAreas:
   - src/lib/acp/reducer.ts
   - src/lib/acp/timeline-types.ts
   - src/lib/acp/transcript-supplement.ts
+  - src/stores/chat.ts
   - src/stores/acp-chat-session.ts
   - src/components/settings/ProvidersSettings.tsx
   - src/pages/Chat/AcpAssistantTurn.tsx
@@ -35,6 +36,7 @@ touchedAreas:
   - tests/unit/acp-assistant-metadata.test.tsx
   - tests/unit/acp-chat-components.test.tsx
   - tests/unit/chat-input.test.tsx
+  - tests/unit/chat-acp-page.test.tsx
   - tests/unit/host-api-facade.test.ts
   - tests/unit/host-services.test.ts
   - tests/unit/i18n-locale-parity.test.ts
@@ -65,7 +67,7 @@ requiredRules:
   - comms-regression
   - docs-sync
 requiredTests:
-  - NODE_OPTIONS=--no-experimental-webstorage pnpm exec vitest run tests/unit/acp-assistant-metadata.test.tsx tests/unit/acp-chat-components.test.tsx tests/unit/acp-chat-service.test.ts tests/unit/acp-chat-store.test.ts tests/unit/chat-input.test.tsx tests/unit/host-api-facade.test.ts tests/unit/host-services.test.ts tests/unit/i18n-locale-parity.test.ts
+  - NODE_OPTIONS=--no-experimental-webstorage pnpm exec vitest run tests/unit/acp-assistant-metadata.test.tsx tests/unit/acp-chat-components.test.tsx tests/unit/acp-chat-service.test.ts tests/unit/acp-chat-store.test.ts tests/unit/chat-acp-page.test.tsx tests/unit/chat-input.test.tsx tests/unit/host-api-facade.test.ts tests/unit/host-services.test.ts tests/unit/i18n-locale-parity.test.ts
   - pnpm run typecheck
   - pnpm run lint:check
   - pnpm run build:vite
@@ -83,7 +85,7 @@ acceptance:
   - Manual compaction and queued follow-ups use the existing ACP prompt path and cannot overlap an active ACP prompt.
   - The queue is scoped to the selected session, capped at five entries, removable, and never automatically drained after an explicit cancel.
   - Transcript reads add hover-only metadata to matched ACP assistant turns and never append or replace visible conversation history.
-  - Default-session ACP creation cannot race ahead of an empty session catalog, and existing settings save buttons account for their migrated fields.
+  - Default-session ACP creation waits for a canonical catalog publication for the current Gateway generation, and existing settings save buttons account for their migrated fields.
   - All new labels and accessible names have matching English, Chinese, Japanese, and Russian translations.
 docs:
   required: true

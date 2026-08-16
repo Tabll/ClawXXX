@@ -72,6 +72,7 @@ const { acpState, agentsState, artifactPanelState, artifactPanelProps, chatState
   artifactPanelProps: [] as Array<{ fileGroups: unknown[]; uniqueFileCount: number; agent: unknown; runStartedAt?: number | null }>,
   chatState: {
     sessions: [],
+    sessionCatalogReady: true,
     currentSessionKey: 'agent:main:main',
     currentAgentId: 'main',
     sessionLabels: {},
@@ -337,6 +338,7 @@ describe('ACP Chat page', () => {
     }));
     openDialog.mockReset();
     chatState.sessions = [{ key: 'agent:main:main', workspacePath: '/workspace' }];
+    chatState.sessionCatalogReady = true;
     chatState.currentSessionKey = 'agent:main:main';
     chatState.currentAgentId = 'main';
     chatState.loadSessions.mockReset();
@@ -431,9 +433,13 @@ describe('ACP Chat page', () => {
     expect(acpState.loadSession).not.toHaveBeenCalledWith({ sessionKey: 'agent:main:main', cwd: '/' });
   });
 
-  it('discovers sessions once before loading the default ACP session when ACP has no active session', async () => {
+  it('waits for the canonical catalog before loading a missing default ACP session', async () => {
     acpState.activeSessionKey = null;
     chatState.sessions = [];
+    chatState.sessionCatalogReady = false;
+    chatState.loadSessions.mockImplementationOnce(async () => {
+      chatState.sessionCatalogReady = true;
+    });
 
     render(<Chat />);
 
@@ -451,16 +457,34 @@ describe('ACP Chat page', () => {
     });
   });
 
+  it('does not create the default ACP session when discovery resolves without publishing a catalog', async () => {
+    acpState.activeSessionKey = null;
+    chatState.sessions = [];
+    chatState.sessionCatalogReady = false;
+
+    render(<Chat />);
+
+    await waitFor(() => {
+      expect(chatState.loadSessions).toHaveBeenCalledTimes(1);
+    });
+    await waitFor(() => {
+      expect(acpState.loadSession).not.toHaveBeenCalled();
+      expect(chatState.selectAcpSession).not.toHaveBeenCalled();
+    });
+  });
+
   it('does not load ACP until session discovery publishes the hydrated workspace', async () => {
     const sessionKey = 'agent:main:hydrated-workspace';
     let finishDiscovery!: () => void;
     acpState.activeSessionKey = null;
     chatState.sessions = [];
+    chatState.sessionCatalogReady = false;
     chatState.currentSessionKey = 'agent:main:main';
     chatState.loadSessions.mockImplementation(() => new Promise<void>((resolve) => {
       finishDiscovery = () => {
         chatState.currentSessionKey = sessionKey;
         chatState.sessions = [{ key: sessionKey, workspacePath: '/hydrated-workspace' }];
+        chatState.sessionCatalogReady = true;
         resolve();
       };
     }));

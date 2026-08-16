@@ -180,6 +180,7 @@ export function Chat() {
 
   const currentSessionKey = useChatStore((s) => s.currentSessionKey);
   const sessions = useChatStore((s) => s.sessions);
+  const sessionCatalogReady = useChatStore((s) => s.sessionCatalogReady);
   const sessionLabels = useChatStore((s) => s.sessionLabels);
   const currentAgentId = useChatStore((s) => s.currentAgentId);
   const loadSessions = useChatStore((s) => s.loadSessions);
@@ -377,7 +378,12 @@ export function Chat() {
 
   useEffect(() => {
     if (!currentSessionKey || !cwd || !workspaceContextAvailable) return;
-    if (currentSessionKey === DEFAULT_SESSION_KEY && sessions.length === 0 && acpActiveSessionKey == null) return;
+    if (
+      currentSessionKey === DEFAULT_SESSION_KEY
+      && sessions.length === 0
+      && acpActiveSessionKey == null
+      && !sessionCatalogReady
+    ) return;
     if (acpActiveSessionKey === currentSessionKey && acpWorkspaceRoot === cwd && acpCwd === cwd) return;
     const acpLoadKey = `${currentSessionKey}\0${cwd}`;
     if (acpLoadInFlightKeyRef.current === acpLoadKey) return;
@@ -400,7 +406,7 @@ export function Chat() {
         acpLoadInFlightKeyRef.current = null;
       }
     });
-  }, [acknowledgeAcpSessionCreated, acpActiveSessionKey, acpCwd, acpWorkspaceRoot, currentSessionKey, cwd, loadAcpSession, selectAcpSession, sessionDiscoveryAttempted, sessions, workspaceContextAvailable]);
+  }, [acknowledgeAcpSessionCreated, acpActiveSessionKey, acpCwd, acpWorkspaceRoot, currentSessionKey, cwd, loadAcpSession, selectAcpSession, sessionCatalogReady, sessions, workspaceContextAvailable]);
 
   const platform = window.electron?.platform;
   const isMac = platform === 'darwin';
