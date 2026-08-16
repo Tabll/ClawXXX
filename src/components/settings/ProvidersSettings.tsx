@@ -961,9 +961,14 @@ function ProviderCard({
                     || (
                       !newKey.trim()
                       && (baseUrl.trim() || undefined) === (account.baseUrl || undefined)
+                      && apiProtocol === (account.apiProtocol || 'openai-completions')
                       && userAgent.trim() === getUserAgentHeader(account.headers).trim()
                       && fallbackModelsEqual(normalizeFallbackModels(fallbackModelsText.split('\n')), account.fallbackModels)
                       && fallbackProviderIdsEqual(fallbackProviderIds, account.fallbackAccountIds)
+                      && modelCapabilitiesEqual(
+                        resolveModelCapabilitiesDraft(account.modelCapabilities, account.model),
+                        buildModelCapabilities(modelSupportsReasoning, modelSupportsImages),
+                      )
                     )
                   }
                 >

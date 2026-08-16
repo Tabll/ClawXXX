@@ -4,6 +4,7 @@ import type {
   AcpChatOperationResult,
   AcpChatPromptPayload,
   AcpChatRespondPermissionPayload,
+  AcpChatSetConfigOptionPayload,
   AcpPermissionRequestEnvelope,
   AcpSessionUpdateEnvelope,
 } from '@shared/acp-chat/types';
@@ -39,6 +40,7 @@ import {
 import { hashOpenClawMediaDiagnostic, type OpenClawMediaCandidate } from '@/lib/acp/openclaw-media-compat';
 import { openClawResourceLinkPromptText } from '@/lib/acp/openclaw-prompt-compat';
 import { fetchOpenClawTranscriptSupplement } from '@/lib/acp/transcript-supplement';
+import { applyAssistantMessageMetadata } from '@/lib/acp/assistant-metadata';
 import { alignHistoricalTurnTimings, type AcpTurnTiming } from '@/lib/acp/turn-timings';
 import { buildCronHistoryAcpNotifications, fetchCronSessionHistory } from '@/lib/cron-session-history';
 import { hostApi } from '@/lib/host-api';
@@ -85,6 +87,15 @@ type LiveSessionSnapshot = {
   }>;
 };
 const liveSessionSnapshots = new Map<string, LiveSessionSnapshot>();
+export type QueuedAcpPrompt = {
+  id: string;
+  payload: AcpChatPromptPayload;
+  createdAt: number;
+};
+const MAX_QUEUED_PROMPTS = 5;
+const queuedPromptsBySession = new Map<string, QueuedAcpPrompt[]>();
+const queueDrainBlockedSessions = new Set<string>();
+const drainingQueuedSessions = new Set<string>();
 let loadRequestSeq = 0;
 const attachmentResolutionsInFlight = new Set<string>();
 
@@ -145,9 +156,14 @@ export type AcpChatSessionState = {
   error: string | null;
   timeline: AcpTimelineSnapshot;
   turnTimingsByUserMessageId: Record<string, AcpTurnTiming>;
+  queuedPrompts: QueuedAcpPrompt[];
   prepareLocalSession: (input: AcpChatLoadPayload) => void;
   loadSession: (input: AcpChatLoadPayload) => Promise<boolean>;
   sendPrompt: (input: AcpChatPromptPayload) => Promise<boolean>;
+  enqueuePrompt: (input: AcpChatPromptPayload) => boolean;
+  removeQueuedPrompt: (id: string) => void;
+  drainQueuedPrompts: (sessionKey: string, generation: number) => Promise<void>;
+  setConfigOption: (configId: string, value: string | boolean) => Promise<boolean>;
   cancel: () => Promise<void>;
   respondPermission: (requestId: string, optionId: string) => Promise<void>;
   applyUpdateEnvelope: (event: AcpSessionUpdateEnvelope) => void;
@@ -729,6 +745,14 @@ async function runTranscriptSupplement(operation: TranscriptSupplementOperation)
   });
   if (!result || !isCurrent()) return;
 
+  if (Object.keys(result.assistantMetadata).length > 0) {
+    useAcpChatSessionStore.setState((current) => (
+      isCurrentTranscriptSupplement(current, operation)
+        ? { timeline: applyAssistantMessageMetadata(current.timeline, result.assistantMetadata) }
+        : {}
+    ));
+  }
+
   if (result.turnTimings.length > 0) {
     useAcpChatSessionStore.setState((current) => {
       if (!isCurrentTranscriptSupplement(current, operation)) return {};
@@ -1014,6 +1038,7 @@ export const useAcpChatSessionStore = create<AcpChatSessionState>((set, get) => 
   error: null,
   timeline: createEmptyAcpTimeline(EMPTY_SESSION_ID, 0),
   turnTimingsByUserMessageId: {},
+  queuedPrompts: [],
 
   prepareLocalSession(input) {
     captureLiveSession(get());
@@ -1034,6 +1059,7 @@ export const useAcpChatSessionStore = create<AcpChatSessionState>((set, get) => 
       error: null,
       timeline: createEmptyAcpTimeline(input.sessionKey, generation),
       turnTimingsByUserMessageId: {},
+      queuedPrompts: queuedPromptsBySession.get(input.sessionKey) ?? [],
     });
   },
 
@@ -1060,6 +1086,7 @@ export const useAcpChatSessionStore = create<AcpChatSessionState>((set, get) => 
       error: null,
       timeline: liveSnapshot?.timeline ?? createEmptyAcpTimeline(input.sessionKey, generation),
       turnTimingsByUserMessageId: liveSnapshot?.turnTimingsByUserMessageId ?? {},
+      queuedPrompts: queuedPromptsBySession.get(input.sessionKey) ?? [],
     });
 
     try {
@@ -1146,6 +1173,12 @@ export const useAcpChatSessionStore = create<AcpChatSessionState>((set, get) => 
       let timeline = currentResumedSnapshot?.generation === generation
         ? currentResumedSnapshot.timeline
         : createEmptyAcpTimeline(input.sessionKey, generation);
+      if (!currentResumedSnapshot && result.configOptions) {
+        timeline = {
+          ...timeline,
+          metadata: { ...timeline.metadata, configOptions: result.configOptions },
+        };
+      }
       for (const event of sessionUpdates) {
         timeline = applyAcpSessionUpdate(timeline, event.notification, { historical: !!event.historical });
       }
@@ -1202,6 +1235,9 @@ export const useAcpChatSessionStore = create<AcpChatSessionState>((set, get) => 
       if (!input.createIfMissing) {
         startHistoricalTranscriptSupplement(input.sessionKey, generation);
       }
+      queueMicrotask(() => {
+        void get().drainQueuedPrompts(input.sessionKey, generation);
+      });
       return true;
     } catch (error) {
       if (loadRequestSeq === requestId) pendingLoadUpdates.clear();
@@ -1215,6 +1251,7 @@ export const useAcpChatSessionStore = create<AcpChatSessionState>((set, get) => 
             workspaceRoot: null,
             cwd: null,
             loading: false,
+            queuedPrompts: [],
             error: errorMessage(error, 'ACP session load failed'),
           }
           : {}
@@ -1228,6 +1265,7 @@ export const useAcpChatSessionStore = create<AcpChatSessionState>((set, get) => 
     const sessionKey = input.sessionKey;
     const generation = startState.generation;
     if (startState.activeSessionKey !== sessionKey) return false;
+    queueDrainBlockedSessions.delete(sessionKey);
 
     const messageId = input.messageId ?? createOptimisticMessageId();
     const payload = { ...input, messageId };
@@ -1292,6 +1330,9 @@ export const useAcpChatSessionStore = create<AcpChatSessionState>((set, get) => 
         } else if (activeTranscriptSupplement === transcriptOperation) {
           invalidateTranscriptSupplement();
         }
+        queueMicrotask(() => {
+          void get().drainQueuedPrompts(sessionKey, result.generation ?? generation);
+        });
       } else if (activeTranscriptSupplement === transcriptOperation) {
         invalidateTranscriptSupplement();
       }
@@ -1316,11 +1357,112 @@ export const useAcpChatSessionStore = create<AcpChatSessionState>((set, get) => 
     }
   },
 
+  enqueuePrompt(input) {
+    const state = get();
+    if (state.activeSessionKey !== input.sessionKey || !state.sending) return false;
+    const queue = queuedPromptsBySession.get(input.sessionKey) ?? [];
+    if (queue.length >= MAX_QUEUED_PROMPTS) return false;
+    const entry: QueuedAcpPrompt = {
+      id: createOptimisticMessageId(),
+      payload: input,
+      createdAt: Date.now(),
+    };
+    const nextQueue = [...queue, entry];
+    queuedPromptsBySession.set(input.sessionKey, nextQueue);
+    set({ queuedPrompts: nextQueue });
+    return true;
+  },
+
+  removeQueuedPrompt(id) {
+    const sessionKey = get().activeSessionKey;
+    if (!sessionKey) return;
+    const queue = queuedPromptsBySession.get(sessionKey) ?? [];
+    const nextQueue = queue.filter((entry) => entry.id !== id);
+    if (nextQueue.length === queue.length) return;
+    if (nextQueue.length > 0) queuedPromptsBySession.set(sessionKey, nextQueue);
+    else queuedPromptsBySession.delete(sessionKey);
+    set({ queuedPrompts: nextQueue });
+  },
+
+  async drainQueuedPrompts(sessionKey, generation) {
+    if (drainingQueuedSessions.has(sessionKey) || queueDrainBlockedSessions.has(sessionKey)) return;
+    drainingQueuedSessions.add(sessionKey);
+    try {
+      while (!queueDrainBlockedSessions.has(sessionKey)) {
+        const state = get();
+        if (
+          !isCurrentAction(state, sessionKey, generation)
+          || state.loading
+          || state.sending
+          || state.cancelling
+        ) return;
+        const queue = queuedPromptsBySession.get(sessionKey) ?? [];
+        const [entry, ...remaining] = queue;
+        if (!entry) return;
+        if (remaining.length > 0) queuedPromptsBySession.set(sessionKey, remaining);
+        else queuedPromptsBySession.delete(sessionKey);
+        set({ queuedPrompts: remaining });
+
+        const sent = await get().sendPrompt(entry.payload);
+        if (!sent) {
+          const currentQueue = queuedPromptsBySession.get(sessionKey) ?? [];
+          const restoredQueue = [entry, ...currentQueue].slice(0, MAX_QUEUED_PROMPTS);
+          queuedPromptsBySession.set(sessionKey, restoredQueue);
+          if (get().activeSessionKey === sessionKey) set({ queuedPrompts: restoredQueue });
+          return;
+        }
+        generation = get().generation;
+      }
+    } finally {
+      drainingQueuedSessions.delete(sessionKey);
+    }
+  },
+
+  async setConfigOption(configId, value) {
+    const startState = get();
+    const sessionKey = startState.activeSessionKey;
+    const generation = startState.generation;
+    if (!sessionKey || startState.loading || startState.sending || startState.cancelling) return false;
+
+    const payload: AcpChatSetConfigOptionPayload = typeof value === 'boolean'
+      ? { sessionKey, configId, value, type: 'boolean' }
+      : { sessionKey, configId, value };
+    try {
+      const result = await hostApi.chat.setAcpSessionConfigOption(payload);
+      const state = get();
+      if (!isCurrentAction(state, sessionKey, generation)) return result.success;
+      if (!result.success || !result.configOptions) {
+        set({ error: failedOperationMessage(result, i18n.t('chat:composer.sessionConfigFailed')) });
+        return false;
+      }
+      set({
+        ...applyOperationGeneration(state, result),
+        error: null,
+        timeline: {
+          ...state.timeline,
+          metadata: {
+            ...state.timeline.metadata,
+            configOptions: result.configOptions,
+          },
+        },
+      });
+      return true;
+    } catch (error) {
+      set((state) => (
+        isCurrentAction(state, sessionKey, generation)
+          ? { error: errorMessage(error, i18n.t('chat:composer.sessionConfigFailed')) }
+          : {}
+      ));
+      return false;
+    }
+  },
+
   async cancel() {
     const startState = get();
     const sessionKey = startState.activeSessionKey;
     const generation = startState.generation;
     if (!sessionKey) return;
+    queueDrainBlockedSessions.add(sessionKey);
     invalidateTranscriptSupplement();
 
     set({ cancelling: true, error: null });

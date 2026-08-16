@@ -260,10 +260,18 @@ function parseMessageRecordLine(line: string): TranscriptMessageRecord | null {
     if (entry.type !== 'message' || !entry.message || typeof entry.message !== 'object') {
       return null;
     }
+    const id = typeof entry.id === 'string' ? entry.id : undefined;
+    const timestamp = typeof entry.timestamp === 'number' && Number.isFinite(entry.timestamp)
+      ? entry.timestamp
+      : normalizeTranscriptTimestamp(entry.timestamp) ?? undefined;
     return {
-      ...(typeof entry.id === 'string' ? { id: entry.id } : {}),
+      ...(id ? { id } : {}),
       timestamp: entry.timestamp,
-      message: entry.message,
+      message: {
+        ...entry.message,
+        ...(entry.message.id ? {} : id ? { id } : {}),
+        ...(entry.message.timestamp == null && timestamp !== undefined ? { timestamp } : {}),
+      },
     };
   } catch {
     return null;

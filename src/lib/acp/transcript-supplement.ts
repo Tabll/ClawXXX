@@ -10,6 +10,7 @@ import {
   type OpenClawMediaTurnSupplement,
 } from './openclaw-media-compat';
 import type { AcpTimelineSnapshot } from './timeline-types';
+import { alignAssistantMessageMetadata } from './assistant-metadata';
 
 export type CoordinatedImageGenerationCompletion = ImageGenerationCompletionEvidence & {
   transcriptMessageId?: string;
@@ -24,6 +25,7 @@ export type TranscriptSupplementResult = {
   media: OpenClawMediaTurnSupplement[];
   transcriptMediaTurnCount: number;
   turnTimings: SessionTurnTimingCandidate[];
+  assistantMetadata: ReturnType<typeof alignAssistantMessageMetadata>;
 };
 
 type TranscriptSupplementInput = {
@@ -127,12 +129,16 @@ export async function fetchOpenClawTranscriptSupplement(
     ...(input.liveUserMessageId ? { liveUserMessageId: input.liveUserMessageId } : {}),
   });
   const transcriptMediaTurnCount = transcriptMediaTurns.filter((turn) => turn.candidates.length > 0).length;
+  const assistantMetadata = alignAssistantMessageMetadata(snapshot, messages, {
+    ...(input.liveUserMessageId ? { liveUserMessageId: input.liveUserMessageId } : {}),
+  });
 
   recordTrace(input, 'openclaw-media:history-request-succeeded', {
     source: 'openclaw-media',
     candidateCount: transcriptMediaTurns.reduce((count, turn) => count + turn.candidates.length, 0),
     matchedCount: media.length,
     rejectedCount: Math.max(0, transcriptMediaTurnCount - media.length),
+    assistantMetadataCount: Object.keys(assistantMetadata).length,
   });
   if (transcriptMediaTurnCount > media.length) {
     recordTrace(input, 'openclaw-media:turn-rejected', {
@@ -149,5 +155,5 @@ export async function fetchOpenClawTranscriptSupplement(
     });
   }
 
-  return { imageGeneration, media, transcriptMediaTurnCount, turnTimings };
+  return { imageGeneration, media, transcriptMediaTurnCount, turnTimings, assistantMetadata };
 }

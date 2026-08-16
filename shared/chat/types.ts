@@ -25,6 +25,10 @@ export interface RawMessage {
   content: unknown; // string | ContentBlock[]
   timestamp?: number;
   id?: string;
+  model?: string;
+  modelRef?: string;
+  provider?: string;
+  usage?: unknown;
   toolCallId?: string;
   toolName?: string;
   details?: unknown;

@@ -435,13 +435,15 @@ describe('hostApi facade', () => {
       .mockResolvedValueOnce({ id: 'req-1', ok: true, data: { success: true, generation: 1 } })
       .mockResolvedValueOnce({ id: 'req-2', ok: true, data: { success: true, generation: 2 } })
       .mockResolvedValueOnce({ id: 'req-3', ok: true, data: { success: true } })
-      .mockResolvedValueOnce({ id: 'req-4', ok: true, data: { success: true } });
+      .mockResolvedValueOnce({ id: 'req-4', ok: true, data: { success: true, configOptions: [] } })
+      .mockResolvedValueOnce({ id: 'req-5', ok: true, data: { success: true } });
     const { hostApi } = await import('@/lib/host-api');
 
     expect(Object.keys(hostApi.chat)).toEqual([
       'loadAcpSession',
       'sendAcpPrompt',
       'cancelAcpSession',
+      'setAcpSessionConfigOption',
       'respondAcpPermission',
     ]);
 
@@ -456,6 +458,11 @@ describe('hostApi facade', () => {
       message: 'hello',
     });
     await hostApi.chat.cancelAcpSession({ sessionKey: 'main' });
+    await hostApi.chat.setAcpSessionConfigOption({
+      sessionKey: 'main',
+      configId: 'model',
+      value: 'openai/gpt-5.6',
+    });
     await hostApi.chat.respondAcpPermission({
       sessionKey: 'main',
       requestId: 'perm-1',
@@ -478,6 +485,11 @@ describe('hostApi facade', () => {
       payload: { sessionKey: 'main' },
     }));
     expect(hostInvoke).toHaveBeenNthCalledWith(4, expect.objectContaining({
+      module: 'chat',
+      action: 'setAcpSessionConfigOption',
+      payload: { sessionKey: 'main', configId: 'model', value: 'openai/gpt-5.6' },
+    }));
+    expect(hostInvoke).toHaveBeenNthCalledWith(5, expect.objectContaining({
       module: 'chat',
       action: 'respondAcpPermission',
       payload: { sessionKey: 'main', requestId: 'perm-1', outcome: { outcome: 'cancelled' } },

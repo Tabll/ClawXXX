@@ -46,6 +46,7 @@ import type {
   AcpChatLoadPayload,
   AcpChatPromptPayload,
   AcpChatRespondPermissionPayload,
+  AcpChatSetConfigOptionPayload,
 } from '@shared/acp-chat/types';
 import type { CronJobCreateInput, CronJobUpdateInput } from '@shared/types/cron';
 import { invokeHost } from './host-api-client';
@@ -376,6 +377,9 @@ export const hostApi = {
     loadAcpSession: (input: AcpChatLoadPayload) => invokeHost('chat', 'loadAcpSession', input),
     sendAcpPrompt: (input: AcpChatPromptPayload) => invokeHost('chat', 'sendAcpPrompt', input),
     cancelAcpSession: (input: AcpChatCancelPayload) => invokeHost('chat', 'cancelAcpSession', input),
+    setAcpSessionConfigOption: (input: AcpChatSetConfigOptionPayload) => (
+      invokeHost('chat', 'setAcpSessionConfigOption', input)
+    ),
     respondAcpPermission: (input: AcpChatRespondPermissionPayload) => (
       invokeHost('chat', 'respondAcpPermission', input)
     ),

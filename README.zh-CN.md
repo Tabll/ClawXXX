@@ -76,7 +76,7 @@ ClawX 预置了最佳实践的模型供应商配置，原生支持 Windows 平�
 ### 功能特性
 
 - **🎯 零配置门槛**：从安装到第一次 AI 对话，全程指引式图形界面，无需终端命令、YAML 配置或环境变量。
-- **💬 智能聊天界面**：多会话上下文与历史记录，支持按工作区分组、置顶、搜索和批量操作；提供流式 Markdown 渲染（语法高亮、CJK 排版、表格、KaTeX 公式）、`@agent` 直接路由与 `/技能` 内联卡片，以及 Markdown、`.docx`、`.pptx` 和本地 HTML 的只读预览。
+- **💬 智能聊天界面**：多会话上下文与历史记录，支持按工作区分组、置顶、搜索和批量操作；提供 ACP 原生的会话级模型/推理设置、上下文用量与手动压缩、可见且有上限的跟进消息队列，以及悬停查看消息模型和 Token 用量；同时支持流式 Markdown、`@agent` 直接路由、`/技能` 内联卡片和文档只读预览。
 - **📡 多频道管理**：同时配置和监控多个 AI 频道，每个频道独立运行并支持多账号；内置腾讯官方个人微信渠道插件。
 - **⏰ 定时任务自动化**：可视化定义触发器与时间间隔，让 AI 智能体 7×24 小时自动运行；支持周期（每小时/每天/工作日/每周/自定义 cron）与单次执行，并可将结果自动投递到外部频道。
 - **🧩 可扩展技能系统**：本地优先的技能管理，扫描托管与 workspace 技能目录，无需依赖 Gateway 即可启用或停用技能；预装文档处理技能（`pdf`、`xlsx`、`docx`、`pptx`）。
@@ -153,7 +153,7 @@ ClawX 采用 **双进程 + Host API 统一接入架构**：React 渲染进程只
 
 - **进程模型**：Electron 主进程负责窗口、网关进程监控、系统集成与自动更新；OpenClaw Gateway 作为独立运行时进程提供 AI 编排、频道和技能能力；渲染层不直接访问本地端点。
 - **配置交付**：Gateway 运行时由 Main 使用 `config.get` / `config.set`，停止或启动中则更新解析后的 JSON5 配置；普通 Provider/Agent/Skill/模型修改不会替换进程，凭据通过 `secrets.reload` 热更新；连续 4 次心跳无响应后才会请求受生命周期保护的自动恢复。
-- **ACP Chat**：Chat UI 基于 ACP ([Agent Client Protocol](https://agentclientprotocol.com)) 与 OpenClaw 交互，从而在高速迭代的 OpenClaw 前找到相对稳定的聊天协议面。ACP 走 Main 持有的 stdio bridge，支持配置热重载后的历史回放认证、跨页面持续流式输出，以及由 Main 验证和加载的媒体/附件/文件活动（Changes）展示。当受保护的 Gateway 重启中断已接收的对话轮次时，补丁后的 OpenClaw 运行时会将恢复 run 显式关联到原 ACP prompt，使后续文本和工具活动继续进入同一个内存轮次；之后的历史回放也会以原生 ACP 更新恢复持久化的工具边界。
+- **ACP Chat**：Chat UI 基于 ACP ([Agent Client Protocol](https://agentclientprotocol.com)) 与 OpenClaw 交互，从而在高速迭代的 OpenClaw 前找到相对稳定的聊天协议面。ACP 走 Main 持有的 stdio bridge，支持配置热重载后的历史回放认证、跨页面持续流式输出、会话声明的模型/推理设置、上下文用量与手动压缩、顺序发送的跟进队列，以及由 Main 验证和加载的媒体/附件/文件活动（Changes）展示。会话 transcript 只用于有界补充悬停元数据和 ACP 尚未提供的资源，不会成为第二套聊天历史来源。当受保护的 Gateway 重启中断已接收的对话轮次时，补丁后的 OpenClaw 运行时会将恢复 run 显式关联到原 ACP prompt，使后续文本和工具活动继续进入同一个内存轮次；之后的历史回放也会以原生 ACP 更新恢复持久化的工具边界。
 - **设计原则**：前端调用单一入口、Main 掌控传输策略、优雅恢复（重连/超时/退避）、安全存储与 CORS 安全。
 
 > 完整架构说明（进程图、配置协调、ACP 文件活动语义与 Gateway 排障）请参阅 [docs/zh-CN/architecture.md](docs/zh-CN/architecture.md)。

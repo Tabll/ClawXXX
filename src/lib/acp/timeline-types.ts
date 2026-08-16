@@ -1,4 +1,4 @@
-import type { PlanEntry, SessionConfigOption, ToolCallLocation, ToolKind } from '@agentclientprotocol/sdk';
+import type { PlanEntry, SessionConfigOption, ToolCallLocation, ToolKind, UsageUpdate } from '@agentclientprotocol/sdk';
 import type {
   AttachmentAccessError,
   AttachmentFileRef,
@@ -48,6 +48,19 @@ export type RenderPart =
   | AttachmentRenderPart
   | { kind: 'error'; message: string };
 
+export type AssistantMessageMetadata = {
+  timestamp?: number;
+  model?: string;
+  provider?: string;
+  usage?: {
+    inputTokens?: number;
+    outputTokens?: number;
+    cacheReadTokens?: number;
+    cacheWriteTokens?: number;
+    totalTokens?: number;
+  };
+};
+
 export type MessageSegmentItem = {
   kind: 'message-segment';
   id: string;
@@ -62,6 +75,8 @@ export type MessageSegmentItem = {
   /** Number of ACP blocks consumed by this segment, independent of render-part coalescing. */
   blockCount?: number;
   optimistic?: boolean;
+  /** Bounded transcript projection for hover-only metadata; never a message-history source. */
+  assistantMetadata?: AssistantMessageMetadata;
   /** Renderer-only compatibility projection, not an ACP protocol event. */
   compat?: { source: 'image-generation' | 'openclaw-media'; evidenceId: string };
 };
@@ -111,7 +126,7 @@ export type AcpSessionMetadata = {
   currentModeId?: string;
   availableCommands?: unknown[];
   configOptions?: SessionConfigOption[];
-  usage?: unknown;
+  usage?: UsageUpdate;
   title?: string | null;
   updatedAt?: string | null;
 };

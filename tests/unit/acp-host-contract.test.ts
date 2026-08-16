@@ -12,6 +12,7 @@ describe('ACP Chat host contract', () => {
       'loadAcpSession',
       'sendAcpPrompt',
       'cancelAcpSession',
+      'setAcpSessionConfigOption',
       'respondAcpPermission',
     ]);
   });

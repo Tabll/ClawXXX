@@ -63,6 +63,7 @@ function createConnection() {
     loadSession: vi.fn().mockResolvedValue({}),
     prompt: vi.fn().mockResolvedValue({ stopReason: 'end_turn' }),
     cancel: vi.fn().mockResolvedValue(undefined),
+    setSessionConfigOption: vi.fn().mockResolvedValue({ configOptions: [] }),
   };
 }
 
@@ -236,6 +237,64 @@ describe('AcpChatService', () => {
       mcpServers: [],
     });
     expect(connection.newSession).not.toHaveBeenCalled();
+  });
+
+  it('returns session configuration options supplied by ACP session/load', async () => {
+    const connection = createConnection();
+    const configOptions = [{
+      id: 'model',
+      name: 'Model',
+      category: 'model',
+      type: 'select',
+      currentValue: 'openai/gpt-5.5',
+      options: [{ value: 'openai/gpt-5.5', name: 'GPT-5.5' }],
+    }] as const;
+    connection.loadSession.mockResolvedValueOnce({ configOptions });
+    const { service } = await createService(connection);
+
+    await expect(service.loadSession({
+      sessionKey: 'agent:pi:s1',
+      workspaceRoot: '/repo',
+      cwd: '/repo',
+    })).resolves.toEqual({ success: true, generation: 1, configOptions });
+  });
+
+  it('sets a configuration option only on the active loaded ACP session', async () => {
+    const connection = createConnection();
+    const configOptions = [{
+      id: 'model',
+      name: 'Model',
+      category: 'model',
+      type: 'select',
+      currentValue: 'openai/gpt-5.6',
+      options: [{ value: 'openai/gpt-5.6', name: 'GPT-5.6' }],
+    }] as const;
+    connection.setSessionConfigOption.mockResolvedValueOnce({ configOptions });
+    const { service } = await createService(connection);
+
+    await service.loadSession({ sessionKey: 'agent:pi:s1', workspaceRoot: '/repo', cwd: '/repo' });
+    await expect(service.setSessionConfigOption({
+      sessionKey: 'agent:pi:s1',
+      configId: 'model',
+      value: 'openai/gpt-5.6',
+    })).resolves.toEqual({ success: true, generation: 1, configOptions });
+    expect(connection.setSessionConfigOption).toHaveBeenCalledWith({
+      sessionId: 'agent:pi:s1',
+      configId: 'model',
+      value: 'openai/gpt-5.6',
+    });
+  });
+
+  it('rejects configuration changes for an inactive session', async () => {
+    const { service, connection } = await createService();
+    await service.loadSession({ sessionKey: 'agent:pi:s1', workspaceRoot: '/repo', cwd: '/repo' });
+
+    await expect(service.setSessionConfigOption({
+      sessionKey: 'agent:pi:s2',
+      configId: 'model',
+      value: 'openai/gpt-5.6',
+    })).resolves.toEqual({ success: false, error: 'ACP session is not active' });
+    expect(connection.setSessionConfigOption).not.toHaveBeenCalled();
   });
 
   it('creates fresh generated sessions with ACP session/new so replay ledgers are complete', async () => {

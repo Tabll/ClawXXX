@@ -7,6 +7,7 @@ import type {
   ToolCallLocation,
   ToolCallStatus,
   ToolKind,
+  UsageUpdate,
 } from '@agentclientprotocol/sdk';
 import { contentBlockToRenderPart, contentBlocksToRenderParts, toolContentToRenderPart, toolContentToRenderParts } from './content-blocks';
 import { dedupeTimelineAttachments } from './attachments';
@@ -529,9 +530,9 @@ function updateSessionInfoMetadata(state: AcpTimelineSnapshot, update: UpdateRec
   };
 }
 
-function usageMetadata(update: UpdateRecord): unknown {
+function usageMetadata(update: UpdateRecord): UsageUpdate {
   const { sessionUpdate: _sessionUpdate, ...usage } = update;
-  return usage;
+  return usage as UsageUpdate;
 }
 
 export function applyAcpSessionUpdate(

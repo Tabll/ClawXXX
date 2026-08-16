@@ -19,6 +19,7 @@ export function createChatApi({
     loadAcpSession: (payload) => acpChat.loadSession(payload),
     sendAcpPrompt: (payload) => acpChat.sendPrompt(payload),
     cancelAcpSession: (payload) => acpChat.cancelSession(payload),
+    setAcpSessionConfigOption: (payload) => acpChat.setSessionConfigOption(payload),
     respondAcpPermission: (payload) => acpChat.respondPermission(payload),
   };
 }

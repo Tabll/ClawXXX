@@ -6,6 +6,7 @@ const hostApiMock = vi.hoisted(() => ({
   loadAcpSession: vi.fn(),
   sendAcpPrompt: vi.fn(),
   cancelAcpSession: vi.fn(),
+  setAcpSessionConfigOption: vi.fn(),
   respondAcpPermission: vi.fn(),
   mediaThumbnails: vi.fn(),
   recordAcpTrace: vi.fn(),
@@ -44,6 +45,7 @@ vi.mock('@/lib/host-api', () => ({
       loadAcpSession: hostApiMock.loadAcpSession,
       sendAcpPrompt: hostApiMock.sendAcpPrompt,
       cancelAcpSession: hostApiMock.cancelAcpSession,
+      setAcpSessionConfigOption: hostApiMock.setAcpSessionConfigOption,
       respondAcpPermission: hostApiMock.respondAcpPermission,
     },
     media: {
@@ -132,6 +134,7 @@ describe('ACP Chat store', () => {
     hostApiMock.loadAcpSession.mockReset().mockResolvedValue({ success: true, generation: 1 });
     hostApiMock.sendAcpPrompt.mockReset().mockResolvedValue({ success: true });
     hostApiMock.cancelAcpSession.mockReset().mockResolvedValue({ success: true });
+    hostApiMock.setAcpSessionConfigOption.mockReset().mockResolvedValue({ success: true, configOptions: [] });
     hostApiMock.respondAcpPermission.mockReset().mockResolvedValue({ success: true });
     hostApiMock.mediaThumbnails.mockReset().mockResolvedValue({});
     hostApiMock.recordAcpTrace.mockReset().mockResolvedValue({ success: true });
@@ -223,6 +226,69 @@ describe('ACP Chat store', () => {
 
     const timeline = useAcpChatSessionStore.getState().timeline;
     expect(timeline.itemOrder).toEqual(['acp-result:0']);
+  });
+
+  it('hydrates and updates ACP-native session configuration options', async () => {
+    const initialConfigOptions = [{
+      id: 'model',
+      name: 'Model',
+      category: 'model',
+      type: 'select',
+      currentValue: 'openai/gpt-5.5',
+      options: [
+        { value: 'openai/gpt-5.5', name: 'GPT-5.5' },
+        { value: 'openai/gpt-5.6', name: 'GPT-5.6' },
+      ],
+    }] as const;
+    const updatedConfigOptions = [{ ...initialConfigOptions[0], currentValue: 'openai/gpt-5.6' }] as const;
+    hostApiMock.loadAcpSession.mockResolvedValueOnce({
+      success: true,
+      generation: 1,
+      configOptions: initialConfigOptions,
+    });
+    hostApiMock.setAcpSessionConfigOption.mockResolvedValueOnce({
+      success: true,
+      generation: 1,
+      configOptions: updatedConfigOptions,
+    });
+    const { useAcpChatSessionStore } = await importStore();
+
+    await useAcpChatSessionStore.getState().loadSession({
+      sessionKey: 'agent:pi:s1', workspaceRoot: '/repo', cwd: '/repo',
+    });
+    expect(useAcpChatSessionStore.getState().timeline.metadata.configOptions).toEqual(initialConfigOptions);
+
+    await expect(useAcpChatSessionStore.getState().setConfigOption(
+      'model',
+      'openai/gpt-5.6',
+    )).resolves.toBe(true);
+    expect(hostApiMock.setAcpSessionConfigOption).toHaveBeenCalledWith({
+      sessionKey: 'agent:pi:s1',
+      configId: 'model',
+      value: 'openai/gpt-5.6',
+    });
+    expect(useAcpChatSessionStore.getState().timeline.metadata.configOptions).toEqual(updatedConfigOptions);
+  });
+
+  it('preserves ACP session configuration when an update fails', async () => {
+    const configOptions = [{
+      id: 'thinking',
+      name: 'Reasoning',
+      category: 'thought_level',
+      type: 'select',
+      currentValue: 'medium',
+      options: [{ value: 'medium', name: 'Medium' }, { value: 'high', name: 'High' }],
+    }] as const;
+    hostApiMock.loadAcpSession.mockResolvedValueOnce({ success: true, generation: 1, configOptions });
+    hostApiMock.setAcpSessionConfigOption.mockResolvedValueOnce({ success: false, error: 'unsupported' });
+    const { useAcpChatSessionStore } = await importStore();
+    await useAcpChatSessionStore.getState().loadSession({
+      sessionKey: 'agent:pi:s1', workspaceRoot: '/repo', cwd: '/repo',
+    });
+
+    await expect(useAcpChatSessionStore.getState().setConfigOption('thinking', 'high')).resolves.toBe(false);
+    expect(useAcpChatSessionStore.getState().timeline.metadata.configOptions).toEqual(configOptions);
+    expect(useAcpChatSessionStore.getState().error).toBe('unsupported');
   });
 
   it('prepares a local pending session by clearing renderer state without loading ACP', async () => {
@@ -1425,6 +1491,94 @@ describe('ACP Chat store', () => {
 
     prompt.resolve({ success: true });
     await expect(sendPromise).resolves.toBe(true);
+  });
+
+  it('drains queued follow-ups sequentially after the active ACP prompt completes', async () => {
+    const firstPrompt = createDeferred<{ success: boolean; generation?: number }>();
+    const queuedPrompt = createDeferred<{ success: boolean; generation?: number }>();
+    hostApiMock.sendAcpPrompt
+      .mockReset()
+      .mockReturnValueOnce(firstPrompt.promise)
+      .mockReturnValueOnce(queuedPrompt.promise);
+    const { useAcpChatSessionStore } = await importStore();
+    await useAcpChatSessionStore.getState().loadSession({
+      sessionKey: 'agent:pi:s1', workspaceRoot: '/repo', cwd: '/repo',
+    });
+
+    const activeSend = useAcpChatSessionStore.getState().sendPrompt({
+      sessionKey: 'agent:pi:s1', cwd: '/repo', message: 'first',
+    });
+    expect(useAcpChatSessionStore.getState().enqueuePrompt({
+      sessionKey: 'agent:pi:s1', cwd: '/repo', message: 'follow-up',
+    })).toBe(true);
+    expect(hostApiMock.sendAcpPrompt).toHaveBeenCalledTimes(1);
+    expect(useAcpChatSessionStore.getState().queuedPrompts).toHaveLength(1);
+
+    firstPrompt.resolve({ success: true, generation: 1 });
+    await activeSend;
+    await vi.waitFor(() => expect(hostApiMock.sendAcpPrompt).toHaveBeenCalledTimes(2));
+    expect(hostApiMock.sendAcpPrompt).toHaveBeenLastCalledWith(expect.objectContaining({
+      sessionKey: 'agent:pi:s1', cwd: '/repo', message: 'follow-up',
+    }));
+    expect(useAcpChatSessionStore.getState().queuedPrompts).toEqual([]);
+    expect(useAcpChatSessionStore.getState().sending).toBe(true);
+
+    queuedPrompt.resolve({ success: true, generation: 1 });
+    await vi.waitFor(() => expect(useAcpChatSessionStore.getState().sending).toBe(false));
+  });
+
+  it('caps the active-session follow-up queue at five and allows removal', async () => {
+    const activePrompt = createDeferred<{ success: boolean; generation?: number }>();
+    hostApiMock.sendAcpPrompt.mockReset().mockReturnValueOnce(activePrompt.promise).mockResolvedValue({ success: true, generation: 1 });
+    const { useAcpChatSessionStore } = await importStore();
+    await useAcpChatSessionStore.getState().loadSession({
+      sessionKey: 'agent:pi:s1', workspaceRoot: '/repo', cwd: '/repo',
+    });
+    const activeSend = useAcpChatSessionStore.getState().sendPrompt({
+      sessionKey: 'agent:pi:s1', cwd: '/repo', message: 'active',
+    });
+    for (let index = 1; index <= 5; index += 1) {
+      expect(useAcpChatSessionStore.getState().enqueuePrompt({
+        sessionKey: 'agent:pi:s1', cwd: '/repo', message: `queued-${index}`,
+      })).toBe(true);
+    }
+    expect(useAcpChatSessionStore.getState().enqueuePrompt({
+      sessionKey: 'agent:pi:s1', cwd: '/repo', message: 'queued-6',
+    })).toBe(false);
+    const removableId = useAcpChatSessionStore.getState().queuedPrompts[2]?.id;
+    expect(removableId).toBeTruthy();
+    useAcpChatSessionStore.getState().removeQueuedPrompt(removableId!);
+    expect(useAcpChatSessionStore.getState().queuedPrompts.map((entry) => entry.payload.message)).toEqual([
+      'queued-1', 'queued-2', 'queued-4', 'queued-5',
+    ]);
+
+    activePrompt.resolve({ success: true, generation: 1 });
+    await activeSend;
+    await vi.waitFor(() => expect(useAcpChatSessionStore.getState().sending).toBe(false));
+  });
+
+  it('does not auto-dispatch queued follow-ups after an explicit cancel', async () => {
+    const activePrompt = createDeferred<{ success: boolean; generation?: number }>();
+    hostApiMock.sendAcpPrompt.mockReset().mockReturnValueOnce(activePrompt.promise);
+    const { useAcpChatSessionStore } = await importStore();
+    await useAcpChatSessionStore.getState().loadSession({
+      sessionKey: 'agent:pi:s1', workspaceRoot: '/repo', cwd: '/repo',
+    });
+    const activeSend = useAcpChatSessionStore.getState().sendPrompt({
+      sessionKey: 'agent:pi:s1', cwd: '/repo', message: 'active',
+    });
+    useAcpChatSessionStore.getState().enqueuePrompt({
+      sessionKey: 'agent:pi:s1', cwd: '/repo', message: 'keep queued',
+    });
+
+    await useAcpChatSessionStore.getState().cancel();
+    activePrompt.resolve({ success: true, generation: 1 });
+    await activeSend;
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(hostApiMock.sendAcpPrompt).toHaveBeenCalledTimes(1);
+    expect(useAcpChatSessionStore.getState().queuedPrompts).toHaveLength(1);
+    expect(useAcpChatSessionStore.getState().queuedPrompts[0]?.payload.message).toBe('keep queued');
   });
 
   it('does not resolve an optimistic user attachment again when ACP echoes the same resource', async () => {

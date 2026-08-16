@@ -7,6 +7,7 @@
  * references in the ACP session/prompt request.
  */
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import type { SessionConfigOption, UsageUpdate } from '@agentclientprotocol/sdk';
 import { SendHorizontal, Square, X, Paperclip, FileText, Film, Music, FileArchive, File, FolderOpen, Loader2, AtSign, Search, ChevronDown, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -49,6 +50,7 @@ export interface ChatWorkspaceOption {
 
 interface ChatInputProps {
   onSend: (text: string, attachments?: FileAttachment[], targetAgentId?: string | null) => void;
+  onQueueFollowUp?: (text: string, attachments?: FileAttachment[]) => boolean;
   onStop?: () => void;
   disabled?: boolean;
   sending?: boolean;
@@ -58,6 +60,12 @@ interface ChatInputProps {
   workspaceOptions?: ChatWorkspaceOption[];
   workspaceReadOnly?: boolean;
   onSelectWorkspace?: (path: string) => void;
+  sessionConfigOptions?: SessionConfigOption[];
+  onSetSessionConfigOption?: (configId: string, value: string | boolean) => Promise<boolean>;
+  contextUsage?: UsageUpdate;
+  onCompactContext?: () => Promise<boolean>;
+  queuedFollowUps?: Array<{ id: string; text: string; attachmentCount: number }>;
+  onRemoveQueuedFollowUp?: (id: string) => void;
 }
 
 // ── Helpers ──────────────────────────────────────────────────────
@@ -170,6 +178,210 @@ function FileIcon({ mimeType, className }: { mimeType: string; className?: strin
   return <File className={className} />;
 }
 
+type SessionSelectConfig = Extract<SessionConfigOption, { type: 'select' }>;
+type SessionConfigChoice = { value: string | boolean; name: string };
+
+function flattenSessionConfigChoices(config: SessionConfigOption, booleanLabels: { on: string; off: string }): SessionConfigChoice[] {
+  if (config.type === 'boolean') {
+    return [
+      { value: true, name: booleanLabels.on },
+      { value: false, name: booleanLabels.off },
+    ];
+  }
+  return config.options.flatMap((entry) => (
+    'options' in entry
+      ? entry.options.map((option) => ({ value: option.value, name: option.name }))
+      : [{ value: entry.value, name: entry.name }]
+  ));
+}
+
+function isSessionConfigCategory(config: SessionConfigOption, category: 'model' | 'thought_level'): boolean {
+  if (config.category === category) return true;
+  if (config.category) return false;
+  const identity = `${config.id} ${config.name}`.toLowerCase();
+  return category === 'model'
+    ? /(^|[\s_.-])model([\s_.-]|$)/.test(identity)
+    : /(^|[\s_.-])(thought|thinking|reasoning)([\s_.-]|$)/.test(identity);
+}
+
+function SessionConfigPicker({
+  config,
+  disabled,
+  title,
+  testIdPrefix,
+  onChange,
+}: {
+  config: SessionConfigOption;
+  disabled: boolean;
+  title: string;
+  testIdPrefix: 'chat-model-picker' | 'chat-reasoning-picker';
+  onChange: (configId: string, value: string | boolean) => Promise<boolean>;
+}) {
+  const { t } = useTranslation('chat');
+  const [open, setOpen] = useState(false);
+  const [switching, setSwitching] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const choices = useMemo(
+    () => flattenSessionConfigChoices(config, {
+      on: t('composer.booleanOn'),
+      off: t('composer.booleanOff'),
+    }),
+    [config, t],
+  );
+  const currentValue = config.currentValue;
+  const currentLabel = choices.find((choice) => choice.value === currentValue)?.name ?? String(currentValue);
+
+  useEffect(() => {
+    if (!open) return;
+    const close = (event: MouseEvent) => {
+      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
+  }, [open]);
+
+  useEffect(() => {
+    if (!disabled) return undefined;
+    const timeoutId = window.setTimeout(() => setOpen(false), 0);
+    return () => window.clearTimeout(timeoutId);
+  }, [disabled]);
+
+  const select = useCallback(async (value: string | boolean) => {
+    if (switching || value === currentValue) {
+      setOpen(false);
+      return;
+    }
+    setOpen(false);
+    setSwitching(true);
+    const changed = await onChange(config.id, value);
+    if (!changed) toast.error(t('composer.sessionConfigFailed'));
+    setSwitching(false);
+  }, [config.id, currentValue, onChange, switching, t]);
+
+  if (choices.length === 0) return null;
+
+  return (
+    <div ref={rootRef} className="relative shrink-0">
+      <button
+        type="button"
+        data-testid={`${testIdPrefix}-button`}
+        className={cn(
+          'inline-flex h-8 max-w-[220px] items-center gap-1 rounded-lg px-1.5 text-meta font-medium text-muted-foreground transition-colors hover:bg-transparent hover:text-foreground focus-visible:outline-none focus-visible:ring-0 disabled:pointer-events-none disabled:opacity-50',
+          (open || switching) && 'text-foreground',
+        )}
+        onClick={() => setOpen((value) => !value)}
+        disabled={disabled || switching}
+        title={title}
+        aria-label={title}
+        aria-expanded={open}
+      >
+        {switching ? <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" /> : null}
+        <span className="truncate">{currentLabel}</span>
+        <ChevronDown className={cn('h-3.5 w-3.5 shrink-0 transition-transform', open && 'rotate-180')} />
+      </button>
+      {open && (
+        <div
+          className="absolute left-0 bottom-full z-20 mb-2 w-72 overflow-hidden rounded-2xl border border-black/10 bg-surface-modal p-1.5 shadow-xl dark:border-white/10"
+          data-testid={`${testIdPrefix}-menu`}
+        >
+          <div className="px-3 py-2 text-tiny font-medium text-muted-foreground/80">{config.name}</div>
+          <div className="max-h-64 overflow-y-auto">
+            {choices.map((choice) => (
+              <button
+                key={String(choice.value)}
+                type="button"
+                onClick={() => void select(choice.value)}
+                className={cn(
+                  'flex w-full items-center justify-between gap-3 rounded-xl px-3 py-2 text-left text-sm font-medium transition-colors',
+                  choice.value === currentValue
+                    ? 'bg-black/5 text-foreground dark:bg-white/10'
+                    : 'hover:bg-black/5 dark:hover:bg-white/10',
+                )}
+                data-testid={`${testIdPrefix}-option-${choice.name}`}
+              >
+                <span className="truncate">{choice.name}</span>
+                {choice.value === currentValue && <Check className="h-3.5 w-3.5 text-primary" />}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ContextUsageControl({
+  usage,
+  disabled,
+  onCompact,
+}: {
+  usage: UsageUpdate;
+  disabled: boolean;
+  onCompact: () => Promise<boolean>;
+}) {
+  const { t, i18n: translation } = useTranslation('chat');
+  const [compacting, setCompacting] = useState(false);
+  const size = Number.isFinite(usage.size) && usage.size > 0 ? usage.size : 0;
+  const used = Number.isFinite(usage.used) && usage.used >= 0 ? usage.used : 0;
+  if (size <= 0) return null;
+  const ratio = Math.min(1, used / size);
+  const percentage = Math.round(ratio * 100);
+  const circumference = 2 * Math.PI * 8;
+  const formatter = new Intl.NumberFormat(translation?.language, { notation: 'compact', maximumFractionDigits: 1 });
+  const label = t('composer.contextUsageLabel', {
+    used: formatter.format(used),
+    size: formatter.format(size),
+    percentage,
+  });
+
+  const compact = async () => {
+    if (disabled || compacting) return;
+    setCompacting(true);
+    const success = await onCompact();
+    if (!success) toast.error(t('composer.compactFailed'));
+    setCompacting(false);
+  };
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          data-testid="chat-context-usage"
+          className="relative inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-black/5 hover:text-foreground disabled:pointer-events-none disabled:opacity-50 dark:hover:bg-white/10"
+          onClick={() => void compact()}
+          disabled={disabled || compacting}
+          aria-label={t('composer.compactContext', { usage: label })}
+        >
+          {compacting ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <svg viewBox="0 0 20 20" className="h-5 w-5 -rotate-90" aria-hidden="true">
+              <circle cx="10" cy="10" r="8" fill="none" stroke="currentColor" strokeWidth="2" opacity="0.18" />
+              <circle
+                cx="10"
+                cy="10"
+                r="8"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeDasharray={circumference}
+                strokeDashoffset={circumference * (1 - ratio)}
+              />
+            </svg>
+          )}
+          <span className="sr-only">{label}</span>
+        </button>
+      </TooltipTrigger>
+      <TooltipContent side="top" className="max-w-64">
+        <p className="font-medium">{label}</p>
+        <p className="mt-0.5 text-tiny opacity-80">{t('composer.compactContextHint')}</p>
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
 /**
  * Read a browser File object as base64 string (without the data URL prefix).
  */
@@ -198,6 +410,7 @@ function readFileAsBase64(file: globalThis.File): Promise<string> {
 
 export function ChatInput({
   onSend,
+  onQueueFollowUp,
   onStop,
   disabled = false,
   sending = false,
@@ -207,6 +420,12 @@ export function ChatInput({
   workspaceOptions = [],
   workspaceReadOnly = false,
   onSelectWorkspace,
+  sessionConfigOptions = [],
+  onSetSessionConfigOption,
+  contextUsage,
+  onCompactContext,
+  queuedFollowUps = [],
+  onRemoveQueuedFollowUp,
 }: ChatInputProps) {
   const { t } = useTranslation('chat');
   const [input, setInput] = useState('');
@@ -285,7 +504,17 @@ export function ChatInput({
     );
   }, [quickSkills, skillQuery]);
   const showAgentPicker = mentionableAgents.length > 0;
-  const showModelPicker = modelOptions.length > 1;
+  const sessionModelConfig = useMemo(
+    () => sessionConfigOptions.find((config): config is SessionSelectConfig => (
+      config.type === 'select' && isSessionConfigCategory(config, 'model')
+    )) ?? null,
+    [sessionConfigOptions],
+  );
+  const sessionReasoningConfig = useMemo(
+    () => sessionConfigOptions.find((config) => isSessionConfigCategory(config, 'thought_level')) ?? null,
+    [sessionConfigOptions],
+  );
+  const showModelPicker = !sessionModelConfig && modelOptions.length > 1;
   const chatComposerStatusComponents = rendererExtensionRegistry.getChatComposerStatusComponents();
   const isGatewayUsable = gatewayStatus.state === 'running' && gatewayStatus.gatewayReady !== false;
   const inputDisabled = disabled;
@@ -690,10 +919,16 @@ export function ChatInput({
     && !inputDisabled
     && !sending
     && !imageGenerating;
+  const canQueue = (input.trim() || attachments.length > 0)
+    && allReady
+    && !inputDisabled
+    && sending
+    && !imageGenerating
+    && !!onQueueFollowUp;
   const canStop = sending && !inputDisabled && !!onStop;
 
   const handleSend = useCallback(async () => {
-    if (!canSend) return;
+    if (sending ? !canQueue : !canSend) return;
     const readyAttachments = attachments.filter(a => a.status === 'ready');
     const textToSend = input.trim();
     const attachmentsToSend = readyAttachments.length > 0 ? readyAttachments : undefined;
@@ -721,6 +956,11 @@ export function ChatInput({
         stagedPath: a.stagedPath, status: a.status, hasPreview: !!a.preview,
       })));
     }
+    if (sending && onQueueFollowUp && !onQueueFollowUp(textToSend, attachmentsToSend)) {
+      toast.error(t('composer.queueFull'));
+      return;
+    }
+
     setInput('');
     setAttachments([]);
     setSelectedSkill(null);
@@ -728,12 +968,12 @@ export function ChatInput({
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
     }
-    onSend(textToSend, attachmentsToSend, targetAgentId);
+    if (!sending) onSend(textToSend, attachmentsToSend, targetAgentId);
     setTargetAgentId(null);
     setPickerOpen(false);
     setSkillPickerOpen(false);
     setWorkspaceMenuOpen(false);
-  }, [input, attachments, canSend, onSend, targetAgentId]);
+  }, [attachments, canQueue, canSend, input, onQueueFollowUp, onSend, sending, t, targetAgentId]);
 
   const handleStop = useCallback(() => {
     if (!canStop) return;
@@ -916,6 +1156,43 @@ export function ChatInput({
               </span>
             </span>
             <span>{t('imageGeneration.generating')}</span>
+          </div>
+        )}
+
+        {queuedFollowUps.length > 0 && (
+          <div
+            data-testid="chat-follow-up-queue"
+            className="mb-2 overflow-hidden rounded-xl border border-black/10 bg-surface-modal shadow-sm dark:border-white/10"
+          >
+            <div className="flex items-center justify-between px-3 py-2 text-tiny font-medium text-muted-foreground">
+              <span>{t('composer.queuedFollowUps', { count: queuedFollowUps.length })}</span>
+              <span>{t('composer.queueLimit', { count: 5 })}</span>
+            </div>
+            <div className="divide-y divide-black/5 dark:divide-white/10">
+              {queuedFollowUps.map((entry, index) => (
+                <div key={entry.id} className="flex items-center gap-2 px-3 py-2" data-testid={`chat-follow-up-${entry.id}`}>
+                  <span className="shrink-0 text-tiny font-medium text-muted-foreground">{index + 1}</span>
+                  <span className="min-w-0 flex-1 truncate text-sm text-foreground">
+                    {entry.text || t('composer.attachmentOnlyFollowUp')}
+                  </span>
+                  {entry.attachmentCount > 0 && (
+                    <span className="shrink-0 text-tiny text-muted-foreground">
+                      {t('composer.followUpAttachments', { count: entry.attachmentCount })}
+                    </span>
+                  )}
+                  {onRemoveQueuedFollowUp && (
+                    <button
+                      type="button"
+                      className="rounded-md p-1 text-muted-foreground transition-colors hover:bg-black/5 hover:text-foreground dark:hover:bg-white/10"
+                      onClick={() => onRemoveQueuedFollowUp(entry.id)}
+                      aria-label={t('composer.removeQueuedFollowUp', { number: index + 1 })}
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
           </div>
         )}
 
@@ -1187,13 +1464,59 @@ export function ChatInput({
               </div>
             )}
 
+            {sessionModelConfig && onSetSessionConfigOption && (
+              <SessionConfigPicker
+                config={sessionModelConfig}
+                disabled={inputDisabled || sending}
+                title={t('composer.pickModel')}
+                testIdPrefix="chat-model-picker"
+                onChange={onSetSessionConfigOption}
+              />
+            )}
+
+            {sessionReasoningConfig && onSetSessionConfigOption && (
+              <SessionConfigPicker
+                config={sessionReasoningConfig}
+                disabled={inputDisabled || sending}
+                title={t('composer.pickReasoning')}
+                testIdPrefix="chat-reasoning-picker"
+                onChange={onSetSessionConfigOption}
+              />
+            )}
+
+            {contextUsage && onCompactContext && (
+              <ContextUsageControl
+                usage={contextUsage}
+                disabled={inputDisabled || sending}
+                onCompact={onCompactContext}
+              />
+            )}
+
             {/* Send Button — pushed to the right */}
+            {sending && onQueueFollowUp && (
+              <Button
+                onClick={handleSend}
+                disabled={!canQueue}
+                size="icon"
+                data-testid="chat-composer-queue"
+                className={cn(
+                  'ml-auto h-8 w-8 shrink-0 rounded-lg transition-colors',
+                  canQueue
+                    ? 'bg-black/5 text-foreground hover:bg-black/10 dark:bg-white/10 dark:hover:bg-white/20'
+                    : 'bg-transparent text-muted-foreground/50 hover:bg-transparent',
+                )}
+                variant="ghost"
+                title={t('composer.queueFollowUp')}
+              >
+                <SendHorizontal className="h-4 w-4" strokeWidth={2} />
+              </Button>
+            )}
             <Button
               onClick={sending ? handleStop : handleSend}
               disabled={sending ? !canStop : !canSend}
               size="icon"
               data-testid="chat-composer-send"
-              className={`ml-auto shrink-0 h-8 w-8 rounded-lg transition-colors ${
+              className={`${sending && onQueueFollowUp ? '' : 'ml-auto'} shrink-0 h-8 w-8 rounded-lg transition-colors ${
                 (sending || canSend)
                   ? 'bg-black/5 dark:bg-white/10 text-foreground hover:bg-black/10 dark:hover:bg-white/20'
                   : 'text-muted-foreground/50 hover:bg-transparent bg-transparent'

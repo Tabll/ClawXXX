@@ -280,6 +280,10 @@ export function Chat() {
   const prepareLocalAcpSession = useAcpChatSessionStore((s) => s.prepareLocalSession);
   const loadAcpSession = useAcpChatSessionStore((s) => s.loadSession);
   const sendAcpPrompt = useAcpChatSessionStore((s) => s.sendPrompt);
+  const enqueueAcpPrompt = useAcpChatSessionStore((s) => s.enqueuePrompt);
+  const acpQueuedPrompts = useAcpChatSessionStore((s) => s.queuedPrompts) ?? [];
+  const removeQueuedAcpPrompt = useAcpChatSessionStore((s) => s.removeQueuedPrompt);
+  const setAcpConfigOption = useAcpChatSessionStore((s) => s.setConfigOption);
   const cancelAcp = useAcpChatSessionStore((s) => s.cancel);
   const respondAcpPermission = useAcpChatSessionStore((s) => s.respondPermission);
   const clearAcpError = useAcpChatSessionStore((s) => s.clearError);
@@ -373,7 +377,7 @@ export function Chat() {
 
   useEffect(() => {
     if (!currentSessionKey || !cwd || !workspaceContextAvailable) return;
-    if (currentSessionKey === DEFAULT_SESSION_KEY && sessions.length === 0 && acpActiveSessionKey == null && !sessionDiscoveryAttempted) return;
+    if (currentSessionKey === DEFAULT_SESSION_KEY && sessions.length === 0 && acpActiveSessionKey == null) return;
     if (acpActiveSessionKey === currentSessionKey && acpWorkspaceRoot === cwd && acpCwd === cwd) return;
     const acpLoadKey = `${currentSessionKey}\0${cwd}`;
     if (acpLoadInFlightKeyRef.current === acpLoadKey) return;
@@ -616,6 +620,18 @@ export function Chat() {
             })();
           }}
           onStop={() => void cancelAcp()}
+          onQueueFollowUp={(text, attachments) => {
+            if (!currentSessionKey || !cwd || acpActiveSessionKey !== currentSessionKey) return false;
+            const media = attachments
+              ?.filter((file) => file.status === 'ready')
+              .map((file) => ({
+                filePath: file.stagedPath,
+                stagingId: file.id,
+                fileName: file.fileName,
+                mimeType: file.mimeType,
+              }));
+            return enqueueAcpPrompt({ sessionKey: currentSessionKey, cwd, message: text, media });
+          }}
           disabled={acpLoading || acpCancelling || !cwd || !workspaceContextAvailable}
           sending={composerBusy}
           imageGenerating={imageGenerationPending}
@@ -624,6 +640,27 @@ export function Chat() {
           workspaceOptions={workspaceOptions}
           workspaceReadOnly={effectiveWorkspace.readOnly}
           onSelectWorkspace={setChatWorkspacePath}
+          sessionConfigOptions={
+            acpActiveSessionKey === currentSessionKey
+              ? acpTimeline.metadata.configOptions
+              : undefined
+          }
+          onSetSessionConfigOption={setAcpConfigOption}
+          contextUsage={
+            acpActiveSessionKey === currentSessionKey
+              ? acpTimeline.metadata.usage
+              : undefined
+          }
+          onCompactContext={async () => {
+            if (!currentSessionKey || !cwd || acpActiveSessionKey !== currentSessionKey) return false;
+            return sendAcpPrompt({ sessionKey: currentSessionKey, cwd, message: '/compact' });
+          }}
+          queuedFollowUps={acpQueuedPrompts.map((entry) => ({
+            id: entry.id,
+            text: entry.payload.message ?? '',
+            attachmentCount: entry.payload.media?.length ?? 0,
+          }))}
+          onRemoveQueuedFollowUp={removeQueuedAcpPrompt}
         />
       </div>
 

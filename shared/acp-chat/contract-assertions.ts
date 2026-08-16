@@ -6,6 +6,7 @@ export const acpChatHostApiActions = [
   'loadAcpSession',
   'sendAcpPrompt',
   'cancelAcpSession',
+  'setAcpSessionConfigOption',
   'respondAcpPermission',
 ] as const satisfies readonly (keyof HostApiContract['chat'])[];
 

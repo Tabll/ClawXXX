@@ -12,7 +12,7 @@ import type { AcpTurnFileSummary } from '@/lib/acp/openclaw-file-activities';
 import { AcpTurnFileActivity } from './AcpTurnFileActivity';
 import { AcpAttachmentPart } from './AcpAttachmentPart';
 import type { AcpTurnTiming } from '@/lib/acp/turn-timings';
-import type { TimelineItem, ToolCallItem } from '@/lib/acp/timeline-types';
+import type { AssistantMessageMetadata, TimelineItem, ToolCallItem } from '@/lib/acp/timeline-types';
 
 type TurnRenderItem =
   | TimelineItem
@@ -79,6 +79,16 @@ function assistantTurnClipboardText(group: AcpAssistantTurnDisplayGroup): string
   return textSegments.join('\n\n');
 }
 
+function assistantTurnMetadata(group: AcpAssistantTurnDisplayGroup): AssistantMessageMetadata | undefined {
+  for (let index = group.items.length - 1; index >= 0; index -= 1) {
+    const item = group.items[index];
+    if (item?.kind === 'message-segment' && item.role === 'assistant' && item.assistantMetadata) {
+      return item.assistantMetadata;
+    }
+  }
+  return undefined;
+}
+
 function formatDuration(durationMs: number, language: string): string {
   const wholeSeconds = Math.floor(Math.max(0, durationMs) / 1000);
   const parts = new Intl.NumberFormat(language, {
@@ -132,6 +142,7 @@ export function AcpAssistantTurn({
   onPermissionSelect?: (requestId: string, optionId: string) => void;
 }) {
   const clipboardText = useMemo(() => assistantTurnClipboardText(group), [group]);
+  const metadata = useMemo(() => assistantTurnMetadata(group), [group]);
   const renderItems = useMemo(() => partitionTurnItems(group.items), [group.items]);
 
   return (
@@ -221,7 +232,7 @@ export function AcpAssistantTurn({
             {timing && <AcpTurnDuration timing={timing} />}
             {clipboardText.trim().length > 0 && (
               <div className="ml-auto min-w-0 flex-1">
-                <AcpAssistantHoverBar text={clipboardText} />
+                <AcpAssistantHoverBar text={clipboardText} metadata={metadata} />
               </div>
             )}
           </div>

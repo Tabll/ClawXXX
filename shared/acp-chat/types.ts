@@ -2,6 +2,7 @@ import type {
   ContentBlock,
   RequestPermissionRequest,
   RequestPermissionResponse,
+  SessionConfigOption,
   SessionNotification,
 } from '@agentclientprotocol/sdk';
 
@@ -33,6 +34,15 @@ export type AcpChatPromptPayload = AcpSessionKeyPayload & {
 
 export type AcpChatCancelPayload = AcpSessionKeyPayload;
 
+export type AcpChatSetConfigOptionPayload = AcpSessionKeyPayload & ({
+  configId: string;
+  value: string;
+} | {
+  configId: string;
+  value: boolean;
+  type: 'boolean';
+});
+
 export type AcpChatRespondPermissionPayload = AcpSessionKeyPayload & {
   requestId: string;
   outcome: RequestPermissionResponse['outcome'];
@@ -46,6 +56,8 @@ export type AcpChatOperationResult = {
   resumedActivePrompt?: boolean;
   /** Raw notifications collected while session/load is in progress. */
   sessionUpdates?: AcpSessionUpdateEnvelope[];
+  /** Full ACP session configuration snapshot returned after a successful update. */
+  configOptions?: SessionConfigOption[];
 };
 
 export type AcpSessionUpdateEnvelope = {

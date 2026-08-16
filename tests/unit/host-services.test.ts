@@ -1263,7 +1263,7 @@ describe('host services', () => {
     );
   });
 
-  it('registers exactly the four ACP chat actions', async () => {
+  it('registers exactly the five ACP chat actions', async () => {
     const { createChatApi } = await import('@electron/services/chat-api');
 
     expect(Object.keys(createChatApi({
@@ -1274,6 +1274,7 @@ describe('host services', () => {
       'loadAcpSession',
       'sendAcpPrompt',
       'cancelAcpSession',
+      'setAcpSessionConfigOption',
       'respondAcpPermission',
     ]);
   });
@@ -1300,10 +1301,11 @@ describe('host services', () => {
       }),
       JSON.stringify({
         type: 'message',
+        id: 'assistant-record',
+        timestamp: 1001,
         message: {
           role: 'assistant',
           content: 'Hi',
-          timestamp: 1001,
         },
       }),
     ].join('\n'));
@@ -1330,7 +1332,7 @@ describe('host services', () => {
             content: '[Working directory: ~/.openclaw/workspace]\n\nSender: test-user\n[Working directory: ~/.openclaw/workspace]\n\nHello from transcript',
             timestamp: 1000,
           },
-          { role: 'assistant', content: 'Hi', timestamp: 1001 },
+          { role: 'assistant', content: 'Hi', timestamp: 1001, id: 'assistant-record' },
         ],
       });
   });

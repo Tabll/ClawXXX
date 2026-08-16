@@ -19,6 +19,7 @@ import type {
   AcpChatOperationResult,
   AcpChatPromptPayload,
   AcpChatRespondPermissionPayload,
+  AcpChatSetConfigOptionPayload,
   AcpPermissionRequestEnvelope,
   AcpSessionUpdateEnvelope,
 } from '@shared/acp-chat/types';
@@ -33,7 +34,10 @@ import { AcpSessionAccessRegistry, type AcpSessionAccessContext } from './acp-se
 import { expandPath } from '../utils/paths';
 import { getSetting } from '../utils/store';
 
-type AcpConnection = Pick<ClientSideConnection, 'initialize' | 'newSession' | 'loadSession' | 'prompt' | 'cancel'>;
+type AcpConnection = Pick<
+  ClientSideConnection,
+  'initialize' | 'newSession' | 'loadSession' | 'prompt' | 'cancel' | 'setSessionConfigOption'
+>;
 type MainWindowLike = {
   webContents: Pick<BrowserWindow['webContents'], 'send'>;
 };
@@ -297,6 +301,7 @@ export class AcpChatService {
       }
 
       let acpSessionId = payload.sessionKey;
+      let initialConfigOptions: AcpChatOperationResult['configOptions'];
       if (payload.createIfMissing) {
         const created = await connection.newSession({
           cwd: preparedAccessGrant.executionCwd,
@@ -304,12 +309,14 @@ export class AcpChatService {
           _meta: { sessionKey: payload.sessionKey, prefixCwd: true },
         });
         acpSessionId = created.sessionId;
+        if (created.configOptions) initialConfigOptions = created.configOptions;
       } else {
-        await connection.loadSession({
+        const loaded = await connection.loadSession({
           sessionId: payload.sessionKey,
           cwd: preparedAccessGrant.executionCwd,
           mcpServers: [],
         });
+        if (loaded.configOptions) initialConfigOptions = loaded.configOptions;
       }
       this.activeAcpSessionId = acpSessionId;
       this.loadedSessionKey = payload.sessionKey;
@@ -322,12 +329,15 @@ export class AcpChatService {
         details: { createIfMissing: !!payload.createIfMissing, acpSessionId },
       });
       if (this.activeLoadBatch === loadBatch) this.activeLoadBatch = null;
-      return ok(
+      const operation = ok(
         nextGeneration,
         loadBatch.sessionUpdates
           .filter((entry) => entry.acpSessionId === acpSessionId)
           .map((entry) => entry.envelope),
       );
+      return initialConfigOptions
+        ? { ...operation, configOptions: initialConfigOptions }
+        : operation;
     } catch (error) {
       if (this.activeLoadBatch === loadBatch) this.activeLoadBatch = null;
       this.resolvePermissionWaitersForSession(payload.sessionKey, cancelledPermissionResponse());
@@ -444,6 +454,60 @@ export class AcpChatService {
       this.trace('session/cancel:failed', {
         sessionKey: payload.sessionKey,
         details: { error: error instanceof Error ? error.message : String(error) },
+      });
+      return fail(error);
+    }
+  }
+
+  async setSessionConfigOption(payload: AcpChatSetConfigOptionPayload): Promise<AcpChatOperationResult> {
+    if (!isValidSessionKey(payload.sessionKey) || !payload.configId.trim()) {
+      return fail('Invalid ACP session config payload');
+    }
+    if (typeof payload.value !== 'string' && typeof payload.value !== 'boolean') {
+      return fail('Invalid ACP session config value');
+    }
+    if (typeof payload.value === 'string' && !payload.value.trim()) {
+      return fail('Invalid ACP session config value');
+    }
+    if (payload.sessionKey !== this.activeSessionKey) return fail('ACP session is not active');
+    if (this.loadedSessionKey !== payload.sessionKey || !this.loadedAcpSessionId) {
+      return fail('ACP session is not loaded');
+    }
+    if (this.livePrompts.has(payload.sessionKey)) return fail('ACP prompt is already active');
+
+    try {
+      const connection = await this.ensureConnection();
+      const request = typeof payload.value === 'boolean'
+        ? {
+          sessionId: this.loadedAcpSessionId,
+          configId: payload.configId,
+          value: payload.value,
+          type: 'boolean' as const,
+        }
+        : {
+          sessionId: this.loadedAcpSessionId,
+          configId: payload.configId,
+          value: payload.value,
+        };
+      this.trace('session/config-option:start', {
+        sessionKey: payload.sessionKey,
+        details: { configId: payload.configId, valueType: typeof payload.value },
+      });
+      const result = await connection.setSessionConfigOption(request);
+      this.trace('session/config-option:success', {
+        sessionKey: payload.sessionKey,
+        details: { configId: payload.configId, optionCount: result.configOptions.length },
+      });
+      return {
+        success: true,
+        generation: this.generation,
+        configOptions: result.configOptions,
+      };
+    } catch (error) {
+      logger.error(`[acp-chat] session config option failed: ${String(error)}`);
+      this.trace('session/config-option:failed', {
+        sessionKey: payload.sessionKey,
+        details: { configId: payload.configId, error: error instanceof Error ? error.message : String(error) },
       });
       return fail(error);
     }

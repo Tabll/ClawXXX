@@ -71,6 +71,11 @@ vi.mock('react-i18next', () => ({
         'acp.unsupportedContent': 'Unsupported content',
         'acp.turnDuration': 'Took {{duration}}',
         'acp.turnElapsed': '{{duration}} elapsed',
+        'acp.copy': 'Copy',
+        'acp.copied': 'Copied',
+        'acp.metadata.input': 'Input {{count}}',
+        'acp.metadata.output': 'Output {{count}}',
+        'acp.metadata.cache': 'Cache {{count}}',
         'acp.dismiss': 'Dismiss',
         'acp.attachment.loading': 'Loading attachment',
         'acp.attachment.unavailable': 'Attachment unavailable',
@@ -543,6 +548,40 @@ describe('ACP chat timeline components', () => {
     />);
 
     expect(screen.getByTestId('acp-turn-duration')).toHaveTextContent('Took 6 sec');
+  });
+
+  it('shows metadata from the latest annotated assistant message in the grouped turn footer', () => {
+    const state = snapshot({
+      itemOrder: ['user-a:0', 'assistant-a:0', 'assistant-a:1'],
+      itemsById: {
+        'user-a:0': {
+          kind: 'message-segment', id: 'user-a:0', role: 'user', messageId: 'user-a', segmentIndex: 0,
+          parts: [{ kind: 'markdown', text: 'Inspect this' }],
+        },
+        'assistant-a:0': {
+          kind: 'message-segment', id: 'assistant-a:0', role: 'assistant', messageId: 'assistant-a', segmentIndex: 0,
+          parts: [{ kind: 'markdown', text: 'Starting.' }],
+          assistantMetadata: { provider: 'openai', model: 'gpt-5.5' },
+        },
+        'assistant-a:1': {
+          kind: 'message-segment', id: 'assistant-a:1', role: 'assistant', messageId: 'assistant-a', segmentIndex: 1,
+          parts: [{ kind: 'markdown', text: 'Finished.' }],
+          assistantMetadata: {
+            provider: 'openai',
+            model: 'gpt-5.6',
+            usage: { inputTokens: 12_000, outputTokens: 640, cacheReadTokens: 2_000, cacheWriteTokens: 500 },
+          },
+        },
+      },
+    });
+
+    render(<AcpTimeline snapshot={state} />);
+
+    const metadata = screen.getByTestId('acp-assistant-metadata');
+    expect(metadata).toHaveTextContent('openai/gpt-5.6');
+    expect(metadata).toHaveTextContent('Input 12K');
+    expect(metadata).toHaveTextContent('Cache 2.5K');
+    expect(metadata).not.toHaveTextContent('gpt-5.5');
   });
 
   it('floors Chinese whole-turn seconds, spaces the unit, and uses processing/completed copy', () => {

@@ -10,7 +10,7 @@ import {
   streamdownPlugins,
   streamdownRehypePlugins,
 } from '@/components/markdown/streamdown-config';
-import type { MessageSegmentItem, RenderPart } from '@/lib/acp/timeline-types';
+import type { AssistantMessageMetadata, MessageSegmentItem, RenderPart } from '@/lib/acp/timeline-types';
 import { cn } from '@/lib/utils';
 import { AcpImagePart, isSafeAcpImageSource } from './AcpImagePart';
 import { AcpAttachmentPart } from './AcpAttachmentPart';
@@ -139,8 +139,8 @@ export function clipboardTextForParts(parts: RenderPart[]): string {
     .join('\n\n');
 }
 
-export function AcpAssistantHoverBar({ text }: { text: string }) {
-  const { t } = useTranslation('chat');
+export function AcpAssistantHoverBar({ text, metadata }: { text: string; metadata?: AssistantMessageMetadata }) {
+  const { t, i18n } = useTranslation('chat');
   const [copied, setCopied] = useState(false);
 
   const copyContent = useCallback(async () => {
@@ -151,9 +151,23 @@ export function AcpAssistantHoverBar({ text }: { text: string }) {
   }, [text]);
 
   const label = copied ? t('acp.copied') : t('acp.copy');
+  const numberFormatter = useMemo(
+    () => new Intl.NumberFormat(i18n?.language, { notation: 'compact', maximumFractionDigits: 1 }),
+    [i18n?.language],
+  );
+  const timestamp = metadata?.timestamp != null
+    ? new Intl.DateTimeFormat(i18n?.language, { dateStyle: 'medium', timeStyle: 'medium' }).format(metadata.timestamp)
+    : null;
+  const model = metadata?.model
+    ? metadata.provider && !metadata.model.includes('/')
+      ? `${metadata.provider}/${metadata.model}`
+      : metadata.model
+    : metadata?.provider;
+  const usage = metadata?.usage;
+  const cacheTokens = (usage?.cacheReadTokens ?? 0) + (usage?.cacheWriteTokens ?? 0);
 
   return (
-    <div className="flex w-full justify-start px-1 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100">
+    <div className="flex w-full flex-wrap items-center justify-start gap-x-2 gap-y-1 px-1 text-tiny text-muted-foreground opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100">
       <button
         type="button"
         data-testid="acp-assistant-copy"
@@ -168,6 +182,21 @@ export function AcpAssistantHoverBar({ text }: { text: string }) {
           <Copy className="h-3.5 w-3.5" aria-hidden="true" />
         )}
       </button>
+      {metadata && (
+        <div data-testid="acp-assistant-metadata" className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+          {timestamp && <span title={timestamp}>{timestamp}</span>}
+          {model && <span className="max-w-56 truncate" title={model}>{model}</span>}
+          {usage?.inputTokens !== undefined && (
+            <span>{t('acp.metadata.input', { count: numberFormatter.format(usage.inputTokens) })}</span>
+          )}
+          {usage?.outputTokens !== undefined && (
+            <span>{t('acp.metadata.output', { count: numberFormatter.format(usage.outputTokens) })}</span>
+          )}
+          {(usage?.cacheReadTokens !== undefined || usage?.cacheWriteTokens !== undefined) && (
+            <span>{t('acp.metadata.cache', { count: numberFormatter.format(cacheTokens) })}</span>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -223,7 +252,9 @@ export const AcpMessageSegment = memo(function AcpMessageSegment({ item }: { ite
         {orderedParts.map((part, index) => (
           <AcpRenderPart key={`${part.kind}:${index}`} part={part} tone={item.role} />
         ))}
-        {!isUser && clipboardText.trim().length > 0 && <AcpAssistantHoverBar text={clipboardText} />}
+        {!isUser && clipboardText.trim().length > 0 && (
+          <AcpAssistantHoverBar text={clipboardText} metadata={item.assistantMetadata} />
+        )}
       </div>
     </div>
   );

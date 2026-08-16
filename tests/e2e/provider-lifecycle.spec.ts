@@ -420,7 +420,8 @@ test.describe('ClawX provider lifecycle', () => {
       });
     });
 
-    await openProviderSettings(page);
+    await page.getByTestId('sidebar-nav-models').click();
+    await expect(page.getByTestId('providers-settings')).toBeVisible();
     await expect(page.getByTestId('provider-card-capability-edit')).toBeVisible();
     await page.getByTestId('provider-card-capability-edit').hover();
     await page.getByTestId('provider-edit-capability-edit').click();

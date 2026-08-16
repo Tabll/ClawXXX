@@ -4,6 +4,7 @@ import type {
   AcpChatOperationResult,
   AcpChatPromptPayload,
   AcpChatRespondPermissionPayload,
+  AcpChatSetConfigOptionPayload,
 } from '../acp-chat/types';
 import type { RawMessage } from '../chat/types';
 import type { AgentsSnapshot } from '../types/agent';
@@ -1234,6 +1235,7 @@ export type HostApiContract = {
     loadAcpSession: (payload: AcpChatLoadPayload) => AcpChatOperationResult;
     sendAcpPrompt: (payload: AcpChatPromptPayload) => AcpChatOperationResult;
     cancelAcpSession: (payload: AcpChatCancelPayload) => AcpChatOperationResult;
+    setAcpSessionConfigOption: (payload: AcpChatSetConfigOptionPayload) => AcpChatOperationResult;
     respondAcpPermission: (payload: AcpChatRespondPermissionPayload) => AcpChatOperationResult;
   };
   cron: {

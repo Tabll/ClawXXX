@@ -98,6 +98,38 @@ function translate(key: string, vars?: Record<string, unknown>): string {
       return 'No matching skills found';
     case 'composer.pickAgent':
       return 'Choose agent';
+    case 'composer.pickModel':
+      return 'Choose model';
+    case 'composer.pickReasoning':
+      return 'Choose reasoning level';
+    case 'composer.booleanOn':
+      return 'On';
+    case 'composer.booleanOff':
+      return 'Off';
+    case 'composer.sessionConfigFailed':
+      return 'Failed to update this chat setting';
+    case 'composer.contextUsageLabel':
+      return `${String(vars?.used)} of ${String(vars?.size)} context used (${String(vars?.percentage)}%)`;
+    case 'composer.compactContext':
+      return `Compact context. ${String(vars?.usage)}`;
+    case 'composer.compactContextHint':
+      return 'Click to compact this chat through ACP';
+    case 'composer.compactFailed':
+      return 'Failed to compact this chat';
+    case 'composer.queueFollowUp':
+      return 'Queue follow-up';
+    case 'composer.queueFull':
+      return 'The follow-up queue is full';
+    case 'composer.queuedFollowUps':
+      return `Queued follow-ups (${String(vars?.count)})`;
+    case 'composer.queueLimit':
+      return `Up to ${String(vars?.count)}`;
+    case 'composer.attachmentOnlyFollowUp':
+      return 'Attachment follow-up';
+    case 'composer.followUpAttachments':
+      return `${String(vars?.count)} attachment(s)`;
+    case 'composer.removeQueuedFollowUp':
+      return `Remove queued follow-up ${String(vars?.number)}`;
     case 'composer.clearTarget':
       return 'Clear target agent';
     case 'composer.targetChip':
@@ -282,6 +314,48 @@ describe('ChatInput agent targeting', () => {
     expect(screen.queryByTestId('chat-composer-image-generation-indicator')).not.toBeInTheDocument();
   });
 
+  it('keeps Stop available and queues a follow-up while the ACP prompt is active', async () => {
+    const onQueueFollowUp = vi.fn().mockReturnValue(true);
+    const onRemoveQueuedFollowUp = vi.fn();
+    render(
+      <TooltipProvider>
+        <ChatInput
+          onSend={vi.fn()}
+          onStop={vi.fn()}
+          sending
+          onQueueFollowUp={onQueueFollowUp}
+          queuedFollowUps={[{ id: 'queued-1', text: 'First queued task', attachmentCount: 0 }]}
+          onRemoveQueuedFollowUp={onRemoveQueuedFollowUp}
+        />
+      </TooltipProvider>,
+    );
+
+    expect(screen.getByTestId('chat-composer-send')).toHaveAttribute('title', 'Stop');
+    expect(screen.getByTestId('chat-follow-up-queue')).toHaveTextContent('First queued task');
+    fireEvent.change(screen.getByTestId('chat-composer-input'), { target: { value: 'Second queued task' } });
+    fireEvent.click(screen.getByTestId('chat-composer-queue'));
+    await waitFor(() => expect(onQueueFollowUp).toHaveBeenCalledWith('Second queued task', undefined));
+    expect(screen.getByTestId('chat-composer-input')).toHaveValue('');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Remove queued follow-up 1' }));
+    expect(onRemoveQueuedFollowUp).toHaveBeenCalledWith('queued-1');
+  });
+
+  it('retains the draft when the bounded follow-up queue is full', async () => {
+    const onQueueFollowUp = vi.fn().mockReturnValue(false);
+    render(
+      <TooltipProvider>
+        <ChatInput onSend={vi.fn()} sending onQueueFollowUp={onQueueFollowUp} />
+      </TooltipProvider>,
+    );
+
+    const input = screen.getByTestId('chat-composer-input');
+    fireEvent.change(input, { target: { value: 'Keep this draft' } });
+    fireEvent.click(screen.getByTestId('chat-composer-queue'));
+    await waitFor(() => expect(toastErrorMock).toHaveBeenCalledWith('The follow-up queue is full'));
+    expect(input).toHaveValue('Keep this draft');
+  });
+
   it('waits for the provider snapshot before clearing an unavailable model override', async () => {
     let resolveSnapshot!: () => void;
     agentsState.updateAgentModel.mockResolvedValue(undefined);
@@ -312,6 +386,102 @@ describe('ChatInput agent targeting', () => {
     await waitFor(() => {
       expect(agentsState.updateAgentModel).toHaveBeenCalledWith('main', null);
     });
+  });
+
+  it('uses ACP-native model and reasoning options instead of mutating the agent model', async () => {
+    const setSessionConfigOption = vi.fn().mockResolvedValue(true);
+    configureAgentAndModelPickers();
+    render(
+      <TooltipProvider>
+        <ChatInput
+          onSend={vi.fn()}
+          sessionConfigOptions={[
+            {
+              id: 'session-model',
+              name: 'Session model',
+              category: 'model',
+              type: 'select',
+              currentValue: 'openai/gpt-5.5',
+              options: [
+                { value: 'openai/gpt-5.5', name: 'GPT-5.5' },
+                { value: 'openai/gpt-5.6', name: 'GPT-5.6' },
+              ],
+            },
+            {
+              id: 'thought-level',
+              name: 'Reasoning',
+              category: 'thought_level',
+              type: 'select',
+              currentValue: 'medium',
+              options: [
+                { value: 'medium', name: 'Medium' },
+                { value: 'high', name: 'High' },
+              ],
+            },
+          ]}
+          onSetSessionConfigOption={setSessionConfigOption}
+        />
+      </TooltipProvider>,
+    );
+
+    expect(screen.getByTestId('chat-model-picker-button')).toHaveTextContent('GPT-5.5');
+    fireEvent.click(screen.getByTestId('chat-model-picker-button'));
+    fireEvent.click(screen.getByText('GPT-5.6'));
+    await waitFor(() => {
+      expect(setSessionConfigOption).toHaveBeenCalledWith('session-model', 'openai/gpt-5.6');
+    });
+
+    expect(screen.getByTestId('chat-reasoning-picker-button')).toHaveTextContent('Medium');
+    fireEvent.click(screen.getByTestId('chat-reasoning-picker-button'));
+    fireEvent.click(screen.getByText('High'));
+    await waitFor(() => {
+      expect(setSessionConfigOption).toHaveBeenCalledWith('thought-level', 'high');
+    });
+    expect(agentsState.updateAgentModel).not.toHaveBeenCalled();
+  });
+
+  it('shows fresh ACP context usage and compacts through the supplied ACP prompt action', async () => {
+    const compactContext = vi.fn().mockResolvedValue(true);
+    render(
+      <TooltipProvider>
+        <ChatInput
+          onSend={vi.fn()}
+          contextUsage={{ used: 32_000, size: 128_000 }}
+          onCompactContext={compactContext}
+        />
+      </TooltipProvider>,
+    );
+
+    const control = screen.getByTestId('chat-context-usage');
+    expect(control).toHaveAccessibleName(/32K of 128K context used \(25%\)/);
+    fireEvent.click(control);
+    await waitFor(() => expect(compactContext).toHaveBeenCalledTimes(1));
+  });
+
+  it('hides invalid ACP context usage and disables compaction during an active prompt', () => {
+    const compactContext = vi.fn().mockResolvedValue(true);
+    const { rerender } = render(
+      <TooltipProvider>
+        <ChatInput
+          onSend={vi.fn()}
+          contextUsage={{ used: 10, size: 0 }}
+          onCompactContext={compactContext}
+        />
+      </TooltipProvider>,
+    );
+    expect(screen.queryByTestId('chat-context-usage')).not.toBeInTheDocument();
+
+    rerender(
+      <TooltipProvider>
+        <ChatInput
+          onSend={vi.fn()}
+          sending
+          contextUsage={{ used: 10, size: 100 }}
+          onCompactContext={compactContext}
+        />
+      </TooltipProvider>,
+    );
+    expect(screen.getByTestId('chat-context-usage')).toBeDisabled();
   });
 
   it('renders editable workspace selector in the composer footer', () => {
