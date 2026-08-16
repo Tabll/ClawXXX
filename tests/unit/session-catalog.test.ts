@@ -20,6 +20,7 @@ describe('Gateway session catalog projection', () => {
       updatedAt: '2026-07-20T00:00:00.000Z',
       status: ' RUNNING ',
       hasActiveRun: true,
+      pinned: true,
       lastChannel: 'discord',
       ignored: 'must not leak',
     };
@@ -38,6 +39,7 @@ describe('Gateway session catalog projection', () => {
       updatedAt: Date.parse('2026-07-20T00:00:00.000Z'),
       status: 'running',
       hasActiveRun: true,
+      pinned: true,
       channel: 'discord',
     });
     expect(patch.values).toEqual(row);
@@ -85,17 +87,18 @@ describe('Gateway session catalog projection', () => {
 
   it('preserves explicit false and clears optional fields only when null is present', () => {
     const result = applyGatewaySessionsChanged(
-      [{ key: SESSION_KEY, hasActiveRun: true, model: 'old-model', label: 'Keep me' }],
+      [{ key: SESSION_KEY, hasActiveRun: true, pinned: true, model: 'old-model', label: 'Keep me' }],
       {
         key: SESSION_KEY,
         hasActiveRun: false,
+        pinned: false,
         model: null,
         ts: 10,
       },
       new Map(),
     );
 
-    expect(result.sessions).toEqual([{ key: SESSION_KEY, hasActiveRun: false, label: 'Keep me' }]);
+    expect(result.sessions).toEqual([{ key: SESSION_KEY, hasActiveRun: false, pinned: false, label: 'Keep me' }]);
   });
 
   it('rejects conflicting nested and envelope keys and requests canonical reload', () => {

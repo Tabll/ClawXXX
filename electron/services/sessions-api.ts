@@ -26,6 +26,7 @@ type SessionSummary = {
   lastTimestamp: number | null;
   workspacePath: string | null;
   heartbeatOnly?: boolean;
+  pinned?: boolean;
 };
 
 type TranscriptMessage = RawMessage;
@@ -48,10 +49,12 @@ type SessionPayload = {
   sessionKey?: unknown;
   label?: unknown;
   title?: unknown;
+  pinned?: unknown;
   agentId?: unknown;
   sessionId?: unknown;
   limit?: unknown;
   sessionKeys?: unknown;
+  metadataOnly?: unknown;
 };
 
 function extractMessageText(content: unknown): string {
@@ -389,6 +392,43 @@ function getSessionKey(payload: unknown): string {
   return value;
 }
 
+function readSessionPinned(sessionsJson: Record<string, unknown>, sessionKey: string): boolean {
+  if (Array.isArray(sessionsJson.sessions)) {
+    const entry = (sessionsJson.sessions as Array<Record<string, unknown>>)
+      .find((session) => session.key === sessionKey || session.sessionKey === sessionKey);
+    if (entry?.pinned === true) return true;
+  }
+
+  const value = sessionsJson[sessionKey];
+  return Boolean(value && typeof value === 'object' && (value as Record<string, unknown>).pinned === true);
+}
+
+function writeSessionPinned(
+  sessionsJson: Record<string, unknown>,
+  sessionKey: string,
+  pinned: boolean,
+): boolean {
+  let found = false;
+  const keyedEntry = sessionsJson[sessionKey];
+  if (typeof keyedEntry === 'string') {
+    sessionsJson[sessionKey] = { file: keyedEntry, pinned };
+    found = true;
+  } else if (keyedEntry && typeof keyedEntry === 'object' && !Array.isArray(keyedEntry)) {
+    (keyedEntry as Record<string, unknown>).pinned = pinned;
+    found = true;
+  }
+
+  if (Array.isArray(sessionsJson.sessions)) {
+    for (const entry of sessionsJson.sessions as Array<Record<string, unknown>>) {
+      if (entry.key === sessionKey || entry.sessionKey === sessionKey) {
+        entry.pinned = pinned;
+        found = true;
+      }
+    }
+  }
+  return found;
+}
+
 function getLimit(payload: unknown, fallback = 200): number {
   const value = isRecord(payload) ? (payload as SessionPayload).limit : undefined;
   const limitRaw = typeof value === 'number' ? value : fallback;
@@ -452,7 +492,11 @@ function resolveSessionTranscriptPathByKey(
   return resolvedSrcPath ?? null;
 }
 
-async function loadSessionSummary(sessionKey: string, workspacePath: string | null): Promise<SessionSummary> {
+async function loadSessionSummary(
+  sessionKey: string,
+  workspacePath: string | null,
+  options?: { metadataOnly?: boolean },
+): Promise<SessionSummary> {
   const parsed = parseSessionKey(sessionKey);
   if (!parsed) {
     return { sessionKey, firstUserText: null, lastTimestamp: null, workspacePath };
@@ -461,13 +505,21 @@ async function loadSessionSummary(sessionKey: string, workspacePath: string | nu
   try {
     const sessionsDir = join(resolveOpenClawStateDir(), 'agents', parsed.agentId, 'sessions');
     const sessionsJson = await readSessionsJson(parsed.agentId);
+    const pinned = readSessionPinned(sessionsJson, sessionKey);
+    if (options?.metadataOnly) {
+      return { sessionKey, firstUserText: null, lastTimestamp: null, workspacePath, pinned };
+    }
     const transcriptPath = resolveSessionTranscriptPathByKey(sessionKey, sessionsDir, sessionsJson);
     if (!transcriptPath) {
-      return { sessionKey, firstUserText: null, lastTimestamp: null, workspacePath };
+      return { sessionKey, firstUserText: null, lastTimestamp: null, workspacePath, pinned };
     }
 
-    const messages = await readAllTranscriptMessages(transcriptPath);
-    return summarizeTranscriptMessages(sessionKey, messages, workspacePath);
+    try {
+      const messages = await readAllTranscriptMessages(transcriptPath);
+      return { ...summarizeTranscriptMessages(sessionKey, messages, workspacePath), pinned };
+    } catch {
+      return { sessionKey, firstUserText: null, lastTimestamp: null, workspacePath, pinned };
+    }
   } catch {
     return { sessionKey, firstUserText: null, lastTimestamp: null, workspacePath };
   }
@@ -621,6 +673,31 @@ async function renameSession(sessionKey: string, label: string): Promise<{ succe
   return { success: true };
 }
 
+async function pinSession(sessionKey: string, pinned: boolean): Promise<{ success: boolean; error?: string }> {
+  const parsed = parseSessionKey(sessionKey);
+  if (!parsed) {
+    return { success: false, error: `Invalid sessionKey: ${sessionKey}` };
+  }
+
+  const sessionsJsonPath = join(
+    resolveOpenClawStateDir(),
+    'agents',
+    parsed.agentId,
+    'sessions',
+    'sessions.json',
+  );
+  const fsP = await import('node:fs/promises');
+  const raw = await fsP.readFile(sessionsJsonPath, 'utf8');
+  const json = JSON.parse(raw) as Record<string, unknown>;
+  if (!writeSessionPinned(json, sessionKey, pinned)) {
+    return { success: false, error: `Session not found in sessions.json: ${sessionKey}` };
+  }
+
+  await fsP.writeFile(sessionsJsonPath, JSON.stringify(json, null, 2), 'utf8');
+  logger.info(`[session:pin] key=${sessionKey} pinned=${pinned}`);
+  return { success: true };
+}
+
 export function createSessionsApi(): CompleteHostServiceRegistry['sessions'] {
   return {
     delete: async (payload) => deleteSession(getSessionKey(payload)),
@@ -633,17 +710,32 @@ export function createSessionsApi(): CompleteHostServiceRegistry['sessions'] {
       }
       return renameSession(sessionKey, label);
     },
+    pin: async (payload) => {
+      const body = isRecord(payload) ? payload as SessionPayload : {};
+      const sessionKey = getSessionKey(payload);
+      if (typeof body.pinned !== 'boolean') {
+        throw new Error('Pinned must be a boolean');
+      }
+      return pinSession(sessionKey, body.pinned);
+    },
     summaries: async (payload) => {
       const body = isRecord(payload) ? payload as SessionPayload : {};
       const sessionKeys = Array.isArray(body.sessionKeys)
         ? body.sessionKeys.filter((value): value is string => typeof value === 'string' && value.startsWith('agent:'))
         : [];
       if (sessionKeys.length === 0) return { success: true, summaries: [] };
-      const workspaceByKey = await readOpenClawAcpSessionCwds(sessionKeys);
+      const metadataOnly = body.metadataOnly === true;
+      const workspaceByKey = metadataOnly
+        ? new Map<string, string>()
+        : await readOpenClawAcpSessionCwds(sessionKeys);
       return {
         success: true,
         summaries: await Promise.all(sessionKeys.map((sessionKey) => (
-          loadSessionSummary(sessionKey, workspaceByKey.get(sessionKey.trim()) ?? null)
+          loadSessionSummary(
+            sessionKey,
+            workspaceByKey.get(sessionKey.trim()) ?? null,
+            { metadataOnly },
+          )
         ))),
       };
     },

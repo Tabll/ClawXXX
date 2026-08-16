@@ -361,7 +361,10 @@ export const hostApi = {
     rename: (id: string, title: string) => (
       invokeHost('sessions', 'rename', { id, title })
     ),
-    summaries: (input?: { sessionKeys?: string[]; limit?: number }) => invokeHost('sessions', 'summaries', input),
+    pin: (id: string, pinned: boolean) => invokeHost('sessions', 'pin', { id, pinned }),
+    summaries: (input?: { sessionKeys?: string[]; limit?: number; metadataOnly?: boolean }) => (
+      invokeHost('sessions', 'summaries', input)
+    ),
     history: (input: { sessionKey?: string; agentId?: string; sessionId?: string; limit?: number }) => (
       invokeHost('sessions', 'history', input)
     ),

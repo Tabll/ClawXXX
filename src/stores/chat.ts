@@ -254,10 +254,38 @@ function omitRecordKeys<T>(entries: Record<string, T>, keys: Set<string>): Recor
   return changed ? next : entries;
 }
 
-async function fetchSessionLabelSummaries(sessionKeys: string[]): Promise<SessionLabelSummary[]> {
+async function fetchSessionLabelSummaries(
+  sessionKeys: string[],
+  options?: { metadataOnly?: boolean },
+): Promise<SessionLabelSummary[]> {
   if (sessionKeys.length === 0) return [];
-  const response = await hostApi.sessions.summaries({ sessionKeys });
+  const response = await hostApi.sessions.summaries({ sessionKeys, ...options });
   return Array.isArray(response?.summaries) ? response.summaries : [];
+}
+
+async function hydrateSessionPinMetadata(sessions: ChatSession[]): Promise<ChatSession[]> {
+  const sessionKeys = sessions
+    .map((session) => session.key)
+    .filter((sessionKey) => sessionKey.startsWith('agent:'));
+  if (sessionKeys.length === 0) return sessions;
+
+  try {
+    const summaries = await fetchSessionLabelSummaries(sessionKeys, { metadataOnly: true });
+    const pinnedByKey = new Map(
+      summaries
+        .filter((summary) => typeof summary.pinned === 'boolean')
+        .map((summary) => [summary.sessionKey, summary.pinned!] as const),
+    );
+    if (pinnedByKey.size === 0) return sessions;
+    return sessions.map((session) => (
+      pinnedByKey.has(session.key)
+        ? { ...session, pinned: pinnedByKey.get(session.key) }
+        : session
+    ));
+  } catch (error) {
+    console.warn('Failed to hydrate session pin metadata:', error);
+    return sessions;
+  }
 }
 
 function getCanonicalPrefixFromSessionKey(sessionKey: string): string | null {
@@ -426,6 +454,13 @@ function applySessionLabelSummaries(
         continue;
       }
 
+      if (typeof summary.pinned === 'boolean' && session?.pinned !== summary.pinned) {
+        nextSessions = nextSessions.map((entry) => (
+          entry.key === summary.sessionKey ? { ...entry, pinned: summary.pinned } : entry
+        ));
+        changed = true;
+      }
+
       const labelText = toAutomaticSessionLabel(summary.firstUserText || '');
       const existingLabel = nextLabels[summary.sessionKey]?.trim();
       const existingLabelIsFallback = isSyntheticSessionFallbackLabel(session, existingLabel);
@@ -524,10 +559,12 @@ export const useChatStore = create<ChatState>((set, get) => ({
       let generation = initialGeneration;
       let internalFollowUpUsed = false;
       let previousGatewayListKeys: Set<string> | null = null;
+      let previousRequestLocalSessionKeys: Set<string> | null = null;
       const suppressedSessionKeys = new Set<string>();
       const advanceGeneration = (nextGeneration: number): void => {
         if (nextGeneration !== generation) {
           previousGatewayListKeys = null;
+          previousRequestLocalSessionKeys = null;
           suppressedSessionKeys.clear();
         }
         generation = nextGeneration;
@@ -546,6 +583,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
         try {
           const localRevisionBeforeRequest = localSessionCatalogRevision;
+          const localSessionKeysBeforeRequest = new Set(
+            get().sessions.map((session) => session.key),
+          );
           const data = await fetchChatSessionsList();
           if (generation === sessionCatalogGeneration) {
             const rawSessions = Array.isArray(data.sessions) ? data.sessions : [];
@@ -584,23 +624,37 @@ export const useChatStore = create<ChatState>((set, get) => ({
             const mergedSessions = dedupedSessions.map((session) => {
               const localSession = localSessionByKey.get(session.key);
               const workspacePath = session.workspacePath ?? localSession?.workspacePath;
+              const pinned = typeof session.pinned === 'boolean'
+                ? session.pinned
+                : localSession?.pinned;
               const preserveLocalDraft = localSession?.createdLocally === true
                 && localDraftSessionKeys.has(session.key);
-              if (!preserveLocalDraft && workspacePath === session.workspacePath) return session;
+              if (
+                !preserveLocalDraft
+                && workspacePath === session.workspacePath
+                && pinned === session.pinned
+              ) return session;
               return {
                 ...session,
                 ...(workspacePath ? { workspacePath } : {}),
+                ...(typeof pinned === 'boolean' ? { pinned } : {}),
                 ...(preserveLocalDraft ? { createdLocally: true } : {}),
               };
             });
 
-            if (previousGatewayListKeys) {
+            if (previousGatewayListKeys && previousRequestLocalSessionKeys) {
               const currentKeys = new Set(localSessions.map((session) => session.key));
               for (const sessionKey of previousGatewayListKeys) {
-                if (!currentKeys.has(sessionKey)) suppressedSessionKeys.add(sessionKey);
+                if (
+                  previousRequestLocalSessionKeys.has(sessionKey)
+                  && !currentKeys.has(sessionKey)
+                ) {
+                  suppressedSessionKeys.add(sessionKey);
+                }
               }
             }
             previousGatewayListKeys = new Set(mergedSessions.map((session) => session.key));
+            previousRequestLocalSessionKeys = localSessionKeysBeforeRequest;
 
             const heartbeatCleanup = getHeartbeatCachedLabelCleanup(mergedSessions, currentSessionLabels);
             for (const sessionKey of heartbeatCleanup.hiddenSessionKeys) {
@@ -760,8 +814,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
               ? [
                   ...visibleMergedSessions,
                   currentSessionToInsert,
-                ]
+              ]
               : visibleMergedSessions;
+
+            sessionsWithCurrent = await hydrateSessionPinMetadata(sessionsWithCurrent);
 
             const selectedSession = sessionsWithCurrent.find(
               (session) => session.key === nextSessionKey,
@@ -1372,6 +1428,18 @@ export const useChatStore = create<ChatState>((set, get) => ({
         entry.key === key ? { ...entry, label: normalized } : entry
       )),
       sessionLabels: { ...state.sessionLabels, [key]: normalized },
+    }));
+  },
+
+  setSessionPinned: async (key, pinned) => {
+    const result = await hostApi.sessions.pin(key, pinned);
+    if (!result.success) throw new Error(result.error || 'Failed to update session pin state');
+
+    markLocalSessionCatalogMutation();
+    set((state) => ({
+      sessions: state.sessions.map((session) => (
+        session.key === key ? { ...session, pinned } : session
+      )),
     }));
   },
 }));

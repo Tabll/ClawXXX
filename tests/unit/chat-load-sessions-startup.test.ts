@@ -27,9 +27,10 @@ type SummaryResponse = {
   success: boolean;
   summaries: Array<{
     sessionKey: string;
-    firstUserText: string;
-    lastTimestamp: number;
-    workspacePath: string;
+    firstUserText: string | null;
+    lastTimestamp: number | null;
+    workspacePath: string | null;
+    pinned?: boolean;
   }>;
 };
 
@@ -53,6 +54,14 @@ function deferredCatalog(): {
     resolve = resolver;
   });
   return { promise, resolve };
+}
+
+function mockSessionLabelSummaries(response: SummaryResponse | Promise<SummaryResponse>): void {
+  sessionSummariesMock.mockImplementation((payload: { metadataOnly?: boolean }) => (
+    payload?.metadataOnly
+      ? Promise.resolve({ success: true, summaries: [] })
+      : Promise.resolve(response)
+  ));
 }
 
 describe('chat session catalog startup', () => {
@@ -118,7 +127,7 @@ describe('chat session catalog startup', () => {
       ts: 1,
       sessions: [{ key: 'agent:main:session-a', displayName: 'Chat A', updatedAt: 5_000 }],
     });
-    sessionSummariesMock.mockResolvedValueOnce({
+    mockSessionLabelSummaries({
       success: true,
       summaries: [{
         sessionKey: 'agent:main:session-a',
@@ -151,7 +160,7 @@ describe('chat session catalog startup', () => {
       ts: 1,
       sessions: [{ key: 'agent:main:session-a', displayName: 'Chat A', updatedAt: 5_000 }],
     });
-    sessionSummariesMock.mockReturnValueOnce(summary.promise);
+    mockSessionLabelSummaries(summary.promise);
 
     const { useChatStore } = await import('@/stores/chat');
     useChatStore.setState({
@@ -205,7 +214,7 @@ describe('chat session catalog startup', () => {
         { key: switchedKey, label: 'Chat B', workspacePath: '/workspace/b', updatedAt: 4_000 },
       ],
     });
-    sessionSummariesMock.mockReturnValueOnce(summary.promise);
+    mockSessionLabelSummaries(summary.promise);
 
     const { useChatStore } = await import('@/stores/chat');
     useChatStore.setState({
@@ -252,7 +261,7 @@ describe('chat session catalog startup', () => {
       ts: 1,
       sessions: [{ key: selectedKey, displayName: 'Chat A', updatedAt: 5_000 }],
     });
-    sessionSummariesMock.mockReturnValueOnce(summary.promise);
+    mockSessionLabelSummaries(summary.promise);
 
     const { useChatStore } = await import('@/stores/chat');
     useChatStore.setState({
@@ -264,7 +273,9 @@ describe('chat session catalog startup', () => {
     });
 
     const loading = useChatStore.getState().loadSessions({ force: true, gatewayGeneration: 1 });
-    await vi.waitFor(() => expect(sessionSummariesMock).toHaveBeenCalledTimes(1));
+    await vi.waitFor(() => expect(sessionSummariesMock).toHaveBeenCalledWith({
+      sessionKeys: [selectedKey],
+    }));
     useChatStore.getState().newSession();
     useChatStore.getState().selectAcpSession(localKey, '/workspace/local');
 
@@ -288,6 +299,61 @@ describe('chat session catalog startup', () => {
     }));
   });
 
+  it('keeps the first canonical catalog when a local placeholder appears during pin hydration', async () => {
+    const firstKey = 'agent:main:session-a';
+    const secondKey = 'agent:main:session-b';
+    const localKey = 'agent:main:main';
+    const pinMetadata = deferredSummary();
+    let metadataCalls = 0;
+    gatewayRpcMock.mockResolvedValue({
+      ts: 1,
+      sessions: [
+        { key: firstKey, displayName: 'Chat A', workspacePath: '/workspace/a', updatedAt: 5_000 },
+        { key: secondKey, displayName: 'Chat B', workspacePath: '/workspace/b', updatedAt: 4_000 },
+      ],
+    });
+    sessionSummariesMock.mockImplementation((payload: { metadataOnly?: boolean }) => {
+      if (!payload?.metadataOnly) return Promise.resolve({ success: true, summaries: [] });
+      metadataCalls += 1;
+      if (metadataCalls === 1) return pinMetadata.promise;
+      return Promise.resolve({
+        success: true,
+        summaries: [
+          { sessionKey: firstKey, firstUserText: null, lastTimestamp: null, workspacePath: null, pinned: true },
+          { sessionKey: secondKey, firstUserText: null, lastTimestamp: null, workspacePath: null, pinned: false },
+        ],
+      });
+    });
+
+    const { useChatStore } = await import('@/stores/chat');
+    useChatStore.setState({
+      currentSessionKey: localKey,
+      currentAgentId: 'main',
+      sessions: [],
+      sessionLabels: {},
+      sessionLastActivity: {},
+    });
+
+    const loading = useChatStore.getState().loadSessions({ force: true, gatewayGeneration: 1 });
+    await vi.waitFor(() => expect(metadataCalls).toBe(1));
+    useChatStore.getState().selectAcpSession(localKey, '/workspace/local');
+    pinMetadata.resolve({
+      success: true,
+      summaries: [
+        { sessionKey: firstKey, firstUserText: null, lastTimestamp: null, workspacePath: null, pinned: true },
+        { sessionKey: secondKey, firstUserText: null, lastTimestamp: null, workspacePath: null, pinned: false },
+      ],
+    });
+    await loading;
+
+    expect(gatewayRpcMock).toHaveBeenCalledTimes(2);
+    expect(useChatStore.getState().sessions).toEqual(expect.arrayContaining([
+      expect.objectContaining({ key: firstKey, pinned: true }),
+      expect.objectContaining({ key: secondKey, pinned: false }),
+      expect.objectContaining({ key: localKey, createdLocally: true }),
+    ]));
+  });
+
   it('does not resurrect a successfully deleted session after delayed workspace hydration', async () => {
     const deletedKey = 'agent:main:session-a';
     const survivorKey = 'agent:main:session-b';
@@ -299,7 +365,7 @@ describe('chat session catalog startup', () => {
         { key: survivorKey, label: 'Chat B', workspacePath: '/workspace/b', updatedAt: 4_000 },
       ],
     });
-    sessionSummariesMock.mockReturnValueOnce(summary.promise);
+    mockSessionLabelSummaries(summary.promise);
 
     const { useChatStore } = await import('@/stores/chat');
     useChatStore.setState({
@@ -314,7 +380,9 @@ describe('chat session catalog startup', () => {
     });
 
     const loading = useChatStore.getState().loadSessions({ force: true, gatewayGeneration: 1 });
-    await vi.waitFor(() => expect(sessionSummariesMock).toHaveBeenCalledTimes(1));
+    await vi.waitFor(() => expect(sessionSummariesMock).toHaveBeenCalledWith({
+      sessionKeys: [deletedKey],
+    }));
     await expect(useChatStore.getState().deleteSession(deletedKey)).resolves.toEqual({ success: true });
 
     summary.resolve({

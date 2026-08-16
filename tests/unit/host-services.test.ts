@@ -1318,6 +1318,7 @@ describe('host services', () => {
           firstUserText: 'Hello from transcript',
           lastTimestamp: 1001000,
           workspacePath: null,
+          pinned: false,
         }],
       });
     await expect(sessionsApi.history({ sessionKey: 'agent:main:abc123', limit: 5 }))
@@ -1332,6 +1333,49 @@ describe('host services', () => {
           { role: 'assistant', content: 'Hi', timestamp: 1001 },
         ],
       });
+  });
+
+  it('persists pin metadata for all supported sessions.json entry shapes', async () => {
+    const sessionsDir = join(testOpenClawConfigDir, 'agents', 'main', 'sessions');
+    mkdirSync(sessionsDir, { recursive: true });
+    const sessionsJsonPath = join(sessionsDir, 'sessions.json');
+    writeFileSync(sessionsJsonPath, JSON.stringify({
+      sessions: [{ key: 'agent:main:array-session', file: 'array-session.jsonl', custom: 'keep' }],
+      'agent:main:object-session': { sessionFile: 'object-session.jsonl', custom: 'keep' },
+      'agent:main:string-session': 'string-session.jsonl',
+    }));
+    const { createSessionsApi } = await import('@electron/services/sessions-api');
+    const sessionsApi = createSessionsApi();
+
+    await expect(sessionsApi.pin({ id: 'agent:main:array-session', pinned: true }))
+      .resolves.toEqual({ success: true });
+    await expect(sessionsApi.pin({ id: 'agent:main:object-session', pinned: true }))
+      .resolves.toEqual({ success: true });
+    await expect(sessionsApi.pin({ id: 'agent:main:string-session', pinned: true }))
+      .resolves.toEqual({ success: true });
+
+    const stored = JSON.parse(readFileSync(sessionsJsonPath, 'utf8')) as Record<string, unknown> & {
+      sessions: Array<Record<string, unknown>>;
+    };
+    expect(stored.sessions[0]).toMatchObject({ pinned: true, custom: 'keep' });
+    expect(stored['agent:main:object-session']).toMatchObject({ pinned: true, custom: 'keep' });
+    expect(stored['agent:main:string-session']).toEqual({ file: 'string-session.jsonl', pinned: true });
+
+    await expect(sessionsApi.summaries({
+      sessionKeys: ['agent:main:array-session'],
+      metadataOnly: true,
+    })).resolves.toEqual({
+      success: true,
+      summaries: [{
+        sessionKey: 'agent:main:array-session',
+        firstUserText: null,
+        lastTimestamp: null,
+        workspacePath: null,
+        pinned: true,
+      }],
+    });
+    await expect(sessionsApi.pin({ id: 'agent:invalid/path:session', pinned: true }))
+      .resolves.toEqual(expect.objectContaining({ success: false }));
   });
 
   it('delegates all attachment-scoped file operations from the files service', async () => {

@@ -1,9 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { gatewayRpcMock, sessionDeleteMock, sessionRenameMock } = vi.hoisted(() => ({
+const { gatewayRpcMock, sessionDeleteMock, sessionRenameMock, sessionPinMock } = vi.hoisted(() => ({
   gatewayRpcMock: vi.fn(),
   sessionDeleteMock: vi.fn(),
   sessionRenameMock: vi.fn(),
+  sessionPinMock: vi.fn(),
 }));
 
 vi.mock('@/stores/gateway', () => ({
@@ -16,6 +17,7 @@ vi.mock('@/lib/host-api', () => ({
       summaries: vi.fn(async () => ({ success: true, summaries: [] })),
       delete: sessionDeleteMock,
       rename: sessionRenameMock,
+      pin: sessionPinMock,
     },
   },
 }));
@@ -27,6 +29,7 @@ describe('chat session management', () => {
     gatewayRpcMock.mockReset();
     sessionDeleteMock.mockReset().mockResolvedValue({ success: true });
     sessionRenameMock.mockReset().mockResolvedValue({ success: true });
+    sessionPinMock.mockReset().mockResolvedValue({ success: true });
   });
 
   it('drops only an abandoned local placeholder when switching sessions', async () => {
@@ -327,5 +330,24 @@ describe('chat session management', () => {
     expect(sessionRenameMock).toHaveBeenCalledWith(key, 'New title');
     expect(useChatStore.getState().sessions[0]?.label).toBe('New title');
     expect(useChatStore.getState().sessionLabels[key]).toBe('New title');
+  });
+
+  it('persists a pin and updates only the matching catalog row', async () => {
+    const key = 'agent:main:pin-me';
+    const otherKey = 'agent:main:leave-me';
+    const { useChatStore } = await import('@/stores/chat');
+    useChatStore.setState({
+      sessions: [{ key, pinned: false }, { key: otherKey, pinned: false }],
+      sessionLabels: {},
+      sessionLastActivity: {},
+    });
+
+    await useChatStore.getState().setSessionPinned(key, true);
+
+    expect(sessionPinMock).toHaveBeenCalledWith(key, true);
+    expect(useChatStore.getState().sessions).toEqual([
+      { key, pinned: true },
+      { key: otherKey, pinned: false },
+    ]);
   });
 });

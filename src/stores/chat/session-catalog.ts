@@ -99,6 +99,15 @@ export function normalizeGatewaySessionPatch(raw: Record<string, unknown>): Norm
     }
   }
 
+  if (hasOwn(raw, 'pinned')) {
+    present.add('pinned');
+    if (raw.pinned === null) {
+      cleared.add('pinned');
+    } else if (typeof raw.pinned === 'boolean') {
+      values.pinned = raw.pinned;
+    }
+  }
+
   const channelField = hasOwn(raw, 'lastChannel')
     ? 'lastChannel'
     : hasOwn(raw, 'channel') ? 'channel' : null;

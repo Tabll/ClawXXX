@@ -883,19 +883,21 @@ export type SessionTurnTimingCandidate = {
 export type SessionTurnTimingsResult = OptionalHostSuccess & {
   timings?: SessionTurnTimingCandidate[];
 };
-export type SessionSummariesPayload = { sessionKeys?: string[]; limit?: number };
+export type SessionSummariesPayload = { sessionKeys?: string[]; limit?: number; metadataOnly?: boolean };
 export type SessionLabelSummary = {
   sessionKey: string;
   firstUserText: string | null;
   lastTimestamp: number | null;
   workspacePath: string | null;
   heartbeatOnly?: boolean;
+  pinned?: boolean;
 };
 export type SessionSummariesResult = HostSuccess & {
   summaries?: SessionLabelSummary[];
 };
 export type SessionDeletePayload = { id: string };
 export type SessionRenamePayload = { id: string; title: string };
+export type SessionPinPayload = { id: string; pinned: boolean };
 
 export type CronUpdatePayload = { id: string; input: CronJobUpdateInput };
 export type CronIdPayload = { id: string };
@@ -1223,6 +1225,7 @@ export type HostApiContract = {
   sessions: {
     delete: (payload: SessionDeletePayload) => HostSuccess;
     rename: (payload: SessionRenamePayload) => HostSuccess;
+    pin: (payload: SessionPinPayload) => HostSuccess;
     summaries: (payload?: SessionSummariesPayload) => SessionSummariesResult;
     history: (payload: SessionHistoryPayload) => SessionHistoryResult;
     turnTimings: (payload: SessionTurnTimingsPayload) => SessionTurnTimingsResult;

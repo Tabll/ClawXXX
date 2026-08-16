@@ -325,6 +325,98 @@ describe('sidebar session helpers', () => {
     expect(toggleAll).not.toHaveTextContent('Expand all');
   });
 
+  it('sorts pinned conversations first inside a workspace and exposes context actions', async () => {
+    const pinnedKey = 'agent:main:session-pinned';
+    const regularKey = 'agent:main:session-regular';
+    const setSessionPinned = vi.fn().mockResolvedValue(undefined);
+    seedSidebarState();
+    useChatStore.setState({
+      sessions: [
+        { key: regularKey, displayName: 'Regular', workspacePath: '/repo/pins', updatedAt: 200 },
+        { key: pinnedKey, displayName: 'Pinned', workspacePath: '/repo/pins', updatedAt: 100, pinned: true },
+      ],
+      currentSessionKey: regularKey,
+      sessionLastActivity: { [regularKey]: 200, [pinnedKey]: 100 },
+      setSessionPinned,
+    });
+
+    renderSidebar();
+
+    const pinnedRow = screen.getByTestId(`sidebar-session-${pinnedKey}`);
+    const regularRow = screen.getByTestId(`sidebar-session-${regularKey}`);
+    expect(pinnedRow.compareDocumentPosition(regularRow) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getByTestId(`sidebar-session-pinned-${pinnedKey}`)).toBeInTheDocument();
+
+    fireEvent.contextMenu(regularRow, { clientX: 20, clientY: 30 });
+    expect(screen.getByTestId('sidebar-session-context-menu')).toHaveAccessibleName(
+      'Conversation actions for Regular',
+    );
+    fireEvent.click(screen.getByTestId(`sidebar-session-context-pin-${regularKey}`));
+
+    await waitFor(() => expect(setSessionPinned).toHaveBeenCalledWith(regularKey, true));
+  });
+
+  it('searches loaded conversations by workspace and opens a matching session', () => {
+    const targetKey = 'agent:main:session-search-target';
+    const switchSession = vi.fn();
+    seedSidebarState();
+    useSettingsStore.setState({ workspaceLabels: { '/repo/searchable': 'Launch workspace' } });
+    useChatStore.setState({
+      sessions: [
+        { key: sidebarSessionKey, displayName: 'Current', workspacePath: '/repo/current', updatedAt: 2 },
+        { key: targetKey, displayName: 'Roadmap', workspacePath: '/repo/searchable', updatedAt: 1 },
+      ],
+      currentSessionKey: sidebarSessionKey,
+      sessionLastActivity: { [sidebarSessionKey]: 2, [targetKey]: 1 },
+      switchSession,
+    });
+
+    renderSidebar();
+    fireEvent.click(screen.getByTestId('sidebar-search-button'));
+    fireEvent.change(screen.getByTestId('sidebar-session-search-input'), {
+      target: { value: 'launch workspace' },
+    });
+
+    expect(screen.getByTestId(`sidebar-session-search-result-${targetKey}`)).toHaveTextContent('Roadmap');
+    expect(screen.queryByTestId(`sidebar-session-search-result-${sidebarSessionKey}`)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTestId(`sidebar-session-search-result-${targetKey}`));
+
+    expect(switchSession).toHaveBeenCalledWith(targetKey);
+    expect(screen.queryByTestId('sidebar-session-search-dialog')).not.toBeInTheDocument();
+  });
+
+  it('uses the existing multi-session action for batch deletion', async () => {
+    const otherKey = 'agent:main:session-batch-other';
+    const deleteSessions = vi.fn().mockResolvedValue({
+      deletedKeys: [sidebarSessionKey, otherKey],
+      failedKeys: [],
+    });
+    seedSidebarState();
+    useChatStore.setState({
+      sessions: [
+        { key: sidebarSessionKey, displayName: 'First', updatedAt: 2 },
+        { key: otherKey, displayName: 'Second', updatedAt: 1 },
+      ],
+      currentSessionKey: sidebarSessionKey,
+      sessionLastActivity: { [sidebarSessionKey]: 2, [otherKey]: 1 },
+      deleteSessions,
+    });
+
+    renderSidebar();
+    fireEvent.click(screen.getByTestId('sidebar-more-button'));
+    fireEvent.click(screen.getByTestId('sidebar-batch-operation-option'));
+    fireEvent.click(screen.getByTestId(`sidebar-session-select-${sidebarSessionKey}`));
+    fireEvent.click(screen.getByTestId(`sidebar-session-select-${otherKey}`));
+    expect(screen.getByTestId('sidebar-batch-selected-count')).toHaveTextContent('2 selected');
+    fireEvent.click(screen.getByTestId('sidebar-batch-delete-button'));
+    fireEvent.click(screen.getByTestId('confirm-dialog-confirm-button'));
+
+    await waitFor(() => {
+      expect(deleteSessions).toHaveBeenCalledWith(expect.arrayContaining([sidebarSessionKey, otherKey]));
+      expect(screen.queryByTestId('sidebar-batch-toolbar')).not.toBeInTheDocument();
+    });
+  });
+
   it('keeps rename controls active when focus moves to save and submits on click', async () => {
     const renameSession = vi.fn().mockResolvedValue(undefined);
     seedSidebarState(renameSession);

@@ -21,6 +21,44 @@ function deferred<T>() {
   return { promise, resolve, reject };
 }
 
+function getSummaryRequestBody(init: unknown): Record<string, unknown> {
+  if (!init || typeof init !== 'object') return {};
+  const body = (init as { body?: unknown }).body;
+  if (typeof body !== 'string') return {};
+  try {
+    return JSON.parse(body) as Record<string, unknown>;
+  } catch {
+    return {};
+  }
+}
+
+function isMetadataOnlySummaryRequest(init: unknown): boolean {
+  return getSummaryRequestBody(init).metadataOnly === true;
+}
+
+function metadataOnlySummaryResponse(init: unknown) {
+  const body = getSummaryRequestBody(init);
+  const sessionKeys = Array.isArray(body.sessionKeys)
+    ? body.sessionKeys.filter((key): key is string => typeof key === 'string')
+    : [];
+  return {
+    success: true,
+    summaries: sessionKeys.map((sessionKey) => ({
+      sessionKey,
+      firstUserText: null,
+      lastTimestamp: null,
+      workspacePath: null,
+      pinned: false,
+    })),
+  };
+}
+
+function getLabelSummaryCalls() {
+  return hostApiFetchMock.mock.calls.filter(([path, init]) => (
+    path === '/api/sessions/summaries' && !isMetadataOnlySummaryRequest(init)
+  ));
+}
+
 vi.mock('@/stores/gateway', () => ({
   useGatewayStore: {
     getState: () => ({
@@ -619,8 +657,9 @@ describe('chat store session label summary hydration', () => {
       }
       throw new Error(`Unexpected gateway RPC: ${method}`);
     });
-    hostApiFetchMock.mockImplementation(async (path: string) => {
+    hostApiFetchMock.mockImplementation(async (path: string, init?: unknown) => {
       if (path !== '/api/sessions/summaries') return { success: true, summaries: [] };
+      if (isMetadataOnlySummaryRequest(init)) return metadataOnlySummaryResponse(init);
 
       summaryRequests += 1;
       return summaryRequests === 1
@@ -673,9 +712,7 @@ describe('chat store session label summary hydration', () => {
 
     await useChatStore.getState().loadSessions({ force: true });
 
-    expect(hostApiFetchMock.mock.calls.filter(
-      ([path]) => path === '/api/sessions/summaries',
-    )).toHaveLength(1);
+    expect(getLabelSummaryCalls()).toHaveLength(1);
 
     const state = useChatStore.getState();
     expect(state.sessionLabels[sessionKey]).toBe(expectedDisplayLabel);
@@ -1009,7 +1046,7 @@ describe('chat store session label summary hydration', () => {
     await Promise.resolve();
     await Promise.resolve();
 
-    const summaryCalls = hostApiFetchMock.mock.calls.filter(([path]) => path === '/api/sessions/summaries');
+    const summaryCalls = getLabelSummaryCalls();
     expect(summaryCalls).toHaveLength(1);
   });
 
@@ -1030,7 +1067,7 @@ describe('chat store session label summary hydration', () => {
     });
 
     let summaryCall = 0;
-    hostApiFetchMock.mockImplementation(async (path: string) => {
+    hostApiFetchMock.mockImplementation(async (path: string, init?: unknown) => {
       if (path === '/api/chat/history') {
         throw new Error('No route for mocked chat host API');
       }
@@ -1045,6 +1082,7 @@ describe('chat store session label summary hydration', () => {
           },
         };
       }
+      if (isMetadataOnlySummaryRequest(init)) return metadataOnlySummaryResponse(init);
       summaryCall += 1;
       return summaryCall === 1
         ? {
@@ -1094,7 +1132,7 @@ describe('chat store session label summary hydration', () => {
     await Promise.resolve();
     await Promise.resolve();
 
-    const summaryCalls = hostApiFetchMock.mock.calls.filter(([path]) => path === '/api/sessions/summaries');
+    const summaryCalls = getLabelSummaryCalls();
     expect(summaryCalls[0]).toEqual([
       '/api/sessions/summaries',
       {
@@ -1174,6 +1212,58 @@ describe('chat store session label summary hydration', () => {
     expect(useChatStore.getState().sessionLabels['agent:main:session-a']).toBe('Custom name');
   });
 
+  it('hydrates pin metadata without replacing Gateway workspace or status fields', async () => {
+    const sessionKey = 'agent:main:pinned-session';
+    gatewayRpcMock.mockImplementation(async (method: string) => {
+      if (method !== 'sessions.list') throw new Error(`Unexpected gateway RPC: ${method}`);
+      return {
+        ts: Date.now(),
+        sessions: [{
+          key: sessionKey,
+          label: 'Pinned session',
+          workspacePath: '/workspace/pinned',
+          status: 'done',
+          updatedAt: Date.now() - 1_000,
+        }],
+      };
+    });
+    hostApiFetchMock.mockImplementation(async (path: string, init?: unknown) => {
+      if (path !== '/api/sessions/summaries') return { success: true };
+      if (isMetadataOnlySummaryRequest(init)) {
+        return {
+          success: true,
+          summaries: [{
+            sessionKey,
+            firstUserText: null,
+            lastTimestamp: null,
+            workspacePath: null,
+            pinned: true,
+          }],
+        };
+      }
+      return { success: true, summaries: [] };
+    });
+
+    const { useChatStore } = await import('@/stores/chat');
+    useChatStore.setState({
+      currentSessionKey: sessionKey,
+      currentAgentId: 'main',
+      sessions: [],
+      sessionLabels: {},
+      sessionLastActivity: {},
+    });
+
+    await useChatStore.getState().loadSessions({ force: true });
+
+    expect(useChatStore.getState().sessions).toContainEqual(expect.objectContaining({
+      key: sessionKey,
+      label: 'Pinned session',
+      workspacePath: '/workspace/pinned',
+      status: 'done',
+      pinned: true,
+    }));
+  });
+
   it('drops a stale background summary after buffered delete-recreate and applies the new incarnation', async () => {
     const sessionKey = 'agent:main:recreated-background';
     const unrelatedKey = 'agent:main:unrelated-background';
@@ -1197,8 +1287,9 @@ describe('chat store session label summary hydration', () => {
       }
       return secondList.promise;
     });
-    hostApiFetchMock.mockImplementation((path: string) => {
+    hostApiFetchMock.mockImplementation((path: string, init?: unknown) => {
       if (path !== '/api/sessions/summaries') return Promise.resolve({ success: true });
+      if (isMetadataOnlySummaryRequest(init)) return Promise.resolve(metadataOnlySummaryResponse(init));
       summaryCalls += 1;
       return summaryCalls === 1 ? oldSummary.promise : newSummary.promise;
     });

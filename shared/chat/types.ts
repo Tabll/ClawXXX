@@ -93,6 +93,8 @@ export interface ChatSession {
   thinkingLevel?: string;
   model?: string;
   updatedAt?: number;
+  /** ClawX-owned display metadata persisted alongside the OpenClaw session entry. */
+  pinned?: boolean;
   status?: string;
   hasActiveRun?: boolean;
   /** Channel provider that last delivered to this session (e.g. webchat, feishu, discord). */
@@ -147,6 +149,7 @@ export interface ChatState {
   deleteSession: (key: string) => Promise<DeleteSessionResult>;
   deleteSessions: (keys: string[]) => Promise<DeleteSessionsResult>;
   renameSession: (key: string, label: string) => Promise<void>;
+  setSessionPinned: (key: string, pinned: boolean) => Promise<void>;
 }
 
 export const DEFAULT_CANONICAL_PREFIX = 'agent:main';
