@@ -12,6 +12,14 @@ import { DEFAULT_WORKSPACE_CWD } from '@shared/workspace';
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let settingsStoreInstance: any = null;
 
+const DEFAULT_THEME_COLOR = '#111111';
+const LEGACY_DEFAULT_THEME_COLOR = '#2563eb';
+
+type SettingsStoreLike = {
+  get: (key: 'themeColor') => unknown;
+  set: (key: 'themeColor', value: string) => void;
+};
+
 /**
  * Generate a random token for gateway authentication
  */
@@ -29,6 +37,9 @@ export interface AppSettings {
   startMinimized: boolean;
   launchAtStartup: boolean;
   telemetryEnabled: boolean;
+  appFontFamily: string;
+  themeColor: string;
+  macOSNativeFontSmoothing: boolean;
   machineId: string;
   hasReportedInstall: boolean;
 
@@ -84,6 +95,9 @@ function createDefaultSettings(): AppSettings {
     startMinimized: false,
     launchAtStartup: false,
     telemetryEnabled: true,
+    appFontFamily: '',
+    themeColor: DEFAULT_THEME_COLOR,
+    macOSNativeFontSmoothing: false,
     machineId: '',
     hasReportedInstall: false,
 
@@ -119,6 +133,16 @@ function createDefaultSettings(): AppSettings {
   };
 }
 
+function migrateDefaultThemeColor(store: SettingsStoreLike): void {
+  const storedThemeColor = store.get('themeColor');
+  if (
+    typeof storedThemeColor === 'string'
+    && storedThemeColor.trim().toLowerCase() === LEGACY_DEFAULT_THEME_COLOR
+  ) {
+    store.set('themeColor', DEFAULT_THEME_COLOR);
+  }
+}
+
 /**
  * Get the settings store instance (lazy initialization)
  */
@@ -129,6 +153,7 @@ async function getSettingsStore() {
       name: 'settings',
       defaults: createDefaultSettings(),
     });
+    migrateDefaultThemeColor(settingsStoreInstance);
   }
   return settingsStoreInstance;
 }

@@ -3,7 +3,18 @@
  * Application configuration
  */
 import { useEffect, useMemo, useState } from 'react';
-import { Sun, Moon, Monitor, RefreshCw, ExternalLink, Copy, FileText } from 'lucide-react';
+import {
+  Sun,
+  Moon,
+  Monitor,
+  RefreshCw,
+  ExternalLink,
+  Copy,
+  FileText,
+  Palette,
+  RotateCcw,
+  Type,
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
@@ -28,6 +39,7 @@ import { SUPPORTED_LANGUAGES } from '@/i18n';
 import { hostApi, type OpenClawDoctorResult } from '@/lib/host-api';
 import { hostEvents } from '@/lib/host-events';
 import { cn } from '@/lib/utils';
+import { DEFAULT_THEME_COLOR, normalizeThemeColor } from '@/lib/app-appearance';
 type ControlUiInfo = {
   url: string;
   token: string;
@@ -63,6 +75,12 @@ export function Settings() {
     setDevModeUnlocked,
     telemetryEnabled,
     setTelemetryEnabled,
+    appFontFamily,
+    setAppFontFamily,
+    themeColor,
+    setThemeColor,
+    macOSNativeFontSmoothing,
+    setMacOSNativeFontSmoothing,
   } = useSettingsStore();
 
   const { status: gatewayStatus, restart: restartGateway } = useGatewayStore();
@@ -79,8 +97,10 @@ export function Settings() {
   const [savingProxy, setSavingProxy] = useState(false);
   const [showTelemetryViewer, setShowTelemetryViewer] = useState(false);
   const [telemetryEntries, setTelemetryEntries] = useState<UiTelemetryEntry[]>([]);
+  const [themeColorDraft, setThemeColorDraft] = useState(themeColor);
 
   const isWindows = window.electron.platform === 'win32';
+  const isMac = window.electron.platform === 'darwin';
   const showCliTools = true;
   const [showLogs, setShowLogs] = useState(false);
   const [logContent, setLogContent] = useState('');
@@ -249,6 +269,10 @@ export function Settings() {
   }, [proxyEnabled]);
 
   useEffect(() => {
+    setThemeColorDraft(themeColor);
+  }, [themeColor]);
+
+  useEffect(() => {
     setProxyServerDraft(proxyServer);
   }, [proxyServer]);
 
@@ -410,6 +434,12 @@ export function Settings() {
     toast.success(translateNext('appearance.menuLanguageUpdated'));
   };
 
+  const commitThemeColorDraft = () => {
+    const normalized = normalizeThemeColor(themeColorDraft);
+    setThemeColor(normalized);
+    setThemeColorDraft(normalized);
+  };
+
   return (
     <div
       data-testid="settings-page"
@@ -478,6 +508,124 @@ export function Settings() {
                   </Button>
                 </div>
               </div>
+
+              {isMac ? (
+                <div
+                  className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"
+                  data-testid="settings-font-smoothing-row"
+                >
+                  <div>
+                    <Label htmlFor="settings-font-smoothing-switch" className="text-sm font-medium text-foreground/80">
+                      {t('appearance.fontSmoothing')}
+                    </Label>
+                    <p className="mt-1 text-meta text-muted-foreground">
+                      {t('appearance.fontSmoothingDesc')}
+                    </p>
+                  </div>
+                  <Switch
+                    id="settings-font-smoothing-switch"
+                    checked={macOSNativeFontSmoothing}
+                    onCheckedChange={setMacOSNativeFontSmoothing}
+                    data-testid="settings-font-smoothing-switch"
+                  />
+                </div>
+              ) : null}
+
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex min-w-0 items-start gap-3">
+                  <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                    <Type className="h-4 w-4" />
+                  </div>
+                  <div className="min-w-0">
+                    <Label htmlFor="settings-font-input" className="text-sm font-medium text-foreground/80">
+                      {t('appearance.appFont')}
+                    </Label>
+                    <p className="mt-1 text-meta text-muted-foreground">
+                      {t('appearance.appFontDesc')}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex min-w-0 flex-1 flex-col gap-2 sm:max-w-sm">
+                  <div className="flex gap-2">
+                    <Input
+                      id="settings-font-input"
+                      data-testid="settings-font-input"
+                      value={appFontFamily}
+                      onChange={(event) => setAppFontFamily(event.target.value)}
+                      placeholder={t('appearance.appFontPlaceholder')}
+                      className="min-w-0"
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      onClick={() => setAppFontFamily('')}
+                      aria-label={t('appearance.resetFont')}
+                    >
+                      <RotateCcw className="h-4 w-4" />
+                    </Button>
+                  </div>
+                  <p className="truncate text-tiny text-muted-foreground">
+                    {appFontFamily.trim()
+                      ? t('appearance.appFontPreview', { font: appFontFamily })
+                      : t('appearance.systemFont')}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex min-w-0 items-start gap-3">
+                  <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                    <Palette className="h-4 w-4" />
+                  </div>
+                  <div className="min-w-0">
+                    <Label htmlFor="settings-theme-color-text" className="text-sm font-medium text-foreground/80">
+                      {t('appearance.themeColor')}
+                    </Label>
+                    <p className="mt-1 text-meta text-muted-foreground">
+                      {t('appearance.themeColorDesc')}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex min-w-0 flex-1 items-center gap-2 sm:max-w-sm">
+                  <Input
+                    data-testid="settings-theme-color-input"
+                    type="color"
+                    value={normalizeThemeColor(themeColorDraft)}
+                    onChange={(event) => {
+                      setThemeColorDraft(event.target.value);
+                      setThemeColor(event.target.value);
+                    }}
+                    aria-label={t('appearance.themeColor')}
+                    className="h-10 w-12 shrink-0 cursor-pointer p-1"
+                  />
+                  <Input
+                    id="settings-theme-color-text"
+                    data-testid="settings-theme-color-text"
+                    value={themeColorDraft}
+                    onChange={(event) => setThemeColorDraft(event.target.value)}
+                    onBlur={commitThemeColorDraft}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') commitThemeColorDraft();
+                    }}
+                    placeholder={DEFAULT_THEME_COLOR}
+                    className="min-w-0 font-mono text-meta"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    onClick={() => {
+                      setThemeColor(DEFAULT_THEME_COLOR);
+                      setThemeColorDraft(DEFAULT_THEME_COLOR);
+                    }}
+                    aria-label={t('appearance.resetThemeColor')}
+                  >
+                    <RotateCcw className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+
               <div className="space-y-3">
                 <Label className="text-sm font-medium text-foreground/80">{t('appearance.language')}</Label>
                 <div className="flex flex-wrap gap-2">

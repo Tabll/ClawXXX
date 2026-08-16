@@ -227,13 +227,11 @@ module.exports = {
         },
 
         // ── B. ClawX brand tokens ────────────────────────────────────
-        // Apple-system blue used for primary CTAs. The same pixel value
-        // works in both themes (sufficient WCAG-AA contrast in light
-        // mode and stays vivid in dark mode), so no CSS variable needed.
-        // Pair with `brand-hover` for the hover state.
+        // User-configurable app accent. Pair with `brand-hover` for the
+        // derived hover state supplied by src/lib/app-appearance.ts.
         brand: {
-          DEFAULT: '#0a84ff',
-          hover: '#007aff',
+          DEFAULT: 'hsl(var(--brand))',
+          hover: 'hsl(var(--brand-hover))',
         },
 
         // Highlight blue for inline /skill chips in the chat input.

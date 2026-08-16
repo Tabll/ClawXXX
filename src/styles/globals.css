@@ -114,6 +114,17 @@
 @layer base {
   :root {
     /* ── shadcn semantic tokens (light) ─────────────────────────── */
+    --app-font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+    --appearance-primary: 0 0% 7%;
+    --appearance-primary-foreground: 0 0% 98%;
+    --appearance-ring: 0 0% 16%;
+    --appearance-brand: var(--appearance-primary);
+    --appearance-brand-hover: 0 0% 14%;
+    --appearance-primary-dark: 0 0% 86%;
+    --appearance-primary-foreground-dark: 0 0% 7%;
+    --appearance-ring-dark: 0 0% 78%;
+    --appearance-brand-dark: var(--appearance-primary-dark);
+    --appearance-brand-hover-dark: 0 0% 78%;
     /* Clean neutral page background matching the white/gray light theme. */
     --background: 0 0% 100%;
     --foreground: 222.2 84% 4.9%;
@@ -121,8 +132,8 @@
     --card-foreground: 222.2 84% 4.9%;
     --popover: 0 0% 100%;
     --popover-foreground: 222.2 84% 4.9%;
-    --primary: 221.2 83.2% 53.3%;
-    --primary-foreground: 210 40% 98%;
+    --primary: var(--appearance-primary);
+    --primary-foreground: var(--appearance-primary-foreground);
     --secondary: 210 40% 96.1%;
     --secondary-foreground: 222.2 47.4% 11.2%;
     --muted: 210 40% 96.1%;
@@ -133,7 +144,9 @@
     --destructive-foreground: 210 40% 98%;
     --border: 214.3 31.8% 91.4%;
     --input: 214.3 31.8% 91.4%;
-    --ring: 221.2 83.2% 53.3%;
+    --ring: var(--appearance-ring);
+    --brand: var(--appearance-brand);
+    --brand-hover: var(--appearance-brand-hover);
     --radius: 0.5rem;
 
     /* ── ClawX neutral surfaces (light) ───────────────────────────
@@ -179,8 +192,8 @@
     --card-foreground: 210 20% 96%;
     --popover: 240 3% 14%;
     --popover-foreground: 210 20% 96%;
-    --primary: 217.2 91.2% 59.8%;
-    --primary-foreground: 210 40% 98%;
+    --primary: var(--appearance-primary-dark);
+    --primary-foreground: var(--appearance-primary-foreground-dark);
     --secondary: 240 3% 18%;
     --secondary-foreground: 210 20% 96%;
     --muted: 240 3% 18%;
@@ -191,7 +204,9 @@
     --destructive-foreground: 210 20% 96%;
     --border: 240 3% 24%;
     --input: 240 3% 18%;
-    --ring: 217.2 91.2% 59.8%;
+    --ring: var(--appearance-ring-dark);
+    --brand: var(--appearance-brand-dark);
+    --brand-hover: var(--appearance-brand-hover-dark);
 
     /* In dark mode the three neutral surfaces collapse onto existing
      * shadcn tokens:
@@ -221,7 +236,14 @@
 
   body {
     @apply bg-background text-foreground;
+    font-family: var(--app-font-family);
     font-feature-settings: "rlig" 1, "calt" 1;
+  }
+
+  .clawx-macos-font-smoothing,
+  .clawx-macos-font-smoothing body,
+  .clawx-macos-font-smoothing * {
+    -webkit-font-smoothing: antialiased;
   }
 }
 

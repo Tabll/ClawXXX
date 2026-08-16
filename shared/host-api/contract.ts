@@ -110,6 +110,9 @@ export type SettingsSnapshot = Partial<{
   startMinimized: boolean;
   launchAtStartup: boolean;
   telemetryEnabled: boolean;
+  appFontFamily: string;
+  themeColor: string;
+  macOSNativeFontSmoothing: boolean;
   gatewayAutoStart: boolean;
   gatewayPort: number;
   proxyEnabled: boolean;

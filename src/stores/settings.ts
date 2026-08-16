@@ -6,6 +6,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import i18n from '@/i18n';
 import { hostApi } from '@/lib/host-api';
+import { DEFAULT_THEME_COLOR } from '@/lib/app-appearance';
 import { resolveSupportedLanguage } from '@shared/language';
 import { DEFAULT_WORKSPACE_CWD, MAX_RECENT_WORKSPACES } from '@shared/workspace';
 import {
@@ -24,6 +25,9 @@ interface SettingsState {
   startMinimized: boolean;
   launchAtStartup: boolean;
   telemetryEnabled: boolean;
+  appFontFamily: string;
+  themeColor: string;
+  macOSNativeFontSmoothing: boolean;
 
   // Gateway
   gatewayAutoStart: boolean;
@@ -57,6 +61,9 @@ interface SettingsState {
   setStartMinimized: (value: boolean) => void;
   setLaunchAtStartup: (value: boolean) => void;
   setTelemetryEnabled: (value: boolean) => void;
+  setAppFontFamily: (value: string) => void;
+  setThemeColor: (value: string) => void;
+  setMacOSNativeFontSmoothing: (value: boolean) => void;
   setGatewayAutoStart: (value: boolean) => void;
   setGatewayPort: (port: number) => void;
   setProxyEnabled: (value: boolean) => void;
@@ -83,6 +90,9 @@ const defaultSettings = {
   startMinimized: false,
   launchAtStartup: false,
   telemetryEnabled: true,
+  appFontFamily: '',
+  themeColor: DEFAULT_THEME_COLOR,
+  macOSNativeFontSmoothing: false,
   gatewayAutoStart: true,
   gatewayPort: 18789,
   proxyEnabled: false,
@@ -150,6 +160,18 @@ export const useSettingsStore = create<SettingsState>()(
       setTelemetryEnabled: (telemetryEnabled) => {
         set({ telemetryEnabled });
         void hostApi.settings.set('telemetryEnabled', telemetryEnabled).catch(() => { });
+      },
+      setAppFontFamily: (appFontFamily) => {
+        set({ appFontFamily });
+        void hostApi.settings.set('appFontFamily', appFontFamily).catch(() => { });
+      },
+      setThemeColor: (themeColor) => {
+        set({ themeColor });
+        void hostApi.settings.set('themeColor', themeColor).catch(() => { });
+      },
+      setMacOSNativeFontSmoothing: (macOSNativeFontSmoothing) => {
+        set({ macOSNativeFontSmoothing });
+        void hostApi.settings.set('macOSNativeFontSmoothing', macOSNativeFontSmoothing).catch(() => { });
       },
       setGatewayAutoStart: (gatewayAutoStart) => {
         set({ gatewayAutoStart });
