@@ -60,6 +60,7 @@ import { createAttachmentOpenWithService } from '../services/attachment-open-wit
 import { createCronApi } from '../services/cron-api';
 import { createFilesApi } from '../services/files-api';
 import { createMediaApi } from '../services/media-api';
+import { createEmbeddingsApi } from '../services/embeddings-api';
 import { createProvidersApi } from '../services/providers-api';
 import { createSessionsApi } from '../services/sessions-api';
 import { createSkillsApi } from '../services/skills-api';
@@ -173,6 +174,7 @@ function registerTypedHostHandlers(
       stagedAttachments,
     }),
     media: createMediaApi({ attachmentAccess }),
+    embeddings: createEmbeddingsApi(),
     sessions: createSessionsApi(),
     chat: createChatApi({ gatewayManager, mainWindow, acpSessionAccessRegistry }),
     cron: createCronApi({ gatewayManager }),

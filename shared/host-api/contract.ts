@@ -690,6 +690,175 @@ export type ImageGenerationTestResult = {
   result?: unknown;
 };
 
+export type EmbeddingRemoteConfigSnapshot = {
+  baseUrl: string;
+  apiKeyConfigured: boolean;
+  headers: Record<string, string>;
+  nonBatchConcurrency: number | null;
+  batch: {
+    enabled: boolean | null;
+    wait: boolean | null;
+    concurrency: number | null;
+    pollIntervalMs: number | null;
+    timeoutMinutes: number | null;
+  };
+};
+export type EmbeddingLocalConfigSnapshot = {
+  modelPath: string;
+  modelCacheDir: string;
+  contextSize: string;
+};
+export type EmbeddingSyncConfigSnapshot = {
+  onSessionStart: boolean | null;
+  onSearch: boolean | null;
+  watch: boolean | null;
+  watchDebounceMs: number | null;
+  intervalMinutes: number | null;
+  embeddingBatchTimeoutSeconds: number | null;
+  sessions: {
+    deltaBytes: number | null;
+    deltaMessages: number | null;
+    postCompactionForce: boolean | null;
+  };
+};
+export type MemorySearchAdvancedConfigSnapshot = {
+  sources: Array<'memory' | 'sessions'>;
+  extraPaths: string[];
+  qmd: {
+    extraCollections: Array<{
+      path: string;
+      name?: string;
+      pattern?: string;
+    }>;
+  };
+  multimodal: {
+    enabled: boolean | null;
+    modalities: Array<'image' | 'audio' | 'all'>;
+    maxFileBytes: number | null;
+  };
+  experimental: {
+    sessionMemory: boolean | null;
+  };
+  store: {
+    driver: string;
+    path: string;
+    ftsTokenizer: string;
+    vector: {
+      enabled: boolean | null;
+      extensionPath: string;
+    };
+  };
+  chunking: {
+    tokens: number | null;
+    overlap: number | null;
+  };
+  query: {
+    maxResults: number | null;
+    minScore: number | null;
+    hybrid: {
+      enabled: boolean | null;
+      vectorWeight: number | null;
+      textWeight: number | null;
+      candidateMultiplier: number | null;
+      mmr: {
+        enabled: boolean | null;
+        lambda: number | null;
+      };
+      temporalDecay: {
+        enabled: boolean | null;
+        halfLifeDays: number | null;
+      };
+    };
+  };
+  cache: {
+    enabled: boolean | null;
+    maxEntries: number | null;
+  };
+};
+export type EmbeddingSettingsConfig = {
+  enabled: boolean;
+  provider: string;
+  model: string;
+  fallback: string;
+  inputType: string;
+  queryInputType: string;
+  documentInputType: string;
+  outputDimensionality: number | null;
+  remote: EmbeddingRemoteConfigSnapshot;
+  local: EmbeddingLocalConfigSnapshot;
+  sync: EmbeddingSyncConfigSnapshot;
+  advanced: MemorySearchAdvancedConfigSnapshot;
+};
+export type EmbeddingSettingsSnapshot = {
+  source: 'agents.defaults.memorySearch';
+  configured: boolean;
+  config: EmbeddingSettingsConfig;
+  knownProviders: string[];
+};
+export type EmbeddingSettingsPayload = {
+  enabled?: boolean;
+  provider?: string | null;
+  model?: string | null;
+  fallback?: string | null;
+  inputType?: string | null;
+  queryInputType?: string | null;
+  documentInputType?: string | null;
+  outputDimensionality?: number | null;
+  remoteBaseUrl?: string | null;
+  remoteApiKey?: string;
+  clearRemoteApiKey?: boolean;
+  localModelPath?: string | null;
+  localModelCacheDir?: string | null;
+  localContextSize?: string | null;
+  embeddingBatchTimeoutSeconds?: number | null;
+  sources?: Array<'memory' | 'sessions'> | null;
+  extraPaths?: string[] | null;
+  qmdExtraCollections?: Array<{
+    path: string;
+    name?: string;
+    pattern?: string;
+  }> | null;
+  multimodalEnabled?: boolean | null;
+  multimodalModalities?: Array<'image' | 'audio' | 'all'> | null;
+  multimodalMaxFileBytes?: number | null;
+  experimentalSessionMemory?: boolean | null;
+  remoteHeaders?: Record<string, string> | null;
+  remoteNonBatchConcurrency?: number | null;
+  remoteBatchEnabled?: boolean | null;
+  remoteBatchWait?: boolean | null;
+  remoteBatchConcurrency?: number | null;
+  remoteBatchPollIntervalMs?: number | null;
+  remoteBatchTimeoutMinutes?: number | null;
+  storeDriver?: string | null;
+  storePath?: string | null;
+  storeFtsTokenizer?: string | null;
+  storeVectorEnabled?: boolean | null;
+  storeVectorExtensionPath?: string | null;
+  chunkingTokens?: number | null;
+  chunkingOverlap?: number | null;
+  syncOnSessionStart?: boolean | null;
+  syncOnSearch?: boolean | null;
+  syncWatch?: boolean | null;
+  syncWatchDebounceMs?: number | null;
+  syncIntervalMinutes?: number | null;
+  syncSessionsDeltaBytes?: number | null;
+  syncSessionsDeltaMessages?: number | null;
+  syncSessionsPostCompactionForce?: boolean | null;
+  queryMaxResults?: number | null;
+  queryMinScore?: number | null;
+  queryHybridEnabled?: boolean | null;
+  queryHybridVectorWeight?: number | null;
+  queryHybridTextWeight?: number | null;
+  queryHybridCandidateMultiplier?: number | null;
+  queryHybridMmrEnabled?: boolean | null;
+  queryHybridMmrLambda?: number | null;
+  queryHybridTemporalDecayEnabled?: boolean | null;
+  queryHybridTemporalDecayHalfLifeDays?: number | null;
+  cacheEnabled?: boolean | null;
+  cacheMaxEntries?: number | null;
+};
+export type EmbeddingSettingsResult = OptionalHostSuccess & EmbeddingSettingsSnapshot;
+
 export type SessionHistoryPayload = {
   sessionKey?: string;
   agentId?: string;
@@ -971,6 +1140,11 @@ export type HostApiContract = {
     saveImageGenerationSettings: (payload: ImageGenerationSettingsPayload) => ImageGenerationSettingsResult;
     imageGenerationProviders: () => ImageGenerationProvidersResult;
     testImageGeneration: (payload: ImageGenerationTestPayload) => ImageGenerationTestResult;
+  };
+  embeddings: {
+    settings: () => EmbeddingSettingsResult;
+    saveSettings: (payload: EmbeddingSettingsPayload) => EmbeddingSettingsResult;
+    clearSettings: () => EmbeddingSettingsResult;
   };
   sessions: {
     delete: (payload: SessionDeletePayload) => HostSuccess;

@@ -7,6 +7,7 @@ import { useSettingsStore } from '@/stores/settings';
 import { hostApi } from '@/lib/host-api';
 import { trackUiEvent } from '@/lib/telemetry';
 import { ProvidersSettings } from '@/components/settings/ProvidersSettings';
+import { EmbeddingSettings } from '@/components/settings/EmbeddingSettings';
 import { FeedbackState } from '@/components/common/FeedbackState';
 import {
   filterUsageHistoryByWindow,
@@ -287,6 +288,9 @@ export function Models() {
         <div className="flex-1 overflow-y-auto pr-2 pb-10 min-h-0 -mr-2 space-y-12">
           {/* AI Providers Section */}
           <ProvidersSettings />
+
+          {/* Memory embedding configuration */}
+          <EmbeddingSettings />
 
           {/* Token Usage History Section */}
           <div>
