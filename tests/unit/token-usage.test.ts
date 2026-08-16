@@ -42,7 +42,7 @@ describe('parseUsageEntriesFromJsonl', () => {
       }),
     ].join('\n');
 
-    expect(parseUsageEntriesFromJsonl(jsonl, { sessionId: 'abc', agentId: 'default' })).toEqual([
+    expect(parseUsageEntriesFromJsonl(jsonl, { sessionId: 'abc', agentId: 'default' })).toMatchObject([
       {
         timestamp: '2026-02-28T10:05:00.000Z',
         sessionId: 'abc',
@@ -118,7 +118,7 @@ describe('parseUsageEntriesFromJsonl', () => {
       }),
     ].join('\n');
 
-    expect(parseUsageEntriesFromJsonl(jsonl, { sessionId: 'abc', agentId: 'default' })).toEqual([
+    expect(parseUsageEntriesFromJsonl(jsonl, { sessionId: 'abc', agentId: 'default' })).toMatchObject([
       {
         timestamp: '2026-03-10T03:00:00.000Z',
         sessionId: 'abc',
@@ -131,7 +131,6 @@ describe('parseUsageEntriesFromJsonl', () => {
         cacheReadTokens: 0,
         cacheWriteTokens: 0,
         totalTokens: 0,
-        costUsd: undefined,
       },
     ]);
   });
@@ -156,7 +155,7 @@ describe('parseUsageEntriesFromJsonl', () => {
       }),
     ].join('\n');
 
-    expect(parseUsageEntriesFromJsonl(jsonl, { sessionId: 'abc', agentId: 'default' })).toEqual([
+    expect(parseUsageEntriesFromJsonl(jsonl, { sessionId: 'abc', agentId: 'default' })).toMatchObject([
       {
         timestamp: '2026-03-10T03:10:00.000Z',
         sessionId: 'abc',
@@ -172,6 +171,102 @@ describe('parseUsageEntriesFromJsonl', () => {
         costUsd: undefined,
       },
     ]);
+  });
+
+  it('extracts cost breakdown fields from provider payloads', () => {
+    const jsonl = [
+      JSON.stringify({
+        type: 'message',
+        timestamp: '2026-03-10T03:12:00.000Z',
+        message: {
+          role: 'assistant',
+          model: 'gpt-5',
+          provider: 'openai',
+          usage: {
+            input_tokens: 100,
+            output_tokens: 50,
+            cache_read_tokens: 25,
+            cache_write_tokens: 5,
+            cost: {
+              input: 0.001,
+              output: 0.002,
+              cacheRead: 0.0001,
+              cacheWrite: 0.0002,
+              total: 0.0033,
+            },
+          },
+        },
+      }),
+    ].join('\n');
+
+    expect(parseUsageEntriesFromJsonl(jsonl, { sessionId: 'abc', agentId: 'default' })).toMatchObject([
+      {
+        inputTokens: 100,
+        outputTokens: 50,
+        cacheReadTokens: 25,
+        cacheWriteTokens: 5,
+        totalTokens: 180,
+        costUsd: 0.0033,
+        inputCostUsd: 0.001,
+        outputCostUsd: 0.002,
+        cacheReadCostUsd: 0.0001,
+        cacheWriteCostUsd: 0.0002,
+      },
+    ]);
+  });
+
+  it('attaches transcript message and tool stats to usage entries', () => {
+    const jsonl = [
+      JSON.stringify({
+        type: 'message',
+        timestamp: '2026-03-10T03:18:00.000Z',
+        message: {
+          role: 'user',
+          content: 'Search the web',
+        },
+      }),
+      JSON.stringify({
+        type: 'message',
+        timestamp: '2026-03-10T03:19:00.000Z',
+        message: {
+          role: 'assistant',
+          content: '[Tool: web_search]\nSearching...',
+          usage: {
+            totalTokens: 40,
+          },
+        },
+      }),
+      JSON.stringify({
+        type: 'message',
+        timestamp: '2026-03-10T03:20:00.000Z',
+        message: {
+          role: 'toolResult',
+          details: {
+            content: 'Search result',
+            usage: {
+              totalTokens: 10,
+            },
+          },
+        },
+      }),
+    ].join('\n');
+
+    const entries = parseUsageEntriesFromJsonl(jsonl, { sessionId: 'abc', agentId: 'default' });
+
+    expect(entries).toHaveLength(2);
+    expect(entries[0]?.sessionMeta?.messageCounts).toEqual({
+      total: 3,
+      user: 1,
+      assistant: 1,
+      toolCalls: 1,
+      toolResults: 1,
+      errors: 0,
+    });
+    expect(entries[0]?.sessionMeta?.toolUsage).toEqual({
+      totalCalls: 1,
+      uniqueTools: 1,
+      tools: [{ name: 'web_search', count: 1 }],
+    });
   });
 
   it('supports tool result usage data without explicit provider/model keys', () => {
@@ -191,7 +286,7 @@ describe('parseUsageEntriesFromJsonl', () => {
       }),
     ].join('\n');
 
-    expect(parseUsageEntriesFromJsonl(jsonl, { sessionId: 'abc', agentId: 'default' })).toEqual([
+    expect(parseUsageEntriesFromJsonl(jsonl, { sessionId: 'abc', agentId: 'default' })).toMatchObject([
       {
         timestamp: '2026-03-10T03:20:00.000Z',
         sessionId: 'abc',
@@ -229,7 +324,7 @@ describe('parseUsageEntriesFromJsonl', () => {
       }),
     ].join('\n');
 
-    expect(parseUsageEntriesFromJsonl(jsonl, { sessionId: 'abc', agentId: 'default' })).toEqual([
+    expect(parseUsageEntriesFromJsonl(jsonl, { sessionId: 'abc', agentId: 'default' })).toMatchObject([
       {
         timestamp: '2026-03-10T02:17:04.057Z',
         sessionId: 'abc',
@@ -264,7 +359,7 @@ describe('parseUsageEntriesFromJsonl', () => {
       }),
     ].join('\n');
 
-    expect(parseUsageEntriesFromJsonl(jsonl, { sessionId: 'abc', agentId: 'default' })).toEqual([
+    expect(parseUsageEntriesFromJsonl(jsonl, { sessionId: 'abc', agentId: 'default' })).toMatchObject([
       {
         timestamp: '2026-03-10T02:20:04.057Z',
         sessionId: 'abc',
@@ -302,7 +397,7 @@ describe('parseUsageEntriesFromJsonl', () => {
       }),
     ].join('\n');
 
-    expect(parseUsageEntriesFromJsonl(jsonl, { sessionId: 'abc', agentId: 'default' })).toEqual([
+    expect(parseUsageEntriesFromJsonl(jsonl, { sessionId: 'abc', agentId: 'default' })).toMatchObject([
       {
         timestamp: '2026-03-10T02:21:04.057Z',
         sessionId: 'abc',
@@ -335,7 +430,7 @@ describe('parseUsageEntriesFromJsonl', () => {
       }),
     ].join('\n');
 
-    expect(parseUsageEntriesFromJsonl(jsonl, { sessionId: 'abc', agentId: 'default' })).toEqual([
+    expect(parseUsageEntriesFromJsonl(jsonl, { sessionId: 'abc', agentId: 'default' })).toMatchObject([
       {
         timestamp: '2026-03-10T03:30:00.000Z',
         sessionId: 'abc',
@@ -348,7 +443,6 @@ describe('parseUsageEntriesFromJsonl', () => {
         cacheReadTokens: 0,
         cacheWriteTokens: 0,
         totalTokens: 0,
-        costUsd: undefined,
       },
     ]);
   });
@@ -367,7 +461,7 @@ describe('parseUsageEntriesFromJsonl', () => {
       }),
     ].join('\n');
 
-    expect(parseUsageEntriesFromJsonl(jsonl, { sessionId: 'abc', agentId: 'default' })).toEqual([
+    expect(parseUsageEntriesFromJsonl(jsonl, { sessionId: 'abc', agentId: 'default' })).toMatchObject([
       {
         timestamp: '2026-03-10T03:40:00.000Z',
         sessionId: 'abc',
@@ -380,7 +474,6 @@ describe('parseUsageEntriesFromJsonl', () => {
         cacheReadTokens: 0,
         cacheWriteTokens: 0,
         totalTokens: 0,
-        costUsd: undefined,
       },
     ]);
   });

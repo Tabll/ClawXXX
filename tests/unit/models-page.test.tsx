@@ -39,8 +39,8 @@ vi.mock('@/components/settings/ProvidersSettings', () => ({
   ProvidersSettings: () => null,
 }));
 
-vi.mock('@/components/common/FeedbackState', () => ({
-  FeedbackState: ({ title }: { title: string }) => <div>{title}</div>,
+vi.mock('@/components/settings/EmbeddingSettings', () => ({
+  EmbeddingSettings: () => null,
 }));
 
 vi.mock('react-i18next', () => ({

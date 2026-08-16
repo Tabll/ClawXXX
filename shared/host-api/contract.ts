@@ -950,6 +950,67 @@ export type ClawHubOpenPayload = {
   baseDir?: string;
 };
 
+export type UsageContextWeightEntry = {
+  name: string;
+  blockChars?: number;
+  summaryChars?: number;
+  schemaChars?: number;
+  injectedChars?: number;
+};
+export type UsageContextWeight = {
+  systemPrompt: {
+    chars: number;
+    projectContextChars?: number;
+    nonProjectContextChars?: number;
+  };
+  skills: {
+    promptChars: number;
+    entries: UsageContextWeightEntry[];
+  };
+  tools: {
+    listChars: number;
+    schemaChars: number;
+    entries: UsageContextWeightEntry[];
+  };
+  injectedWorkspaceFiles: UsageContextWeightEntry[];
+};
+export type UsageMessageCounts = {
+  total: number;
+  user: number;
+  assistant: number;
+  toolCalls: number;
+  toolResults: number;
+  errors: number;
+};
+export type UsageToolStat = {
+  name: string;
+  count: number;
+};
+export type UsageToolUsage = {
+  totalCalls: number;
+  uniqueTools: number;
+  tools: UsageToolStat[];
+};
+export type UsageSessionMetadata = {
+  key?: string;
+  label?: string;
+  channel?: string;
+  chatType?: string;
+  status?: string;
+  startedAt?: number;
+  endedAt?: number;
+  runtimeMs?: number;
+  updatedAt?: number;
+  usageFamilyKey?: string;
+  includedSessionIds?: string[];
+  modelOverride?: string;
+  providerOverride?: string;
+  modelProvider?: string;
+  originProvider?: string;
+  originModel?: string;
+  messageCounts?: UsageMessageCounts;
+  toolUsage?: UsageToolUsage;
+};
 export type UsageHistoryEntry = {
   timestamp: string;
   sessionId: string;
@@ -957,6 +1018,9 @@ export type UsageHistoryEntry = {
   model?: string;
   provider?: string;
   content?: string;
+  recordKind?: 'assistant' | 'toolResult';
+  contextWeight?: UsageContextWeight;
+  sessionMeta?: UsageSessionMetadata;
   usageStatus?: 'available' | 'missing' | 'error';
   inputTokens: number;
   outputTokens: number;
@@ -964,6 +1028,10 @@ export type UsageHistoryEntry = {
   cacheWriteTokens: number;
   totalTokens: number;
   costUsd?: number;
+  inputCostUsd?: number;
+  outputCostUsd?: number;
+  cacheReadCostUsd?: number;
+  cacheWriteCostUsd?: number;
 };
 export type UsageHistoryPayload = { limit?: number };
 

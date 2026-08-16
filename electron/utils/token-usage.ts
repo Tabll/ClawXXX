@@ -1,19 +1,37 @@
 import { readdir, readFile, stat } from 'fs/promises';
-import { join } from 'path';
+import { basename, join } from 'path';
 import { getOpenClawConfigDir } from './paths';
 import { logger } from './logger';
 import {
   extractSessionIdFromTranscriptFileName,
+  normalizeTokenUsageContextWeight,
+  normalizeTokenUsageSessionMetadata,
   parseUsageEntriesFromJsonl,
+  type TokenUsageContextWeight,
   type TokenUsageHistoryEntry,
+  type TokenUsageSessionMetadata,
 } from './token-usage-core';
 import { listConfiguredAgentIds } from './agent-config';
 
 export {
   extractSessionIdFromTranscriptFileName,
+  normalizeTokenUsageContextWeight,
+  normalizeTokenUsageSessionMetadata,
   parseUsageEntriesFromJsonl,
+  type TokenUsageContextWeight,
   type TokenUsageHistoryEntry,
+  type TokenUsageSessionMetadata,
 } from './token-usage-core';
+
+type SessionStoreRecord = {
+  key?: string;
+  value: Record<string, unknown>;
+};
+
+type SessionUsageContext = {
+  contextWeight?: TokenUsageContextWeight;
+  sessionMeta?: TokenUsageSessionMetadata;
+};
 
 async function listAgentIdsWithSessionDirs(): Promise<string[]> {
   const openclawDir = getOpenClawConfigDir();
@@ -89,8 +107,96 @@ async function listRecentSessionFiles(): Promise<Array<{ filePath: string; sessi
   }
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === 'object' && !Array.isArray(value));
+}
+
+function normalizeSessionIdCandidate(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const trimmed = value.trim();
+  if (!trimmed) return undefined;
+  return basename(trimmed)
+    .replace(/\.deleted\.jsonl$/, '')
+    .replace(/\.jsonl(?:\.reset\..+)?$/, '');
+}
+
+function collectSessionStoreRecords(store: Record<string, unknown>): SessionStoreRecord[] {
+  const records: SessionStoreRecord[] = [];
+  for (const [key, value] of Object.entries(store)) {
+    if (key === 'sessions' || !isRecord(value)) continue;
+    records.push({ key, value });
+  }
+  if (Array.isArray(store.sessions)) {
+    for (const value of store.sessions) {
+      if (!isRecord(value)) continue;
+      const key = typeof value.key === 'string'
+        ? value.key
+        : typeof value.sessionKey === 'string'
+          ? value.sessionKey
+          : undefined;
+      records.push({ key, value });
+    }
+  }
+  return records;
+}
+
+function collectContextSessionIds(record: SessionStoreRecord): string[] {
+  const ids = new Set<string>();
+  const add = (value: unknown) => {
+    const normalized = normalizeSessionIdCandidate(value);
+    if (normalized) ids.add(normalized);
+  };
+  add(record.key);
+  add(record.value.id);
+  add(record.value.sessionId);
+  add(record.value.currentSessionId);
+  add(record.value.sessionFile);
+  add(record.value.file);
+  add(record.value.fileName);
+  add(record.value.path);
+  if (Array.isArray(record.value.usageFamilySessionIds)) {
+    for (const sessionId of record.value.usageFamilySessionIds) add(sessionId);
+  }
+  if (Array.isArray(record.value.includedSessionIds)) {
+    for (const sessionId of record.value.includedSessionIds) add(sessionId);
+  }
+  return [...ids];
+}
+
+async function loadSessionContexts(agentIds: string[]): Promise<Map<string, SessionUsageContext>> {
+  const openclawDir = getOpenClawConfigDir();
+  const agentsDir = join(openclawDir, 'agents');
+  const contextBySession = new Map<string, SessionUsageContext>();
+
+  for (const agentId of agentIds) {
+    const sessionsJsonPath = join(agentsDir, agentId, 'sessions', 'sessions.json');
+    let parsed: Record<string, unknown>;
+    try {
+      const raw = await readFile(sessionsJsonPath, 'utf8');
+      parsed = JSON.parse(raw) as Record<string, unknown>;
+    } catch {
+      continue;
+    }
+
+    for (const record of collectSessionStoreRecords(parsed)) {
+      const contextWeight = normalizeTokenUsageContextWeight(record.value.systemPromptReport);
+      const sessionMeta = normalizeTokenUsageSessionMetadata(record.value, record.key);
+      if (!contextWeight && !sessionMeta) continue;
+      for (const sessionId of collectContextSessionIds(record)) {
+        contextBySession.set(`${agentId}::${sessionId}`, {
+          ...(contextWeight ? { contextWeight } : {}),
+          ...(sessionMeta ? { sessionMeta } : {}),
+        });
+      }
+    }
+  }
+
+  return contextBySession;
+}
+
 export async function getRecentTokenUsageHistory(limit?: number): Promise<TokenUsageHistoryEntry[]> {
   const files = await listRecentSessionFiles();
+  const contextBySession = await loadSessionContexts([...new Set(files.map((file) => file.agentId))]);
   const results: TokenUsageHistoryEntry[] = [];
   const maxEntries = typeof limit === 'number' && Number.isFinite(limit)
     ? Math.max(Math.floor(limit), 0)
@@ -100,9 +206,12 @@ export async function getRecentTokenUsageHistory(limit?: number): Promise<TokenU
     if (results.length >= maxEntries) break;
     try {
       const content = await readFile(file.filePath, 'utf8');
+      const sessionContext = contextBySession.get(`${file.agentId}::${file.sessionId}`);
       const entries = parseUsageEntriesFromJsonl(content, {
         sessionId: file.sessionId,
         agentId: file.agentId,
+        ...(sessionContext?.contextWeight ? { contextWeight: sessionContext.contextWeight } : {}),
+        ...(sessionContext?.sessionMeta ? { sessionMeta: sessionContext.sessionMeta } : {}),
       }, Number.isFinite(maxEntries) ? maxEntries - results.length : undefined);
       results.push(...entries);
     } catch (error) {
