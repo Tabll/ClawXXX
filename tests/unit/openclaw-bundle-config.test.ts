@@ -16,7 +16,7 @@ describe('openclaw bundle config', () => {
     expect(packageJson.dependencies?.['@agentclientprotocol/sdk']).toBe('1.1.0');
     expect(packageJson.devDependencies).toMatchObject({
       openclaw: '2026.7.1-2',
-      electron: '40.10.6',
+      electron: '43.4.0',
       '@openclaw/discord': '2026.7.1',
       '@openclaw/qqbot': '2026.7.1',
       '@openclaw/whatsapp': '2026.7.1',
@@ -42,7 +42,7 @@ describe('openclaw bundle config', () => {
         env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
       },
     );
-    expect(JSON.parse(raw.trim())).toEqual({ node: '24.15.0', sqlite: '3.51.3' });
+    expect(JSON.parse(raw.trim())).toEqual({ node: '24.18.1', sqlite: '3.53.1' });
   });
 
   it('keeps upstream WeCom and Open Lark manifest identities unchanged across the version bump', () => {

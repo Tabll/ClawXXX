@@ -97,7 +97,7 @@ CI 中的 `comms-regression` 会校验必选场景与阈值。
 
 | 层级 | 技术 |
 |------|------|
-| 运行时 | Electron 40+ |
+| 运行时 | Electron 43+ |
 | UI 框架 | React 19 + TypeScript |
 | 样式 | Tailwind CSS + shadcn/ui |
 | 状态管理 | Zustand |

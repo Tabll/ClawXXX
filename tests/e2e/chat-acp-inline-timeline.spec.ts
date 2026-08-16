@@ -16,7 +16,8 @@ const REVIEWER_SESSION_KEY = 'agent:reviewer:main';
 const REVIEWER_WORKSPACE = '/workspace/reviewer';
 const IMAGE_TASK_ID = '0d2ee919-2dfd-4b72-9da3-d87e6ee56747';
 const GENERATED_IMAGE_PATH = '/workspace/.openclaw/media/tool-image-generation/generated-image.png';
-const GENERATED_IMAGE_PREVIEW = 'data:image/png;base64,iVBORw0KGgo=';
+const GENERATED_IMAGE_BASE64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';
+const GENERATED_IMAGE_PREVIEW = `data:image/png;base64,${GENERATED_IMAGE_BASE64}`;
 const GENERATED_IMAGE_IDENTITY = 'e2e-transcript-generated-image';
 const DEFAULT_WORKSPACE_SEGMENT = '~%2F.openclaw%2Fworkspace';
 
@@ -1022,7 +1023,7 @@ test.describe('ClawX ACP inline timeline', () => {
             [GENERATED_IMAGE_IDENTITY]: { preview: GENERATED_IMAGE_PREVIEW, fileSize: 128 },
           },
           [stableStringify(['media', 'saveImage', {
-            base64: 'iVBORw0KGgo=',
+            base64: GENERATED_IMAGE_BASE64,
             mimeType: 'image/png',
             defaultFileName: 'generated-image.png',
           }])]: {
@@ -1084,7 +1085,7 @@ test.describe('ClawX ACP inline timeline', () => {
 
       await page.getByTestId('acp-image-save').click();
       await expect.poll(async () => await getRecordedMediaSaveImagePayloads(app)).toEqual([{
-        base64: 'iVBORw0KGgo=',
+        base64: GENERATED_IMAGE_BASE64,
         mimeType: 'image/png',
         defaultFileName: 'generated-image.png',
       }]);

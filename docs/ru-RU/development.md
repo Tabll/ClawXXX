@@ -120,7 +120,7 @@ pnpm run comms:compare
 
 | Уровень | Технология |
 |---------|------------|
-| Среда выполнения | Electron 40+ |
+| Среда выполнения | Electron 43+ |
 | UI-фреймворк | React 19 + TypeScript |
 | Стилизация | Tailwind CSS + shadcn/ui |
 | Состояние | Zustand |

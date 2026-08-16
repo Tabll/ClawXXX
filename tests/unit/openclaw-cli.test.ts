@@ -276,7 +276,7 @@ describe('getOpenClawEmbeddedForkSpec', () => {
     const execPath = '/Users/zhuoxu/workspace/ClawX/node_modules/electron/dist/Electron.app/Contents/MacOS/Electron';
     setPlatform('darwin');
     setExecPath(execPath);
-    setElectronVersion('40.10.6');
+    setElectronVersion('43.4.0');
     process.env.PATH = '/opt/node/bin:/usr/bin';
     mockExistsSync.mockImplementation((p: string) => p === '/opt/node/bin/node');
 

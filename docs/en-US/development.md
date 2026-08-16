@@ -120,7 +120,7 @@ Add future Electron flows under `tests/e2e/` and reuse the shared fixture in `te
 
 | Layer | Technology |
 |-------|------------|
-| Runtime | Electron 40+ |
+| Runtime | Electron 43+ |
 | UI Framework | React 19 + TypeScript |
 | Styling | Tailwind CSS + shadcn/ui |
 | State | Zustand |

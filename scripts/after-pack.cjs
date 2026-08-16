@@ -403,7 +403,7 @@ function patchBrokenModules(nodeModulesDir) {
   // at node_modules/lru-cache/ but also nested inside other packages.
   // Older CJS versions (v5, v6) export the class via `module.exports = LRUCache`
   // without a named `LRUCache` property, so `import { LRUCache } from 'lru-cache'`
-  // fails in Node.js 22+ ESM interop (used by Electron 40+).
+  // fails in Node.js 22+ ESM interop (used by Electron 43+).
   // We recursively scan the entire output for ALL lru-cache installations and
   // patch each CJS entry to ensure `exports.LRUCache` always exists.
   function patchAllLruCacheInstances(rootDir) {
@@ -877,7 +877,7 @@ exports.default = async function afterPack(context) {
   // Production dependencies (electron-updater → semver → lru-cache@6,
   // posthog-node → proxy agents → lru-cache@7, etc.) end up inside app.asar.
   // Older CJS versions lack the `LRUCache` named export, breaking
-  // `import { LRUCache }` in Electron 40+ (Node.js 22+ ESM interop).
+  // `import { LRUCache }` in Electron 43+ (Node.js 22+ ESM interop).
   //
   // electron-builder.yml lists `**/node_modules/lru-cache/**` in asarUnpack,
   // which extracts those files to app.asar.unpacked/.  We patch them here so

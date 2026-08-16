@@ -763,7 +763,7 @@ function patchBrokenModules(nodeModulesDir) {
   // at node_modules/lru-cache/ but also nested inside other packages.
   // Older CJS versions (v5, v6) export the class via `module.exports = LRUCache`
   // without a named `LRUCache` property, so `import { LRUCache } from 'lru-cache'`
-  // fails in Node.js 22+ ESM interop (used by Electron 40+).
+  // fails in Node.js 22+ ESM interop (used by Electron 43+).
   // We recursively scan the entire output for ALL lru-cache installations and
   // patch each CJS entry to ensure `exports.LRUCache` always exists.
   function patchAllLruCacheInstances(rootDir) {

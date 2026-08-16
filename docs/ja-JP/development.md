@@ -120,7 +120,7 @@ Playwright Electronスイートは`dist/`と`dist-electron/`からパッケー�
 
 | レイヤー | 技術 |
 |---------|------|
-| ランタイム | Electron 40+ |
+| ランタイム | Electron 43+ |
 | UIフレームワーク | React 19 + TypeScript |
 | スタイリング | Tailwind CSS + shadcn/ui |
 | 状態管理 | Zustand |
