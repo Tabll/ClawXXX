@@ -16,6 +16,7 @@ ownedPaths:
   - electron/gateway/**
   - electron/preload/**
   - electron/utils/**
+  - patches/openclaw@2026.7.1-2.patch
   - tests/unit/session-attention.test.ts
   - tests/unit/session-status.test.ts
   - tests/unit/session-catalog.test.ts
@@ -23,6 +24,7 @@ ownedPaths:
   - tests/unit/gateway-event-dispatch.test.ts
   - tests/unit/chat-session-management.test.ts
   - tests/unit/chat-store-session-label-fetch.test.ts
+  - tests/unit/openclaw-lm-studio-tool-schema-patch.test.ts
   - tests/unit/session-label-hydration.test.ts
   - tests/e2e/chat-sidebar-session-attention.spec.ts
   - shared/web-browser.ts
@@ -62,6 +64,7 @@ requiredRules:
   - web-browser-security-and-lifecycle
   - e2e-parallel-isolation
   - comms-regression
+  - openai-compatible-tool-schema-compatibility
   - docs-sync
 forbiddenPatterns:
   - window.electron.ipcRenderer.invoke in src/pages/**
@@ -86,6 +89,8 @@ Renderer page/component -> `src/lib/host-api.ts` or `src/lib/api-client.ts` -> E
 Renderer code must not own transport selection, direct IPC channels, direct Gateway HTTP calls, retry policy, or protocol fallback.
 
 Renderer code must not create direct Gateway WebSocket connections. Gateway frame diagnostics must be emitted by Main-process Gateway logging.
+
+The bundled OpenClaw tool catalog must remain valid for supported OpenAI-compatible runtimes. In particular, JSON Schema string patterns sent to LM Studio must be explicitly anchored, avoid constructs that produce invalid llama.cpp GBNF, retain their original validation semantics, and avoid finite bounds that expand beyond llama.cpp's grammar repetition limit; durable compatibility fixes belong in the registered pnpm patch and require installed-bundle regression coverage.
 
 Typed generic Gateway RPC requests are validated by `electron/services/gateway-api.ts` and delegated directly to `GatewayManager.rpc`, including an optional positive finite timeout. This path has no Renderer Chat history/send specialization, polling queue, coalescing, or backpressure layer. ACP `session/load`, `session/prompt`, and `session/cancel` own ordinary Chat history and composer behavior independently.
 

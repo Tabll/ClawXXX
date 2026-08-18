@@ -484,6 +484,30 @@ index ba698afb03ca7043d475948afcbb18643719a011..5c976a1d0f5fc9b85e76f65684eaba2c
  		};
  		if (deliveryContext) {
  			agentParams.channel = deliveryContext.channel;
+diff --git a/dist/cron-tool-C9qaFGtt.js b/dist/cron-tool-C9qaFGtt.js
+--- a/dist/cron-tool-C9qaFGtt.js
++++ b/dist/cron-tool-C9qaFGtt.js
+@@ -403,8 +403,7 @@ function createCronTriggerSchema(params) {
+ 	const trigger = Type.Object({
+ 		script: Type.String({
+-			minLength: 1,
+-			maxLength: 65536
++			minLength: 1
+ 		}),
+ 		once: Type.Optional(Type.Boolean())
+ 	}, { additionalProperties: false });
+ 	return Type.Optional(params.nullableClears ? Type.Union([trigger, Type.Null()]) : trigger);
+@@ -471,9 +471,9 @@ function createCronJobObjectSchema() {
+ 		name: Type.Optional(Type.String({ description: "Job name" })),
+ 		declarationKey: Type.Optional(Type.String({
+ 			description: "Idempotent declaration identity key",
+ 			minLength: 1,
+ 			maxLength: 200,
+-			pattern: "\\S"
++			pattern: "^(.|\\n|\\r|\\u2028|\\u2029)*[^\\u0009-\\u000D\\u0020\\u00A0\\u1680\\u2000-\\u200A\\u2028\\u2029\\u202F\\u205F\\u3000\\uFEFF](.|\\n|\\r|\\u2028|\\u2029)*$"
+ 		})),
+ 		displayName: Type.Optional(Type.String({
+ 			description: "Human-readable declarative job label",
 diff --git a/dist/schema-BuOFpc7K.js b/dist/schema-BuOFpc7K.js
 index 50b16b4a3f159b698c6485e079e1c38ea41fda78..03ee242b547c3b841cc6a5819a4d0349a300228e 100644
 --- a/dist/schema-BuOFpc7K.js
@@ -504,6 +528,36 @@ index 50b16b4a3f159b698c6485e079e1c38ea41fda78..03ee242b547c3b841cc6a5819a4d0349
  	execApprovalFollowupExpectedSessionId: Type.Optional(NonEmptyString),
  	internalEvents: Type.Optional(Type.Array(AgentInternalEventSchema)),
  	inputProvenance: Type.Optional(InputProvenanceSchema),
+@@ -2213,16 +2215,16 @@ const CronDeliveryStatusSchema = Type.Union([
+ ]);
+ const NonBlankString = Type.String({
+ 	minLength: 1,
+-	pattern: "\\S"
++	pattern: "^(.|\\n|\\r|\\u2028|\\u2029)*[^\\u0009-\\u000D\\u0020\\u00A0\\u1680\\u2000-\\u200A\\u2028\\u2029\\u202F\\u205F\\u3000\\uFEFF](.|\\n|\\r|\\u2028|\\u2029)*$"
+ });
+ const CronDeclarationKeySchema = Type.String({
+ 	minLength: 1,
+ 	maxLength: 200,
+-	pattern: "\\S"
++	pattern: "^(.|\\n|\\r|\\u2028|\\u2029)*[^\\u0009-\\u000D\\u0020\\u00A0\\u1680\\u2000-\\u200A\\u2028\\u2029\\u202F\\u205F\\u3000\\uFEFF](.|\\n|\\r|\\u2028|\\u2029)*$"
+ });
+ const CronDisplayNameSchema = Type.String({
+ 	minLength: 1,
+ 	maxLength: 200,
+-	pattern: "\\S"
++	pattern: "^(.|\\n|\\r|\\u2028|\\u2029)*[^\\u0009-\\u000D\\u0020\\u00A0\\u1680\\u2000-\\u200A\\u2028\\u2029\\u202F\\u205F\\u3000\\uFEFF](.|\\n|\\r|\\u2028|\\u2029)*$"
+ });
+ const CronOwnerSchema = Type.Object({
+@@ -2320,8 +2322,7 @@ const ExecHostSchema = Type.Union([
+ /** Headless condition script evaluated before a recurring cron payload runs. */
+ const CronTriggerSchema = Type.Object({
+ 	script: Type.String({
+-		minLength: 1,
+-		maxLength: 65536
++		minLength: 1
+ 	}),
+ 	once: Type.Optional(Type.Boolean())
+ }, { additionalProperties: false });
 @@ -2910,0 +2913,3 @@ const ExecApprovalRequestParamsSchema = Type.Object({
 +	sessionId: Type.Optional(Type.Union([Type.String(), Type.Null()])),
 +	runId: Type.Optional(Type.Union([Type.String(), Type.Null()])),
