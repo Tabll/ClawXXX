@@ -13,7 +13,7 @@ import {
 } from 'node:fs';
 import { spawn, type ForkOptions } from 'node:child_process';
 import { homedir } from 'node:os';
-import { delimiter, join, dirname } from 'node:path';
+import { basename, delimiter, dirname, join } from 'node:path';
 import { getOpenClawDir, getOpenClawEntryPath } from './paths';
 import { logger } from './logger';
 
@@ -202,6 +202,13 @@ function getOpenClawEmbeddedExecPath(): { execPath: string; electronRunAsNode: b
     // shell PATH can contain a newer Node release that falls outside OpenClaw's
     // supported version ranges, even though the Electron utility runtime is valid.
     if (process.versions?.electron) {
+      if (process.platform === 'darwin') {
+        const helperPath = getDevelopmentMacOSHelperPath();
+        if (!helperPath) {
+          throw new Error('Electron Helper executable not found for embedded OpenClaw launch');
+        }
+        return { execPath: helperPath, electronRunAsNode: true };
+      }
       return { execPath: process.execPath, electronRunAsNode: true };
     }
     const nodeExecPath = getDevNodeExecPath();
@@ -275,10 +282,7 @@ function getWindowsPowerShellPath(): string {
   return join(systemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
 }
 
-function getPackagedMacOSHelperPath(): string | null {
-  if (process.platform !== 'darwin' || !app.isPackaged) return null;
-  const appName = app.getName();
-  const helperName = `${appName} Helper`;
+function getMacOSHelperExecutablePath(helperName: string): string | null {
   const helperPath = join(
     dirname(process.execPath),
     '../Frameworks',
@@ -287,6 +291,16 @@ function getPackagedMacOSHelperPath(): string | null {
     helperName,
   );
   return existsSync(helperPath) ? helperPath : null;
+}
+
+function getDevelopmentMacOSHelperPath(): string | null {
+  if (process.platform !== 'darwin' || app.isPackaged) return null;
+  return getMacOSHelperExecutablePath(`${basename(process.execPath)} Helper`);
+}
+
+function getPackagedMacOSHelperPath(): string | null {
+  if (process.platform !== 'darwin' || !app.isPackaged) return null;
+  return getMacOSHelperExecutablePath(`${app.getName()} Helper`);
 }
 
 // ── macOS / Linux install ────────────────────────────────────────────────────

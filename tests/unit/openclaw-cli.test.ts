@@ -272,9 +272,27 @@ describe('getOpenClawEmbeddedForkSpec', () => {
     });
   });
 
-  it('uses the Electron-pinned Node runtime for development Electron launches', async () => {
+  it('uses the background Electron Helper for macOS development Electron launches', async () => {
     const execPath = '/Users/zhuoxu/workspace/ClawX/node_modules/electron/dist/Electron.app/Contents/MacOS/Electron';
+    const helperPath = '/Users/zhuoxu/workspace/ClawX/node_modules/electron/dist/Electron.app/Contents/Frameworks/Electron Helper.app/Contents/MacOS/Electron Helper';
     setPlatform('darwin');
+    setExecPath(execPath);
+    setElectronVersion('43.4.0');
+    process.env.PATH = '/opt/node/bin:/usr/bin';
+    mockExistsSync.mockImplementation((p: string) => p === helperPath || p === '/opt/node/bin/node');
+
+    const { getOpenClawEmbeddedForkSpec } = await import('@electron/utils/openclaw-cli');
+    const spec = getOpenClawEmbeddedForkSpec(['acp']);
+
+    expect(spec.options.execPath).toBe(helperPath);
+    expect(spec.options.execPath).not.toBe(execPath);
+    expect(spec.options.execPath).not.toBe('/opt/node/bin/node');
+    expect(spec.options.env).toMatchObject({ ELECTRON_RUN_AS_NODE: '1' });
+  });
+
+  it('keeps the Electron executable for non-macOS development Electron launches', async () => {
+    const execPath = '/opt/clawx/electron';
+    setPlatform('linux');
     setExecPath(execPath);
     setElectronVersion('43.4.0');
     process.env.PATH = '/opt/node/bin:/usr/bin';
@@ -313,5 +331,17 @@ describe('getOpenClawEmbeddedForkSpec', () => {
     const { getOpenClawEmbeddedForkSpec } = await import('@electron/utils/openclaw-cli');
 
     expect(() => getOpenClawEmbeddedForkSpec(['acp'])).toThrow('ClawX Helper executable not found');
+  });
+
+  it('fails macOS development embedded launch when the Electron Helper executable is missing', async () => {
+    const execPath = '/Users/zhuoxu/workspace/ClawX/node_modules/electron/dist/Electron.app/Contents/MacOS/Electron';
+    setPlatform('darwin');
+    setExecPath(execPath);
+    setElectronVersion('43.4.0');
+    mockExistsSync.mockReturnValue(false);
+
+    const { getOpenClawEmbeddedForkSpec } = await import('@electron/utils/openclaw-cli');
+
+    expect(() => getOpenClawEmbeddedForkSpec(['acp'])).toThrow('Electron Helper executable not found');
   });
 });

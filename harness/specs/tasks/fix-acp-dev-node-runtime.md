@@ -3,7 +3,7 @@ id: fix-acp-dev-node-runtime
 title: Keep ACP on the ClawX-supported Node runtime in development
 scenario: gateway-backend-communication
 taskType: runtime-bridge
-intent: Prevent a user-installed Node version from stopping first-message ACP session creation after an OpenClaw upgrade.
+intent: Keep development ACP on ClawX's supported Node runtime without exposing a foreground helper process on macOS.
 touchedAreas:
   - harness/specs/tasks/fix-acp-dev-node-runtime.md
   - harness/specs/rules/acp-chat-state-and-history.md
@@ -12,6 +12,7 @@ touchedAreas:
 expectedUserBehavior:
   - Clicking New Chat and sending the first message creates and opens the new conversation in development builds.
   - Chat startup and first send do not depend on whichever Node executable happens to appear first on the developer shell PATH.
+  - Starting ACP in macOS development builds does not add a bouncing generic executable icon to the Dock.
   - Packaged macOS and Windows keep using their existing ClawX-owned embedded runtimes.
 requiredProfiles:
   - fast
@@ -27,7 +28,9 @@ requiredTests:
   - pnpm run comms:replay
   - pnpm run comms:compare
 acceptance:
-  - A development Electron Main process launches embedded OpenClaw ACP with the Electron executable and `ELECTRON_RUN_AS_NODE=1`.
+  - A development Electron Main process launches embedded OpenClaw ACP with `ELECTRON_RUN_AS_NODE=1`.
+  - macOS development resolves the active Electron bundle's `Electron Helper.app` executable instead of launching the foreground `Electron.app/Contents/MacOS/Electron` executable directly.
+  - Non-macOS development Electron launches retain their existing Electron executable selection.
   - The selected development ACP runtime is the same ClawX-pinned Node family used by Electron utility processes, even when PATH contains an unsupported newer Node.
   - Non-Electron tooling may still use a real Node executable from PATH.
   - Packaged macOS Helper and packaged Windows bundled-node selection remain unchanged.
@@ -43,6 +46,7 @@ After the OpenClaw baseline upgrade, a development build launched ACP through th
 ## Scope
 
 - Make development Electron launches use Electron's pinned Node runtime for the ACP child.
+- Make macOS development use Electron's background Helper executable so ACP does not register a generic foreground Dock application.
 - Preserve a PATH-based Node fallback for non-Electron callers and existing packaged runtime selection.
 - Record the runtime-ownership invariant in the ACP Harness rule and cover it with a focused unit regression.
 
