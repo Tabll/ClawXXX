@@ -153,7 +153,7 @@ ClawX 内置了代理设置，适用于需要通过本地代理客户端访问�
 ClawX 采用 **双进程 + Host API 统一接入架构**：React 渲染进程只通过统一的 host-api/api-client 抽象与后端交互，协议选择、Gateway 生命周期与 ACP Chat stdio bridge 全部由 Electron 主进程统一管理。
 
 - **进程模型**：Electron 主进程负责窗口、网关进程监控、系统集成与自动更新；OpenClaw Gateway 作为独立运行时进程提供 AI 编排、频道和技能能力；渲染层不直接访问本地端点。
-- **配置交付**：Gateway 运行时由 Main 使用 `config.get` / `config.set`，停止或启动中则更新解析后的 JSON5 配置；普通 Provider/Agent/Skill/模型修改不会替换进程，凭据通过 `secrets.reload` 热更新；连续 4 次心跳无响应后才会请求受生命周期保护的自动恢复。
+- **配置交付**：Gateway 运行时由 Main 使用 `config.get` / `config.set`，停止或启动中则更新解析后的 JSON5 配置；普通 Provider/Agent/Skill/模型修改不会替换进程，凭据通过 `secrets.reload` 热更新。连续三分钟没有已验证的 Gateway 活动后，ClawX 会验证核心 RPC，并且只重启其自身拥有且不可用的 Gateway 进程；外部管理的 Gateway 保留给用户手动恢复。
 - **ACP Chat**：Chat UI 基于 ACP ([Agent Client Protocol](https://agentclientprotocol.com)) 与 OpenClaw 交互，从而在高速迭代的 OpenClaw 前找到相对稳定的聊天协议面。ACP 走 Main 持有的 stdio bridge，支持配置热重载后的历史回放认证、跨页面持续流式输出、会话声明的模型/推理设置、上下文用量与手动压缩、顺序发送的跟进队列，以及由 Main 验证和加载的媒体/附件/文件活动（Changes）展示。会话 transcript 只用于有界补充悬停元数据和 ACP 尚未提供的资源，不会成为第二套聊天历史来源。当受保护的 Gateway 重启中断已接收的对话轮次时，补丁后的 OpenClaw 运行时会将恢复 run 显式关联到原 ACP prompt，使后续文本和工具活动继续进入同一个内存轮次；之后的历史回放也会以原生 ACP 更新恢复持久化的工具边界。
 - **Dreams**：开发者专用的原生 Dreams 页只通过类型化 Host API 调用 OpenClaw `doctor.memory.*` 和受保护的 `config.patch`；带认证的 Control UI URL 由 Electron Main 构造并将 Dreams 视图映射到 `/dreaming`，渲染层不直连 Gateway。
 - **设计原则**：前端调用单一入口、Main 掌控传输策略、优雅恢复（重连/超时/退避）、安全存储与 CORS 安全。
@@ -206,6 +206,7 @@ pnpm package         # 为当前平台打包（可用 :mac / :win / :linux 后�
 ClawX 构建于以下优秀的开源项目之上：
 
 - [OpenClaw](https://github.com/OpenClaw) – AI 智能体运行时
+- [LobsterAI](https://github.com/netease-youdao/lobsterai) – Gateway 存活信号与恢复设计的灵感来源
 - [Electron](https://www.electronjs.org/) – 跨平台桌面框架
 - [React](https://react.dev/) – UI 组件库
 - [shadcn/ui](https://ui.shadcn.com/) – 精美设计的组件库
