@@ -45,6 +45,8 @@ export interface AppSettings {
 
   // Gateway
   gatewayAutoStart: boolean;
+  /** Per-kernel replacement; an absent OpenClaw entry inherits gatewayAutoStart. */
+  kernelAutoStartPolicies: Record<string, boolean>;
   gatewayPort: number;
   gatewayToken: string;
   proxyEnabled: boolean;
@@ -103,6 +105,7 @@ function createDefaultSettings(): AppSettings {
 
     // Gateway
     gatewayAutoStart: true,
+    kernelAutoStartPolicies: {},
     gatewayPort: 18789,
     gatewayToken: generateToken(),
     proxyEnabled: false,

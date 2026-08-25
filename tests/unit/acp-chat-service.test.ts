@@ -3,8 +3,13 @@ import { join } from 'node:path';
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { EventEmitter } from 'node:events';
 import { PassThrough } from 'node:stream';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { HOST_EVENT_CHANNELS } from '@shared/host-events/contract';
+import {
+  clearOpenClawRuntimeLocation,
+  configureOpenClawRuntimeLocation,
+  createDevelopmentOpenClawRuntimeLocation,
+} from '@electron/kernels/openclaw/runtime-location';
 
 const acpSdkMock = vi.hoisted(() => {
   const state = { connectionForSpawn: undefined as unknown };
@@ -148,11 +153,27 @@ function createDeferred<T>() {
 }
 
 describe('AcpChatService', () => {
+  let runtimeRoot: string;
+
   beforeEach(() => {
     vi.clearAllMocks();
     acpSdkMock.state.connectionForSpawn = undefined;
     childProcessMock.state.child = undefined;
     storeMock.getSetting.mockResolvedValue('clawx-test-gateway-token');
+    runtimeRoot = mkdtempSync(join(tmpdir(), 'clawx-openclaw-acp-runtime-'));
+    const packageDir = join(runtimeRoot, 'openclaw', 'runtime', 'kernel');
+    mkdirSync(packageDir, { recursive: true });
+    writeFileSync(join(packageDir, 'openclaw.mjs'), 'export {};');
+    configureOpenClawRuntimeLocation(createDevelopmentOpenClawRuntimeLocation({
+      packageDir,
+      userDataRoot: join(runtimeRoot, 'user-data'),
+      artifactVersion: 'test+clawx.1',
+    }));
+  });
+
+  afterEach(() => {
+    clearOpenClawRuntimeLocation();
+    rmSync(runtimeRoot, { recursive: true, force: true });
   });
 
   it('forks the embedded OpenClaw entry for ACP instead of spawning a public CLI wrapper', async () => {

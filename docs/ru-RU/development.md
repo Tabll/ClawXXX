@@ -2,6 +2,22 @@
 
 Этот документ содержит подробную версию раздела «Разработка» из README.
 
+### Multi-kernel границы разработки
+
+Canonical contracts находятся в `shared/{kernels,conversations,domains,data}`, Main-owned implementation — в `electron/{kernels,conversations,domains,data,scheduler,channels,security}`. Renderer использует только `src/lib/host-api.ts`/`api-client.ts` и не обращается напрямую к Gateway, DSH endpoint, runtime filesystem или SQLite. Kernel-specific логика остаётся за `KernelDriver`/projection adapter, а не в business branches страниц.
+
+Frozen upstream inputs, patches и overlays находятся в `kernels/<kernelId>/`. `scripts/kernel-runtime/` выполняет source verification, license audit, загрузку independent Node, platform signing, deterministic `tar.zst`, SBOM/provenance, catalog promotion и mirror drill. Base-package `afterPack` завершается ошибкой при наличии optional runtime payload или link.
+
+```bash
+pnpm run kernel:sources:verify
+pnpm run data:electron-smoke
+pnpm run test:multi-kernel:chaos
+pnpm run release:multi-kernel:validate
+pnpm harness validate --spec harness/specs/tasks/implement-multi-kernel-m16-release-gate.md
+```
+
+Protected CI строит 2 kernels × 5 targets, promotion проверяет полный signed set, публикует artifacts до catalog и выполняет Range drill двух mirrors. Certificates, private keys, notarization и legal approval являются evidence protected environment; local build не может их имитировать. См. [security/support](runtime-security-support.md) и [data policy](data-security-retention.md).
+
 ### Требования
 
 - **Node.js**: 22.22.3+, 24.15.0+ или 25.9.0+ в пределах соответствующей основной версии (рекомендуется Node 24 LTS)

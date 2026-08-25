@@ -5,7 +5,12 @@
 import { createRequire } from 'node:module';
 import { dirname, join, resolve } from 'path';
 import { homedir } from 'os';
-import { existsSync, mkdirSync, readFileSync, realpathSync } from 'fs';
+import { existsSync, mkdirSync, readFileSync } from 'fs';
+import {
+  getManagedOpenClawDataRoots,
+  getOpenClawRuntimeLocation,
+  resolveOpenClawPackageRealPath,
+} from '../kernels/openclaw/runtime-location';
 
 const require = createRequire(import.meta.url);
 
@@ -51,12 +56,13 @@ export function expandPath(path: string): string {
  * Get OpenClaw config directory
  */
 export function getOpenClawConfigDir(): string {
-  return join(homedir(), '.openclaw');
+  return getOpenClawRuntimeLocation()?.configRoot
+    ?? getManagedOpenClawDataRoots(getElectronApp().getPath('userData')).configRoot;
 }
 
 export function resolveOpenClawStateDir(env: NodeJS.ProcessEnv = process.env): string {
   const configured = env.OPENCLAW_STATE_DIR?.trim();
-  return resolve(expandPath(configured || join(homedir(), '.openclaw')));
+  return resolve(expandPath(configured || getOpenClawConfigDir()));
 }
 
 export function resolveOpenClawConfigPath(env: NodeJS.ProcessEnv = process.env): string {
@@ -123,16 +129,15 @@ export function getPreloadPath(): string {
 }
 
 /**
- * Get OpenClaw package directory
- * - Production (packaged): from resources/openclaw (copied by electron-builder extraResources)
- * - Development: from node_modules/openclaw
+ * Get the package directory of the explicitly activated OpenClaw runtime.
+ * Packaged builds never fall back to process.resourcesPath/openclaw.
  */
 export function getOpenClawDir(): string {
-  if (getElectronApp().isPackaged) {
-    return join(process.resourcesPath, 'openclaw');
+  const location = getOpenClawRuntimeLocation();
+  if (!location) {
+    throw new Error('OpenClaw runtime is not installed or activated');
   }
-  // Development: use node_modules/openclaw
-  return join(__dirname, '../../node_modules/openclaw');
+  return location.packageDir;
 }
 
 /**
@@ -140,22 +145,18 @@ export function getOpenClawDir(): string {
  * Useful when consumers need deterministic module resolution under pnpm symlinks.
  */
 export function getOpenClawResolvedDir(): string {
-  const dir = getOpenClawDir();
-  if (!existsSync(dir)) {
-    return dir;
-  }
-  try {
-    return realpathSync(dir);
-  } catch {
-    return dir;
-  }
+  const location = getOpenClawRuntimeLocation();
+  if (!location) throw new Error('OpenClaw runtime is not installed or activated');
+  return resolveOpenClawPackageRealPath(location);
 }
 
 /**
  * Get OpenClaw entry script path (openclaw.mjs)
  */
 export function getOpenClawEntryPath(): string {
-  return join(getOpenClawDir(), 'openclaw.mjs');
+  const location = getOpenClawRuntimeLocation();
+  if (!location) throw new Error('OpenClaw runtime is not installed or activated');
+  return location.entryPath;
 }
 
 /**
@@ -177,7 +178,9 @@ export function getClawHubCliBinPath(): string {
  * Check if OpenClaw package exists
  */
 export function isOpenClawPresent(): boolean {
-  const dir = getOpenClawDir();
+  const location = getOpenClawRuntimeLocation();
+  if (!location) return false;
+  const dir = location.packageDir;
   const pkgJsonPath = join(dir, 'package.json');
   return existsSync(dir) && existsSync(pkgJsonPath);
 }
@@ -187,7 +190,9 @@ export function isOpenClawPresent(): boolean {
  * For the npm package, this should always be true since npm publishes the built dist.
  */
 export function isOpenClawBuilt(): boolean {
-  const dir = getOpenClawDir();
+  const location = getOpenClawRuntimeLocation();
+  if (!location) return false;
+  const dir = location.packageDir;
   const distDir = join(dir, 'dist');
   const hasDist = existsSync(distDir);
   return hasDist;
@@ -205,7 +210,8 @@ export interface OpenClawStatus {
 }
 
 export function getOpenClawStatus(): OpenClawStatus {
-  const dir = getOpenClawDir();
+  const location = getOpenClawRuntimeLocation();
+  const dir = location?.packageDir ?? '';
   let version: string | undefined;
 
   // Try to read version from package.json
@@ -222,7 +228,7 @@ export function getOpenClawStatus(): OpenClawStatus {
   const status: OpenClawStatus = {
     packageExists: isOpenClawPresent(),
     isBuilt: isOpenClawBuilt(),
-    entryPath: getOpenClawEntryPath(),
+    entryPath: location?.entryPath ?? '',
     dir,
     version,
   };

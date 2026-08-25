@@ -2,7 +2,7 @@
     "title": "Dreams",
     "subtitle": "OpenClaw の記憶シグナル、夢日記、メンテナンス操作を ClawX 内で確認します。",
     "openFullUi": "完全版 Dreams を開く",
-    "gatewayNotReady": "OpenClaw Gateway は起動中または未接続です。接続後に Dreams データを読み込みます。",
+    "runtimeNotReady": "OpenClaw ランタイムは起動中、停止中、または未インストールです。準備が整うと Dreams データを読み込みます。",
     "accessibility": {
         "mascot": "眠っている OpenClaw キャラクター"
     },

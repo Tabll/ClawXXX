@@ -21,8 +21,9 @@ import { Settings } from './pages/Settings';
 import { Setup } from './pages/Setup';
 import { useSettingsStore } from './stores/settings';
 import { useUpdateStore } from './stores/update';
-import { useGatewayStore } from './stores/gateway';
+import { useKernelStore } from './stores/kernels';
 import { useProviderStore } from './stores/providers';
+import { useChatStore } from './stores/chat';
 import { rendererExtensionRegistry } from './extensions/registry';
 import { loadExternalRendererExtensions } from './extensions/_ext-bridge.generated';
 import { UpdateNotifier } from './components/update/UpdateNotifier';
@@ -108,7 +109,7 @@ function App() {
   const language = useSettingsStore((state) => state.language);
   const setupComplete = useSettingsStore((state) => state.setupComplete);
   const devModeUnlocked = useSettingsStore((state) => state.devModeUnlocked);
-  const initGateway = useGatewayStore((state) => state.init);
+  const initKernels = useKernelStore((state) => state.init);
   const initUpdate = useUpdateStore((state) => state.init);
   const initProviders = useProviderStore((state) => state.init);
   const handleNewChat = useNewChatAction();
@@ -134,10 +135,10 @@ function App() {
     }
   }, [language]);
 
-  // Initialize Gateway connection on mount
+  // Initialize optional runtime catalog and independent kernel states.
   useEffect(() => {
-    initGateway();
-  }, [initGateway]);
+    void initKernels();
+  }, [initKernels]);
 
   // Initialize provider snapshot on mount
   useEffect(() => {
@@ -173,6 +174,10 @@ function App() {
       }
     };
   }, [handleNewChat]);
+
+  useEffect(() => hostEvents.onConversationCatalogChanged((event) => {
+    useChatStore.getState().handleConversationCatalogChanged(event);
+  }), []);
 
   // Apply theme
   useEffect(() => {

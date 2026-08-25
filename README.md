@@ -6,7 +6,7 @@
 <h1 align="center">ClawX</h1>
 
 <p align="center">
-  <strong>The Desktop Interface for OpenClaw AI Agents</strong>
+  <strong>One Desktop Interface for Multiple AI Agent Runtimes</strong>
 </p>
 
 <p align="center">
@@ -24,7 +24,7 @@
   <a href="https://discord.com/invite/84Kex3GGAh" target="_blank">
   <img src="https://img.shields.io/discord/1399603591471435907?logo=discord&labelColor=%20%235462eb&logoColor=%20%23f5f5f5&color=%20%235462eb" alt="chat on Discord" />
   </a>
-  <img src="https://img.shields.io/github/downloads/ValueCell-ai/ClawX/total?color=%23027DEB" alt="Downloads" />
+  <img src="https://img.shields.io/github/downloads/Tabll/ClawXXX/total?color=%23027DEB" alt="Downloads" />
   <img src="https://img.shields.io/badge/license-MIT-green" alt="License" />
 </p>
 
@@ -36,7 +36,7 @@
 
 ## Overview
 
-**ClawX** bridges the gap between powerful AI agents and everyday users. Built on top of [OpenClaw](https://github.com/OpenClaw), it transforms command-line AI orchestration into an accessible, beautiful desktop experience - no terminal required.
+**ClawX** bridges the gap between powerful AI agents and everyday users. It hosts optional [OpenClaw](https://github.com/openclaw/openclaw) and [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) runtimes behind one accessible desktop experience—no terminal required.
 
 Whether you're automating workflows, managing AI-powered channels, or scheduling intelligent tasks, ClawX provides the interface you need to harness AI agents effectively.
 
@@ -63,13 +63,13 @@ ClawX comes pre-configured with best-practice model providers and natively suppo
 
 ## Why ClawX
 
-Building AI agents shouldn't require mastering the command line. ClawX was designed with a simple philosophy: **powerful technology deserves an interface that respects your time.** ClawX is built directly upon the official **OpenClaw** core. Instead of requiring a separate installation, we embed the runtime within the application for a seamless, battery-included experience. We stay closely aligned with upstream OpenClaw so you can benefit from the latest official capabilities, stability improvements, and ecosystem compatibility.
+Building AI agents shouldn't require mastering the command line. ClawX was designed with a simple philosophy: **powerful technology deserves an interface that respects your time.** The small base app contains no agent kernel. On first use you can download OpenClaw, DeepSeek Harness, both, or neither as independently signed and updateable runtimes. Both use the same ClawX UI and one canonical local history store.
 
 | Challenge | ClawX Solution |
 |-----------|----------------|
 | Complex CLI setup | One-click installation with a guided setup wizard |
 | Configuration files | Visual settings with real-time validation |
-| Process management | Automatic Gateway lifecycle management |
+| Process management | Independent lifecycle, health, repair and rollback for every installed kernel |
 | App updates | Startup update checks with a prompt before downloading or installing |
 | Multiple AI providers | Unified provider configuration panel |
 | Skill/plugin installation | Local-first skill management with an optional extension-provided marketplace |
@@ -100,21 +100,23 @@ Building AI agents shouldn't require mastering the command line. ClawX was desig
 
 ### System Requirements
 
-- **Operating System**: macOS 11+, Windows 10+, or Linux (Ubuntu 20.04+)
+- **Operating System for optional kernels**: macOS 13.5+, Windows 10 x64, or Ubuntu 24.04-compatible Linux (x64/arm64; glibc 2.39+, kernel 6.8+)
 - **Memory**: 4GB RAM minimum (8GB recommended)
-- **Storage**: 1GB available disk space
+- **Storage**: 1GB for ClawX plus space for each selected runtime (3GB free recommended)
+
+Linux musl/Alpine and Windows arm64 runtimes are not supported in 0.6.0. See the [support matrix](docs/en-US/runtime-security-support.md).
 
 ### Installation
 
 #### Pre-built Releases (Recommended)
 
-Download the latest release for your platform from the [Releases](https://github.com/ValueCell-ai/ClawX/releases) page.
+Download the latest release for your platform from the [Releases](https://github.com/Tabll/ClawXXX/releases) page.
 
 #### Build from Source
 
 ```bash
 # Clone the repository
-git clone https://github.com/ValueCell-ai/ClawX.git
+git clone https://github.com/Tabll/ClawXXX.git
 cd ClawX
 
 # Initialize the project
@@ -129,9 +131,10 @@ pnpm dev
 When you launch ClawX for the first time, the **Setup Wizard** will guide you through:
 
 1. **Language & Region** - Configure your preferred locale
-2. **AI Provider** - Add providers with API keys or OAuth for providers that support browser or device login
-3. **Skill Bundles** - Select pre-configured skills for common use cases
-4. **Verification** - Test your configuration before entering the main interface
+2. **Kernel Catalog** - Install OpenClaw, DeepSeek Harness, both, or continue without a kernel
+3. **AI Provider** - Add providers with API keys or OAuth for providers that support browser or device login
+4. **Skill Bundles** - Select pre-configured skills for common use cases
+5. **Verification** - Test your configuration before entering the main interface
 
 The wizard preselects your system language when it is supported, and falls back to English otherwise.
 
@@ -141,7 +144,7 @@ The wizard preselects your system language when it is supported, and falls back 
 
 ### Proxy Settings
 
-ClawX includes built-in proxy settings for Electron, the OpenClaw Gateway, and channels such as Telegram that need to reach the internet through a local proxy client.
+ClawX includes built-in proxy settings for Electron, downloadable runtime traffic, and channels such as Telegram. A launch-environment change restarts only the affected installed kernel; it never starts an absent runtime or restarts the other kernel.
 
 Open **Settings -> Gateway -> Proxy** to configure the default proxy, bypass rules, and optional developer-mode overrides for HTTP, HTTPS, and `ALL_PROXY` / SOCKS. A local example is `http://127.0.0.1:7890`.
 
@@ -149,11 +152,18 @@ Open **Settings -> Gateway -> Proxy** to configure the default proxy, bypass rul
 
 ## Architecture
 
-ClawX uses a **dual-process architecture with a unified Host API layer**: the React renderer calls one client abstraction, while Electron Main owns protocol selection, Gateway lifecycle, and the ACP Chat stdio bridge.
+ClawX uses a **Main-owned multi-kernel architecture with a unified Host API layer**: the React renderer calls one canonical client abstraction, while Electron Main owns the data service, protocol selection, package verification, supervisors, scheduler, channels and credential broker.
 
-- **Process model**: Electron Main owns the window, Gateway supervision, system integration, and updates; the OpenClaw Gateway provides AI orchestration, channel, and skill capabilities; the renderer does not access local endpoints directly.
+> ClawX 0.6 implements optional CI-built OpenClaw and DeepSeek Harness runtimes backed by one Main-owned SQLite/Blob authority. Public release remains fail-closed until the protected cross-platform signing, promotion and packaged-test evidence in the [implementation checklist](TODO.md) passes. See the [multi-kernel design](docs/zh-CN/multi-kernel-design.md), [runtime security/support](docs/en-US/runtime-security-support.md), and [data policy](docs/en-US/data-security-retention.md).
+
+- **Process model**: Electron Main owns system integration, one DataService, the package manager and an independent supervisor per kernel. OpenClaw and DSH may run concurrently; the renderer and runtimes never open SQLite or contact each other directly.
 - **Configuration delivery**: Main uses `config.get`/`config.set` while the Gateway is running and updates the resolved JSON5 config while it is stopped or starting; ordinary provider, agent, skill, and model changes do not replace the process, and credentials are hot-reloaded through `secrets.reload`. After three minutes without verified Gateway activity, ClawX verifies the core RPC and restarts only an unavailable Gateway process it owns; externally managed Gateways are left for manual recovery.
-- **ACP Chat**: Chat UI talks to OpenClaw via [ACP (Agent Client Protocol)](https://agentclientprotocol.com), providing a relatively stable chat protocol surface in front of the rapidly iterating OpenClaw. ACP runs through a Main-owned stdio bridge, supporting authenticated history replay after config reloads, streaming across navigation, session-advertised model/reasoning configuration, context usage and manual compaction, sequential queued follow-ups, and Main-validated media, attachments, and file activity. Transcript reads only supplement ACP history with bounded hover metadata and missing resources; they never become a second conversation source. When a guarded Gateway restart interrupts an accepted turn, the patched OpenClaw runtime explicitly links its recovery run to the original ACP prompt so subsequent text and tool activity continue in the same in-memory turn; later history replay restores persisted tool boundaries as native ACP updates.
+- **Canonical providers**: Provider metadata, model choices, per-kernel defaults, and independent projection status are canonical SQLite records. Secrets remain in OS-protected storage and move from the preload-owned closed-shadow field to Main as one-time handles; authenticated kernel processes can request only the selected account and authorized purpose through the Credential Broker. A failed projection never rolls back another kernel's ready projection.
+- **Canonical Skills**: One Skills catalog owns immutable package metadata, per-kernel install/enable intent, compatibility, projection diagnostics, and retry. OpenClaw and DeepSeek Harness receive independent physical copies—never cross-linked roots—and Both-target operations preserve and report partial success. DSH registers compatible instruction bodies through its isolated `ctx.skills` adapter; unsupported auxiliary packages show an explicit reason.
+- **Canonical Channels**: One SQLite catalog owns accounts, kernel/agent bindings, owner leases, message-to-Conversation mappings, attachments, retries, and delivery history. Credentials remain in OS-protected storage. OpenClaw uses an authenticated native handoff adapter; DeepSeek Harness uses the Main-owned eight-connector Relay, and different accounts can run concurrently without dual ownership or connector-native history.
+- **Canonical Cron**: Main-owned ClawXScheduler stores jobs, unique due admissions, run diagnostics, Conversation targets, and Channel delivery links in SQLite. OpenClaw and DeepSeek Harness jobs can run together with explicit kernel/agent, timezone, misfire, overlap, timeout, and Conversation policies; managed native schedulers and history are disabled.
+- **Canonical Chat**: Chat history, run events, permissions, usage, and attachment references are read from the Main-owned SQLite Conversation Store. ACP and future runtime bridges are live execution transports only. Every live event carries conversation/run/kernel/generation/sequence identity, so navigation can preserve background streams and one Conversation can switch kernels at a turn boundary without a runtime transcript fallback.
+- **Canonical Usage and diagnostics**: OpenClaw provider responses and DeepSeek Harness SessionEvents write idempotent per-call Usage records to the same SQLite store. Dashboard filters compare all/OpenClaw/DSH records without converting missing token or cost fields to zero. Per-kernel diagnostics identify the exact artifact, patch revision, protocol, process generation, health and capabilities; persisted/exported logs use isolated directories and shared secret/path redaction.
 - **Dreams**: The developer-only native Dreams page uses the typed Host API Gateway RPC path for OpenClaw `doctor.memory.*` and guarded `config.patch` operations. Electron Main owns the authenticated Control UI URL and maps the optional typed Dreams view to `/dreaming`; the renderer never contacts the Gateway directly.
 - **Design principles**: One frontend entry point, Main-owned transport, graceful recovery with reconnect/timeout/backoff, secure storage, and CORS-safe boundaries.
 
@@ -163,14 +173,14 @@ ClawX uses a **dual-process architecture with a unified Host API layer**: the Re
 
 ### Prerequisites
 
-- **Node.js**: 22.22.3+, 24.15.0+, or 25.9.0+ within the corresponding supported major line (Node 24 LTS recommended)
+- **Node.js**: 22.22.3+, 24.15.0+, or 25.9.0+ within the corresponding supported major line (Node 24 LTS recommended; downloadable runtimes pin their own Node 24.15.0)
 - **Package Manager**: pnpm 9+ (npm is also supported)
 - **Linux (Ubuntu/Debian)**: Install required system libraries before running Electron; see [docs/en-US/development.md](docs/en-US/development.md)
 
 ### Common Commands
 
 ```bash
-pnpm run init        # Install dependencies and download bundled runtimes
+pnpm run init        # Install host dependencies and bundled host utilities
 pnpm dev             # Start in development mode with hot reload
 pnpm lint            # Run ESLint
 pnpm typecheck       # TypeScript validation
@@ -206,6 +216,7 @@ We welcome contributions from the community! Whether it's bug fixes, new feature
 ClawX is built on the shoulders of excellent open-source projects:
 
 - [OpenClaw](https://github.com/OpenClaw) - The AI agent runtime
+- [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) - The second optional AI agent runtime
 - [LobsterAI](https://github.com/netease-youdao/lobsterai) - Inspiration for Gateway liveness evidence and recovery design
 - [Electron](https://www.electronjs.org/) - Cross-platform desktop framework
 - [React](https://react.dev/) - UI component library
@@ -231,7 +242,7 @@ DM us or email [public@valuecell.ai](mailto:public@valuecell.ai) to learn more.
 ## Star History
 
 <p align="center">
-  <img src="https://api.star-history.com/svg?repos=ValueCell-ai/ClawX&type=Date" alt="Star History Chart" />
+  <img src="https://api.star-history.com/svg?repos=Tabll/ClawXXX&type=Date" alt="Star History Chart" />
 </p>
 
 ## License

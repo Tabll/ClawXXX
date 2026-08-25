@@ -1,0 +1,70 @@
+{
+  "schemaVersion": 1,
+  "kernelId": "openclaw",
+  "displayName": "OpenClaw",
+  "artifactVersion": "2026.7.1-2+clawx.6",
+  "patchRevision": 6,
+  "minHostVersion": "0.6.0",
+  "maxHostVersion": "0.6.x",
+  "capabilityContractVersion": 1,
+  "protocols": {
+    "chat": { "name": "acp", "min": 1, "max": 1 },
+    "control": { "name": "clawx-kernel", "min": 1, "max": 1 },
+    "conversationStore": { "name": "clawx-conversation-store", "min": 1, "max": 1 }
+  },
+  "checkpointCodecs": [
+    { "id": "openclaw-managed-session", "schemaVersion": 1, "portable": false }
+  ],
+  "entrypoints": {
+    "chat": "runtime/kernel/clawx-openclaw.mjs",
+    "control": "runtime/kernel/clawx-control-bridge.mjs"
+  },
+  "nativePayloadAllowlist": {
+    "darwin-arm64": [
+      "runtime/kernel/node_modules/@img/sharp-darwin-arm64/**",
+      "runtime/kernel/node_modules/@img/sharp-libvips-darwin-arm64/**",
+      "runtime/kernel/node_modules/@napi-rs/canvas-darwin-arm64/**",
+      "runtime/kernel/node_modules/@node-llama-cpp/mac-arm64*/**",
+      "runtime/kernel/node_modules/koffi/build/koffi/darwin_arm64/**",
+      "runtime/kernel/node_modules/tree-sitter*/**/*.node"
+    ],
+    "darwin-x64": [
+      "runtime/kernel/node_modules/@img/sharp-darwin-x64/**",
+      "runtime/kernel/node_modules/@img/sharp-libvips-darwin-x64/**",
+      "runtime/kernel/node_modules/@napi-rs/canvas-darwin-x64/**",
+      "runtime/kernel/node_modules/@node-llama-cpp/mac-x64*/**",
+      "runtime/kernel/node_modules/koffi/build/koffi/darwin_x64/**",
+      "runtime/kernel/node_modules/tree-sitter*/**/*.node"
+    ],
+    "linux-arm64": [
+      "runtime/kernel/node_modules/@img/sharp-linux-arm64/**",
+      "runtime/kernel/node_modules/@img/sharp-libvips-linux-arm64/**",
+      "runtime/kernel/node_modules/@napi-rs/canvas-linux-arm64-gnu/**",
+      "runtime/kernel/node_modules/@node-llama-cpp/linux-arm64*/**",
+      "runtime/kernel/node_modules/koffi/build/koffi/linux_arm64/**",
+      "runtime/kernel/node_modules/tree-sitter*/**/*.node"
+    ],
+    "linux-x64": [
+      "runtime/kernel/node_modules/@img/sharp-linux-x64/**",
+      "runtime/kernel/node_modules/@img/sharp-libvips-linux-x64/**",
+      "runtime/kernel/node_modules/@napi-rs/canvas-linux-x64-gnu/**",
+      "runtime/kernel/node_modules/@node-llama-cpp/linux-x64*/**",
+      "runtime/kernel/node_modules/koffi/build/koffi/linux_x64/**",
+      "runtime/kernel/node_modules/tree-sitter*/**/*.node"
+    ],
+    "win32-x64": [
+      "runtime/kernel/node_modules/@img/sharp-win32-x64/**",
+      "runtime/kernel/node_modules/@napi-rs/canvas-win32-x64-msvc/**",
+      "runtime/kernel/node_modules/@node-llama-cpp/win-x64*/**",
+      "runtime/kernel/node_modules/koffi/build/koffi/win32_x64/**",
+      "runtime/kernel/node_modules/tree-sitter*/**/*.node"
+    ]
+  },
+  "budgets": {
+    "compressedBytes": 314572800,
+    "unpackedBytes": 1073741824,
+    "fileCount": 100000,
+    "coldReadyMs": 30000,
+    "idleRssBytes": 536870912
+  }
+}

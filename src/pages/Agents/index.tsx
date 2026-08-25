@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AlertCircle, Bot, Check, Plus, RefreshCw, Settings2, Trash2, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -10,7 +10,6 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/compone
 import { Switch } from '@/components/ui/switch';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { useAgentsStore } from '@/stores/agents';
-import { useGatewayStore } from '@/stores/gateway';
 import { useProviderStore } from '@/stores/providers';
 import { hostApi, type ChannelGroupItem } from '@/lib/host-api';
 import { hostEvents } from '@/lib/host-events';
@@ -20,6 +19,7 @@ import { buildRuntimeProviderOptions, splitModelRef, type RuntimeProviderOption 
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { kernelDisplayName, kernelOptionsFor, type KernelOption, useKernelStore } from '@/stores/kernels';
 import telegramIcon from '@/assets/channels/telegram.svg';
 import discordIcon from '@/assets/channels/discord.svg';
 import whatsappIcon from '@/assets/channels/whatsapp.svg';
@@ -31,10 +31,16 @@ import qqIcon from '@/assets/channels/qq.svg';
 
 export function Agents() {
   const { t } = useTranslation('agents');
-  const gatewayStatus = useGatewayStore((state) => state.status);
   const refreshProviderSnapshot = useProviderStore((state) => state.refreshProviderSnapshot);
-  const lastGatewayStateRef = useRef(gatewayStatus.state);
   const { agents, loading, error, fetchAgents, createAgent, deleteAgent } = useAgentsStore();
+  const kernelCatalog = useKernelStore((state) => state.catalog);
+  const kernelOptions = useMemo(() => kernelOptionsFor(
+    kernelCatalog,
+    agents.flatMap(agent => [
+      ...agent.supportedKernels,
+      ...agent.projections.map(projection => projection.kernelId),
+    ]),
+  ), [agents, kernelCatalog]);
   const [channelGroups, setChannelGroups] = useState<ChannelGroupItem[]>([]);
   const [hasCompletedInitialLoad, setHasCompletedInitialLoad] = useState(() => agents.length > 0);
 
@@ -66,7 +72,7 @@ export function Agents() {
   }, [fetchAgents, fetchChannelAccounts, refreshProviderSnapshot]);
 
   useEffect(() => {
-    const unsubscribe = hostEvents.onGatewayChannelStatus(() => {
+    const unsubscribe = hostEvents.onChannelStatusChanged(() => {
       void fetchChannelAccounts();
     });
     return () => {
@@ -76,15 +82,9 @@ export function Agents() {
     };
   }, [fetchChannelAccounts]);
 
-  useEffect(() => {
-    const previousGatewayState = lastGatewayStateRef.current;
-    lastGatewayStateRef.current = gatewayStatus.state;
-
-    if (previousGatewayState !== 'running' && gatewayStatus.state === 'running') {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      void fetchChannelAccounts();
-    }
-  }, [fetchChannelAccounts, gatewayStatus.state]);
+  useEffect(() => hostEvents.onKernelStatusChanged(() => {
+    void fetchChannelAccounts();
+  }), [fetchChannelAccounts]);
 
   const activeAgent = useMemo(
     () => agents.find((agent) => agent.id === activeAgentId) ?? null,
@@ -165,6 +165,7 @@ export function Agents() {
       </div>
 
       <AddAgentDialog
+        kernelOptions={kernelOptions}
         open={showAddDialog}
         onClose={() => setShowAddDialog(false)}
         onCreate={async (name, options) => {
@@ -179,6 +180,7 @@ export function Agents() {
           open={!!activeAgent}
           agent={(activeAgent || settingsModalAgent)!}
           channelGroups={visibleChannelGroups}
+          kernelOptions={kernelOptions}
           onClose={() => setActiveAgentId(null)}
         />
       )}
@@ -222,6 +224,7 @@ function AgentCard({
   onDelete: () => void;
 }) {
   const { t } = useTranslation('agents');
+  const isDefault = agent.defaultForKernels.length > 0;
   const boundChannelAccounts = channelGroups.flatMap((group) =>
     group.accounts
       .filter((account) => account.agentId === agent.id)
@@ -238,7 +241,7 @@ function AgentCard({
     <div
       className={cn(
         'group flex items-start gap-4 p-4 rounded-2xl transition-all text-left border relative overflow-hidden bg-transparent border-transparent hover:bg-black/5 dark:hover:bg-white/5',
-        agent.isDefault && 'bg-black/[0.04] dark:bg-white/[0.06]',
+        isDefault && 'bg-black/[0.04] dark:bg-white/[0.06]',
       )}
     >
       <div className="h-[46px] w-[46px] shrink-0 flex items-center justify-center text-primary bg-primary/10 rounded-full shadow-sm mb-3">
@@ -248,18 +251,19 @@ function AgentCard({
         <div className="flex items-center justify-between gap-3 mb-1">
           <div className="flex items-center gap-2 min-w-0">
             <h2 className="text-base font-semibold text-foreground truncate">{agent.name}</h2>
-            {agent.isDefault && (
+            {agent.defaultForKernels.map((kernelId) => (
               <Badge
+                key={kernelId}
                 variant="secondary"
                 className="flex items-center gap-1 font-mono text-2xs font-medium px-2 py-0.5 rounded-full bg-black/[0.04] dark:bg-white/[0.08] border-0 shadow-none text-foreground/70"
               >
                 <Check className="h-3 w-3" />
-                {t('defaultBadge')}
+                {t('kernelDefaultBadge', { kernel: kernelDisplayName(kernelId) })}
               </Badge>
-            )}
+            ))}
           </div>
           <div className="flex items-center gap-1 shrink-0">
-            {!agent.isDefault && (
+            {!isDefault && (
               <Button
                 variant="ghost"
                 size="icon"
@@ -275,7 +279,7 @@ function AgentCard({
               size="icon"
               className={cn(
                 'h-7 w-7 text-muted-foreground hover:text-foreground hover:bg-black/5 dark:hover:bg-white/10 transition-all',
-                !agent.isDefault && 'opacity-0 group-hover:opacity-100',
+                !isDefault && 'opacity-0 group-hover:opacity-100',
               )}
               onClick={onOpenSettings}
               title={t('settings')}
@@ -293,6 +297,25 @@ function AgentCard({
         <p className="text-sm text-muted-foreground line-clamp-2 leading-[1.5]">
           {t('channelsLine', { channels: channelsText })}
         </p>
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {agent.projections.map((projection) => (
+            <Badge
+              key={projection.kernelId}
+              variant="outline"
+              data-testid={`agent-projection-${agent.id}-${projection.kernelId}`}
+              className={cn(
+                'font-mono text-2xs rounded-full border-black/10 dark:border-white/10',
+                projection.status === 'ready' && 'text-green-700 dark:text-green-400',
+                projection.status === 'failed' && 'text-red-700 dark:text-red-400',
+                (projection.status === 'pending' || projection.status === 'applying')
+                  && 'text-amber-700 dark:text-amber-400',
+              )}
+              title={projection.error || projection.nativeId}
+            >
+              {kernelDisplayName(projection.kernelId)} · {t(`projectionStatus.${projection.status}`)}
+            </Badge>
+          ))}
+        </div>
       </div>
     </div>
   );
@@ -331,14 +354,28 @@ function AddAgentDialog({
   open,
   onClose,
   onCreate,
+  kernelOptions,
 }: {
   open: boolean;
   onClose: () => void;
-  onCreate: (name: string, options: { inheritWorkspace: boolean }) => Promise<void>;
+  onCreate: (name: string, options: {
+    inheritWorkspace: boolean;
+    kernelIds: string[];
+    workspaceUri?: string;
+    description?: string;
+    persona?: string;
+    presetId?: string;
+  }) => Promise<void>;
+  kernelOptions: KernelOption[];
 }) {
   const { t } = useTranslation('agents');
   const [name, setName] = useState('');
   const [inheritWorkspace, setInheritWorkspace] = useState(false);
+  const [kernelIds, setKernelIds] = useState<string[]>(kernelOptions.map((kernel) => kernel.id));
+  const [workspaceUri, setWorkspaceUri] = useState('');
+  const [description, setDescription] = useState('');
+  const [persona, setPersona] = useState('');
+  const [presetId, setPresetId] = useState('');
   const [saving, setSaving] = useState(false);
   const [prevOpen, setPrevOpen] = useState(open);
 
@@ -347,15 +384,27 @@ function AddAgentDialog({
     if (open) {
       setName('');
       setInheritWorkspace(false);
+      setKernelIds(kernelOptions.map((kernel) => kernel.id));
+      setWorkspaceUri('');
+      setDescription('');
+      setPersona('');
+      setPresetId('');
       setSaving(false);
     }
   }
 
   const handleSubmit = async () => {
-    if (!name.trim()) return;
+    if (!name.trim() || kernelIds.length === 0) return;
     setSaving(true);
     try {
-      await onCreate(name.trim(), { inheritWorkspace });
+      await onCreate(name.trim(), {
+        inheritWorkspace,
+        kernelIds,
+        ...(workspaceUri.trim() ? { workspaceUri: workspaceUri.trim() } : {}),
+        ...(description.trim() ? { description: description.trim() } : {}),
+        ...(persona.trim() ? { persona: persona.trim() } : {}),
+        ...(presetId.trim() ? { presetId: presetId.trim() } : {}),
+      });
     } catch (error) {
       toast.error(t('toast.agentCreateFailed', { error: String(error) }));
       setSaving(false);
@@ -368,7 +417,7 @@ function AddAgentDialog({
     <Dialog open={open} onOpenChange={(nextOpen) => !nextOpen && onClose()}>
       <DialogContent
         asChild
-        className="w-[calc(100%-2rem)] max-w-md rounded-3xl border-0 shadow-2xl bg-surface-modal overflow-hidden"
+        className="w-[calc(100%-2rem)] max-w-md max-h-[90vh] rounded-3xl border-0 shadow-2xl bg-surface-modal overflow-y-auto"
       >
         <Card data-testid="add-agent-dialog">
           <CardHeader className="pb-2">
@@ -396,6 +445,69 @@ function AddAgentDialog({
                 className={inputClasses}
               />
             </div>
+            <div className="space-y-2.5">
+              <Label className={labelClasses}>{t('createDialog.kernelsLabel')}</Label>
+              <div className="space-y-2">
+                {kernelOptions.map((kernel) => {
+                  const checked = kernelIds.includes(kernel.id);
+                  return (
+                    <div key={kernel.id} className="flex items-center justify-between rounded-xl bg-black/5 dark:bg-white/5 p-3">
+                      <span className="text-sm text-foreground">{kernel.label}</span>
+                      <Switch
+                        data-testid={`agent-create-kernel-${kernel.id}`}
+                        checked={checked}
+                        onCheckedChange={(enabled) => setKernelIds((current) => (
+                          enabled
+                            ? [...new Set([...current, kernel.id])]
+                            : current.filter((candidate) => candidate !== kernel.id)
+                        ))}
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+              {kernelIds.length === 0 && <p className="text-xs text-destructive">{t('createDialog.kernelRequired')}</p>}
+            </div>
+            <div className="space-y-2.5">
+              <Label htmlFor="agent-description" className={labelClasses}>{t('createDialog.descriptionLabel')}</Label>
+              <Input
+                id="agent-description"
+                value={description}
+                onChange={(event) => setDescription(event.target.value)}
+                placeholder={t('createDialog.descriptionPlaceholder')}
+                className={inputClasses}
+              />
+            </div>
+            <div className="space-y-2.5">
+              <Label htmlFor="agent-workspace" className={labelClasses}>{t('createDialog.workspaceLabel')}</Label>
+              <Input
+                id="agent-workspace"
+                value={workspaceUri}
+                onChange={(event) => setWorkspaceUri(event.target.value)}
+                placeholder={t('createDialog.workspacePlaceholder')}
+                className={inputClasses}
+              />
+            </div>
+            <div className="space-y-2.5">
+              <Label htmlFor="agent-persona" className={labelClasses}>{t('createDialog.personaLabel')}</Label>
+              <textarea
+                id="agent-persona"
+                value={persona}
+                onChange={(event) => setPersona(event.target.value)}
+                placeholder={t('createDialog.personaPlaceholder')}
+                className={cn(inputClasses, 'min-h-24 h-auto w-full p-3')}
+              />
+            </div>
+            <div className="space-y-2.5">
+              <Label htmlFor="agent-preset" className={labelClasses}>{t('createDialog.presetLabel')}</Label>
+              <Input
+                id="agent-preset"
+                value={presetId}
+                onChange={(event) => setPresetId(event.target.value)}
+                placeholder={t('createDialog.presetPlaceholder')}
+                className={inputClasses}
+              />
+            </div>
             <div className="flex items-center justify-between">
               <div className="space-y-0.5">
                 <Label htmlFor="inherit-workspace" className={labelClasses}>
@@ -415,7 +527,7 @@ function AddAgentDialog({
               </Button>
               <Button
                 onClick={() => void handleSubmit()}
-                disabled={saving || !name.trim()}
+                disabled={saving || !name.trim() || kernelIds.length === 0}
                 className="h-9 text-meta font-medium rounded-full px-4 shadow-none"
               >
                 {saving ? (
@@ -439,24 +551,37 @@ function AgentSettingsModal({
   open,
   agent,
   channelGroups,
+  kernelOptions,
   onClose,
 }: {
   open: boolean;
   agent: AgentSummary;
   channelGroups: ChannelGroupItem[];
+  kernelOptions: KernelOption[];
   onClose: () => void;
 }) {
   const { t } = useTranslation('agents');
-  const { updateAgent, defaultModelRef } = useAgentsStore();
+  const { updateAgent, defaultModelRef, setKernelDefault, reconcileAgent } = useAgentsStore();
   const [name, setName] = useState(agent.name);
-  const [savingName, setSavingName] = useState(false);
+  const [description, setDescription] = useState(agent.description ?? '');
+  const [workspaceUri, setWorkspaceUri] = useState(agent.workspace);
+  const [persona, setPersona] = useState(agent.persona ?? '');
+  const [presetId, setPresetId] = useState(agent.presetId ?? '');
+  const [kernelIds, setKernelIds] = useState<string[]>(agent.supportedKernels);
+  const [savingDetails, setSavingDetails] = useState(false);
+  const [savingKernel, setSavingKernel] = useState<string | null>(null);
   const [showModelModal, setShowModelModal] = useState(false);
   const [showCloseConfirm, setShowCloseConfirm] = useState(false);
   const [prevOpen, setPrevOpen] = useState(open);
 
   useEffect(() => {
     setName(agent.name);
-  }, [agent.name]);
+    setDescription(agent.description ?? '');
+    setWorkspaceUri(agent.workspace);
+    setPersona(agent.persona ?? '');
+    setPresetId(agent.presetId ?? '');
+    setKernelIds(agent.supportedKernels);
+  }, [agent]);
 
   if (prevOpen !== open) {
     setPrevOpen(open);
@@ -464,29 +589,61 @@ function AgentSettingsModal({
       setShowModelModal(false);
       setShowCloseConfirm(false);
       setName(agent.name);
+      setDescription(agent.description ?? '');
+      setWorkspaceUri(agent.workspace);
+      setPersona(agent.persona ?? '');
+      setPresetId(agent.presetId ?? '');
+      setKernelIds(agent.supportedKernels);
     }
   }
 
-  const hasNameChanges = name.trim() !== agent.name;
+  const hasDetailChanges = name.trim() !== agent.name
+    || description.trim() !== (agent.description ?? '')
+    || workspaceUri.trim() !== agent.workspace
+    || persona.trim() !== (agent.persona ?? '')
+    || presetId.trim() !== (agent.presetId ?? '')
+    || [...kernelIds].sort().join('|') !== [...agent.supportedKernels].sort().join('|');
 
   const handleRequestClose = () => {
-    if (savingName || hasNameChanges) {
+    if (savingDetails || hasDetailChanges) {
       setShowCloseConfirm(true);
       return;
     }
     onClose();
   };
 
-  const handleSaveName = async () => {
-    if (!name.trim() || name.trim() === agent.name) return;
-    setSavingName(true);
+  const handleSaveDetails = async () => {
+    if (!name.trim() || !workspaceUri.trim() || kernelIds.length === 0 || !hasDetailChanges) return;
+    setSavingDetails(true);
     try {
-      await updateAgent(agent.id, name.trim());
+      await updateAgent(agent.id, {
+        name: name.trim(),
+        description: description.trim(),
+        workspaceUri: workspaceUri.trim(),
+        persona: persona.trim(),
+        presetId: presetId.trim(),
+        kernelIds,
+      });
       toast.success(t('toast.agentUpdated'));
     } catch (error) {
       toast.error(t('toast.agentUpdateFailed', { error: String(error) }));
     } finally {
-      setSavingName(false);
+      setSavingDetails(false);
+    }
+  };
+
+  const handleKernelAction = async (kernelId: string, action: 'default' | 'reconcile') => {
+    setSavingKernel(`${kernelId}:${action}`);
+    try {
+      if (action === 'default') await setKernelDefault(agent.id, kernelId);
+      else await reconcileAgent(agent.id, [kernelId]);
+      toast.success(t(action === 'default' ? 'toast.agentDefaultUpdated' : 'toast.agentReconciled'));
+    } catch (error) {
+      toast.error(t(action === 'default' ? 'toast.agentDefaultUpdateFailed' : 'toast.agentReconcileFailed', {
+        error: String(error),
+      }));
+    } finally {
+      setSavingKernel(null);
     }
   };
 
@@ -541,20 +698,57 @@ function AgentSettingsModal({
                     id="agent-settings-name"
                     value={name}
                     onChange={(event) => setName(event.target.value)}
-                    readOnly={agent.isDefault}
                     className={inputClasses}
                   />
-                  {!agent.isDefault && (
-                    <Button
-                      variant="outline"
-                      onClick={() => void handleSaveName()}
-                      disabled={savingName || !name.trim() || name.trim() === agent.name}
-                      className="h-[44px] text-meta font-medium rounded-xl px-4 border-black/10 dark:border-white/10 bg-transparent hover:bg-black/5 dark:hover:bg-white/5 shadow-none text-foreground/80 hover:text-foreground"
-                    >
-                      {savingName ? <RefreshCw className="h-4 w-4 animate-spin" /> : t('common:actions.save')}
-                    </Button>
-                  )}
                 </div>
+              </div>
+
+              <div className="space-y-2.5">
+                <Label htmlFor="agent-settings-description" className={labelClasses}>
+                  {t('settingsDialog.descriptionLabel')}
+                </Label>
+                <Input
+                  id="agent-settings-description"
+                  value={description}
+                  onChange={(event) => setDescription(event.target.value)}
+                  className={inputClasses}
+                />
+              </div>
+
+              <div className="space-y-2.5">
+                <Label htmlFor="agent-settings-workspace" className={labelClasses}>
+                  {t('settingsDialog.workspaceLabel')}
+                </Label>
+                <Input
+                  id="agent-settings-workspace"
+                  value={workspaceUri}
+                  onChange={(event) => setWorkspaceUri(event.target.value)}
+                  className={inputClasses}
+                />
+              </div>
+
+              <div className="space-y-2.5">
+                <Label htmlFor="agent-settings-persona" className={labelClasses}>
+                  {t('settingsDialog.personaLabel')}
+                </Label>
+                <textarea
+                  id="agent-settings-persona"
+                  value={persona}
+                  onChange={(event) => setPersona(event.target.value)}
+                  className={cn(inputClasses, 'min-h-28 h-auto w-full p-3')}
+                />
+              </div>
+
+              <div className="space-y-2.5">
+                <Label htmlFor="agent-settings-preset" className={labelClasses}>
+                  {t('settingsDialog.presetLabel')}
+                </Label>
+                <Input
+                  id="agent-settings-preset"
+                  value={presetId}
+                  onChange={(event) => setPresetId(event.target.value)}
+                  className={inputClasses}
+                />
               </div>
 
               <div className="grid gap-4 md:grid-cols-2">
@@ -580,6 +774,88 @@ function AgentSettingsModal({
                     {agent.modelRef || defaultModelRef || '-'}
                   </p>
                 </button>
+              </div>
+
+              <div className="space-y-3">
+                <div>
+                  <h3 className="text-xl font-serif text-foreground font-normal tracking-tight">
+                    {t('settingsDialog.kernelsTitle')}
+                  </h3>
+                  <p className="text-sm text-foreground/70 mt-1">{t('settingsDialog.kernelsDescription')}</p>
+                </div>
+                {kernelOptions.map((kernel) => {
+                  const supported = kernelIds.includes(kernel.id);
+                  const projection = agent.projections.find((candidate) => candidate.kernelId === kernel.id);
+                  const isDefault = agent.defaultForKernels.includes(kernel.id);
+                  return (
+                    <div
+                      key={kernel.id}
+                      data-testid={`agent-kernel-row-${kernel.id}`}
+                      className="rounded-2xl bg-black/5 dark:bg-white/5 border border-transparent p-4 space-y-3"
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-semibold text-foreground">{kernel.label}</p>
+                          <p className="text-xs text-muted-foreground font-mono">
+                            {projection
+                              ? `${t(`projectionStatus.${projection.status}`)}${projection.nativeId ? ` · ${projection.nativeId}` : ''}`
+                              : t('projectionStatus.notProjected')}
+                          </p>
+                          {projection?.error && <p className="text-xs text-destructive mt-1">{projection.error}</p>}
+                        </div>
+                        <Switch
+                          checked={supported}
+                          aria-label={t('settingsDialog.kernelEnabled', { kernel: kernel.label })}
+                          onCheckedChange={(enabled) => setKernelIds((current) => (
+                            enabled
+                              ? [...new Set([...current, kernel.id])]
+                              : current.filter((candidate) => candidate !== kernel.id)
+                          ))}
+                        />
+                      </div>
+                      {agent.supportedKernels.includes(kernel.id) && (
+                        <div className="flex flex-wrap gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            disabled={isDefault || savingKernel !== null}
+                            onClick={() => void handleKernelAction(kernel.id, 'default')}
+                            className="rounded-full bg-transparent"
+                          >
+                            {isDefault ? <Check className="h-3.5 w-3.5 mr-1.5" /> : null}
+                            {isDefault ? t('settingsDialog.kernelDefault') : t('settingsDialog.makeKernelDefault')}
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            disabled={savingKernel !== null}
+                            onClick={() => void handleKernelAction(kernel.id, 'reconcile')}
+                            className="rounded-full"
+                          >
+                            <RefreshCw className={cn(
+                              'h-3.5 w-3.5 mr-1.5',
+                              savingKernel === `${kernel.id}:reconcile` && 'animate-spin',
+                            )} />
+                            {t('settingsDialog.retryProjection')}
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+                {kernelIds.length === 0 && <p className="text-xs text-destructive">{t('createDialog.kernelRequired')}</p>}
+              </div>
+
+              <div className="flex justify-end">
+                <Button
+                  data-testid="agent-settings-save"
+                  onClick={() => void handleSaveDetails()}
+                  disabled={savingDetails || !hasDetailChanges || !name.trim() || !workspaceUri.trim() || kernelIds.length === 0}
+                  className="h-9 text-meta font-medium rounded-full px-4 shadow-none"
+                >
+                  {savingDetails ? <RefreshCw className="h-4 w-4 animate-spin mr-2" /> : null}
+                  {t('common:actions.save')}
+                </Button>
               </div>
             </div>
 
@@ -641,6 +917,11 @@ function AgentSettingsModal({
         onConfirm={() => {
           setShowCloseConfirm(false);
           setName(agent.name);
+          setDescription(agent.description ?? '');
+          setWorkspaceUri(agent.workspace);
+          setPersona(agent.persona ?? '');
+          setPresetId(agent.presetId ?? '');
+          setKernelIds(agent.supportedKernels);
           onClose();
         }}
         onCancel={() => setShowCloseConfirm(false)}

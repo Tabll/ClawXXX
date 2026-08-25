@@ -8,17 +8,25 @@ const subscribeHostEventMock = vi.fn();
 const fetchAgentsMock = vi.fn();
 const updateAgentMock = vi.fn();
 const updateAgentModelMock = vi.fn();
+const setKernelDefaultMock = vi.fn();
+const reconcileAgentMock = vi.fn();
 const refreshProviderSnapshotMock = vi.fn();
 
-const { gatewayState, agentsState, providersState } = vi.hoisted(() => ({
-  gatewayState: {
-    status: { state: 'running', port: 18789 },
-  },
+const { agentsState, kernelState, providersState } = vi.hoisted(() => ({
   agentsState: {
     agents: [] as Array<Record<string, unknown>>,
+    kernelDefaults: [] as Array<Record<string, unknown>>,
     defaultModelRef: null as string | null,
     loading: false,
     error: null as string | null,
+  },
+  kernelState: {
+    catalog: {
+      entries: [
+        { kernelId: 'openclaw', displayName: 'OpenClaw' },
+        { kernelId: 'deepseek-harness', displayName: 'DeepSeek Harness' },
+      ],
+    },
   },
   providersState: {
     accounts: [] as Array<Record<string, unknown>>,
@@ -28,15 +36,21 @@ const { gatewayState, agentsState, providersState } = vi.hoisted(() => ({
   },
 }));
 
-vi.mock('@/stores/gateway', () => ({
-  useGatewayStore: (selector: (state: typeof gatewayState) => unknown) => selector(gatewayState),
-}));
+vi.mock('@/stores/kernels', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/stores/kernels')>();
+  return {
+    ...actual,
+    useKernelStore: (selector: (state: typeof kernelState) => unknown) => selector(kernelState),
+  };
+});
 
 vi.mock('@/stores/agents', () => ({
   useAgentsStore: (selector?: (state: typeof agentsState & {
     fetchAgents: typeof fetchAgentsMock;
     updateAgent: typeof updateAgentMock;
     updateAgentModel: typeof updateAgentModelMock;
+    setKernelDefault: typeof setKernelDefaultMock;
+    reconcileAgent: typeof reconcileAgentMock;
     createAgent: ReturnType<typeof vi.fn>;
     deleteAgent: ReturnType<typeof vi.fn>;
   }) => unknown) => {
@@ -45,6 +59,8 @@ vi.mock('@/stores/agents', () => ({
       fetchAgents: fetchAgentsMock,
       updateAgent: updateAgentMock,
       updateAgentModel: updateAgentModelMock,
+      setKernelDefault: setKernelDefaultMock,
+      reconcileAgent: reconcileAgentMock,
       createAgent: vi.fn(),
       deleteAgent: vi.fn(),
     };
@@ -74,7 +90,8 @@ vi.mock('@/lib/host-api', () => ({
 
 vi.mock('@/lib/host-events', () => ({
   hostEvents: {
-    onGatewayChannelStatus: (handler: unknown) => subscribeHostEventMock('gateway:channel-status', handler),
+    onChannelStatusChanged: (handler: unknown) => subscribeHostEventMock('channels:status-changed', handler),
+    onKernelStatusChanged: (handler: unknown) => subscribeHostEventMock('kernels:status-changed', handler),
   },
 }));
 
@@ -95,8 +112,8 @@ vi.mock('sonner', () => ({
 describe('Agents page status refresh', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    gatewayState.status = { state: 'running', port: 18789 };
     agentsState.agents = [];
+    agentsState.kernelDefaults = [];
     agentsState.defaultModelRef = null;
     providersState.accounts = [];
     providersState.statuses = [];
@@ -105,6 +122,8 @@ describe('Agents page status refresh', () => {
     fetchAgentsMock.mockResolvedValue(undefined);
     updateAgentMock.mockResolvedValue(undefined);
     updateAgentModelMock.mockResolvedValue(undefined);
+    setKernelDefaultMock.mockResolvedValue(undefined);
+    reconcileAgentMock.mockResolvedValue(undefined);
     refreshProviderSnapshotMock.mockResolvedValue(undefined);
     channelsAccountsMock.mockResolvedValue({
       success: true,
@@ -112,10 +131,10 @@ describe('Agents page status refresh', () => {
     });
   });
 
-  it('refetches channel accounts when gateway channel-status events arrive', async () => {
+  it('refetches channel accounts when canonical channel status events arrive', async () => {
     let channelStatusHandler: (() => void) | undefined;
     subscribeHostEventMock.mockImplementation((eventName: string, handler: () => void) => {
-      if (eventName === 'gateway:channel-status') {
+      if (eventName === 'channels:status-changed') {
         channelStatusHandler = handler;
       }
       return vi.fn();
@@ -127,7 +146,7 @@ describe('Agents page status refresh', () => {
       expect(fetchAgentsMock).toHaveBeenCalledTimes(1);
       expect(channelsAccountsMock).toHaveBeenCalledWith();
     });
-    expect(subscribeHostEventMock).toHaveBeenCalledWith('gateway:channel-status', expect.any(Function));
+    expect(subscribeHostEventMock).toHaveBeenCalledWith('channels:status-changed', expect.any(Function));
 
     await act(async () => {
       channelStatusHandler?.();
@@ -138,19 +157,22 @@ describe('Agents page status refresh', () => {
     });
   });
 
-  it('refetches channel accounts when the gateway transitions to running after mount', async () => {
-    gatewayState.status = { state: 'starting', port: 18789 };
+  it('refetches channel accounts when any kernel lifecycle changes', async () => {
+    let kernelStatusHandler: (() => void) | undefined;
+    subscribeHostEventMock.mockImplementation((eventName: string, handler: () => void) => {
+      if (eventName === 'kernels:status-changed') kernelStatusHandler = handler;
+      return vi.fn();
+    });
 
-    const { rerender } = render(<Agents />);
+    render(<Agents />);
 
     await waitFor(() => {
       expect(fetchAgentsMock).toHaveBeenCalledTimes(1);
       expect(channelsAccountsMock).toHaveBeenCalledWith();
     });
 
-    gatewayState.status = { state: 'running', port: 18789 };
     await act(async () => {
-      rerender(<Agents />);
+      kernelStatusHandler?.();
     });
 
     await waitFor(() => {
@@ -158,9 +180,7 @@ describe('Agents page status refresh', () => {
     });
   });
 
-  it('does not render the legacy gateway warning during transient stopped status', async () => {
-    gatewayState.status = { state: 'stopped', port: 18789 };
-
+  it('does not render the removed legacy gateway warning', async () => {
     render(<Agents />);
 
     await waitFor(() => {
@@ -175,7 +195,6 @@ describe('Agents page status refresh', () => {
       {
         id: 'main',
         name: 'Main',
-        isDefault: true,
         modelDisplay: 'claude-opus-4.6',
         modelRef: 'openrouter/anthropic/claude-opus-4.6',
         overrideModelRef: null,
@@ -184,6 +203,19 @@ describe('Agents page status refresh', () => {
         agentDir: '~/.openclaw/agents/main/agent',
         mainSessionKey: 'agent:main:desk',
         channelTypes: [],
+        supportedKernels: ['openclaw', 'deepseek-harness'],
+        defaultForKernels: ['openclaw'],
+        projections: [
+          {
+            kernelId: 'openclaw',
+            status: 'ready',
+            desiredVersion: 1,
+            appliedVersion: 1,
+            nativeId: 'main',
+            updatedAt: '2026-03-24T00:00:00.000Z',
+          },
+        ],
+        version: 1,
       },
     ];
     agentsState.defaultModelRef = 'openrouter/anthropic/claude-opus-4.6';
@@ -236,7 +268,6 @@ describe('Agents page status refresh', () => {
       {
         id: 'main',
         name: 'Main',
-        isDefault: true,
         modelDisplay: 'gpt-5',
         modelRef: 'openai/gpt-5',
         overrideModelRef: null,
@@ -245,6 +276,10 @@ describe('Agents page status refresh', () => {
         agentDir: '~/.openclaw/agents/main/agent',
         mainSessionKey: 'agent:main:main',
         channelTypes: [],
+        supportedKernels: ['openclaw', 'deepseek-harness'],
+        defaultForKernels: ['openclaw', 'deepseek-harness'],
+        projections: [],
+        version: 1,
       },
     ];
 

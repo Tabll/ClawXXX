@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
+import { asConversationId } from '@shared/conversations/contracts';
 
 const hostInvoke = vi.fn();
 
@@ -107,20 +108,48 @@ describe('hostApi facade', () => {
     }));
   });
 
-  it('routes the typed Dreams Control UI view through hostInvoke', async () => {
+  it('routes kernel-scoped lifecycle and log operations through hostInvoke', async () => {
+    hostInvoke
+      .mockResolvedValueOnce({ id: 'req-1', ok: true, data: { kernelId: 'openclaw', state: 'ready', generation: 1, diagnostics: [] } })
+      .mockResolvedValueOnce({ id: 'req-2', ok: true, data: [] })
+      .mockResolvedValueOnce({ id: 'req-3', ok: true, data: { kernelId: 'openclaw', state: 'ready', generation: 1, diagnostics: [] } });
+    const { hostApi } = await import('@/lib/host-api');
+
+    await hostApi.kernels.start('openclaw');
+    await hostApi.kernels.logs('openclaw', { afterSequence: 4, limit: 20 });
+    await hostApi.kernels.setAutoStart('openclaw', false);
+
+    expect(hostInvoke).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      module: 'kernels',
+      action: 'start',
+      payload: { kernelId: 'openclaw' },
+    }));
+    expect(hostInvoke).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      module: 'kernels',
+      action: 'logs',
+      payload: { kernelId: 'openclaw', afterSequence: 4, limit: 20 },
+    }));
+    expect(hostInvoke).toHaveBeenNthCalledWith(3, expect.objectContaining({
+      module: 'kernels',
+      action: 'setAutoStart',
+      payload: { kernelId: 'openclaw', enabled: false },
+    }));
+  });
+
+  it('routes Dreams through the allowlisted extension without exposing a Gateway URL or token', async () => {
     hostInvoke.mockResolvedValueOnce({
       id: 'req',
       ok: true,
-      data: { success: true, url: 'http://127.0.0.1:18789/dreaming#token=test' },
+      data: { success: true },
     });
     const { hostApi } = await import('@/lib/host-api');
 
-    await expect(hostApi.gateway.controlUi('dreams')).resolves.toMatchObject({ success: true });
+    await expect(hostApi.openClawDreams.openFullUi()).resolves.toEqual({ success: true });
     expect(hostInvoke).toHaveBeenCalledWith(expect.objectContaining({
-      module: 'gateway',
-      action: 'controlUi',
-      payload: { view: 'dreams' },
+      module: 'openClawDreams',
+      action: 'openFullUi',
     }));
+    expect(JSON.stringify(hostInvoke.mock.calls)).not.toContain('token=');
   });
 
   it('routes local HTML preview operations through hostInvoke', async () => {
@@ -269,13 +298,13 @@ describe('hostApi facade', () => {
     }));
   });
 
-  it('calls sessions.pin through hostInvoke', async () => {
+  it('calls conversations.pin through hostInvoke', async () => {
     hostInvoke.mockResolvedValueOnce({ id: 'req', ok: true, data: { success: true } });
     const { hostApi } = await import('@/lib/host-api');
 
-    await expect(hostApi.sessions.pin('agent:main:session-a', true)).resolves.toEqual({ success: true });
+    await expect(hostApi.conversations.pin(asConversationId('agent:main:session-a'), true)).resolves.toEqual({ success: true });
     expect(hostInvoke).toHaveBeenCalledWith(expect.objectContaining({
-      module: 'sessions',
+      module: 'conversations',
       action: 'pin',
       payload: { id: 'agent:main:session-a', pinned: true },
     }));
@@ -449,21 +478,21 @@ describe('hostApi facade', () => {
   it('routes ACP chat methods through hostInvoke', async () => {
     hostInvoke
       .mockResolvedValueOnce({ id: 'req-1', ok: true, data: { success: true, generation: 1 } })
-      .mockResolvedValueOnce({ id: 'req-2', ok: true, data: { success: true, generation: 2 } })
-      .mockResolvedValueOnce({ id: 'req-3', ok: true, data: { success: true } })
-      .mockResolvedValueOnce({ id: 'req-4', ok: true, data: { success: true, configOptions: [] } })
+      .mockResolvedValueOnce({ id: 'req-2', ok: true, data: { success: true } })
+      .mockResolvedValueOnce({ id: 'req-3', ok: true, data: { success: true, configOptions: [] } })
+      .mockResolvedValueOnce({ id: 'req-4', ok: true, data: { success: true } })
       .mockResolvedValueOnce({ id: 'req-5', ok: true, data: { success: true } });
     const { hostApi } = await import('@/lib/host-api');
 
     expect(Object.keys(hostApi.chat)).toEqual([
-      'loadAcpSession',
+      'selectConversationKernel',
       'sendAcpPrompt',
       'cancelAcpSession',
       'setAcpSessionConfigOption',
       'respondAcpPermission',
     ]);
 
-    await hostApi.chat.loadAcpSession({
+    await hostApi.chat.selectConversationKernel({
       sessionKey: 'main',
       workspaceRoot: '/workspace',
       cwd: '/workspace/project',
@@ -487,7 +516,7 @@ describe('hostApi facade', () => {
 
     expect(hostInvoke).toHaveBeenNthCalledWith(1, expect.objectContaining({
       module: 'chat',
-      action: 'loadAcpSession',
+      action: 'selectConversationKernel',
       payload: { sessionKey: 'main', workspaceRoot: '/workspace', cwd: '/workspace/project' },
     }));
     expect(hostInvoke).toHaveBeenNthCalledWith(2, expect.objectContaining({
@@ -512,26 +541,27 @@ describe('hostApi facade', () => {
     }));
   });
 
-  it('calls sessions.summaries through hostInvoke', async () => {
-    hostInvoke.mockResolvedValueOnce({ id: 'req', ok: true, data: { success: true, summaries: [] } });
+  it('calls conversations.list through hostInvoke', async () => {
+    hostInvoke.mockResolvedValueOnce({ id: 'req', ok: true, data: { items: [] } });
     const { hostApi } = await import('@/lib/host-api');
 
-    await hostApi.sessions.summaries({ limit: 20 });
+    await hostApi.conversations.list({ limit: 20 });
     expect(hostInvoke).toHaveBeenCalledWith(expect.objectContaining({
-      module: 'sessions',
-      action: 'summaries',
+      module: 'conversations',
+      action: 'list',
+      payload: { limit: 20 },
     }));
   });
 
-  it('calls sessions.turnTimings through hostInvoke', async () => {
-    hostInvoke.mockResolvedValueOnce({ id: 'req', ok: true, data: { success: true, timings: [] } });
+  it('calls conversations.get through hostInvoke', async () => {
+    hostInvoke.mockResolvedValueOnce({ id: 'req', ok: true, data: null });
     const { hostApi } = await import('@/lib/host-api');
 
-    await hostApi.sessions.turnTimings({ sessionKey: 'agent:main:main', limit: 1000 });
+    await hostApi.conversations.get(asConversationId('agent:main:main'));
     expect(hostInvoke).toHaveBeenCalledWith(expect.objectContaining({
-      module: 'sessions',
-      action: 'turnTimings',
-      payload: { sessionKey: 'agent:main:main', limit: 1000 },
+      module: 'conversations',
+      action: 'get',
+      payload: { id: 'agent:main:main' },
     }));
   });
 
@@ -905,5 +935,18 @@ describe('hostApi facade', () => {
     expect(builtinIndex).toContain("registerBuiltinExtension('builtin/diagnostics', createDiagnosticsExtension);");
     expect(diagnosticsExtension).toContain('getHostApiContributions');
     expect(diagnosticsExtension).not.toContain('HostApiRouteExtension');
+  });
+
+  it('enables the OpenClaw Dreams extension through the generated bridge manifest', () => {
+    const manifest = JSON.parse(readFileSync(join(process.cwd(), 'clawx-extensions.json'), 'utf8')) as {
+      extensions: { main: string[] };
+    };
+    const builtinIndex = readFileSync(join(process.cwd(), 'electron/extensions/builtin/index.ts'), 'utf8');
+    const dreamsExtension = readFileSync(join(process.cwd(), 'electron/extensions/builtin/openclaw-dreams.ts'), 'utf8');
+
+    expect(manifest.extensions.main).toContain('builtin/openclaw-dreams');
+    expect(builtinIndex).toContain("registerBuiltinExtension('builtin/openclaw-dreams', createOpenClawDreamsExtension);");
+    expect(dreamsExtension).toContain("supportedKernels = ['openclaw']");
+    expect(dreamsExtension).toContain("module: 'openClawDreams'");
   });
 });

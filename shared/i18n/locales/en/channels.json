@@ -9,6 +9,12 @@
         "disconnected": "Disconnected"
     },
     "gatewayWarning": "Gateway service is not running. Channels cannot connect.",
+    "kernel": { "openclaw": "OpenClaw", "deepseek-harness": "DeepSeek Harness" },
+    "kernelHealth": {
+        "title": "A channel kernel is unavailable",
+        "description": "Saved accounts and bindings are preserved. Start or restart the affected kernel to resume delivery.",
+        "restart": "Restart kernel"
+    },
     "availableChannels": "Available Channels",
     "supportedChannels": "Supported Channels",
     "available": "Available Channels",
@@ -32,7 +38,8 @@
         "bindingUpdated": "Account binding updated",
         "defaultUpdated": "Default account updated",
         "accountDeleted": "Account deleted",
-        "channelDeleted": "Channel deleted"
+        "channelDeleted": "Channel deleted",
+        "noCompatibleAgent": "No Agent supports {{kernel}}"
     },
     "account": {
         "add": "Add Account",
@@ -43,6 +50,8 @@
         "default": "Current Default",
         "setDefault": "Set as channel default",
         "bindAgentLabel": "Bound Agent",
+        "bindKernelLabel": "Kernel",
+        "deliveryDiagnostics": "Retrying: {{retrying}} · Dead letters: {{deadLetter}}",
         "unassigned": "Unassigned",
         "mainAccount": "Primary Account",
         "customIdLabel": "Account ID",
@@ -98,6 +107,7 @@
         "generateQRCode": "Generate QR Code",
         "updateAndReconnect": "Update & Reconnect",
         "saveAndConnect": "Save & Connect",
+        "secretConfiguredPlaceholder": "Stored securely — leave blank to keep the existing credential",
         "envVar": "Environment Variable: {{var}}"
     },
     "health": {

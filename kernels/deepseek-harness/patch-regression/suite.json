@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "upstreamCommit": "b150a551b8d465e31e418e1b2eaf5e79bbb7d28e",
+  "upstreamLockSha256": "6f20c268e76df1294c16f016ab10a7fa1271608b4db0f4fafe8f7c21ec90013e",
+  "preparedLockSha256": "e92720e4911c551ff76484ecb29344e05d5cb5cb17a069d09cd368ce2e316a96",
+  "workspacePackages": [
+    "@clawx/dsh-rich-events",
+    "@clawx/dsh-acp-bridge",
+    "@clawx/dsh-agent-catalog",
+    "@clawx/dsh-control-bridge",
+    "@clawx/dsh-credential-provider",
+    "@clawx/dsh-runtime-host",
+    "@clawx/dsh-clawx-persistence"
+  ],
+  "commands": [
+    "pnpm install --frozen-lockfile",
+    "pnpm run build:lib:host",
+    "pnpm exec vitest run packages/acp/clawx-rich-events/tests packages/acp/clawx-acp-bridge/tests packages/agents/clawx-dsh-agent-catalog/tests packages/control/clawx-control-bridge/tests packages/credentials/clawx-dsh-credential-provider/tests packages/runtime/clawx-runtime-host/tests packages/session/session-persistence-clawx/tests",
+    "pnpm --filter @clawx/dsh-runtime-host deploy --prod --legacy ../kernel-payload"
+  ],
+  "requiredStorageScenarios": [
+    "new",
+    "prompt",
+    "cancel",
+    "compact",
+    "branch",
+    "restart",
+    "cron",
+    "channel"
+  ]
+}

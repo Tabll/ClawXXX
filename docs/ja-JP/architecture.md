@@ -2,40 +2,48 @@
 
 このドキュメントは、READMEの「アーキテクチャ」セクションの詳細版です。
 
-ClawXは **統合Host APIレイヤーを備えたデュアルプロセスアーキテクチャ**を採用しています。Rendererは単一のクライアント抽象を呼び出し、プロトコル選択とプロセスライフサイクルはElectron Mainが管理します。
+## ClawX 0.6 マルチカーネルauthority
 
-OpenClawの設定配信もElectron Mainが管理します。Gateway実行中は`config.get`が返す権威あるスナップショットを基準にし、変更を`config.set`でコミットします。Gatewayが停止中または起動中の場合は、同じコーディネーターが解決済みJSON5設定ファイルを更新しますが、これを理由にGatewayを起動することはありません。そのため、通常のプロバイダー、Agent、チャネル、バインディング、スキル、モデルの変更ではGatewayプロセスを置き換えません。完全な再起動は、プロキシなどのプロセス起動環境の変更と、ユーザーによる明示的な操作に限られます。確認済みのプロセス終了とWebSocket切断では、既存の自動再接続経路が引き続き使用されます。WebSocketハートビートの連続3回までの欠落は診断のみとし、短いpong遅延で長時間実行中の処理を中断しません。pongまたは任意の受信メッセージでカウントをリセットし、4回連続で欠落した場合に、ライフサイクルが自動復旧可能なrunning状態であれば、保護されたGateway自動復旧を要求します。認証設定をSQLiteへ書き込んだ後はOpenClawの`secrets.reload`を呼び出し、実行中のAgentがプロセス再起動なしで新しい認証情報を読み取れるようにします。
+ClawXはoptionalかつ独立versionのkernel hostになりました。OpenClawはbase installerに含まれず、OpenClawとDeepSeek Harnessは署名済みCI runtime artifactからinstallし同時実行できます。既存Rendererを完全共有し、upstream session/config protocolではなくClawX canonical domain contractだけを扱います。
 
-ChatはElectron Mainが所有するACP stdio bridgeを使用します。Mainはアプリが管理するGateway tokenをプライベートなプロセス環境経由でローカルの子プロセスへ渡すため、ランタイム設定の再読み込み後もACP履歴リプレイの認証が維持されます。保護されたGateway復旧が受理済みのメインセッションrunを中断した場合、パッチ済みOpenClawランタイムは別の復旧runを開始し、中断されたrun idを明示的なlineageとして保持します。Chat eventとagent eventはそのlineageを維持し、再接続したACP bridgeはpending promptを新しいrunへ引き継ぎ、run単位のストリームカーソルをリセットしてセッション単位のtool eventを購読します。RendererはGatewayランタイムの識別子を認識せず、型付きhost eventから同じメモリ内ACP timelineを描画し続けます。Gatewayはproviders、models、skills、workspace、settings、diagnostics、media configurationなどの非Chat機能を引き続き担当します。
+```text
+React Renderer -> typed Host API/events
+Electron Main domain services
+  -> ClawXDataService utility -> one SQLite + content-addressed Blobs
+  -> ConversationRouter / Scheduler / Channel Orchestrator / Credential Broker
+  -> KernelPackageManager + SupervisorRegistry
+       -> OpenClawDriver -> downloaded OpenClaw runtime
+       -> DeepSeekHarnessDriver -> downloaded DSH runtime host
+       -> future KernelDriver
+```
 
-### ACPのセマンティック権威
+SQLiteが全ての新しいConversation、Cron、Channel、Usage、Agent/Provider/Skill state、runtime operationの唯一のdurable authorityです。RuntimeはDBを開かず、第2 transcript/scheduler historyを保持しません。ACP/DSH bridgeはlive execution専用で、DataServiceはconversation/run/kernel/generation/sequence identityを持つeventだけを受理します。同じConversationの次kernel変更はturn境界だけで行い、visibility/redaction/budget済みportable contextだけを渡します。
 
-ACPが提供するすべてのChatの意味とコンテキストでは、`session/load`履歴だけでなくACPを優先的なセマンティック権威として扱います。該当する場合のセッションIDとルーティング、ワークスペースと実行`cwd`、promptとtimelineの状態、標準resourceや添付ファイルのセマンティクスが含まれます。ACPが値やイベントを提供する場合、MainとRendererはGatewayスナップショット、transcriptからの推論、ローカル設定、別の並列投影で置き換えず、ACPの結果を使用します。
+Installはtransactionalです。Mainが期限付き署名catalog/descriptorを検証し、bounded resume download、link/traversalを拒否するstaging extraction、artifact/platform/storage self-test後にatomic activationします。各kernelは独立supervisor、directory、port/stdio bridge、operation queue、health、rollback slotを持ち、一方のstop/crash/repair/updateは他方を置換しません。
 
-上流ACPに相当する機能がない場合に限り、ACPを迂回できます。その互換性パスは狭く有界で、sessionとgenerationに紐付ける必要があります。また、理由、情報源、制限、調整方法、削除条件を該当するHarness referenceまたはruleに記録し、競合する権威へ暗黙に発展させてはいけません。
+以降のOpenClaw Gateway/config記述は`OpenClawDriver` adapter固有でありglobal architectureではありません。DSHはpatched ACP/control/persistence bridgesから同じHost API/domain layerを使います。[設計](../zh-CN/multi-kernel-design.md)、[runtime security/support](runtime-security-support.md)、[data security/retention](data-security-retention.md)を参照してください。
 
-### ACP履歴の権威と有界なtranscript補足
+ClawXは **Main所有のマルチプロセス構成と統合Host API**を採用します。Rendererは単一のclient abstractionだけを呼び、DataService utility process、runtime選択、protocol adapter、process lifecycleはElectron Mainが管理します。
 
-ACP `session/load` のリプレイがChat履歴の主要な権威です。ClawXは第二のACP ledger、縮約timeline、リプレイキャッシュ、再構成したツール履歴を永続化しません。OpenClawの構造化ACP event ledgerが利用できない場合、そのACP adapterは永続化済みtranscriptの`toolCall`と`toolResult`を順番どおりにネイティブなtool updateへ再構成し、text-tool-textの境界を維持します。ClawX自身はこれらの記録を推論しません。OpenClawの一部の機能にはまだ完全に対応するACP実装がありません。たとえば、assistantメディアがACPから省略されたり、Gateway処理によってassistantの`MEDIA:`ディレクティブが表示中のライブ返信から削除されたりする場合があります。そのため、ClawXは有界で印付き、メモリのみの互換性補足だけを保持します。
+OpenClaw設定配信はElectron Mainが管理するadapter projectionです。optional Gatewayの実行中は`config.get`/`config.set`で状態を投影し、停止中または起動中はprocessを起動せずreplaceableなmanaged JSON5だけを更新します。Provider、Agent、Channel、binding、Skill、modelのcanonical intentはSQLiteに残ります。通常のprojection変更ではprocessを置換せず、完全なrestartはproxyなどlaunch environment変更または明示操作に限定します。Heartbeat recoveryは所有中のOpenClaw supervisorだけに作用し、他kernelをrestartしません。認証metadata commit後もsecretはOS credential storeに残り、OpenClawにはscope付き`secrets.reload`だけを通知します。
 
-- 非同期の画像生成完了は、同じセッションに確認済みの`image_generate`コンテキストがあり、完了の証拠が信頼できるか、承認済みのtranscript証拠である場合に限り復元できます。
-- 一般の添付ファイルは、永続化されたassistantの`__openclaw.media`事実、または行頭にある明示的なassistant `MEDIA:`ディレクティブから復元できます。復元されるのは添付ファイルの参照と宣言されたメタデータだけで、周囲のassistantメッセージは復元しません。
-- ACPリプレイには元のイベントタイムスタンプがないため、Mainは有界のtranscript JSONLレコードからメタデータのみのターン全体の時間を追加できます。これはACPですでに復元されたターンにだけ付与できます。
-- cronセッションのACPリプレイが完全に空の場合、Mainの型付きcron履歴APIがスケジュール済みプロンプトと完了サマリーを提供できます。識別された実行サマリーにOpenClawの切り詰めマーカーがある場合、対応するrunのtranscriptがより長く、永続化されたサマリーの完全な接頭辞を共有するときに限り、Mainは最終assistantテキストを復元できます。
+OpenClaw実行時、Main所有のACP stdio bridgeにはadmission済みConversation snapshot、run identity、scope付きcredential、workspace grantだけを渡します。BridgeはruntimeからUI historyをloadしません。保護されたrecoveryが受理済みrunを中断した場合、patched runtimeはreplacement process/runのlineageを明示し、ConversationRouterはkernel、generation、run、monotonic event sequenceが一致するeventだけを受理します。OpenClawはmodel、skill、diagnostics等のruntime projectionを実装しますが、durable ownershipはClawX domain serviceにあります。
 
-履歴の読み取りは最新のtranscriptメッセージ1000件に制限されます。成功したライブpromptでは直ちに1回読み取り、1500ms後に1回だけ再試行します。すべての補足は、正確なsession、ACP generation、操作、必要に応じてライブユーザーターンに紐付けられます。古い、欠落した、重複した、または曖昧な一致は破棄されます。これらの経路で通常のassistantメッセージ、thought、tool、plan、permission、ファイルアクティビティ、欠落したターン、別のChat履歴を再構成してはいけません。Mainはtranscriptの証拠からネイティブACPイベントを生成しません。標準ACP resourceが優先され、上流が同等の内容を提供した場合はこれらの互換性例外を削除します。
+### Live Adapter SemanticsとCanonical History
 
-別の会話やページを開いても、未完了のACP応答はストリーミングを継続します。完了前に戻ると最新のメモリ内timelineを復元し、ライブ応答の表示を続けます。完了後は通常のACP履歴リプレイが正の情報源です。
+ACPはadmission済みOpenClaw runが発するlive execution semanticsだけを担当し、DSH bridgeも同じ役割です。Mainはtext、reasoning、tool、permission、plan、usage、image、resourceを`KernelEventEnvelopeV1`へ正規化し、ConversationRouterがidentityを検証してDataServiceへ保存します。TransportがConversation catalog/history、Cron history、Usage historyをUIへ提供することはありません。
 
-ACPのassistantターンにはターン全体の所要時間が表示されます。ライブ計時はクライアントが観測したpromptライフサイクルに従い、アプリ内の移動後も継続します。履歴の所要時間はElectron Mainが有界のOpenClaw transcriptタイムスタンプから算出し、ACPリプレイですでに復元されたターンにだけ付与します。
+SQLite Conversation recordが唯一のhistory sourceです。Conversationを開く・reloadする際はcanonical turn、content block、run、tool call、permission、usage、timestampを既存Chat timelineへ投影し、runtime `session/load`、JSONL、runtime directory scanを使いません。Canonical recordがなければ欠落のままとし、transcript、Gateway、native history fallbackで再構成しません。Legacy名のcompatibility APIも同じConversation repository上のfacadeです。
 
-ACP Chatは標準ACP resourceを添付ファイルとして描画します。ユーザーが選択した画像はファイル名をホバーオーバーレイに表示するサムネイルになり、その他の利用可能な添付カードにはファイル名と淡色で省略可能なソースパスが表示されます。現在のOpenClaw ACP adapterがassistantメディアを省略した場合、正規化された永続OpenClawメディア情報と明示的なassistant `MEDIA:`ディレクティブを、transcript専用メタデータを表示せずに添付カードとして復元できます。
+別Conversationやpageを開いても未完了responseはstreamingを続けます。Live snapshotはConversation/run/kernel/generationで隔離され、terminal commitはfinal assistant turnと関連recordをatomicに保存します。完了前に戻ればin-memory streamを継続し、完了後は同じSQLite projectionをreloadします。
+
+Assistant turn durationはcanonical run admission/terminal timestampから得ます。Attachment、generated image、file activityはcanonical content blockとstructured run eventとして保存されます。標準ACP/DSH resource/imageはlive adapter boundaryで正規化され、history renderingが`MEDIA:`文やnative transcriptを解析することはありません。ユーザー画像はthumbnail、他resourceはattachment cardとして表示し、local file actionは正確なConversation/run workspace grantに対してElectron Mainが再検証します。
 
 既存のローカルファイル参照は、アクティブなworkspace外のパスを含め、プレビューやオープンのたびにElectron Mainが正確なsessionとgenerationについて再検証します。AIが生成したプレビュー可能なローカル添付（20 MB以下の`.docx`と`.pptx`を含む）は、読み取り専用のアプリ内プレビューを主操作として保持し、対応アプリで開く操作やFinder、エクスプローラー、システムのファイルマネージャーで表示する操作を副次メニューから選べます。ローカルHTML添付では、そのメニューの先頭項目から右側のPreviewタブでファイルを開けます。
 
 Officeプレビューには同じ制限があります。`.doc`と`.ppt`はシステムアプリで開き、DOCXのページ区切りはMicrosoft Wordと異なる場合があり、PPTXのアニメーション、画面切り替え、メディア再生はサポートされません。対応アプリの検出はmacOSとWindowsでのみ利用でき、Linuxまたは検出失敗時は通知なしにファイル位置の表示だけへ切り替わります。その他のローカルファイル（20 MBを超えるOfficeファイルを含む）は、クリック後にシステムアプリで開きます。ユーザーが選択したフォルダー添付は送信後も利用でき、クリックするとシステムのファイルマネージャーで開きます。ClawXはその内容を読み取ったりプレビューしたりしません。リモートHTTP/HTTPS添付はクリック後に外部で開きます。正規のメディア情報を伴わない通常の文章中のパスは添付として扱われません。
 
-ACP Chatは、ランタイムが画像生成メディアを信頼できる構造化メディアとして配信した場合、生成画像のプレビューも表示できます。信頼できるOpenClaw internal-UI配信と画像生成タスクに紐付いた最終返信では、テキストだけの失敗説明を含む元のユーザー向け完了テキストを保持し、汎用画像キャプションに置き換えません。OpenClawの履歴リプレイ中、assistant画像の`MEDIA:`マーカーは、同じセッションで画像生成タスクの開始が記録されている場合に限りインライン画像へ昇格します。プレビューは任意のRendererファイルシステムアクセスではなく、Electron Mainのホストメディア処理で読み込みます。標準ACPの画像とresourceコンテンツが引き続き優先され、そのまま描画されます。
+生成画像はcanonical runが受理したtrusted structured runtime eventからだけ表示します。Task-correlated final replyはtext-only failureを含む元のuser-facing textを保持します。PreviewはRendererの任意filesystem accessではなくElectron Mainのhost media処理で読み込みます。
 
 ### ACPファイルアクティビティのセマンティクス
 
@@ -45,7 +53,7 @@ ACP Chatは、ランタイムが画像生成メディアを信頼できる構造
 - **Changes** はツールが宣言したアクティビティを時系列に記録するセッション単位の記録です。Gitの出力でも、検証済みソースベースラインとの差分でもありません。
 - 各ファイルについて、Changesはassistantの各ターンに最大1つのdiffエディターを表示します。安全に連結できる断片は合成し、独立した断片は1つのエディターに連結しますが、完全なファイルベースラインとの差分とはみなしません。
 - シェルコマンド、スクリプト、ユーザー、IDEによる副作用は検出されません。
-- 完全なACPリプレイから記録済みのファイルアクティビティを復元できます。リプレイが不完全でも、ClawXはフォールバック推論で欠落を補いません。
+- Canonical Conversation projectionから記録済みfile activityを復元します。Structured recordがなければprose、filesystem、runtime historyから推論しません。
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐

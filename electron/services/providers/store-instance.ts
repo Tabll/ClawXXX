@@ -13,6 +13,7 @@ export async function getClawXProviderStore() {
         providerAccounts: {} as Record<string, unknown>,
         apiKeys: {} as Record<string, string>,
         providerSecrets: {} as Record<string, unknown>,
+        providerSecretEnvelopes: {} as Record<string, unknown>,
         defaultProvider: null as string | null,
         defaultProviderAccountId: null as string | null,
       },

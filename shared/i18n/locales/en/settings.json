@@ -1,6 +1,18 @@
 {
   "title": "Settings",
   "subtitle": "Configure your ClawX experience",
+  "kernels": {
+    "title": "AI Kernels",
+    "description": "Install, run and maintain independent runtimes. All canonical ClawX data remains shared.",
+    "install": "Install", "update": "Update", "updateAvailable": "Update available",
+    "start": "Start", "stop": "Stop", "restart": "Restart", "autoStart": "Start with ClawX",
+    "repair": "Repair", "rollback": "Roll back", "uninstall": "Uninstall",
+    "openData": "Open data", "openLogs": "Open logs", "exportLogs": "Export logs",
+    "activeVersion": "Active version", "availableVersion": "Available version",
+    "generation": "Generation", "memory": "Memory",
+    "uninstallTitle": "Uninstall {{name}}?",
+    "uninstallMessage": "The runtime and cached versions will be removed. Shared conversations, schedules, agents, skills, channels and usage data are preserved."
+  },
   "appearance": {
     "title": "General",
     "description": "Customize the look and feel",
@@ -33,6 +45,24 @@
       "noModelSelected": "No model selected",
       "multiAccountReady": "Multi-account ready",
       "singletonVendor": "Single-account vendor"
+    },
+    "kernels": {
+      "openclaw": { "name": "OpenClaw", "short": "OpenClaw" },
+      "deepseek-harness": { "name": "DeepSeek Harness", "short": "DSH" },
+      "defaultModel": "Kernel default",
+      "selectDefault": "Select a provider and model",
+      "noCompatibleModel": "No compatible provider model is configured.",
+      "default": "Default",
+      "currentDefault": "Current default for this kernel",
+      "setDefault": "Set as the default for this kernel",
+      "status": {
+        "pending": "Pending",
+        "applying": "Applying",
+        "ready": "Ready",
+        "partial": "Partial",
+        "failed": "Failed",
+        "unsupported": "Unsupported"
+      }
     },
     "authModes": {
       "apiKey": "API Key",
@@ -115,6 +145,8 @@
       "failedDelete": "Failed to delete provider",
       "defaultUpdated": "Default provider updated",
       "failedDefault": "Failed to set default",
+      "kernelDefaultUpdated": "Kernel default model updated",
+      "failedKernelDefault": "Failed to set the kernel default model",
       "updated": "Provider updated",
       "failedUpdate": "Failed to update provider",
       "invalidKey": "Invalid API key",
@@ -284,7 +316,8 @@
   },
   "tokenUsage": {
     "title": "Token Usage",
-    "description": "Review local OpenClaw transcript usage across models, providers, agents, token types, cost, and sessions.",
+    "description": "Review canonical usage reported live by every installed kernel across models, providers, agents, token types, cost, and conversations.",
+    "costSemantics": "Costs are runtime/provider-reported only. Summary cost aggregates reported USD entries; other currencies stay per call and are never converted. Unknown fields stay unknown, so totals may be partial.",
     "refresh": "Refresh",
     "refreshing": "Refreshing...",
     "exportJson": "Export JSON",
@@ -294,13 +327,18 @@
     "unknown": "Unknown",
     "searchPlaceholder": "Search model, provider, agent, session, or content",
     "emptyTitle": "No token usage history yet",
-    "emptyDescription": "Token usage appears here after assistant messages with structured usage data are written to local transcripts.",
+    "emptyDescription": "Usage appears here after a managed kernel reports a live model call to the ClawX SQLite store.",
     "emptyFilteredTitle": "No matching usage records",
     "emptyFilteredDescription": "Try a broader time range or a different search term.",
     "windows": {
       "7d": "7 days",
       "30d": "30 days",
       "all": "All time"
+    },
+    "kernels": {
+      "all": "All kernels",
+      "openclaw": "OpenClaw",
+      "deepseek-harness": "DeepSeek Harness"
     },
     "groupBy": {
       "model": "Model",

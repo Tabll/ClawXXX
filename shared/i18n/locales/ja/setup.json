@@ -4,6 +4,10 @@
             "title": "ClawXへようこそ",
             "description": "AIアシスタントの設定準備が整いました"
         },
+        "catalog": {
+            "title": "AI カーネルを選択",
+            "description": "今インストールするか、両方をスキップして後でダウンロードできます"
+        },
         "runtime": {
             "title": "環境チェック",
             "description": "システム要件を確認中"
@@ -27,12 +31,48 @@
     },
     "welcome": {
         "title": "ClawXへようこそ",
-        "description": "ClawXはOpenClawのグラフィカルインターフェースで、お気に入りのメッセージングプラットフォームでAIアシスタントを簡単に使用できます。",
+        "description": "ClawX は複数のオプション AI カーネルに共通 UI とローカル履歴を提供します。",
         "features": {
+            "optional": "選択したときだけカーネルをダウンロード",
+            "sharedUi": "チャット、チャンネル、Cron、エージェント、スキルで同じ UI",
+            "concurrent": "インストール済みカーネルを同時実行可能",
+            "offlineHistory": "全カーネル停止中もローカル履歴を管理可能",
             "noCommand": "コマンドライン不要",
             "modernUI": "モダンで美しいインターフェース",
             "bundles": "プリインストールされたスキルバンドル",
             "crossPlatform": "クロスプラットフォーム対応"
+        }
+    },
+    "progressLabel": "セットアップの進行状況",
+    "catalog": {
+        "title": "カーネルカタログ",
+        "subtitle": "ランタイムは ClawX CI でビルド・パッチされ、アクティベート前に検証されます。",
+        "refresh": "更新",
+        "continue": "続ける",
+        "install": "インストール",
+        "installing": "インストール中…",
+        "skip": "スキップ",
+        "undoSkip": "再び含める",
+        "installed": "インストール済み",
+        "stable": "安定版",
+        "preview": "プレビュー",
+        "optional": "任意",
+        "genericDescription": "ClawX が管理する署名済みの任意ランタイムです。",
+        "installedVersion": "インストール済み",
+        "availableVersion": "利用可能",
+        "incompatible": "非互換: {{reasons}}",
+        "sharedData": "両カーネルは ClawX SQLite の会話、スケジュール、エージェント、スキル、チャンネル、使用量を共有します。カーネル削除でこのデータは消えません。",
+        "kernels": {
+            "openclaw": { "description": "ClawX 管理ストレージパッチ適用済み OpenClaw ランタイム。" },
+            "deepseek-harness": { "description": "ClawX 制御・会話ブリッジ適用済み DeepSeek Harness。" }
+        },
+        "phases": {
+            "resolving": "パッケージを解決中",
+            "downloading": "ダウンロード中",
+            "verifying": "署名を検証中",
+            "staging": "安全に展開中",
+            "smoke-testing": "スモークテスト中",
+            "activating": "アクティベート中"
         }
     },
     "runtime": {
@@ -118,7 +158,11 @@
         "components": "コンポーネント",
         "gateway": "ゲートウェイ",
         "running": "実行中",
-        "footer": "設定でスキルをカスタマイズしたり、チャンネルを接続したりできます"
+        "footer": "設定でスキルをカスタマイズしたり、チャンネルを接続したりできます",
+        "installed": "インストール済みカーネル",
+        "noneInstalled": "未インストール — 履歴と設定はオフラインでも利用できます。",
+        "restartRequired": "新しく有効化した不変ランタイムと全アダプターを読み込むには ClawX を一度再起動してください。",
+        "restartNow": "ClawX を再起動"
     },
     "nav": {
         "next": "次へ",

@@ -5,11 +5,18 @@ import type {
   SessionConfigOption,
   SessionNotification,
 } from '@agentclientprotocol/sdk';
+import type { ConversationId, RunId, TurnId } from '../conversations/contracts';
+import type { KernelId } from '../kernels/contracts';
 
 export type AcpJsonRecord = Record<string, unknown>;
 
 export type AcpSessionKeyPayload = {
   sessionKey: string;
+  conversationId?: ConversationId;
+  turnId?: TurnId;
+  runId?: RunId;
+  kernelId?: KernelId;
+  generation?: number;
 };
 
 export type AcpChatLoadPayload = AcpSessionKeyPayload & {
@@ -30,6 +37,9 @@ export type AcpChatPromptPayload = AcpSessionKeyPayload & {
   message?: string;
   media?: AcpPromptMediaItem[];
   messageId?: string;
+  agentId?: string;
+  providerId?: string;
+  modelId?: string;
 };
 
 export type AcpChatCancelPayload = AcpSessionKeyPayload;
@@ -58,11 +68,19 @@ export type AcpChatOperationResult = {
   sessionUpdates?: AcpSessionUpdateEnvelope[];
   /** Full ACP session configuration snapshot returned after a successful update. */
   configOptions?: SessionConfigOption[];
+  conversationId?: ConversationId;
+  turnId?: TurnId;
+  runId?: RunId;
+  kernelId?: KernelId;
 };
 
 export type AcpSessionUpdateEnvelope = {
   sessionKey: string;
   generation: number;
+  conversationId?: ConversationId;
+  runId?: RunId;
+  kernelId?: KernelId;
+  eventSeq?: number;
   /** True for ACP updates emitted while session/load is replaying history. */
   historical?: boolean;
   notification: SessionNotification;
@@ -71,6 +89,10 @@ export type AcpSessionUpdateEnvelope = {
 export type AcpPermissionRequestEnvelope = {
   sessionKey: string;
   generation: number;
+  conversationId?: ConversationId;
+  runId?: RunId;
+  kernelId?: KernelId;
+  eventSeq?: number;
   requestId: string;
   request: RequestPermissionRequest;
 };

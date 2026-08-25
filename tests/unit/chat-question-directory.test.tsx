@@ -17,12 +17,6 @@ vi.mock('react-i18next', () => ({
   }),
 }));
 
-vi.mock('@/stores/gateway', () => ({
-  useGatewayStore: (selector: (state: { status: { state: string; gatewayReady: boolean } }) => unknown) => selector({
-    status: { state: 'running', gatewayReady: true },
-  }),
-}));
-
 const { acpState, chatState, settingsState } = vi.hoisted(() => ({
   acpState: {
     timeline: {

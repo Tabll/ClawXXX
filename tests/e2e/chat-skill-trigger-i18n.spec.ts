@@ -1,7 +1,17 @@
 import type { ElectronApplication } from '@playwright/test';
-import { closeElectronApp, expect, getStableWindow, installIpcMocks, test } from './fixtures/electron';
+import {
+  canonicalConversationHostApi,
+  canonicalConversationSummary,
+  closeElectronApp,
+  expect,
+  getStableWindow,
+  installIpcMocks,
+  readyKernelFixture,
+  test,
+} from './fixtures/electron';
 
 const SESSION_KEY = 'agent:main:main';
+const WORKSPACE = '/tmp/workspace';
 
 function stableStringify(value: unknown): string {
   if (value == null || typeof value !== 'object') return JSON.stringify(value);
@@ -10,6 +20,39 @@ function stableStringify(value: unknown): string {
     .sort(([left], [right]) => left.localeCompare(right))
     .map(([key, entryValue]) => `${JSON.stringify(key)}:${stableStringify(entryValue)}`);
   return `{${entries.join(',')}}`;
+}
+
+function canonicalChatFixture(language: 'en' | 'zh') {
+  const summary = canonicalConversationSummary({
+    id: SESSION_KEY,
+    title: 'main',
+    workspaceUri: WORKSPACE,
+    lastKernelId: 'openclaw',
+    kernelIds: ['openclaw'],
+    lastAgentId: 'main',
+  });
+  return {
+    kernelFixture: readyKernelFixture(),
+    hostApi: {
+      ...canonicalConversationHostApi([summary]),
+      [stableStringify(['settings', 'getAll', null])]: {
+        language,
+        setupComplete: true,
+        chatWorkspacePath: WORKSPACE,
+        recentWorkspacePaths: [WORKSPACE],
+      },
+      [stableStringify(['files', 'resolveWorkspaceContext', {
+        workspaceRoot: WORKSPACE,
+        executionCwd: WORKSPACE,
+      }])]: { ok: true, workspaceRoot: WORKSPACE, executionCwd: WORKSPACE },
+      [stableStringify(['chat', 'selectConversationKernel', {
+        sessionKey: SESSION_KEY,
+        workspaceRoot: WORKSPACE,
+        cwd: WORKSPACE,
+        kernelId: 'openclaw',
+      }])]: { success: true, generation: 1, kernelId: 'openclaw' },
+    },
+  };
 }
 
 async function openChatWithInstalledMocks(app: ElectronApplication) {
@@ -28,17 +71,12 @@ test.describe('ClawX chat skill trigger', () => {
     const app = await launchElectronApp({ skipSetup: true });
 
     try {
+      const canonical = canonicalChatFixture('zh');
       await installIpcMocks(app, {
         gatewayStatus: { state: 'running', gatewayReady: true, port: 18789, pid: 12345 },
-        gatewayRpc: {
-          [stableStringify(['sessions.list', {}])]: {
-            success: true,
-            result: {
-              sessions: [{ key: SESSION_KEY, displayName: 'main' }],
-            },
-          },
-        },
+        kernelFixture: canonical.kernelFixture,
         hostApi: {
+          ...canonical.hostApi,
           [stableStringify(['/api/gateway/status', 'GET'])]: {
             ok: true,
             data: {
@@ -136,17 +174,12 @@ test.describe('ClawX chat skill trigger', () => {
     const app = await launchElectronApp({ skipSetup: true });
 
     try {
+      const canonical = canonicalChatFixture('en');
       await installIpcMocks(app, {
         gatewayStatus: { state: 'running', gatewayReady: true, port: 18789, pid: 12345 },
-        gatewayRpc: {
-          [stableStringify(['sessions.list', {}])]: {
-            success: true,
-            result: {
-              sessions: [{ key: SESSION_KEY, displayName: 'main' }],
-            },
-          },
-        },
+        kernelFixture: canonical.kernelFixture,
         hostApi: {
+          ...canonical.hostApi,
           [stableStringify(['/api/gateway/status', 'GET'])]: {
             ok: true,
             data: {

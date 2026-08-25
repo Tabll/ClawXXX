@@ -1,0 +1,33 @@
+{
+  "extends": "../../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "lib/types"
+  },
+  "include": ["src"],
+  "references": [
+    { "path": "../../../vendor/cosmokit" },
+    { "path": "../../../vendor/cordis" },
+    { "path": "../../agents/clawx-dsh-agent-catalog" },
+    { "path": "../../skills/clawx-dsh-skill-catalog" },
+    { "path": "../../acp/clawx-acp-bridge" },
+    { "path": "../../control/clawx-control-bridge" },
+    { "path": "../../credentials/clawx-dsh-credential-provider" },
+    { "path": "../../examples/agent-spine-demo" },
+    { "path": "../../preset/agent-presets" },
+    { "path": "../../attachment/attachment-local" },
+    { "path": "../../llm/llm-deepseek" },
+    { "path": "../../sandbox/sandbox-local" },
+    { "path": "../../sandbox/sandbox-policy" },
+    { "path": "../../subprocess/subprocess-local" },
+    { "path": "../../shell/bash-sandbox" },
+    { "path": "../../fs/fs-sandbox" },
+    { "path": "../../fs/fs-observation-policy" },
+    { "path": "../../fs/tool-fs" },
+    { "path": "../../llm/token-meter" },
+    { "path": "../../interaction/user-approval" },
+    { "path": "../../interaction/user-questions" },
+    { "path": "../../interaction/tool-ask-user" },
+    { "path": "../../todo/tool-todo" }
+  ]
+}

@@ -76,6 +76,22 @@ import { buildGatewayHealthSummary } from '../utils/gateway-health';
 import { logger } from '../utils/logger';
 import type { GatewayManager, GatewayHealthSummary } from '../gateway/manager';
 import { isRecord } from './payload-utils';
+import type {
+  CanonicalChannelAccount,
+  CanonicalChannelBinding,
+  CanonicalChannelDeliveryAttempt,
+  CanonicalChannelMessage,
+  ChannelConversationPolicy,
+} from '@shared/domains/channels';
+import type { KernelId } from '@shared/kernels/contracts';
+import { CHANNEL_META, isSupportedChannelType } from '@shared/types/channel';
+import type { CanonicalChannelAccountService, ChannelDataClient } from '../channels/channel-account-service';
+import type { ChannelBindingService } from '../channels/channel-binding-service';
+import type { ChannelOwnerCoordinator } from '../channels/channel-owner-coordinator';
+import type { ChannelAdapterRegistry } from '../channels/channel-adapter-registry';
+import type { CredentialStagingVault } from '../security/credential-staging-vault';
+import { OpenClawChannelAdapter } from '../channels/openclaw-channel-adapter';
+import { RelayChannelAdapter } from '../channels/relay-channel-adapter';
 
 const WECHAT_QR_TIMEOUT_MS = 8 * 60 * 1000;
 const activeQrLogins = new Map<string, string>();
@@ -86,6 +102,12 @@ async function listWhatsAppDirectoryPeersFromConfig(_params: unknown): Promise<u
 type ChannelsApiContext = {
   gatewayManager: GatewayManager;
   mainWindow?: BrowserWindow;
+  dataClient?: ChannelDataClient;
+  accountService?: CanonicalChannelAccountService;
+  bindingService?: ChannelBindingService;
+  ownerCoordinator?: ChannelOwnerCoordinator;
+  adapterRegistry?: ChannelAdapterRegistry;
+  credentialVault?: CredentialStagingVault;
 };
 
 type JsonRecord = Record<string, unknown>;
@@ -128,6 +150,7 @@ interface GatewayChannelStatusPayload {
 }
 
 interface ChannelAccountView {
+  canonicalAccountId?: string;
   accountId: string;
   name: string;
   configured: boolean;
@@ -138,7 +161,21 @@ interface ChannelAccountView {
   status: ChannelConnectionStatus;
   statusReason?: string;
   isDefault: boolean;
+  kernelId?: string;
   agentId?: string;
+  supportedKernels?: string[];
+  connectionOwner?: {
+    ownerId: string;
+    kernelId: string;
+    generation: number;
+    leaseExpiresAt: string;
+  };
+  delivery?: {
+    pending: number;
+    retrying: number;
+    deadLetter: number;
+    lastError?: string;
+  };
 }
 
 interface ChannelAccountsView {
@@ -921,6 +958,20 @@ async function listChannelTargetOptions(params: {
   return targets;
 }
 
+/** Main-side target discovery shared by the canonical OpenClaw adapter. */
+export async function listCanonicalOpenClawChannelTargets(params: {
+  channelType: string;
+  accountId?: string;
+  query?: string;
+}): Promise<import('@shared/domains/channels').CanonicalChannelTarget[]> {
+  const targets = await listChannelTargetOptions(params);
+  return targets.map(target => ({
+    id: target.value,
+    displayName: target.label,
+    kind: target.kind === 'user' ? 'direct' : target.kind === 'group' ? 'group' : 'room',
+  }));
+}
+
 async function ensureScopedChannelBinding(channelType: string, accountId?: string): Promise<void> {
   await ensureAgentScopedChannelBinding(resolveStoredChannelType(channelType), accountId);
 }
@@ -1061,13 +1112,201 @@ async function ensureChannelPluginInstalled(storedChannelType: string): Promise<
   return { peerLinkOk: result.peerLinkOk !== false };
 }
 
+function hasCanonicalChannels(ctx: ChannelsApiContext): ctx is ChannelsApiContext & {
+  dataClient: ChannelDataClient;
+  accountService: CanonicalChannelAccountService;
+  bindingService: ChannelBindingService;
+  ownerCoordinator: ChannelOwnerCoordinator;
+  adapterRegistry: ChannelAdapterRegistry;
+} {
+  return Boolean(
+    ctx.dataClient
+    && ctx.accountService
+    && ctx.bindingService
+    && ctx.ownerCoordinator
+    && ctx.adapterRegistry,
+  );
+}
+
+async function canonicalBinding(
+  ctx: ChannelsApiContext & { dataClient: ChannelDataClient },
+  accountId: string,
+): Promise<CanonicalChannelBinding | undefined> {
+  return ctx.dataClient.call('getChannelBinding', accountId, '*');
+}
+
+function requestedKernel(payload: unknown): KernelId | undefined {
+  const value = optionalString(payload, 'kernelId');
+  return value as KernelId | undefined;
+}
+
+async function resolveCanonicalKernel(
+  ctx: ChannelsApiContext & { dataClient: ChannelDataClient },
+  account: CanonicalChannelAccount | undefined,
+  payload: unknown,
+): Promise<KernelId> {
+  const requested = requestedKernel(payload);
+  if (requested) return requested;
+  const binding = account ? await canonicalBinding(ctx, account.id) : undefined;
+  if (binding) return binding.kernelId;
+  if (account?.connectionOwner) return account.connectionOwner.kernelId;
+  if (account?.supportedKernels.includes('openclaw') !== false && ctx.adapterRegistry?.get('openclaw')) return 'openclaw';
+  return account?.supportedKernels.find(kernelId => ctx.adapterRegistry?.get(kernelId))
+    ?? ctx.adapterRegistry?.list()[0]?.kernelId
+    ?? 'openclaw';
+}
+
+function getChannelSecretHandle(
+  ctx: ChannelsApiContext,
+  value: unknown,
+  mode: 'read' | 'consume',
+): string | undefined {
+  if (value === undefined || value === null || value === '') return undefined;
+  if (typeof value !== 'string' || !value.startsWith('credential-stage://')) {
+    throw new Error('Channel credentials must be supplied through secure staging handles');
+  }
+  if (!ctx.credentialVault) throw new Error('Secure credential staging is unavailable');
+  return mode === 'read' ? ctx.credentialVault.read(value) : ctx.credentialVault.consume(value);
+}
+
+function materializeCanonicalConfig(
+  ctx: ChannelsApiContext,
+  channelType: string,
+  input: Record<string, unknown>,
+  mode: 'read' | 'consume',
+): Record<string, unknown> {
+  if (!isSupportedChannelType(channelType)) throw new Error(`Unsupported Channel: ${channelType}`);
+  const fields = new Map(CHANNEL_META[channelType].configFields.map(field => [field.key, field]));
+  const config: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(input)) {
+    if (key === 'enabled' && typeof value === 'boolean') {
+      config.enabled = value;
+      continue;
+    }
+    const field = fields.get(key);
+    if (!field) throw new Error(`Unknown ${channelType} configuration field: ${key}`);
+    if (field.type === 'password') {
+      const secret = getChannelSecretHandle(ctx, value, mode);
+      if (secret !== undefined) config[key] = secret;
+      continue;
+    }
+    if (typeof value !== 'string' && typeof value !== 'number' && typeof value !== 'boolean') {
+      throw new Error(`Invalid ${channelType} configuration value: ${key}`);
+    }
+    config[key] = typeof value === 'string' ? value.trim() : value;
+  }
+  return config;
+}
+
+function aggregateCanonicalStatus(accounts: CanonicalChannelAccount[]): ChannelConnectionStatus {
+  if (accounts.some(account => account.status === 'error')) return 'error';
+  if (accounts.some(account => account.status === 'degraded')) return 'degraded';
+  if (accounts.some(account => account.status === 'connecting')) return 'connecting';
+  if (accounts.some(account => account.status === 'connected')) return 'connected';
+  return 'disconnected';
+}
+
+async function canonicalDeliveryDiagnostics(
+  ctx: ChannelsApiContext & { dataClient: ChannelDataClient },
+  accountId: string,
+): Promise<ChannelAccountView['delivery']> {
+  const messages = await ctx.dataClient.call<CanonicalChannelMessage[]>('listChannelMessages', {
+    accountId,
+    direction: 'outbound',
+    limit: 500,
+  });
+  const failed = messages.find(message => message.status === 'retrying' || message.status === 'dead-letter');
+  const attempts = failed
+    ? await ctx.dataClient.call<CanonicalChannelDeliveryAttempt[]>('listChannelDeliveryAttempts', failed.id)
+    : [];
+  return {
+    pending: messages.filter(message => message.status === 'pending-delivery').length,
+    retrying: messages.filter(message => message.status === 'retrying').length,
+    deadLetter: messages.filter(message => message.status === 'dead-letter').length,
+    ...(attempts.at(-1)?.error ? { lastError: attempts.at(-1)!.error } : {}),
+  };
+}
+
+async function buildCanonicalChannelAccountsView(
+  ctx: ChannelsApiContext & {
+    dataClient: ChannelDataClient;
+    accountService: CanonicalChannelAccountService;
+  },
+): Promise<ChannelAccountsView[]> {
+  const [accounts, bindings] = await Promise.all([
+    ctx.accountService.list(),
+    ctx.dataClient.call<CanonicalChannelBinding[]>('listChannelBindings'),
+  ]);
+  const bindingByAccount = new Map(bindings.map(binding => [binding.accountId, binding]));
+  const byType = new Map<string, CanonicalChannelAccount[]>();
+  for (const account of accounts) {
+    const entries = byType.get(account.channelType) ?? [];
+    entries.push(account);
+    byType.set(account.channelType, entries);
+  }
+  const groups: ChannelAccountsView[] = [];
+  for (const [channelType, entries] of byType) {
+    const defaultAccount = entries.find(account => account.isDefault) ?? entries[0]!;
+    const views = await Promise.all(entries.map(async account => {
+      const binding = bindingByAccount.get(account.id);
+      const delivery = await canonicalDeliveryDiagnostics(ctx, account.id);
+      return {
+        canonicalAccountId: account.id,
+        accountId: account.nativeAccountId,
+        name: account.displayName,
+        configured: true,
+        connected: account.status === 'connected',
+        running: account.status === 'connected' || account.status === 'connecting',
+        linked: Boolean(account.credentialRef) || CHANNEL_META[channelType as keyof typeof CHANNEL_META]?.configFields.length === 0,
+        ...(account.statusDetail && account.status === 'error' ? { lastError: account.statusDetail } : {}),
+        status: account.status,
+        isDefault: account.id === defaultAccount.id,
+        ...(binding ? { kernelId: binding.kernelId, agentId: binding.agentId } : {}),
+        supportedKernels: account.supportedKernels,
+        ...(account.connectionOwner ? { connectionOwner: account.connectionOwner } : {}),
+        delivery,
+      } satisfies ChannelAccountView;
+    }));
+    groups.push({
+      channelType,
+      defaultAccountId: defaultAccount.nativeAccountId,
+      status: aggregateCanonicalStatus(entries),
+      accounts: views,
+    });
+  }
+  return groups.sort((left, right) => left.channelType.localeCompare(right.channelType));
+}
+
+function emitCanonicalLoginEvent(ctx: ChannelsApiContext, channelType: string, event: import('../channels/channel-runtime-contracts').ChannelLoginEvent): void {
+  if (event.type === 'qr') emitChannelEvent(ctx, channelType, 'qr', { qr: event.qr, raw: event.qr, sessionKey: event.sessionKey });
+  else if (event.type === 'success') emitChannelEvent(ctx, channelType, 'success', {
+    accountId: event.nativeAccountId,
+    message: event.message,
+  });
+  else if (event.type === 'error') emitChannelEvent(ctx, channelType, 'error', event.message);
+}
+
 export function createChannelsApi(ctx: ChannelsApiContext): CompleteHostServiceRegistry['channels'] {
   return {
     configured: async () => {
+      if (hasCanonicalChannels(ctx)) {
+        const accounts = await ctx.accountService.list();
+        return { success: true, channels: [...new Set(accounts.map(account => account.channelType))] };
+      }
       const channels = await listConfiguredChannels();
       return { success: true, channels: Array.from(new Set(channels.map((channel) => toUiChannelType(channel)))) };
     },
     accounts: async (payload) => {
+      if (hasCanonicalChannels(ctx)) {
+        return {
+          success: true,
+          channels: await buildCanonicalChannelAccountsView(ctx),
+          adapters: ctx.adapterRegistry.list().map(adapter => ({
+            kernelId: adapter.kernelId,
+            supportedChannels: [...adapter.supportedChannels],
+          })),
+        };
+      }
       const mode = isRecord(payload) && (payload.mode === 'config' || payload.configOnly === true) ? 'config' : 'runtime';
       const probe = mode !== 'config' && isRecord(payload) && payload.probe === true;
       logger.info(`[channels.accounts] request mode=${mode} probe=${probe ? '1' : '0'}`);
@@ -1081,12 +1320,34 @@ export function createChannelsApi(ctx: ChannelsApiContext): CompleteHostServiceR
       const channelType = requireString(payload, 'channelType');
       const accountId = optionalString(payload, 'accountId');
       const query = optionalString(payload, 'query');
+      if (hasCanonicalChannels(ctx)) {
+        const account = await ctx.accountService.get(channelType, accountId ?? 'default');
+        if (!account) throw new Error(`Channel account not found: ${channelType}/${accountId ?? 'default'}`);
+        const binding = await canonicalBinding(ctx, account.id);
+        const canonicalTargets = binding
+          ? await ctx.ownerCoordinator.targets(account.id, binding.kernelId, query)
+          : account.targets;
+        return {
+          success: true,
+          channelType,
+          accountId: account.nativeAccountId,
+          targets: canonicalTargets.map(target => ({
+            value: target.id,
+            label: target.displayName,
+            kind: target.kind === 'direct' ? 'user' : target.kind === 'group' ? 'group' : 'channel',
+          })),
+        };
+      }
       const targets = await listChannelTargetOptions({ channelType, accountId, query });
       return { success: true, channelType, accountId, targets };
     },
     setDefaultAccount: async (payload) => {
       const channelType = requireString(payload, 'channelType');
       const accountId = requireString(payload, 'accountId');
+      if (hasCanonicalChannels(ctx)) {
+        await ctx.accountService.setDefault(channelType, accountId);
+        return { success: true };
+      }
       await validateCanonicalAccountId(channelType, accountId, { allowLegacyConfiguredId: true });
       await setChannelDefaultAccount(channelType, accountId);
       return { success: true };
@@ -1095,6 +1356,24 @@ export function createChannelsApi(ctx: ChannelsApiContext): CompleteHostServiceR
       const channelType = requireString(payload, 'channelType');
       const accountId = requireString(payload, 'accountId');
       const agentId = requireString(payload, 'agentId');
+      if (hasCanonicalChannels(ctx)) {
+        const kernelId = requireString(payload, 'kernelId') as KernelId;
+        const account = await ctx.accountService.get(channelType, accountId);
+        if (!account) throw new Error(`Channel account not found: ${channelType}/${accountId}`);
+        const policy = optionalString(payload, 'conversationPolicy') as ChannelConversationPolicy | undefined;
+        if (policy && !['reuse', 'per-thread', 'per-message'].includes(policy)) {
+          throw new Error(`Invalid Channel conversation policy: ${policy}`);
+        }
+        const result = await ctx.bindingService.rebind({
+          accountId: account.id,
+          targetId: optionalString(payload, 'targetId'),
+          kernelId,
+          agentId,
+          ...(policy ? { conversationPolicy: policy } : {}),
+        });
+        if (!result.ok) throw new Error(result.error || 'Channel rebind failed and was rolled back');
+        return { success: true };
+      }
       await validateCanonicalAccountId(channelType, accountId, { allowLegacyConfiguredId: true, required: true });
       const agents = await listAgentsSnapshot();
       if (!agents.agents.some((entry) => entry.id === agentId)) {
@@ -1116,16 +1395,37 @@ export function createChannelsApi(ctx: ChannelsApiContext): CompleteHostServiceR
     bindingDelete: async (payload) => {
       const channelType = requireString(payload, 'channelType');
       const accountId = optionalString(payload, 'accountId');
+      if (hasCanonicalChannels(ctx)) {
+        if (!accountId) throw new Error('accountId is required');
+        const account = await ctx.accountService.get(channelType, accountId);
+        if (!account) return { success: true };
+        await ctx.bindingService.remove(account.id, optionalString(payload, 'targetId') ?? '*');
+        return { success: true };
+      }
       await validateCanonicalAccountId(channelType, accountId, { allowLegacyConfiguredId: true });
       await clearChannelBinding(resolveStoredChannelType(channelType), accountId);
       return { success: true };
     },
     validateConfig: async (payload) => {
       const channelType = requireString(payload, 'channelType');
+      if (hasCanonicalChannels(ctx)) {
+        if (!isSupportedChannelType(channelType)) throw new Error(`Unsupported Channel: ${channelType}`);
+        return { success: true, valid: true };
+      }
       return { success: true, ...(await validateChannelConfig(channelType)) };
     },
     validateCredentials: async (payload) => {
       const channelType = requireString(payload, 'channelType');
+      if (hasCanonicalChannels(ctx)) {
+        const raw = isRecord(payload) && isRecord(payload.config) ? payload.config : {};
+        const accountId = optionalString(payload, 'accountId') ?? 'default';
+        const account = await ctx.accountService.get(channelType, accountId);
+        const incoming = materializeCanonicalConfig(ctx, channelType, raw, 'read');
+        const existing = account ? await ctx.accountService.getProjectionConfig(account) : {};
+        const kernelId = await resolveCanonicalKernel(ctx, account, payload);
+        const adapter = ctx.adapterRegistry.require(kernelId);
+        return { success: true, ...(await adapter.validate(channelType, { ...existing, ...incoming })) };
+      }
       const config = isRecord(payload) && isRecord(payload.config) ? payload.config as Record<string, string> : {};
       return { success: true, ...(await validateChannelCredentials(channelType, config)) };
     },
@@ -1133,6 +1433,40 @@ export function createChannelsApi(ctx: ChannelsApiContext): CompleteHostServiceR
       const channelType = requireString(payload, 'channelType');
       const config = isRecord(payload) && isRecord(payload.config) ? payload.config : {};
       const accountId = optionalString(payload, 'accountId');
+      if (hasCanonicalChannels(ctx)) {
+        const nativeAccountId = accountId ?? 'default';
+        const previous = await ctx.accountService.get(channelType, nativeAccountId);
+        const readConfig = materializeCanonicalConfig(ctx, channelType, config, 'read');
+        const existing = previous ? await ctx.accountService.getProjectionConfig(previous) : {};
+        const merged = { ...existing, ...readConfig };
+        if (isSupportedChannelType(channelType)) {
+          const missing = CHANNEL_META[channelType].configFields
+            .filter(field => field.required && !String(merged[field.key] ?? '').trim())
+            .map(field => field.key);
+          if (missing.length > 0) throw new Error(`Missing required Channel configuration: ${missing.join(', ')}`);
+        }
+        const consumed = materializeCanonicalConfig(ctx, channelType, config, 'consume');
+        const enabled = typeof consumed.enabled === 'boolean' ? consumed.enabled : previous?.enabled ?? true;
+        delete consumed.enabled;
+        const saved = await ctx.accountService.upsert({
+          channelType,
+          nativeAccountId,
+          config: consumed,
+          enabled,
+          supportedKernels: ctx.adapterRegistry.list()
+            .filter(adapter => adapter.supportedChannels.includes(channelType))
+            .map(adapter => adapter.kernelId),
+        });
+        const binding = await canonicalBinding(ctx, saved.id);
+        if (binding && enabled) {
+          try {
+            await ctx.ownerCoordinator.activate(saved.id, binding.kernelId);
+          } catch (error) {
+            return { success: true, activationPending: true, warning: String(error) };
+          }
+        }
+        return { success: true };
+      }
       await validateCanonicalAccountId(channelType, accountId, { allowLegacyConfiguredId: true });
       const storedChannelType = resolveStoredChannelType(channelType);
       const restartGateway = shouldRestartRunningGateway(ctx, storedChannelType);
@@ -1164,17 +1498,48 @@ export function createChannelsApi(ctx: ChannelsApiContext): CompleteHostServiceR
     setEnabled: async (payload) => {
       const channelType = requireString(payload, 'channelType');
       const enabled = isRecord(payload) && payload.enabled === true;
+      if (hasCanonicalChannels(ctx)) {
+        const accounts = await ctx.accountService.setEnabled(channelType, enabled, optionalString(payload, 'accountId'));
+        for (const account of accounts) {
+          if (!enabled) {
+            await ctx.ownerCoordinator.deactivate(account.id);
+            continue;
+          }
+          const binding = await canonicalBinding(ctx, account.id);
+          if (binding) await ctx.ownerCoordinator.activate(account.id, binding.kernelId);
+        }
+        return { success: true };
+      }
       await setChannelEnabled(channelType, enabled);
       return { success: true };
     },
     formValues: async (payload) => {
       const channelType = requireString(payload, 'channelType');
       const accountId = optionalString(payload, 'accountId');
+      if (hasCanonicalChannels(ctx)) {
+        const account = await ctx.accountService.get(channelType, accountId ?? 'default');
+        if (!account) return { success: true, values: {}, configuredSecretFields: [] };
+        return { success: true, ...(await ctx.accountService.getPublicFormValues(account)) };
+      }
       return { success: true, values: await getChannelFormValues(channelType, accountId) };
     },
     deleteConfig: async (payload) => {
       const channelType = requireString(payload, 'channelType');
       const accountId = optionalString(payload, 'accountId');
+      if (hasCanonicalChannels(ctx)) {
+        const accounts = accountId
+          ? [await ctx.accountService.get(channelType, accountId)].filter(Boolean) as CanonicalChannelAccount[]
+          : (await ctx.accountService.list()).filter(account => account.channelType === channelType);
+        for (const account of accounts) {
+          await ctx.ownerCoordinator.deactivate(account.id);
+          for (const adapter of ctx.adapterRegistry.list()) {
+            if (adapter instanceof OpenClawChannelAdapter) await adapter.remove(account).catch(() => undefined);
+            if (adapter instanceof RelayChannelAdapter) await adapter.remove(account).catch(() => undefined);
+          }
+          await ctx.accountService.delete(channelType, account.nativeAccountId);
+        }
+        return { success: true };
+      }
       const storedChannelType = resolveStoredChannelType(channelType);
       if (accountId) {
         await deleteChannelAccountConfig(channelType, accountId);
@@ -1188,6 +1553,36 @@ export function createChannelsApi(ctx: ChannelsApiContext): CompleteHostServiceR
     startLogin: async (payload) => {
       const channelType = requireString(payload, 'channelType');
       const accountId = optionalString(payload, 'accountId');
+      if (hasCanonicalChannels(ctx)) {
+        const account = accountId ? await ctx.accountService.get(channelType, accountId) : undefined;
+        const kernelId = await resolveCanonicalKernel(ctx, account, payload);
+        const adapter = ctx.adapterRegistry.require(kernelId);
+        if (!adapter.startLogin) throw new Error(`Channel login is unsupported by ${kernelId}: ${channelType}`);
+        await adapter.startLogin(channelType, accountId, event => {
+          void (async () => {
+            try {
+              if (event.type === 'success') {
+                const nativeAccountId = event.nativeAccountId ?? accountId ?? 'default';
+                const saved = await ctx.accountService.upsert({
+                  channelType,
+                  nativeAccountId,
+                  config: event.credential ?? {},
+                  enabled: true,
+                  supportedKernels: ctx.adapterRegistry.list()
+                    .filter(candidate => candidate.supportedChannels.includes(channelType))
+                    .map(candidate => candidate.kernelId),
+                });
+                const binding = await canonicalBinding(ctx, saved.id);
+                if (binding) await ctx.ownerCoordinator.activate(saved.id, binding.kernelId);
+              }
+              emitCanonicalLoginEvent(ctx, channelType, event);
+            } catch (error) {
+              emitChannelEvent(ctx, channelType, 'error', String(error));
+            }
+          })();
+        });
+        return { success: true };
+      }
       const storedChannelType = resolveStoredChannelType(channelType);
       if (storedChannelType === 'whatsapp') {
         await whatsAppLoginManager.start(accountId ?? 'default');
@@ -1218,6 +1613,12 @@ export function createChannelsApi(ctx: ChannelsApiContext): CompleteHostServiceR
     cancelLogin: async (payload) => {
       const channelType = requireString(payload, 'channelType');
       const accountId = optionalString(payload, 'accountId');
+      if (hasCanonicalChannels(ctx)) {
+        const account = accountId ? await ctx.accountService.get(channelType, accountId) : undefined;
+        const kernelId = await resolveCanonicalKernel(ctx, account, payload);
+        await ctx.adapterRegistry.require(kernelId).cancelLogin?.(channelType, accountId);
+        return { success: true };
+      }
       const storedChannelType = resolveStoredChannelType(channelType);
       if (storedChannelType === 'whatsapp') {
         await whatsAppLoginManager.stop();

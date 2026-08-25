@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { DiagnosticsGatewaySnapshotResult } from '@shared/host-api/contract';
+import { CredentialStagingVault } from '@electron/security/credential-staging-vault';
 
 const {
   applyProxySettingsMock,
@@ -21,6 +22,7 @@ const {
   getChannelFormValuesMock,
   getSettingMock,
   listLogFilesMock,
+  listProviderDefaultsMock,
   logDir,
   listAgentsSnapshotFromConfigMock,
   listAgentsSnapshotMock,
@@ -38,6 +40,7 @@ const {
   setChannelDefaultAccountMock,
   setChannelEnabledMock,
   setSettingMock,
+  setDefaultProviderAccountMock,
   syncDefaultProviderToRuntimeMock,
   syncDeletedProviderToRuntimeMock,
   syncSavedProviderToRuntimeMock,
@@ -66,6 +69,7 @@ const {
   getChannelFormValuesMock: vi.fn(),
   getSettingMock: vi.fn(),
   listLogFilesMock: vi.fn(),
+  listProviderDefaultsMock: vi.fn(),
   logDir: '/tmp/clawx-host-services-test-logs',
   listAgentsSnapshotFromConfigMock: vi.fn(),
   listAgentsSnapshotMock: vi.fn(),
@@ -115,6 +119,7 @@ const {
   setChannelDefaultAccountMock: vi.fn(),
   setChannelEnabledMock: vi.fn(),
   setSettingMock: vi.fn(),
+  setDefaultProviderAccountMock: vi.fn(),
   syncDefaultProviderToRuntimeMock: vi.fn(),
   syncDeletedProviderToRuntimeMock: vi.fn(),
   syncSavedProviderToRuntimeMock: vi.fn(),
@@ -237,6 +242,8 @@ vi.mock('@electron/services/providers/provider-service', () => ({
 
 vi.mock('@electron/services/providers/provider-store', () => ({
   providerAccountToConfig: (...args: unknown[]) => providerAccountToConfigMock(...args),
+  listProviderDefaults: (...args: unknown[]) => listProviderDefaultsMock(...args),
+  setDefaultProviderAccount: (...args: unknown[]) => setDefaultProviderAccountMock(...args),
 }));
 
 vi.mock('@electron/services/providers/provider-validation', () => ({
@@ -344,6 +351,8 @@ describe('host services', () => {
     providerServiceMock.listAccounts.mockResolvedValue([]);
     providerServiceMock.listAccountsKeyInfo.mockResolvedValue([]);
     providerServiceMock.listVendors.mockResolvedValue([]);
+    listProviderDefaultsMock.mockResolvedValue([]);
+    setDefaultProviderAccountMock.mockResolvedValue(undefined);
     providerServiceMock.createAccount.mockImplementation(async (account: unknown) => account);
     providerServiceMock.setDefaultAccount.mockResolvedValue(undefined);
     validateApiKeyWithProviderMock.mockResolvedValue({ valid: true });
@@ -490,20 +499,27 @@ describe('host services', () => {
     });
     validateApiKeyWithProviderMock.mockResolvedValue({ valid: true });
     const { createProvidersApi } = await import('@electron/services/providers-api');
+    const credentialVault = new CredentialStagingVault();
+    const credentialHandle = credentialVault.stage('sk-test');
     const providersApi = createProvidersApi({
       gatewayManager: {} as never,
       mainWindow: {} as never,
+      credentialVault,
     });
 
     await expect(providersApi.validateKey({
       accountId: 'custom-local',
-      apiKey: 'sk-test',
+      credentialHandle,
+      kernelIds: ['openclaw'],
       options: {
         baseUrl: 'http://live.example/v1',
         apiProtocol: 'openai-responses',
         modelId: 'live-model',
       },
-    })).resolves.toEqual({ valid: true });
+    })).resolves.toEqual({
+      valid: true,
+      kernels: [{ kernelId: 'openclaw', valid: true }],
+    });
 
     expect(validateApiKeyWithProviderMock).toHaveBeenCalledWith('custom', 'sk-test', {
       baseUrl: 'http://live.example/v1',
@@ -526,49 +542,68 @@ describe('host services', () => {
     };
     providerServiceMock.createAccount.mockResolvedValue(account);
     const gatewayManager = { debouncedReload: vi.fn() };
+    const projectionReconciler = {
+      reconcileAccount: vi.fn().mockResolvedValue([
+        { kernelId: 'openclaw', accountId: account.id, status: 'ready', nativeId: 'custom-local' },
+      ]),
+    };
+    const credentialVault = new CredentialStagingVault();
+    const credentialHandle = credentialVault.stage('sk-test');
     const { createProvidersApi } = await import('@electron/services/providers-api');
 
     await expect(createProvidersApi({
       gatewayManager: gatewayManager as never,
       mainWindow: {} as never,
-    }).createAccount({ account, apiKey: 'sk-test' })).resolves.toEqual({
+      credentialVault,
+      projectionReconciler: projectionReconciler as never,
+    }).createAccount({ account, credentialHandle })).resolves.toMatchObject({
       success: true,
       account,
+      projections: [expect.objectContaining({ kernelId: 'openclaw', status: 'ready' })],
     });
 
     expect(providerServiceMock.createAccount).toHaveBeenCalledWith(account, 'sk-test');
-    expect(providerAccountToConfigMock).toHaveBeenCalledWith(account);
-    expect(syncSavedProviderToRuntimeMock).toHaveBeenCalledWith(
-      expect.objectContaining({ id: 'custom-local', type: 'custom' }),
-      'sk-test',
-      gatewayManager,
-    );
+    expect(projectionReconciler.reconcileAccount).toHaveBeenCalledWith(account.id, undefined);
+    expect(syncSavedProviderToRuntimeMock).not.toHaveBeenCalled();
   });
 
   it('removes provider runtime state before deleting the local provider record', async () => {
-    const provider = {
+    const account = {
       id: 'custom-local',
-      name: 'Local',
-      type: 'custom',
+      label: 'Local',
+      vendorId: 'custom',
+      authMode: 'api_key',
       baseUrl: 'http://127.0.0.1:1234/v1',
       enabled: true,
+      createdAt: '2026-05-31T00:00:00.000Z',
+      updatedAt: '2026-05-31T00:00:00.000Z',
     };
-    providerServiceMock._getProviderInternal.mockResolvedValue(provider);
+    providerServiceMock.getAccount.mockResolvedValue(account);
+    providerServiceMock.listAccounts.mockResolvedValue([account]);
     const gatewayManager = {};
     const { createProvidersApi } = await import('@electron/services/providers-api');
 
     await expect(createProvidersApi({
       gatewayManager: gatewayManager as never,
       mainWindow: {} as never,
-    }).delete({ providerId: provider.id })).resolves.toEqual({ success: true });
+    }).delete({ providerId: account.id })).resolves.toEqual({ success: true });
 
-    expect(syncDeletedProviderToRuntimeMock).toHaveBeenCalledWith(provider, provider.id, gatewayManager);
+    expect(syncDeletedProviderToRuntimeMock).toHaveBeenCalledWith(
+      expect.objectContaining({ id: account.id, type: account.vendorId }),
+      account.id,
+      gatewayManager,
+    );
     expect(syncDeletedProviderToRuntimeMock.mock.invocationCallOrder[0])
-      .toBeLessThan(providerServiceMock._deleteProviderInternal.mock.invocationCallOrder[0]);
+      .toBeLessThan(providerServiceMock.deleteAccount.mock.invocationCallOrder[0]);
   });
 
-  it('sets the default provider account and syncs runtime defaults', async () => {
-    providerServiceMock.getDefaultAccountId.mockResolvedValue('old-default');
+  it('sets the OpenClaw default through the canonical per-kernel table', async () => {
+    providerServiceMock.getAccount.mockResolvedValue({
+      id: 'custom-local', vendorId: 'custom', enabled: true, model: 'local-model',
+    });
+    listProviderDefaultsMock.mockResolvedValue([{
+      kernelId: 'openclaw', accountId: 'custom-local', modelId: 'local-model', updatedAt: 'now',
+    }]);
     const gatewayManager = { debouncedReload: vi.fn() };
     const { createProvidersApi } = await import('@electron/services/providers-api');
 
@@ -577,7 +612,7 @@ describe('host services', () => {
       mainWindow: {} as never,
     }).setDefaultAccount({ accountId: 'custom-local' })).resolves.toEqual({ success: true });
 
-    expect(providerServiceMock.setDefaultAccount).toHaveBeenCalledWith('custom-local');
+    expect(setDefaultProviderAccountMock).toHaveBeenCalledWith('custom-local', 'openclaw', 'local-model');
     expect(syncDefaultProviderToRuntimeMock).toHaveBeenCalledWith('custom-local', gatewayManager);
   });
 
@@ -612,13 +647,19 @@ describe('host services', () => {
       updatedAt: '2026-06-02T00:00:00.000Z',
     };
     providerServiceMock.getAccount.mockResolvedValue(deletedAccount);
-    providerServiceMock.getDefaultAccountId.mockResolvedValue(deletedAccount.id);
     providerServiceMock.listAccounts.mockResolvedValue([
       deletedAccount,
       newestDisabledAccount,
       olderEnabledAccount,
       newestEnabledAccount,
     ]);
+    listProviderDefaultsMock
+      .mockResolvedValueOnce([{
+        kernelId: 'openclaw', accountId: deletedAccount.id, modelId: deletedAccount.model, updatedAt: 'old',
+      }])
+      .mockResolvedValueOnce([{
+        kernelId: 'openclaw', accountId: newestEnabledAccount.id, modelId: newestEnabledAccount.model, updatedAt: 'new',
+      }]);
     const gatewayManager = { debouncedReload: vi.fn(), debouncedRestart: vi.fn() };
     const { createProvidersApi } = await import('@electron/services/providers-api');
 
@@ -627,16 +668,19 @@ describe('host services', () => {
       mainWindow: {} as never,
     }).deleteAccount({ accountId: deletedAccount.id })).resolves.toEqual({ success: true });
 
-    expect(providerServiceMock.setDefaultAccount).toHaveBeenCalledWith(newestEnabledAccount.id);
-    expect(syncDefaultProviderToRuntimeMock).toHaveBeenCalledWith(newestEnabledAccount.id);
+    expect(setDefaultProviderAccountMock).toHaveBeenCalledWith(
+      newestEnabledAccount.id,
+      'openclaw',
+      newestEnabledAccount.model,
+    );
+    expect(syncDefaultProviderToRuntimeMock).toHaveBeenCalledWith(newestEnabledAccount.id, gatewayManager);
     expect(syncDeletedProviderToRuntimeMock).toHaveBeenCalledWith(
       expect.objectContaining({ id: deletedAccount.id, type: deletedAccount.vendorId }),
       deletedAccount.id,
       gatewayManager,
-      undefined,
     );
-    expect(syncDefaultProviderToRuntimeMock.mock.invocationCallOrder[0])
-      .toBeLessThan(syncDeletedProviderToRuntimeMock.mock.invocationCallOrder[0]);
+    expect(syncDeletedProviderToRuntimeMock.mock.invocationCallOrder[0])
+      .toBeLessThan(syncDefaultProviderToRuntimeMock.mock.invocationCallOrder[0]);
   });
 
   it('does not change the default provider when deleting a non-default account', async () => {
@@ -651,7 +695,8 @@ describe('host services', () => {
       updatedAt: '2026-05-01T00:00:00.000Z',
     };
     providerServiceMock.getAccount.mockResolvedValue(account);
-    providerServiceMock.getDefaultAccountId.mockResolvedValue('default-account');
+    providerServiceMock.listAccounts.mockResolvedValue([account]);
+    listProviderDefaultsMock.mockResolvedValue([]);
     const gatewayManager = { debouncedReload: vi.fn(), debouncedRestart: vi.fn() };
     const { createProvidersApi } = await import('@electron/services/providers-api');
 
@@ -660,8 +705,8 @@ describe('host services', () => {
       mainWindow: {} as never,
     }).deleteAccount({ accountId: account.id })).resolves.toEqual({ success: true });
 
-    expect(providerServiceMock.listAccounts).not.toHaveBeenCalled();
-    expect(providerServiceMock.setDefaultAccount).not.toHaveBeenCalled();
+    expect(providerServiceMock.listAccounts).toHaveBeenCalledTimes(1);
+    expect(setDefaultProviderAccountMock).not.toHaveBeenCalled();
     expect(syncDefaultProviderToRuntimeMock).not.toHaveBeenCalled();
   });
 
@@ -677,8 +722,10 @@ describe('host services', () => {
       updatedAt: '2026-05-01T00:00:00.000Z',
     };
     providerServiceMock.getAccount.mockResolvedValue(account);
-    providerServiceMock.getDefaultAccountId.mockResolvedValue(account.id);
     providerServiceMock.listAccounts.mockResolvedValue([account]);
+    listProviderDefaultsMock.mockResolvedValue([{
+      kernelId: 'openclaw', accountId: account.id, modelId: account.model, updatedAt: 'old',
+    }]);
     const gatewayManager = { debouncedReload: vi.fn(), debouncedRestart: vi.fn() };
     const { createProvidersApi } = await import('@electron/services/providers-api');
 
@@ -687,7 +734,7 @@ describe('host services', () => {
       mainWindow: {} as never,
     }).deleteAccount({ accountId: account.id })).resolves.toEqual({ success: true });
 
-    expect(providerServiceMock.setDefaultAccount).not.toHaveBeenCalled();
+    expect(setDefaultProviderAccountMock).not.toHaveBeenCalled();
     expect(syncDefaultProviderToRuntimeMock).not.toHaveBeenCalled();
   });
 
@@ -952,14 +999,88 @@ describe('host services', () => {
     };
     const { createAgentsApi } = await import('@electron/services/agents-api');
 
-    await expect(createAgentsApi({ gatewayManager: gatewayManager as never }).delete({ id: 'code' }))
-      .resolves.toEqual({ success: true, ...snapshot });
+    await expect(createAgentsApi({ gatewayManager: gatewayManager as never }).delete({
+      id: 'code',
+      preserveHistory: true,
+    })).resolves.toEqual({
+      success: true,
+      agents: [],
+      kernelDefaults: [{
+        kernelId: 'openclaw', agentId: 'main', updatedAt: '1970-01-01T00:00:00.000Z',
+      }],
+      defaultModelRef: null,
+      configuredChannelTypes: [],
+      channelOwners: {},
+      channelAccountOwners: {},
+    });
 
     expect(deleteAgentConfigMock).toHaveBeenCalledWith('code');
     expect(gatewayManager.restart).not.toHaveBeenCalled();
     expect(removeAgentWorkspaceDirectoryMock).toHaveBeenCalledWith(removedEntry);
     expect(deleteAgentConfigMock.mock.invocationCallOrder[0])
       .toBeLessThan(removeAgentWorkspaceDirectoryMock.mock.invocationCallOrder[0]);
+  });
+
+  it('translates temporary OpenClaw Channel projections back to canonical Agent IDs', async () => {
+    listAgentsSnapshotMock.mockResolvedValue({
+      agents: [{
+        id: 'native-writer',
+        name: 'Native Writer',
+        modelDisplay: 'Default',
+        modelRef: null,
+        overrideModelRef: null,
+        inheritedModel: true,
+        workspace: '/tmp/native-writer',
+        agentDir: '/tmp/native-writer-agent',
+        mainSessionKey: 'agent:native-writer:main',
+        channelTypes: ['feishu'],
+      }],
+      defaultAgentId: 'native-writer',
+      defaultModelRef: 'deepseek/deepseek-chat',
+      configuredChannelTypes: ['feishu'],
+      channelOwners: { feishu: 'native-writer' },
+      channelAccountOwners: { 'feishu:writer-account': 'native-writer' },
+    });
+    const canonical = {
+      id: 'canonical-writer',
+      displayName: 'Writer',
+      workspaceUri: 'file:///tmp/canonical-writer',
+      enabled: true,
+      supportedKernels: ['openclaw', 'deepseek-harness'],
+      defaultForKernels: ['openclaw'],
+      projections: [{
+        kernelId: 'openclaw',
+        state: 'ready',
+        desiredVersion: 2,
+        appliedVersion: 2,
+        nativeId: 'native-writer',
+        updatedAt: '2026-08-24T00:00:00.000Z',
+      }],
+      version: 2,
+      createdAt: '2026-08-24T00:00:00.000Z',
+      updatedAt: '2026-08-24T00:00:00.000Z',
+    };
+    const agentService = {
+      list: vi.fn().mockResolvedValue([canonical]),
+      defaults: vi.fn().mockResolvedValue([{
+        kernelId: 'openclaw',
+        agentId: 'canonical-writer',
+        updatedAt: '2026-08-24T00:00:00.000Z',
+      }]),
+    };
+    const { createAgentsApi } = await import('@electron/services/agents-api');
+
+    await expect(createAgentsApi({
+      gatewayManager: {} as never,
+      agentService: agentService as never,
+    }).list(undefined)).resolves.toEqual(expect.objectContaining({
+      success: true,
+      defaultModelRef: 'deepseek/deepseek-chat',
+      configuredChannelTypes: ['feishu'],
+      channelOwners: { feishu: 'canonical-writer' },
+      channelAccountOwners: { 'feishu:writer-account': 'canonical-writer' },
+      agents: [expect.objectContaining({ id: 'canonical-writer', channelTypes: ['feishu'] })],
+    }));
   });
 
   it('updates agent model without scheduling lifecycle work', async () => {
@@ -985,7 +1106,12 @@ describe('host services', () => {
     await expect(createAgentsApi({ gatewayManager: gatewayManager as never }).updateModel({
       id: 'main',
       modelRef: 'custom-enterpri/claude-sonnet-4',
-    })).resolves.toEqual({ success: true, ...snapshot });
+    })).resolves.toMatchObject({
+      success: true,
+      agents: [expect.objectContaining({ id: 'main', modelRef: 'custom-enterpri/claude-sonnet-4' })],
+      kernelDefaults: [expect.objectContaining({ kernelId: 'openclaw', agentId: 'main' })],
+      defaultModelRef: snapshot.defaultModelRef,
+    });
 
     expect(agentConfig.updateAgentModel).toHaveBeenCalledWith('main', 'custom-enterpri/claude-sonnet-4');
     expect(providerRuntimeSync.syncAllProviderAuthToRuntime).toHaveBeenCalledTimes(1);
@@ -1012,7 +1138,13 @@ describe('host services', () => {
     await expect(createAgentsApi({ gatewayManager: gatewayManager as never }).assignChannel({
       id: 'main',
       channelType: 'feishu',
-    })).resolves.toEqual({ success: true, ...snapshot });
+    })).resolves.toMatchObject({
+      success: true,
+      agents: [expect.objectContaining({ id: 'main', channelTypes: ['feishu'] })],
+      kernelDefaults: [expect.objectContaining({ kernelId: 'openclaw', agentId: 'main' })],
+      configuredChannelTypes: ['feishu'],
+      channelOwners: { feishu: 'main' },
+    });
 
     expect(assignChannelToAgentMock).toHaveBeenCalledWith('main', 'feishu');
     expect(gatewayManager.debouncedReload).not.toHaveBeenCalled();
@@ -1038,8 +1170,16 @@ describe('host services', () => {
     const { createAgentsApi } = await import('@electron/services/agents-api');
     const agentsApi = createAgentsApi({ gatewayManager: gatewayManager as never });
 
-    await expect(agentsApi.create({ name: 'Writer' })).resolves.toEqual({ success: true, ...snapshot });
-    await expect(agentsApi.update({ id: 'writer', name: 'Writer' })).resolves.toEqual({ success: true, ...snapshot });
+    await expect(agentsApi.create({ name: 'Writer' })).resolves.toMatchObject({
+      success: true,
+      agents: [expect.objectContaining({ id: 'writer', name: 'Writer' })],
+      kernelDefaults: [expect.objectContaining({ kernelId: 'openclaw', agentId: 'main' })],
+    });
+    await expect(agentsApi.update({ id: 'writer', name: 'Writer' })).resolves.toMatchObject({
+      success: true,
+      agents: [expect.objectContaining({ id: 'writer', name: 'Writer' })],
+      kernelDefaults: [expect.objectContaining({ kernelId: 'openclaw', agentId: 'main' })],
+    });
 
     expect(gatewayManager.debouncedReload).not.toHaveBeenCalled();
     expect(gatewayManager.debouncedRestart).not.toHaveBeenCalled();
@@ -1327,7 +1467,7 @@ describe('host services', () => {
     );
   });
 
-  it('registers exactly the five ACP chat actions', async () => {
+  it('registers the canonical selection action and ACP execution actions', async () => {
     const { createChatApi } = await import('@electron/services/chat-api');
 
     expect(Object.keys(createChatApi({
@@ -1335,6 +1475,7 @@ describe('host services', () => {
       mainWindow: {} as never,
       acpSessionAccessRegistry: {} as never,
     }))).toEqual([
+      'selectConversationKernel',
       'loadAcpSession',
       'sendAcpPrompt',
       'cancelAcpSession',
@@ -1343,105 +1484,90 @@ describe('host services', () => {
     ]);
   });
 
-  it('loads session summaries and transcript history through the typed sessions service', async () => {
-    const sessionsDir = join(testOpenClawConfigDir, 'agents', 'main', 'sessions');
-    mkdirSync(sessionsDir, { recursive: true });
-    writeFileSync(join(sessionsDir, 'sessions.json'), JSON.stringify({
-      sessions: [
-        {
-          key: 'agent:main:abc123',
-          file: 'abc123.jsonl',
-        },
-      ],
-    }));
-    writeFileSync(join(sessionsDir, 'abc123.jsonl'), [
-      JSON.stringify({
-        type: 'message',
-        message: {
-          role: 'user',
-          content: '[Working directory: ~/.openclaw/workspace]\n\nSender: test-user\n[Working directory: ~/.openclaw/workspace]\n\nHello from transcript',
-          timestamp: 1000,
-        },
-      }),
-      JSON.stringify({
-        type: 'message',
-        id: 'assistant-record',
-        timestamp: 1001,
-        message: {
-          role: 'assistant',
-          content: 'Hi',
-        },
-      }),
-    ].join('\n'));
-    const { createSessionsApi } = await import('@electron/services/sessions-api');
-    const sessionsApi = createSessionsApi();
+  it('binds canonical Conversation selection to a generation-scoped workspace attachment grant', async () => {
+    const { createChatApi } = await import('@electron/services/chat-api');
+    const prepared = {
+      sessionKey: 'conversation-one',
+      generation: 4,
+      workspaceRoot: '/workspace',
+      executionCwd: '/workspace/project',
+    };
+    const access = {
+      prepareGrant: vi.fn(async () => prepared),
+      commitGrant: vi.fn(),
+    };
+    const api = createChatApi({
+      gatewayManager: {} as never,
+      mainWindow: {} as never,
+      acpSessionAccessRegistry: access as never,
+      conversationRouter: {
+        runtimeSnapshot: vi.fn(() => ({ kernelId: 'deepseek-harness', state: 'ready', generation: 4, diagnostics: [] })),
+        activeRun: vi.fn(() => undefined),
+      } as never,
+    });
 
-    await expect(sessionsApi.summaries({ sessionKeys: ['agent:main:abc123'] }))
+    await expect(api.selectConversationKernel({
+      sessionKey: 'conversation-one',
+      workspaceRoot: '/workspace',
+      cwd: '/workspace/project',
+      kernelId: 'deepseek-harness',
+    })).resolves.toMatchObject({
+      success: true,
+      generation: 4,
+      conversationId: 'conversation-one',
+      kernelId: 'deepseek-harness',
+    });
+    expect(access.prepareGrant).toHaveBeenCalledWith(prepared);
+    expect(access.commitGrant).toHaveBeenCalledWith(prepared);
+  });
+
+  it('loads session compatibility data through the canonical Conversation client', async () => {
+    const { createSessionsApi } = await import('@electron/services/sessions-api');
+    const call = vi.fn(async (method: string) => {
+      if (method === 'getConversation') return {
+        id: 'conversation-abc123', title: 'Canonical', createdAt: '1970-01-01T00:00:01.000Z', updatedAt: '1970-01-01T00:00:02.000Z',
+      };
+      if (method === 'exportConversation') return {
+        schema: 'clawx.conversation-export/v1',
+        conversation: {
+          id: 'conversation-abc123', title: 'Canonical', createdAt: '1970-01-01T00:00:01.000Z', updatedAt: '1970-01-01T00:00:02.000Z',
+        },
+        turns: [{
+          id: 'turn-one', role: 'user', position: 0, createdAt: '1970-01-01T00:00:01.000Z',
+          blocks: [{ id: 'block-one', type: 'text', visibility: 'portable', text: 'Hello from SQLite' }],
+        }],
+        runs: [], usage: [],
+      };
+      throw new Error(`Unexpected method: ${method}`);
+    });
+    const sessionsApi = createSessionsApi({ dataClient: { call } });
+
+    await expect(sessionsApi.summaries({ sessionKeys: ['conversation-abc123'] }))
       .resolves.toEqual({
         success: true,
         summaries: [{
-          sessionKey: 'agent:main:abc123',
-          firstUserText: 'Hello from transcript',
-          lastTimestamp: 1001000,
+          sessionKey: 'conversation-abc123',
+          firstUserText: 'Canonical',
+          lastTimestamp: 2000,
           workspacePath: null,
           pinned: false,
         }],
       });
-    await expect(sessionsApi.history({ sessionKey: 'agent:main:abc123', limit: 5 }))
+    await expect(sessionsApi.history({ sessionKey: 'conversation-abc123', limit: 5 }))
       .resolves.toMatchObject({
         success: true,
         messages: [
-          {
-            role: 'user',
-            content: '[Working directory: ~/.openclaw/workspace]\n\nSender: test-user\n[Working directory: ~/.openclaw/workspace]\n\nHello from transcript',
-            timestamp: 1000,
-          },
-          { role: 'assistant', content: 'Hi', timestamp: 1001, id: 'assistant-record' },
+          { role: 'user', content: 'Hello from SQLite', timestamp: 1000, id: 'turn-one' },
         ],
       });
+    expect(call).not.toHaveBeenCalledWith(expect.stringMatching(/gateway|transcript|session\/load/i), expect.anything());
   });
 
-  it('persists pin metadata for all supported sessions.json entry shapes', async () => {
-    const sessionsDir = join(testOpenClawConfigDir, 'agents', 'main', 'sessions');
-    mkdirSync(sessionsDir, { recursive: true });
-    const sessionsJsonPath = join(sessionsDir, 'sessions.json');
-    writeFileSync(sessionsJsonPath, JSON.stringify({
-      sessions: [{ key: 'agent:main:array-session', file: 'array-session.jsonl', custom: 'keep' }],
-      'agent:main:object-session': { sessionFile: 'object-session.jsonl', custom: 'keep' },
-      'agent:main:string-session': 'string-session.jsonl',
-    }));
+  it('fails closed when the canonical Conversation client is unavailable', async () => {
     const { createSessionsApi } = await import('@electron/services/sessions-api');
     const sessionsApi = createSessionsApi();
-
-    await expect(sessionsApi.pin({ id: 'agent:main:array-session', pinned: true }))
-      .resolves.toEqual({ success: true });
-    await expect(sessionsApi.pin({ id: 'agent:main:object-session', pinned: true }))
-      .resolves.toEqual({ success: true });
-    await expect(sessionsApi.pin({ id: 'agent:main:string-session', pinned: true }))
-      .resolves.toEqual({ success: true });
-
-    const stored = JSON.parse(readFileSync(sessionsJsonPath, 'utf8')) as Record<string, unknown> & {
-      sessions: Array<Record<string, unknown>>;
-    };
-    expect(stored.sessions[0]).toMatchObject({ pinned: true, custom: 'keep' });
-    expect(stored['agent:main:object-session']).toMatchObject({ pinned: true, custom: 'keep' });
-    expect(stored['agent:main:string-session']).toEqual({ file: 'string-session.jsonl', pinned: true });
-
-    await expect(sessionsApi.summaries({
-      sessionKeys: ['agent:main:array-session'],
-      metadataOnly: true,
-    })).resolves.toEqual({
-      success: true,
-      summaries: [{
-        sessionKey: 'agent:main:array-session',
-        firstUserText: null,
-        lastTimestamp: null,
-        workspacePath: null,
-        pinned: true,
-      }],
-    });
-    await expect(sessionsApi.pin({ id: 'agent:invalid/path:session', pinned: true }))
-      .resolves.toEqual(expect.objectContaining({ success: false }));
+    await expect(sessionsApi.pin({ id: 'legacy-session', pinned: true }))
+      .rejects.toThrow(/Canonical Conversation DataService is unavailable/);
   });
 
   it('delegates all attachment-scoped file operations from the files service', async () => {

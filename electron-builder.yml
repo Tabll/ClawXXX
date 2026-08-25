@@ -21,17 +21,14 @@ extraResources:
       - "!icons/*.md"
       - "!icons/*.svg"
       - "!bin/**"
+      - "!cli/**"
       - "!screenshot/**"
-  # OpenClaw package (node_modules copied separately by afterPack hook
-  # because electron-builder respects .gitignore which excludes node_modules/)
-  - from: build/openclaw/
-    to: openclaw/
+      # OpenClaw plugin mirrors are part of the signed OpenClaw runtime artifact,
+      # never the base ClawX installer.
+      - "!openclaw-plugins/**"
   # Pre-bundled third-party skills (full directories, not only SKILL.md)
   - from: build/preinstalled-skills/
     to: resources/preinstalled-skills/
-  # NOTE: OpenClaw plugin mirrors (dingtalk, etc.) are bundled by the
-  # afterPack hook (after-pack.cjs) directly from node_modules, so they
-  # don't need an extraResources entry here.
 
 afterPack: ./scripts/after-pack.cjs
 
@@ -43,11 +40,8 @@ asarUnpack:
   # 22+ (Electron 43+).  Unpacking lets afterPack patch them in place.
   - "**/node_modules/lru-cache/**"
 
-# Disable native module rebuilding.
-# The Electron renderer/main process has no native (.node) dependencies.
-# All native modules (opus, sharp, koffi …) belong to openclaw, which is
-# bundled separately (bundle-openclaw.mjs → extraResources) and runs in its
-# own process — @electron/rebuild must NOT touch them.
+# Disable native module rebuilding. Optional kernel native modules are built,
+# signed and distributed by kernel-runtime CI, never by the base app pack.
 npmRebuild: false
 
 # Auto-update configuration
@@ -66,8 +60,6 @@ mac:
   extraResources:
     - from: resources/bin/darwin-${arch}
       to: bin
-    - from: resources/cli/posix/
-      to: cli/
   category: public.app-category.productivity
   icon: resources/icons/icon.icns
   target:
@@ -111,14 +103,17 @@ dmg:
 
 # Windows Configuration
 win:
-  # Skip update signature verification: we ship via OSS + GitHub without a
-  # code-signing certificate, so verifying would always fail on the updater.
+  # Developer/local packages may be unsigned. Protected release CI extends
+  # this file with electron-builder.release.yml, requires signing, and enables
+  # update publisher verification.
   verifyUpdateCodeSignature: false
   extraResources:
     - from: resources/bin/win32-${arch}
       to: bin
-    - from: resources/cli/win32/
-      to: cli/
+    # The optional-runtime driver generates the actual CLI only after OpenClaw
+    # activation. This helper only updates the current user's PATH safely.
+    - from: resources/cli/win32/update-user-path.ps1
+      to: cli/update-user-path.ps1
   icon: resources/icons/icon.ico
   target:
     - target: nsis
@@ -145,8 +140,6 @@ linux:
   extraResources:
     - from: resources/bin/linux-${arch}
       to: bin
-    - from: resources/cli/posix/
-      to: cli/
   icon: resources/icons
   target:
     - target: AppImage
@@ -163,12 +156,12 @@ linux:
   category: Utility
   maintainer: ClawX Team <public@valuecell.ai>
   vendor: ClawX
-  synopsis: AI Assistant powered by OpenClaw
-  description: ClawX is a graphical AI assistant application that integrates with OpenClaw Gateway to provide intelligent automation and assistance across multiple messaging platforms.
+  synopsis: Multi-kernel AI assistant
+  description: ClawX is a graphical AI assistant host with optional, independently downloaded agent runtimes.
   desktop:
     entry:
       Name: ClawX
-      Comment: AI Assistant powered by OpenClaw
+      Comment: Multi-kernel AI assistant
       Categories: Utility;Network;
       Keywords: ai;assistant;automation;chat;
       StartupWMClass: clawx

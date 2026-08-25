@@ -2,6 +2,24 @@
 
 本文档是 README「开发指南」一节的详细说明。
 
+### 多内核开发边界
+
+ClawX 0.6 把宿主与可下载运行时代码分离。Canonical contracts 位于 `shared/{kernels,conversations,domains,data}`，Main-owned 实现位于 `electron/{kernels,conversations,domains,data,scheduler,channels,security}`。Renderer 必须通过 `src/lib/host-api.ts`/`api-client.ts`，不得直连 Gateway、DSH endpoint、runtime filesystem 或 SQLite。内核专属逻辑只能在 `KernelDriver`/projection adapter 后面，不能进入页面业务分支。
+
+固定的上游输入、补丁与 overlay 位于 `kernels/<kernelId>/`。`scripts/kernel-runtime/` 负责源码校验、许可证审计、独立 Node 下载、平台二进制签名、确定性 `tar.zst`、SBOM/provenance、catalog 晋级和双镜像演练。主安装包 `afterPack` 一旦发现可选内核 payload 或软链接即失败。
+
+常用检查：
+
+```bash
+pnpm run kernel:sources:verify
+pnpm run data:electron-smoke
+pnpm run test:multi-kernel:chaos
+pnpm run release:multi-kernel:validate
+pnpm harness validate --spec harness/specs/tasks/implement-multi-kernel-m16-release-gate.md
+```
+
+受保护 `kernel-runtime-build.yml` 以五目标构建两内核；`kernel-runtime-promote.yml` 校验完整签名集合，按不可变制品先、catalog 后的顺序发布并执行双镜像 Range 演练。平台证书、私有 metadata key、公证凭据与法务批准是 release environment 输入，本地 build 不得伪造证据。参见[运行时安全/支持](runtime-security-support.md)和[数据恢复/保留](data-security-retention.md)。
+
 ### 前置要求
 
 - **Node.js**：对应主版本范围内的 22.22.3+、24.15.0+ 或 25.9.0+（推荐 Node 24 LTS）

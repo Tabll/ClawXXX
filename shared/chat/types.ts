@@ -1,3 +1,7 @@
+import type { KernelId } from '../kernels/contracts';
+import type { ConversationQueryFilters } from '../conversations/contracts';
+import type { ConversationCatalogChangedEvent } from '../host-events/contract';
+
 /** Metadata for files attached to ACP prompts or projected by bounded ACP media compatibility. */
 export interface AttachedFileMeta {
   fileName: string;
@@ -85,7 +89,7 @@ export interface ContentBlock {
   content?: unknown;
 }
 
-/** Session from sessions.list */
+/** Canonical Conversation projected into the legacy sidebar row shape. */
 export interface ChatSession {
   key: string;
   /** OpenClaw transcript session UUID, used to identify synthetic fallback titles. */
@@ -103,10 +107,16 @@ export interface ChatSession {
   hasActiveRun?: boolean;
   /** Channel provider that last delivered to this session (e.g. webchat, feishu, discord). */
   channel?: string;
-  /** OpenClaw ACP session cwd, mirrored for display and routing. OpenClaw is the source of truth. */
+  /** Latest canonical run workspace, used for display and the next run default. */
   workspacePath?: string;
   /** Renderer-local placeholder created by New Chat before ACP has created the backing session. */
   createdLocally?: boolean;
+  /** Provenance of the most recent run; never used for renderer-side backend branching. */
+  kernelId?: KernelId;
+  /** All kernels represented by durable runs in this Conversation. */
+  kernelIds?: KernelId[];
+  agentId?: string;
+  sourceChannel?: string;
 }
 
 export type GatewaySessionsChangedPayload = Record<string, unknown> & {
@@ -137,8 +147,10 @@ export type DeleteSessionResult =
 
 export interface ChatState {
   sessions: ChatSession[];
-  /** True after the current Gateway generation has published a canonical sessions.list snapshot. */
+  /** True after DataService has published a canonical Conversation snapshot. */
   sessionCatalogReady: boolean;
+  sessionCatalogLoading: boolean;
+  sessionNextCursor?: string;
   currentSessionKey: string;
   currentAgentId: string;
   /** First user message text per session key, used as display label */
@@ -147,7 +159,11 @@ export interface ChatState {
   sessionLastActivity: Record<string, number>;
 
   loadSessions: (options?: LoadSessionsOptions) => Promise<void>;
+  loadMoreSessions: () => Promise<void>;
+  searchSessions: (query: string, filters?: ConversationQueryFilters) => Promise<ChatSession[]>;
+  exportSession: (key: string) => Promise<{ success: true } | { success: false; error: string }>;
   handleSessionsChanged: (payload: GatewaySessionsChangedPayload) => void;
+  handleConversationCatalogChanged: (payload: ConversationCatalogChangedEvent) => void;
   switchSession: (key: string) => void;
   selectAcpSession: (key: string, workspacePath?: string) => void;
   newSession: () => void;

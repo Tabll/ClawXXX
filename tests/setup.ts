@@ -30,6 +30,12 @@ vi.mock('electron', () => ({
   dialog: { showOpenDialog: vi.fn(), showMessageBox: vi.fn() },
   shell: { openExternal: vi.fn() },
   session: { defaultSession: { webRequest: { onBeforeSendHeaders: vi.fn() } } },
+  safeStorage: {
+    isEncryptionAvailable: vi.fn().mockReturnValue(true),
+    getSelectedStorageBackend: vi.fn().mockReturnValue('keychain'),
+    encryptString: vi.fn((value: string) => Buffer.from(value, 'utf8')),
+    decryptString: vi.fn((value: Uint8Array) => Buffer.from(value).toString('utf8')),
+  },
   utilityProcess: {},
 }));
 
@@ -60,7 +66,12 @@ if (typeof window !== 'undefined') {
 if (typeof window !== 'undefined') {
   let needsLocalStorageMock: boolean;
   try {
-    needsLocalStorageMock = !window.localStorage;
+    const candidate = window.localStorage;
+    needsLocalStorageMock = !candidate
+      || typeof candidate.getItem !== 'function'
+      || typeof candidate.setItem !== 'function'
+      || typeof candidate.removeItem !== 'function'
+      || typeof candidate.clear !== 'function';
   } catch {
     needsLocalStorageMock = true;
   }

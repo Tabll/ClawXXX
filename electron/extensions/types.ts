@@ -1,5 +1,10 @@
 import type { BrowserWindow } from 'electron';
 import type { GatewayManager } from '../gateway/manager';
+import type {
+  ExtensionHostKernelApi,
+  LegacyOpenClawExtensionBoundary,
+  SupportedKernelsDeclaration,
+} from '@shared/extensions/kernel-api';
 import type { HostApiContribution, HostApiContributionRegistrar } from '../main/ipc/host-contract';
 import type {
   MarketplaceSearchParams,
@@ -11,13 +16,16 @@ import type {
 } from '../gateway/clawhub';
 
 export interface ExtensionContext {
-  gatewayManager: GatewayManager;
+  kernels: ExtensionHostKernelApi & {
+    legacyOpenClaw: LegacyOpenClawExtensionBoundary<GatewayManager>;
+  };
   getMainWindow: () => BrowserWindow | null;
   hostApi: HostApiContributionRegistrar;
 }
 
 export interface Extension {
   id: string;
+  supportedKernels?: SupportedKernelsDeclaration;
   setup(ctx: ExtensionContext): void | Promise<void>;
   teardown?(): void | Promise<void>;
 }

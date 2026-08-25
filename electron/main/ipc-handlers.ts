@@ -9,36 +9,15 @@ import { join, extname, basename, resolve, sep, relative } from 'node:path';
 import { syncMacTrafficLightPosition } from './traffic-light-layout';
 import { GatewayManager } from '../gateway/manager';
 import { ClawHubService } from '../gateway/clawhub';
-import {
-  type ProviderConfig,
-} from '../utils/secure-storage';
-import { getOpenClawStatus, getOpenClawSkillsDir, ensureDir, expandPath } from '../utils/paths';
+import { getOpenClawConfigDir, getOpenClawStatus, getOpenClawSkillsDir, ensureDir, expandPath } from '../utils/paths';
 import { getOpenClawCliCommand } from '../utils/openclaw-cli';
 import { getAllSettings, getSetting, resetSettings, setSetting, type AppSettings } from '../utils/store';
-import {
-  saveProviderKeyToOpenClaw,
-  removeProviderFromOpenClaw,
-} from '../utils/openclaw-auth';
 import { syncProxyConfigToOpenClaw } from '../utils/openclaw-proxy';
 import { logger } from '../utils/logger';
-import { resolveAgentIdFromChannel } from '../utils/agent-config';
-import { resolveAccountIdFromSessionHistory } from '../utils/session-util';
 import { whatsAppLoginManager } from '../utils/whatsapp-login';
-import { getProviderConfig } from '../utils/provider-registry';
 import { applyProxySettings } from './proxy';
 import { syncLaunchAtStartupSettingFromStore } from './launch-at-startup';
-import { getRecentTokenUsageHistory } from '../utils/token-usage';
-import { getProviderService } from '../services/providers/provider-service';
-import {
-  getOpenClawProviderKey,
-  syncDefaultProviderToRuntime,
-  syncDeletedProviderApiKeyToRuntime,
-  syncDeletedProviderToRuntime,
-  syncProviderApiKeyToRuntime,
-  syncSavedProviderToRuntime,
-  syncUpdatedProviderToRuntime,
-} from '../services/providers/provider-runtime-sync';
-import { validateApiKeyWithProvider } from '../services/providers/provider-validation';
+import type { RemoteDataServiceClient } from '../data/data-service-utility-host';
 import { appUpdater } from './updater';
 import { HostApiRegistry, registerHostInvokeHandler } from './ipc/host-invoke';
 import { createAppApi } from '../services/app-api';
@@ -63,17 +42,29 @@ import { createMediaApi } from '../services/media-api';
 import { createEmbeddingsApi } from '../services/embeddings-api';
 import { createProvidersApi } from '../services/providers-api';
 import { createSessionsApi } from '../services/sessions-api';
+import { createConversationsApi } from '../services/conversations-api';
 import { createSkillsApi } from '../services/skills-api';
 import { createUsageApi } from '../services/usage-api';
+import { createKernelsApi } from '../services/kernels-api';
+import type { KernelSupervisorRegistry } from '../kernels/supervisor-registry';
+import type { KernelPackageController } from '../kernels/package-manager/controller';
+import type { AcpChatService } from '../services/acp-chat-service';
+import type { AcpSessionAccessRegistry as AcpSessionAccessRegistryType } from '../services/acp-session-access-registry';
+import type { ConversationRouter } from '../conversations/conversation-router';
+import type { ProviderProjectionReconciler } from '../services/providers/provider-projection-reconciler';
+import type { CanonicalAgentService } from '../domains/agents/agent-service';
+import type { AgentProjectionReconciler } from '../domains/agents/agent-projection-reconciler';
+import type { CanonicalSkillService } from '../domains/skills/skill-service';
+import type { SkillProjectionReconciler } from '../domains/skills/skill-projection-reconciler';
+import type { CanonicalChannelAccountService } from '../channels/channel-account-service';
+import type { ChannelBindingService } from '../channels/channel-binding-service';
+import type { ChannelOwnerCoordinator } from '../channels/channel-owner-coordinator';
+import type { ChannelAdapterRegistry } from '../channels/channel-adapter-registry';
+import type { ClawXScheduler } from '../scheduler/clawx-scheduler';
+import { CredentialStagingVault } from '../security/credential-staging-vault';
+import { registerCredentialStagingIpc } from '../security/credential-staging-ipc';
 import { createWebBrowserApi } from '../services/web-browser-api';
 import type { WebBrowserGuestRegistry } from './web-browser-policy';
-import {
-  isLaunchAtStartupKey,
-  isProxyKey,
-  mapAppErrorCode,
-  type AppRequest,
-  type AppResponse,
-} from './ipc/request-helpers';
 import { createMenu } from './menu';
 
 /**
@@ -86,11 +77,25 @@ export function registerIpcHandlers(
   hostApiRegistry: HostApiRegistry,
   browserSession: Session,
   registry: WebBrowserGuestRegistry,
+  kernelSupervisors: KernelSupervisorRegistry,
+  openClawAcp?: { service: AcpChatService; access: AcpSessionAccessRegistryType },
+  dataClient?: RemoteDataServiceClient,
+  conversationRouter?: ConversationRouter,
+  providerProjectionReconciler?: ProviderProjectionReconciler,
+  agentService?: CanonicalAgentService,
+  agentProjectionReconciler?: AgentProjectionReconciler,
+  skillService?: CanonicalSkillService,
+  skillProjectionReconciler?: SkillProjectionReconciler,
+  channelAccountService?: CanonicalChannelAccountService,
+  channelBindingService?: ChannelBindingService,
+  channelOwnerCoordinator?: ChannelOwnerCoordinator,
+  channelAdapterRegistry?: ChannelAdapterRegistry,
+  scheduler?: ClawXScheduler,
+  kernelPackages?: KernelPackageController,
 ): void {
-  // Unified request protocol (non-breaking: legacy channels remain available)
-  registerUnifiedRequestHandlers(gatewayManager);
-
-  // Typed host invoke handlers (new renderer facade; legacy channels remain available)
+  const credentialVault = new CredentialStagingVault();
+  registerCredentialStagingIpc(mainWindow, credentialVault);
+  // Typed host invoke is the sole Renderer service boundary.
   registerTypedHostHandlers(
     gatewayManager,
     clawHubService,
@@ -98,6 +103,22 @@ export function registerIpcHandlers(
     hostApiRegistry,
     browserSession,
     registry,
+    kernelSupervisors,
+    openClawAcp,
+    dataClient,
+    conversationRouter,
+    providerProjectionReconciler,
+    agentService,
+    agentProjectionReconciler,
+    skillService,
+    skillProjectionReconciler,
+    channelAccountService,
+    channelBindingService,
+    channelOwnerCoordinator,
+    channelAdapterRegistry,
+    scheduler,
+    credentialVault,
+    kernelPackages,
   );
 
   // Gateway handlers
@@ -105,9 +126,6 @@ export function registerIpcHandlers(
 
   // OpenClaw handlers
   registerOpenClawHandlers();
-
-  // Provider handlers
-  registerProviderHandlers(gatewayManager);
 
   // Shell handlers
   registerShellHandlers();
@@ -122,10 +140,7 @@ export function registerIpcHandlers(
   registerSettingsHandlers(gatewayManager);
 
   // Usage handlers
-  registerUsageHandlers();
-
-  // Cron task handlers (proxy to Gateway RPC)
-  registerCronHandlers(gatewayManager);
+  registerUsageHandlers(dataClient);
 
   // Window control handlers (for custom title bar on Windows/Linux)
   registerWindowHandlers(mainWindow);
@@ -144,18 +159,40 @@ function registerTypedHostHandlers(
   hostApiRegistry: HostApiRegistry,
   browserSession: Session,
   registry: WebBrowserGuestRegistry,
+  kernelSupervisors: KernelSupervisorRegistry,
+  openClawAcp?: { service: AcpChatService; access: AcpSessionAccessRegistryType },
+  dataClient?: RemoteDataServiceClient,
+  conversationRouter?: ConversationRouter,
+  providerProjectionReconciler?: ProviderProjectionReconciler,
+  agentService?: CanonicalAgentService,
+  agentProjectionReconciler?: AgentProjectionReconciler,
+  skillService?: CanonicalSkillService,
+  skillProjectionReconciler?: SkillProjectionReconciler,
+  channelAccountService?: CanonicalChannelAccountService,
+  channelBindingService?: ChannelBindingService,
+  channelOwnerCoordinator?: ChannelOwnerCoordinator,
+  channelAdapterRegistry?: ChannelAdapterRegistry,
+  scheduler?: ClawXScheduler,
+  credentialVault?: CredentialStagingVault,
+  kernelPackages?: KernelPackageController,
 ): void {
-  const acpSessionAccessRegistry = new AcpSessionAccessRegistry();
+  const acpSessionAccessRegistry = openClawAcp?.access ?? new AcpSessionAccessRegistry();
   const stagedAttachments = new StagedAttachmentRegistry();
   const attachmentOpenWith = createAttachmentOpenWithService();
   const attachmentAccess = createAttachmentAccess({
     sessionAccessRegistry: acpSessionAccessRegistry,
     stagedAttachments,
     openWith: attachmentOpenWith,
+    dataClient,
   });
   hostApiRegistry.registerCoreServices({
     app: createAppApi(),
     openclaw: createOpenClawApi(),
+    kernels: createKernelsApi({
+      supervisors: kernelSupervisors,
+      ...(conversationRouter ? { conversationRouter } : {}),
+      ...(kernelPackages ? { packages: kernelPackages } : {}),
+    }),
     shell: createShellApi(),
     webBrowser: createWebBrowserApi({ browserSession, registry }),
     dialog: createDialogApi(),
@@ -165,9 +202,29 @@ function registerTypedHostHandlers(
     settings: createSettingsApi(gatewayManager),
     gateway: createGatewayApi(gatewayManager),
     logs: createLogsApi(),
-    channels: createChannelsApi({ gatewayManager, mainWindow }),
-    agents: createAgentsApi({ gatewayManager }),
-    providers: createProvidersApi({ gatewayManager, mainWindow }),
+    channels: createChannelsApi({
+      gatewayManager,
+      mainWindow,
+      dataClient,
+      accountService: channelAccountService,
+      bindingService: channelBindingService,
+      ownerCoordinator: channelOwnerCoordinator,
+      adapterRegistry: channelAdapterRegistry,
+      credentialVault,
+    }),
+    agents: createAgentsApi({
+      gatewayManager,
+      dataClient,
+      agentService,
+      projectionReconciler: agentProjectionReconciler,
+    }),
+    providers: createProvidersApi({
+      gatewayManager,
+      mainWindow,
+      dataClient,
+      projectionReconciler: providerProjectionReconciler,
+      credentialVault,
+    }),
     files: createFilesApi({
       attachmentAccess,
       openWith: attachmentOpenWith,
@@ -175,514 +232,31 @@ function registerTypedHostHandlers(
     }),
     media: createMediaApi({ attachmentAccess }),
     embeddings: createEmbeddingsApi(),
-    sessions: createSessionsApi(),
-    chat: createChatApi({ gatewayManager, mainWindow, acpSessionAccessRegistry }),
-    cron: createCronApi({ gatewayManager }),
-    skills: createSkillsApi({ clawHubService, gatewayManager }),
-    usage: createUsageApi(),
+    sessions: createSessionsApi({ dataClient }),
+    conversations: createConversationsApi(dataClient),
+    chat: createChatApi({
+      gatewayManager,
+      mainWindow,
+      acpSessionAccessRegistry,
+      acpChatService: openClawAcp?.service,
+      conversationRouter,
+      stagedAttachments,
+    }),
+    cron: createCronApi({
+      dataClient,
+      trigger: scheduler ? job => scheduler.trigger(job) : undefined,
+      cancel: scheduler ? cronRunId => scheduler.cancel(cronRunId) : undefined,
+      changed: scheduler ? () => scheduler.notifyChanged() : undefined,
+    }),
+    skills: createSkillsApi({
+      clawHubService,
+      gatewayManager,
+      canonicalService: skillService,
+      projectionReconciler: skillProjectionReconciler,
+    }),
+    usage: createUsageApi({ dataClient }),
   });
   registerHostInvokeHandler(hostApiRegistry);
-}
-
-function registerUnifiedRequestHandlers(gatewayManager: GatewayManager): void {
-  const providerService = getProviderService();
-  const handleProxySettingsChange = async () => {
-    const settings = await getAllSettings();
-    await syncProxyConfigToOpenClaw(settings, { preserveExistingWhenDisabled: false });
-    await applyProxySettings(settings);
-    if (gatewayManager.getStatus().state === 'running') {
-      await gatewayManager.restart();
-    }
-  };
-
-  ipcMain.handle('app:request', async (_, request: AppRequest): Promise<AppResponse> => {
-    if (!request || typeof request.module !== 'string' || typeof request.action !== 'string') {
-      return {
-        id: request?.id,
-        ok: false,
-        error: { code: 'VALIDATION', message: 'Invalid app request format' },
-      };
-    }
-
-    try {
-      let data: unknown;
-      switch (request.module) {
-        case 'app': {
-          if (request.action === 'version') data = app.getVersion();
-          else if (request.action === 'name') data = app.getName();
-          else if (request.action === 'platform') data = process.platform;
-          else {
-            return {
-              id: request.id,
-              ok: false,
-              error: {
-                code: 'UNSUPPORTED',
-                message: `APP_REQUEST_UNSUPPORTED:${request.module}.${request.action}`,
-              },
-            };
-          }
-          break;
-        }
-        case 'provider': {
-          if (request.action === 'list') {
-            data = await providerService.listLegacyProvidersWithKeyInfo();
-            break;
-          }
-          if (request.action === 'get') {
-            const payload = request.payload as { providerId?: string } | string | undefined;
-            const providerId = typeof payload === 'string' ? payload : payload?.providerId;
-            if (!providerId) throw new Error('Invalid provider.get payload');
-            data = await providerService.getLegacyProvider(providerId);
-            break;
-          }
-          if (request.action === 'getDefault') {
-            data = await providerService.getDefaultLegacyProvider();
-            break;
-          }
-          if (request.action === 'hasApiKey') {
-            const payload = request.payload as { providerId?: string } | string | undefined;
-            const providerId = typeof payload === 'string' ? payload : payload?.providerId;
-            if (!providerId) throw new Error('Invalid provider.hasApiKey payload');
-            data = await providerService.hasLegacyProviderApiKey(providerId);
-            break;
-          }
-          if (request.action === 'getApiKey') {
-            const payload = request.payload as { providerId?: string } | string | undefined;
-            const providerId = typeof payload === 'string' ? payload : payload?.providerId;
-            if (!providerId) throw new Error('Invalid provider.getApiKey payload');
-            data = await providerService.getLegacyProviderApiKey(providerId);
-            break;
-          }
-          if (request.action === 'validateKey') {
-            const payload = request.payload as
-              | { providerId?: string; apiKey?: string; options?: { baseUrl?: string; apiProtocol?: string } }
-              | [string, string, { baseUrl?: string; apiProtocol?: string }?]
-              | undefined;
-            const providerId = Array.isArray(payload) ? payload[0] : payload?.providerId;
-            const apiKey = Array.isArray(payload) ? payload[1] : payload?.apiKey;
-            const options = Array.isArray(payload) ? payload[2] : payload?.options;
-            if (!providerId || typeof apiKey !== 'string') {
-              throw new Error('Invalid provider.validateKey payload');
-            }
-
-            const provider = await providerService.getLegacyProvider(providerId);
-            const providerType = provider?.type || providerId;
-            const registryBaseUrl = getProviderConfig(providerType)?.baseUrl;
-            const resolvedBaseUrl = options?.baseUrl || provider?.baseUrl || registryBaseUrl;
-            const resolvedProtocol = options?.apiProtocol || provider?.apiProtocol;
-            data = await validateApiKeyWithProvider(providerType, apiKey, {
-              baseUrl: resolvedBaseUrl,
-              apiProtocol: resolvedProtocol,
-            });
-            break;
-          }
-          if (request.action === 'save') {
-            const payload = request.payload as
-              | { config?: ProviderConfig; apiKey?: string }
-              | [ProviderConfig, string?]
-              | undefined;
-            const config = Array.isArray(payload) ? payload[0] : payload?.config;
-            const apiKey = Array.isArray(payload) ? payload[1] : payload?.apiKey;
-            if (!config) throw new Error('Invalid provider.save payload');
-
-            try {
-              await providerService.saveLegacyProvider(config);
-
-              if (apiKey !== undefined) {
-                const trimmedKey = apiKey.trim();
-                if (trimmedKey) {
-                  await providerService.setLegacyProviderApiKey(config.id, trimmedKey);
-                }
-              }
-
-              await syncSavedProviderToRuntime(config, apiKey, gatewayManager);
-
-              data = { success: true };
-            } catch (error) {
-              data = { success: false, error: String(error) };
-            }
-            break;
-          }
-          if (request.action === 'delete') {
-            const payload = request.payload as { providerId?: string } | string | undefined;
-            const providerId = typeof payload === 'string' ? payload : payload?.providerId;
-            if (!providerId) throw new Error('Invalid provider.delete payload');
-
-            try {
-              const existing = await providerService.getLegacyProvider(providerId);
-              if (existing?.type) {
-                await syncDeletedProviderToRuntime(existing, providerId, gatewayManager);
-              }
-              await providerService.deleteLegacyProvider(providerId);
-              data = { success: true };
-            } catch (error) {
-              data = { success: false, error: String(error) };
-            }
-            break;
-          }
-          if (request.action === 'setApiKey') {
-            const payload = request.payload as
-              | { providerId?: string; apiKey?: string }
-              | [string, string]
-              | undefined;
-            const providerId = Array.isArray(payload) ? payload[0] : payload?.providerId;
-            const apiKey = Array.isArray(payload) ? payload[1] : payload?.apiKey;
-            if (!providerId || typeof apiKey !== 'string') throw new Error('Invalid provider.setApiKey payload');
-
-            try {
-              await providerService.setLegacyProviderApiKey(providerId, apiKey);
-              const provider = await providerService.getLegacyProvider(providerId);
-              const providerType = provider?.type || providerId;
-              const ock = getOpenClawProviderKey(providerType, providerId);
-              await saveProviderKeyToOpenClaw(ock, apiKey);
-              data = { success: true };
-            } catch (error) {
-              data = { success: false, error: String(error) };
-            }
-            break;
-          }
-          if (request.action === 'updateWithKey') {
-            const payload = request.payload as
-              | { providerId?: string; updates?: Partial<ProviderConfig>; apiKey?: string }
-              | [string, Partial<ProviderConfig>, string?]
-              | undefined;
-            const providerId = Array.isArray(payload) ? payload[0] : payload?.providerId;
-            const updates = Array.isArray(payload) ? payload[1] : payload?.updates;
-            const apiKey = Array.isArray(payload) ? payload[2] : payload?.apiKey;
-            if (!providerId || !updates) throw new Error('Invalid provider.updateWithKey payload');
-
-            const existing = await providerService.getLegacyProvider(providerId);
-            if (!existing) {
-              data = { success: false, error: 'Provider not found' };
-              break;
-            }
-
-            const previousKey = await providerService.getLegacyProviderApiKey(providerId);
-            const previousOck = getOpenClawProviderKey(existing.type, providerId);
-
-            try {
-              const nextConfig: ProviderConfig = {
-                ...existing,
-                ...updates,
-                updatedAt: new Date().toISOString(),
-              };
-              const ock = getOpenClawProviderKey(nextConfig.type, providerId);
-              await providerService.saveLegacyProvider(nextConfig);
-
-              if (apiKey !== undefined) {
-                const trimmedKey = apiKey.trim();
-                if (trimmedKey) {
-                  await providerService.setLegacyProviderApiKey(providerId, trimmedKey);
-                  await saveProviderKeyToOpenClaw(ock, trimmedKey);
-                } else {
-                  await providerService.deleteLegacyProviderApiKey(providerId);
-                  await removeProviderFromOpenClaw(ock);
-                }
-              }
-
-              await syncUpdatedProviderToRuntime(nextConfig, apiKey, gatewayManager);
-
-              data = { success: true };
-            } catch (error) {
-              try {
-                await providerService.saveLegacyProvider(existing);
-                if (previousKey) {
-                  await providerService.setLegacyProviderApiKey(providerId, previousKey);
-                  await saveProviderKeyToOpenClaw(previousOck, previousKey);
-                } else {
-                  await providerService.deleteLegacyProviderApiKey(providerId);
-                  await removeProviderFromOpenClaw(previousOck);
-                }
-              } catch (rollbackError) {
-                console.warn('Failed to rollback provider updateWithKey:', rollbackError);
-              }
-
-              data = { success: false, error: String(error) };
-            }
-            break;
-          }
-          if (request.action === 'deleteApiKey') {
-            const payload = request.payload as { providerId?: string } | string | undefined;
-            const providerId = typeof payload === 'string' ? payload : payload?.providerId;
-            if (!providerId) throw new Error('Invalid provider.deleteApiKey payload');
-            try {
-              await providerService.deleteLegacyProviderApiKey(providerId);
-              const provider = await providerService.getLegacyProvider(providerId);
-              const providerType = provider?.type || providerId;
-              const ock = getOpenClawProviderKey(providerType, providerId);
-              if (ock) {
-                await removeProviderFromOpenClaw(ock);
-              }
-              data = { success: true };
-            } catch (error) {
-              data = { success: false, error: String(error) };
-            }
-            break;
-          }
-          if (request.action === 'setDefault') {
-            const payload = request.payload as { providerId?: string } | string | undefined;
-            const providerId = typeof payload === 'string' ? payload : payload?.providerId;
-            if (!providerId) throw new Error('Invalid provider.setDefault payload');
-
-            try {
-              await providerService.setDefaultLegacyProvider(providerId);
-              const provider = await providerService.getLegacyProvider(providerId);
-              if (provider) {
-                await syncDefaultProviderToRuntime(providerId, gatewayManager);
-              }
-
-              data = { success: true };
-            } catch (error) {
-              data = { success: false, error: String(error) };
-            }
-            break;
-          }
-          return {
-            id: request.id,
-            ok: false,
-            error: {
-              code: 'UNSUPPORTED',
-              message: `APP_REQUEST_UNSUPPORTED:${request.module}.${request.action}`,
-            },
-          };
-        }
-        case 'update': {
-          if (request.action === 'status') {
-            data = appUpdater.getStatus();
-            break;
-          }
-          if (request.action === 'version') {
-            data = appUpdater.getCurrentVersion();
-            break;
-          }
-          if (request.action === 'check') {
-            try {
-              await appUpdater.checkForUpdates();
-              data = { success: true, status: appUpdater.getStatus() };
-            } catch (error) {
-              data = { success: false, error: String(error), status: appUpdater.getStatus() };
-            }
-            break;
-          }
-          if (request.action === 'download') {
-            try {
-              await appUpdater.downloadUpdate();
-              data = { success: true };
-            } catch (error) {
-              data = { success: false, error: String(error) };
-            }
-            break;
-          }
-          if (request.action === 'install') {
-            appUpdater.quitAndInstall();
-            data = { success: true };
-            break;
-          }
-          if (request.action === 'setChannel') {
-            const payload = request.payload as { channel?: 'stable' | 'beta' | 'dev' } | 'stable' | 'beta' | 'dev' | undefined;
-            const channel = typeof payload === 'string' ? payload : payload?.channel;
-            if (!channel) throw new Error('Invalid update.setChannel payload');
-            appUpdater.setChannel(channel);
-            data = { success: true };
-            break;
-          }
-          if (request.action === 'setAutoDownload') {
-            const payload = request.payload as { enable?: boolean } | boolean | undefined;
-            const enable = typeof payload === 'boolean' ? payload : payload?.enable;
-            if (typeof enable !== 'boolean') throw new Error('Invalid update.setAutoDownload payload');
-            appUpdater.setAutoDownload(enable);
-            data = { success: true };
-            break;
-          }
-          if (request.action === 'cancelAutoInstall') {
-            appUpdater.cancelAutoInstall();
-            data = { success: true };
-            break;
-          }
-          return {
-            id: request.id,
-            ok: false,
-            error: {
-              code: 'UNSUPPORTED',
-              message: `APP_REQUEST_UNSUPPORTED:${request.module}.${request.action}`,
-            },
-          };
-        }
-        case 'usage': {
-          if (request.action === 'recentTokenHistory') {
-            const payload = request.payload as { limit?: number } | number | undefined;
-            const limit = typeof payload === 'number' ? payload : payload?.limit;
-            const safeLimit = typeof limit === 'number' && Number.isFinite(limit)
-              ? Math.max(Math.floor(limit), 1)
-              : undefined;
-            data = await getRecentTokenUsageHistory(safeLimit);
-            break;
-          }
-          return {
-            id: request.id,
-            ok: false,
-            error: {
-              code: 'UNSUPPORTED',
-              message: `APP_REQUEST_UNSUPPORTED:${request.module}.${request.action}`,
-            },
-          };
-        }
-        case 'settings': {
-          if (request.action === 'getAll') {
-            data = await getAllSettings();
-            break;
-          }
-          if (request.action === 'get') {
-            const payload = request.payload as { key?: keyof AppSettings } | [keyof AppSettings] | undefined;
-            const key = Array.isArray(payload) ? payload[0] : payload?.key;
-            if (!key) throw new Error('Invalid settings.get payload');
-            data = await getSetting(key);
-            break;
-          }
-          if (request.action === 'set') {
-            const payload = request.payload as
-              | { key?: keyof AppSettings; value?: AppSettings[keyof AppSettings] }
-              | [keyof AppSettings, AppSettings[keyof AppSettings]]
-              | undefined;
-            const key = Array.isArray(payload) ? payload[0] : payload?.key;
-            const value = Array.isArray(payload) ? payload[1] : payload?.value;
-            if (!key) throw new Error('Invalid settings.set payload');
-            await setSetting(key, value as never);
-            if (isProxyKey(key)) {
-              await handleProxySettingsChange();
-            }
-            if (isLaunchAtStartupKey(key)) {
-              await syncLaunchAtStartupSettingFromStore();
-            }
-            if (key === 'language') {
-              await createMenu(typeof value === 'string' ? value : undefined);
-            }
-            data = { success: true };
-            break;
-          }
-          if (request.action === 'setMany') {
-            const patch = (request.payload ?? {}) as Partial<AppSettings>;
-            const entries = Object.entries(patch) as Array<[keyof AppSettings, AppSettings[keyof AppSettings]]>;
-            for (const [key, value] of entries) {
-              await setSetting(key, value as never);
-            }
-            if (entries.some(([key]) => isProxyKey(key))) {
-              await handleProxySettingsChange();
-            }
-            if (entries.some(([key]) => isLaunchAtStartupKey(key))) {
-              await syncLaunchAtStartupSettingFromStore();
-            }
-            if (entries.some(([key]) => key === 'language')) {
-              await createMenu(typeof patch.language === 'string' ? patch.language : undefined);
-            }
-            data = { success: true };
-            break;
-          }
-          if (request.action === 'reset') {
-            await resetSettings();
-            const settings = await getAllSettings();
-            await handleProxySettingsChange();
-            await syncLaunchAtStartupSettingFromStore();
-            await createMenu(settings.language);
-            data = { success: true, settings };
-            break;
-          }
-          return {
-            id: request.id,
-            ok: false,
-            error: {
-              code: 'UNSUPPORTED',
-              message: `APP_REQUEST_UNSUPPORTED:${request.module}.${request.action}`,
-            },
-          };
-        }
-        default:
-          return {
-            id: request.id,
-            ok: false,
-            error: {
-              code: 'UNSUPPORTED',
-              message: `APP_REQUEST_UNSUPPORTED:${request.module}.${request.action}`,
-            },
-          };
-      }
-
-      return { id: request.id, ok: true, data };
-    } catch (error) {
-      return {
-        id: request.id,
-        ok: false,
-        error: {
-          code: mapAppErrorCode(error),
-          message: error instanceof Error ? error.message : String(error),
-        },
-      };
-    }
-  });
-}
-
-/**
- * Cron maintenance
- */
-function registerCronHandlers(gatewayManager: GatewayManager): void {
-  // Periodic cron job repair: checks for jobs with undefined agentId and repairs them
-  // This handles cases where cron jobs were created via openclaw CLI without specifying agent
-  const CRON_AGENT_REPAIR_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
-  let _lastRepairErrorLogAt = 0;
-  const REPAIR_ERROR_LOG_INTERVAL_MS = 60 * 60 * 1000; // 1 hour
-  setInterval(async () => {
-    try {
-      const status = gatewayManager.getStatus();
-      if (status.state !== 'running') return;
-
-      const result = await gatewayManager.rpc('cron.list', { includeDisabled: true });
-      const jobs = Array.isArray(result)
-        ? result
-        : (result as { jobs?: Array<{ id: string; name: string; sessionTarget?: string; payload?: { kind: string }; delivery?: { mode: string; channel?: string; to?: string; accountId?: string }; state?: Record<string, unknown> }> })?.jobs ?? [];
-
-      for (const job of jobs) {
-        const jobAgentId = (job as unknown as { agentId?: string }).agentId;
-        if (
-          (job.sessionTarget === 'isolated' || !job.sessionTarget) &&
-          job.payload?.kind === 'agentTurn' &&
-          job.delivery?.mode === 'announce' &&
-          job.delivery?.channel &&
-          jobAgentId === undefined
-        ) {
-          const channel = job.delivery.channel;
-          const accountId = job.delivery.accountId;
-          const toAddress = job.delivery.to;
-
-          let correctAgentId = await resolveAgentIdFromChannel(channel, accountId);
-
-          // If no accountId, try to resolve it from session history
-          let resolvedAccountId: string | null = null;
-          if (!correctAgentId && !accountId && toAddress) {
-            resolvedAccountId = await resolveAccountIdFromSessionHistory(toAddress, channel);
-            if (resolvedAccountId) {
-              correctAgentId = await resolveAgentIdFromChannel(channel, resolvedAccountId);
-            }
-          }
-
-          if (correctAgentId) {
-            console.debug(`Periodic repair: job "${job.name}" agentId undefined -> "${correctAgentId}"`);
-            // When accountId was resolved via to address, include it in the patch
-            const patch: Record<string, unknown> = { agentId: correctAgentId };
-            if (resolvedAccountId && !accountId) {
-              patch.delivery = { accountId: resolvedAccountId };
-            }
-            await gatewayManager.rpc('cron.update', { id: job.id, patch });
-          }
-        }
-      }
-    } catch (error) {
-      const now = Date.now();
-      if (now - _lastRepairErrorLogAt >= REPAIR_ERROR_LOG_INTERVAL_MS) {
-        _lastRepairErrorLogAt = now;
-        console.debug('Periodic cron repair error:', error);
-      }
-    }
-  }, CRON_AGENT_REPAIR_INTERVAL_MS);
 }
 
 /**
@@ -770,244 +344,6 @@ function registerWhatsAppHandlers(mainWindow: BrowserWindow): void {
       mainWindow.webContents.send('channel:whatsapp-error', error);
     }
   });
-}
-
-/**
- * Provider-related IPC handlers
- */
-function registerProviderHandlers(gatewayManager: GatewayManager): void {
-  const providerService = getProviderService();
-  const legacyProviderChannelsWarned = new Set<string>();
-  const logLegacyProviderChannel = (channel: string): void => {
-    if (legacyProviderChannelsWarned.has(channel)) return;
-    legacyProviderChannelsWarned.add(channel);
-    logger.warn(
-      `[provider-migration] Legacy IPC channel "${channel}" is deprecated. Prefer app:request provider actions and account APIs.`,
-    );
-  };
-
-  // Get all providers with key info
-  ipcMain.handle('provider:list', async () => {
-    logLegacyProviderChannel('provider:list');
-    return await providerService.listLegacyProvidersWithKeyInfo();
-  });
-
-  // Get a specific provider
-  ipcMain.handle('provider:get', async (_, providerId: string) => {
-    logLegacyProviderChannel('provider:get');
-    return await providerService.getLegacyProvider(providerId);
-  });
-
-  // Save a provider configuration
-  ipcMain.handle('provider:save', async (_, config: ProviderConfig, apiKey?: string) => {
-    logLegacyProviderChannel('provider:save');
-    try {
-      // Save the provider config
-      await providerService.saveLegacyProvider(config);
-
-      // Store the API key if provided
-      if (apiKey !== undefined) {
-        const trimmedKey = apiKey.trim();
-        if (trimmedKey) {
-          await providerService.setLegacyProviderApiKey(config.id, trimmedKey);
-
-          // Also write to OpenClaw auth-profiles.json so the gateway can use it
-          await syncProviderApiKeyToRuntime(config.type, config.id, trimmedKey);
-        }
-      }
-
-      // Sync the provider configuration to openclaw.json so Gateway knows about it
-      await syncSavedProviderToRuntime(config, apiKey, gatewayManager);
-
-      return { success: true };
-    } catch (error) {
-      return { success: false, error: String(error) };
-    }
-  });
-
-  // Delete a provider
-  ipcMain.handle('provider:delete', async (_, providerId: string) => {
-    logLegacyProviderChannel('provider:delete');
-    try {
-      const existing = await providerService.getLegacyProvider(providerId);
-      if (existing?.type) {
-        await syncDeletedProviderToRuntime(existing, providerId, gatewayManager);
-      }
-      await providerService.deleteLegacyProvider(providerId);
-
-      return { success: true };
-    } catch (error) {
-      return { success: false, error: String(error) };
-    }
-  });
-
-  // Update API key for a provider
-  ipcMain.handle('provider:setApiKey', async (_, providerId: string, apiKey: string) => {
-    logLegacyProviderChannel('provider:setApiKey');
-    try {
-      await providerService.setLegacyProviderApiKey(providerId, apiKey);
-
-      // Also write to OpenClaw auth-profiles.json
-      const provider = await providerService.getLegacyProvider(providerId);
-      const providerType = provider?.type || providerId;
-      await syncProviderApiKeyToRuntime(providerType, providerId, apiKey);
-
-      return { success: true };
-    } catch (error) {
-      return { success: false, error: String(error) };
-    }
-  });
-
-  // Atomically update provider config and API key
-  ipcMain.handle(
-    'provider:updateWithKey',
-    async (
-      _,
-      providerId: string,
-      updates: Partial<ProviderConfig>,
-      apiKey?: string
-    ) => {
-      logLegacyProviderChannel('provider:updateWithKey');
-      const existing = await providerService.getLegacyProvider(providerId);
-      if (!existing) {
-        return { success: false, error: 'Provider not found' };
-      }
-
-      const previousKey = await providerService.getLegacyProviderApiKey(providerId);
-      const previousOck = getOpenClawProviderKey(existing.type, providerId);
-
-      try {
-        const nextConfig: ProviderConfig = {
-          ...existing,
-          ...updates,
-          updatedAt: new Date().toISOString(),
-        };
-
-        const ock = getOpenClawProviderKey(nextConfig.type, providerId);
-
-        await providerService.saveLegacyProvider(nextConfig);
-
-        if (apiKey !== undefined) {
-          const trimmedKey = apiKey.trim();
-          if (trimmedKey) {
-            await providerService.setLegacyProviderApiKey(providerId, trimmedKey);
-            await syncProviderApiKeyToRuntime(nextConfig.type, providerId, trimmedKey);
-          } else {
-            await providerService.deleteLegacyProviderApiKey(providerId);
-            await removeProviderFromOpenClaw(ock);
-          }
-        }
-
-        // Sync the provider configuration to openclaw.json so Gateway knows about it
-        await syncUpdatedProviderToRuntime(nextConfig, apiKey, gatewayManager);
-
-        return { success: true };
-      } catch (error) {
-        // Best-effort rollback to keep config/key consistent.
-        try {
-          await providerService.saveLegacyProvider(existing);
-          if (previousKey) {
-            await providerService.setLegacyProviderApiKey(providerId, previousKey);
-            await saveProviderKeyToOpenClaw(previousOck, previousKey);
-          } else {
-            await providerService.deleteLegacyProviderApiKey(providerId);
-            await removeProviderFromOpenClaw(previousOck);
-          }
-        } catch (rollbackError) {
-          console.warn('Failed to rollback provider updateWithKey:', rollbackError);
-        }
-
-        return { success: false, error: String(error) };
-      }
-    }
-  );
-
-  // Delete API key for a provider
-  ipcMain.handle('provider:deleteApiKey', async (_, providerId: string) => {
-    logLegacyProviderChannel('provider:deleteApiKey');
-    try {
-      await providerService.deleteLegacyProviderApiKey(providerId);
-
-      // Keep OpenClaw auth-profiles.json in sync with local key storage
-      const provider = await providerService.getLegacyProvider(providerId);
-      await syncDeletedProviderApiKeyToRuntime(provider, providerId);
-
-      return { success: true };
-    } catch (error) {
-      return { success: false, error: String(error) };
-    }
-  });
-
-  // Check if a provider has an API key
-  ipcMain.handle('provider:hasApiKey', async (_, providerId: string) => {
-    logLegacyProviderChannel('provider:hasApiKey');
-    return await providerService.hasLegacyProviderApiKey(providerId);
-  });
-
-  // Get the actual API key (for internal use only - be careful!)
-  ipcMain.handle('provider:getApiKey', async (_, providerId: string) => {
-    logLegacyProviderChannel('provider:getApiKey');
-    return await providerService.getLegacyProviderApiKey(providerId);
-  });
-
-  // Set default provider and update OpenClaw default model
-  ipcMain.handle('provider:setDefault', async (_, providerId: string) => {
-    logLegacyProviderChannel('provider:setDefault');
-    try {
-      await providerService.setDefaultLegacyProvider(providerId);
-
-      // Update OpenClaw config to use this provider's default model
-      await syncDefaultProviderToRuntime(providerId, gatewayManager);
-
-      return { success: true };
-    } catch (error) {
-      return { success: false, error: String(error) };
-    }
-  });
-
-
-
-  // Get default provider
-  ipcMain.handle('provider:getDefault', async () => {
-    logLegacyProviderChannel('provider:getDefault');
-    return await providerService.getDefaultLegacyProvider();
-  });
-
-  // Validate API key by making a real test request to the provider.
-  // providerId can be either a stored provider ID or a provider type.
-  ipcMain.handle(
-    'provider:validateKey',
-    async (
-      _,
-      providerId: string,
-      apiKey: string,
-      options?: { baseUrl?: string; apiProtocol?: string }
-    ) => {
-      logLegacyProviderChannel('provider:validateKey');
-      try {
-        // First try to get existing provider
-        const provider = await providerService.getLegacyProvider(providerId);
-
-        // Use provider.type if provider exists, otherwise use providerId as the type
-        // This allows validation during setup when provider hasn't been saved yet
-        const providerType = provider?.type || providerId;
-        const registryBaseUrl = getProviderConfig(providerType)?.baseUrl;
-        // Prefer caller-supplied baseUrl (live form value) over persisted config.
-        // This ensures Setup/Settings validation reflects unsaved edits immediately.
-        const resolvedBaseUrl = options?.baseUrl || provider?.baseUrl || registryBaseUrl;
-        const resolvedProtocol = options?.apiProtocol || provider?.apiProtocol;
-
-        console.log(`[clawx-validate] validating provider type: ${providerType}`);
-        return await validateApiKeyWithProvider(providerType, apiKey, {
-          baseUrl: resolvedBaseUrl,
-          apiProtocol: resolvedProtocol,
-        });
-      } catch (error) {
-        console.error('Validation error:', error);
-        return { valid: false, error: String(error) };
-      }
-    }
-  );
 }
 
 /**
@@ -1152,12 +488,9 @@ function registerSettingsHandlers(gatewayManager: GatewayManager): void {
     return { success: true, settings };
   });
 }
-function registerUsageHandlers(): void {
+function registerUsageHandlers(dataClient?: RemoteDataServiceClient): void {
   ipcMain.handle('usage:recentTokenHistory', async (_, limit?: number) => {
-    const safeLimit = typeof limit === 'number' && Number.isFinite(limit)
-      ? Math.max(Math.floor(limit), 1)
-      : undefined;
-    return await getRecentTokenUsageHistory(safeLimit);
+    return createUsageApi({ dataClient }).recentTokenHistory({ limit });
   });
 }
 /**
@@ -1241,7 +574,7 @@ function getMimeType(ext: string): string {
   return EXT_MIME_MAP[ext.toLowerCase()] || 'application/octet-stream';
 }
 
-const OUTBOUND_DIR = join(homedir(), '.openclaw', 'media', 'outbound');
+const OUTBOUND_DIR = join(getOpenClawConfigDir(), 'media', 'outbound');
 
 // ── File preview (sandboxed) ──────────────────────────────────────────
 //
@@ -1310,7 +643,7 @@ function isPathInside(child: string, parent: string): boolean {
  */
 function getFilePreviewWriteRoots(): string[] {
   const roots: string[] = [];
-  const openclawDir = join(homedir(), '.openclaw');
+  const openclawDir = getOpenClawConfigDir();
   roots.push(resolve(openclawDir));
   try {
     roots.push(resolve(app.getPath('userData')));

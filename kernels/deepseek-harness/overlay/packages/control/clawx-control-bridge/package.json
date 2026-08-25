@@ -1,0 +1,29 @@
+{
+  "name": "@clawx/dsh-control-bridge",
+  "description": "Versioned ClawX control plane for DeepSeek Harness",
+  "version": "0.1.1-rc.2",
+  "private": true,
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/types/index.d.ts",
+  "bin": {
+    "clawx-dsh-control-smoke": "lib/bin.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./bin": {
+      "types": "./lib/types/bin.d.ts",
+      "default": "./lib/bin.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib/index.js",
+    "lib/bin.js",
+    "lib/types/**/*.d.ts"
+  ],
+  "license": "MIT"
+}

@@ -49,6 +49,10 @@ describe('skills store error mapping', () => {
 
     const { useSkillsStore } = await import('@/stores/skills');
     await expect(useSkillsStore.getState().installSkill('demo-skill')).rejects.toThrow('installTimeoutError');
-    expect(clawhubInstallMock).toHaveBeenCalledWith({ slug: 'demo-skill', version: undefined });
+    expect(clawhubInstallMock).toHaveBeenCalledWith({
+      slug: 'demo-skill',
+      version: undefined,
+      target: 'all-installed',
+    });
   });
 });

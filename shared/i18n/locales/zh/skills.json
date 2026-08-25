@@ -24,6 +24,16 @@
         "disableVisible": "批量禁用可见项",
         "installSkill": "安装技能"
     },
+    "kernel": {
+        "title": "内核状态",
+        "targetLabel": "操作目标",
+        "installTarget": "安装到",
+        "target": { "openclaw": "OpenClaw", "deepseek-harness": "DeepSeek Harness", "all-installed": "两个内核" },
+        "enabled": "已启用",
+        "disabled": "已禁用",
+        "retry": "重试",
+        "state": { "ready": "就绪", "partial": "部分完成", "pending": "等待中", "applying": "应用中", "failed": "失败", "unsupported": "不兼容", "notInstalled": "未安装" }
+    },
     "noSkills": "未找到技能",
     "noSkillsSearch": "尝试不同的搜索词",
     "noSkillsAvailable": "暂无可用技能",
@@ -82,6 +92,9 @@
             "plugin": "插件目录",
             "agentsPersonal": "个人 .agents",
             "agentsProject": "项目 .agents",
+            "canonicalBundled": "统一内置包",
+            "canonicalMarketplace": "统一市场包",
+            "canonicalLocal": "统一本地包",
             "unknown": "未知来源"
         }
     },
@@ -110,7 +123,10 @@
         "noBatchDisableTargets": "当前可见技能都已禁用。",
         "batchEnabled": "已启用 {{count}} 个技能。",
         "batchDisabled": "已禁用 {{count}} 个技能。",
-        "batchPartial": "已更新 {{success}} / {{total}} 个技能，部分操作失败。"
+        "batchPartial": "已更新 {{success}} / {{total}} 个技能，部分操作失败。",
+        "kernelPartial": "操作只在部分目标内核完成。请打开技能查看诊断并重试。",
+        "retrySucceeded": "内核投影已修复",
+        "retryFailed": "重试失败：{{error}}"
     },
     "marketplace": {
         "title": "市场",

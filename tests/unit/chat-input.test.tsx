@@ -5,7 +5,7 @@ import { TooltipProvider } from '@/components/ui/tooltip';
 const hostApiFetchMock = vi.hoisted(() => vi.fn());
 const hostApiDialogOpenMock = vi.hoisted(() => vi.fn());
 const toastErrorMock = vi.hoisted(() => vi.fn());
-const { agentsState, chatState, gatewayState, providersState, artifactPanelMocks } = vi.hoisted(() => ({
+const { agentsState, chatState, kernelState, providersState, artifactPanelMocks } = vi.hoisted(() => ({
   agentsState: {
     agents: [] as Array<Record<string, unknown>>,
     defaultModelRef: null as string | null,
@@ -14,8 +14,10 @@ const { agentsState, chatState, gatewayState, providersState, artifactPanelMocks
   chatState: {
     currentAgentId: 'main',
   },
-  gatewayState: {
-    status: { state: 'running', port: 18789 },
+  kernelState: {
+    runtimes: {
+      openclaw: { kernelId: 'openclaw', state: 'ready', generation: 1, diagnostics: [] },
+    } as Record<string, Record<string, unknown>>,
   },
   providersState: {
     accounts: [] as Array<Record<string, unknown>>,
@@ -37,8 +39,9 @@ vi.mock('@/stores/chat', () => ({
   useChatStore: (selector: (state: typeof chatState) => unknown) => selector(chatState),
 }));
 
-vi.mock('@/stores/gateway', () => ({
-  useGatewayStore: (selector: (state: typeof gatewayState) => unknown) => selector(gatewayState),
+vi.mock('@/stores/kernels', () => ({
+  kernelDisplayName: (kernelId: string) => kernelId === 'openclaw' ? 'OpenClaw' : kernelId,
+  useKernelStore: (selector: (state: typeof kernelState) => unknown) => selector(kernelState),
 }));
 
 vi.mock('@/stores/providers', () => ({
@@ -136,8 +139,8 @@ function translate(key: string, vars?: Record<string, unknown>): string {
       return `@${String(vars?.agent ?? '')}`;
     case 'composer.agentPickerTitle':
       return 'Route the next message to another agent';
-    case 'composer.gatewayDisconnectedPlaceholder':
-      return 'Gateway not connected...';
+    case 'composer.kernelUnavailablePlaceholder':
+      return 'The selected kernel is not ready...';
     case 'composer.send':
       return 'Send';
     case 'composer.stop':
@@ -146,12 +149,16 @@ function translate(key: string, vars?: Record<string, unknown>): string {
       return 'Thinking…';
     case 'imageGeneration.generating':
       return 'Generating image, please wait…';
-    case 'composer.gatewayConnected':
-      return 'connected';
-    case 'composer.gatewayStarting':
-      return 'starting';
-    case 'composer.gatewayStatus':
-      return `gateway ${String(vars?.state ?? '')}`;
+    case 'composer.kernelStatus':
+      return `${String(vars?.kernel ?? '')} · ${String(vars?.state ?? '')}`;
+    case 'composer.noKernelSelected':
+      return 'No kernel';
+    case 'common:kernels.states.ready':
+      return 'Ready';
+    case 'common:kernels.states.starting':
+      return 'Starting';
+    case 'common:kernels.states.not-installed':
+      return 'Not installed';
     case 'composer.retryFailedAttachments':
       return 'Retry failed attachments';
     case 'composer.workspacePrefix':
@@ -198,7 +205,7 @@ function configureAgentAndModelPickers() {
       isDefault: true,
       modelDisplay: 'MiniMax',
       inheritedModel: true,
-      workspace: '~/.openclaw/workspace',
+      workspace: '~/.clawx/workspace',
       agentDir: '~/.openclaw/agents/main/agent',
       mainSessionKey: 'agent:main:main',
       channelTypes: [],
@@ -256,7 +263,9 @@ describe('ChatInput agent targeting', () => {
     agentsState.defaultModelRef = null;
     agentsState.updateAgentModel.mockReset();
     chatState.currentAgentId = 'main';
-    gatewayState.status = { state: 'running', port: 18789 };
+    kernelState.runtimes = {
+      openclaw: { kernelId: 'openclaw', state: 'ready', generation: 1, diagnostics: [] },
+    };
     providersState.accounts = [];
     providersState.statuses = [];
     providersState.defaultAccountId = null;
@@ -368,7 +377,7 @@ describe('ChatInput agent targeting', () => {
       modelRef: 'custom-stale/model',
       overrideModelRef: 'custom-stale/model',
       inheritedModel: false,
-      workspace: '~/.openclaw/workspace',
+      workspace: '~/.clawx/workspace',
       agentDir: '~/.openclaw/agents/main/agent',
       mainSessionKey: 'agent:main:main',
       channelTypes: [],
@@ -503,7 +512,7 @@ describe('ChatInput agent targeting', () => {
     expect(button).not.toHaveAttribute('aria-disabled', 'true');
   });
 
-  it('places workspace selector before the gateway status in the composer footer', () => {
+  it('places the workspace selector before the selected kernel status in the composer footer', () => {
     render(
       <TooltipProvider>
         <ChatInput
@@ -512,14 +521,15 @@ describe('ChatInput agent targeting', () => {
           workspacePath="/Users/alex/workspace/ClawX"
           workspaceReadOnly={false}
           onSelectWorkspace={vi.fn()}
+          kernelId="openclaw"
         />
       </TooltipProvider>,
     );
 
     const workspaceSelector = screen.getByTestId('chat-workspace-selector');
-    const gatewayStatus = screen.getByText(/gateway connected/i);
+    const kernelStatus = screen.getByText(/OpenClaw · Ready/i);
 
-    expect(workspaceSelector.compareDocumentPosition(gatewayStatus) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(workspaceSelector.compareDocumentPosition(kernelStatus) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it('renders read-only workspace selector for bound sessions', () => {
@@ -528,7 +538,7 @@ describe('ChatInput agent targeting', () => {
         <ChatInput
           onSend={vi.fn()}
           workspaceLabel="默认工作空间"
-          workspacePath="~/.openclaw/workspace"
+          workspacePath="~/.clawx/workspace"
           workspaceReadOnly
           onSelectWorkspace={vi.fn()}
         />
@@ -739,7 +749,7 @@ describe('ChatInput agent targeting', () => {
     fireEvent.click(screen.getByTestId('chat-workspace-selector'));
     fireEvent.click(screen.getByTestId('chat-workspace-default'));
 
-    expect(onSelectWorkspace).toHaveBeenCalledWith('~/.openclaw/workspace');
+    expect(onSelectWorkspace).toHaveBeenCalledWith('~/.clawx/workspace');
     expect(hostApiDialogOpenMock).not.toHaveBeenCalled();
     expect(screen.queryByTestId('chat-workspace-menu')).not.toBeInTheDocument();
   });
@@ -773,7 +783,7 @@ describe('ChatInput agent targeting', () => {
         isDefault: true,
         modelDisplay: 'MiniMax',
         inheritedModel: true,
-        workspace: '~/.openclaw/workspace',
+        workspace: '~/.clawx/workspace',
         agentDir: '~/.openclaw/agents/main/agent',
         mainSessionKey: 'agent:main:main',
         channelTypes: [],
@@ -863,7 +873,7 @@ describe('ChatInput agent targeting', () => {
     fireEvent.keyDown(searchInput, { key: 'Escape' });
 
     expect(screen.queryByPlaceholderText('Search skills')).not.toBeInTheDocument();
-    expect(await screen.findByText('gateway connected')).toBeInTheDocument();
+    expect(await screen.findByText('No kernel · Not installed')).toBeInTheDocument();
   });
 
   it('read-only workspace selector does not open the native picker', () => {
@@ -874,7 +884,7 @@ describe('ChatInput agent targeting', () => {
         <ChatInput
           onSend={vi.fn()}
           workspaceLabel="Default workspace"
-          workspacePath="~/.openclaw/workspace"
+          workspacePath="~/.clawx/workspace"
           workspaceReadOnly
           onSelectWorkspace={onSelectWorkspace}
         />
@@ -994,7 +1004,7 @@ describe('ChatInput agent targeting', () => {
         isDefault: true,
         modelDisplay: 'MiniMax',
         inheritedModel: true,
-        workspace: '~/.openclaw/workspace',
+        workspace: '~/.clawx/workspace',
         agentDir: '~/.openclaw/agents/main/agent',
         mainSessionKey: 'agent:main:main',
         channelTypes: [],
@@ -1014,7 +1024,7 @@ describe('ChatInput agent targeting', () => {
         isDefault: true,
         modelDisplay: 'MiniMax',
         inheritedModel: true,
-        workspace: '~/.openclaw/workspace',
+        workspace: '~/.clawx/workspace',
         agentDir: '~/.openclaw/agents/main/agent',
         mainSessionKey: 'agent:main:main',
         channelTypes: [],
@@ -1040,7 +1050,7 @@ describe('ChatInput agent targeting', () => {
         isDefault: true,
         modelDisplay: 'MiniMax',
         inheritedModel: true,
-        workspace: '~/.openclaw/workspace',
+        workspace: '~/.clawx/workspace',
         agentDir: '~/.openclaw/agents/main/agent',
         mainSessionKey: 'agent:main:main',
         channelTypes: [],
@@ -1071,9 +1081,11 @@ describe('ChatInput agent targeting', () => {
     expect(onSend).toHaveBeenCalledWith('Hello direct agent', undefined, 'research');
   });
 
-  it('keeps the ACP composer enabled while gateway is running but not yet ready', () => {
+  it('keeps the composer enabled when the parent flow allows input during kernel startup', () => {
     const onSend = vi.fn();
-    gatewayState.status = { state: 'running', port: 18789, gatewayReady: false };
+    kernelState.runtimes.openclaw = {
+      kernelId: 'openclaw', state: 'starting', generation: 2, diagnostics: [],
+    };
     agentsState.agents = [
       {
         id: 'main',
@@ -1081,7 +1093,7 @@ describe('ChatInput agent targeting', () => {
         isDefault: true,
         modelDisplay: 'MiniMax',
         inheritedModel: true,
-        workspace: '~/.openclaw/workspace',
+        workspace: '~/.clawx/workspace',
         agentDir: '~/.openclaw/agents/main/agent',
         mainSessionKey: 'agent:main:main',
         channelTypes: [],
@@ -1121,7 +1133,11 @@ describe('ChatInput agent targeting', () => {
     ];
     providersState.defaultAccountId = 'aaaaaaaa';
 
-    renderChatInput(onSend);
+    render(
+      <TooltipProvider>
+        <ChatInput onSend={onSend} kernelId="openclaw" />
+      </TooltipProvider>,
+    );
 
     const input = screen.getByTestId('chat-composer-input');
     expect(input).not.toBeDisabled();
@@ -1134,8 +1150,10 @@ describe('ChatInput agent targeting', () => {
     expect(onSend).toHaveBeenCalledWith('Send through ACP', undefined, null);
   });
 
-  it('shows starting status while gateway is running but not yet ready', () => {
-    gatewayState.status = { state: 'running', port: 18789, gatewayReady: false };
+  it('shows the selected kernel starting status', () => {
+    kernelState.runtimes.openclaw = {
+      kernelId: 'openclaw', state: 'starting', generation: 2, diagnostics: [],
+    };
     agentsState.agents = [
       {
         id: 'main',
@@ -1143,16 +1161,20 @@ describe('ChatInput agent targeting', () => {
         isDefault: true,
         modelDisplay: 'MiniMax',
         inheritedModel: true,
-        workspace: '~/.openclaw/workspace',
+        workspace: '~/.clawx/workspace',
         agentDir: '~/.openclaw/agents/main/agent',
         mainSessionKey: 'agent:main:main',
         channelTypes: [],
       },
     ];
 
-    renderChatInput();
+    render(
+      <TooltipProvider>
+        <ChatInput onSend={vi.fn()} kernelId="openclaw" />
+      </TooltipProvider>,
+    );
 
-    expect(screen.getByText(/gateway starting/i)).toBeInTheDocument();
+    expect(screen.getByText(/OpenClaw · Starting/i)).toBeInTheDocument();
   });
 
   it('renders the skill trigger after the @ agent picker', () => {
@@ -1163,7 +1185,7 @@ describe('ChatInput agent targeting', () => {
         isDefault: true,
         modelDisplay: 'MiniMax',
         inheritedModel: true,
-        workspace: '~/.openclaw/workspace',
+        workspace: '~/.clawx/workspace',
         agentDir: '~/.openclaw/agents/main/agent',
         mainSessionKey: 'agent:main:main',
         channelTypes: [],
@@ -1199,7 +1221,7 @@ describe('ChatInput agent targeting', () => {
         isDefault: true,
         modelDisplay: 'MiniMax',
         inheritedModel: true,
-        workspace: '~/.openclaw/workspace',
+        workspace: '~/.clawx/workspace',
         agentDir: '~/.openclaw/agents/main/agent',
         mainSessionKey: 'agent:main:main',
         channelTypes: [],
@@ -1256,7 +1278,7 @@ describe('ChatInput agent targeting', () => {
         isDefault: true,
         modelDisplay: 'MiniMax',
         inheritedModel: true,
-        workspace: '~/.openclaw/workspace',
+        workspace: '~/.clawx/workspace',
         agentDir: '~/.openclaw/agents/main/agent',
         mainSessionKey: 'agent:main:main',
         channelTypes: [],
@@ -1301,7 +1323,7 @@ describe('ChatInput agent targeting', () => {
         isDefault: true,
         modelDisplay: 'MiniMax',
         inheritedModel: true,
-        workspace: '~/.openclaw/workspace',
+        workspace: '~/.clawx/workspace',
         agentDir: '~/.openclaw/agents/main/agent',
         mainSessionKey: 'agent:main:main',
         channelTypes: [],
@@ -1349,7 +1371,7 @@ describe('ChatInput agent targeting', () => {
         isDefault: true,
         modelDisplay: 'MiniMax',
         inheritedModel: true,
-        workspace: '~/.openclaw/workspace',
+        workspace: '~/.clawx/workspace',
         agentDir: '~/.openclaw/agents/main/agent',
         mainSessionKey: 'agent:main:main',
         channelTypes: [],
@@ -1390,7 +1412,7 @@ describe('ChatInput agent targeting', () => {
         isDefault: true,
         modelDisplay: 'MiniMax',
         inheritedModel: true,
-        workspace: '~/.openclaw/workspace',
+        workspace: '~/.clawx/workspace',
         agentDir: '~/.openclaw/agents/main/agent',
         mainSessionKey: 'agent:main:main',
         channelTypes: [],
@@ -1432,7 +1454,7 @@ describe('ChatInput agent targeting', () => {
         isDefault: true,
         modelDisplay: 'MiniMax',
         inheritedModel: true,
-        workspace: '~/.openclaw/workspace',
+        workspace: '~/.clawx/workspace',
         agentDir: '~/.openclaw/agents/main/agent',
         mainSessionKey: 'agent:main:main',
         channelTypes: [],

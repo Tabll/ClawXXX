@@ -30,7 +30,7 @@ describe('workspace session grouping', () => {
       '默认工作空间',
     );
 
-    expect(groups.map((group) => group.workspacePath)).toEqual(['~/.openclaw/workspace', '/repo/z']);
+    expect(groups.map((group) => group.workspacePath)).toEqual(['~/.clawx/workspace', '/repo/z']);
     expect(groups[0].label).toBe('默认工作空间');
   });
 
@@ -98,14 +98,14 @@ describe('workspace session grouping', () => {
     const groups = groupSessionsByWorkspace(
       [
         { key: 'agent:main:session-no-cwd', updatedAt: 2 },
-        { key: 'agent:main:session-default-path', workspacePath: '/Users/alex/.openclaw/workspace', updatedAt: 1 },
+        { key: 'agent:main:session-default-path', workspacePath: '/Users/alex/.clawx/workspace', updatedAt: 1 },
       ],
       {},
       '默认工作空间',
     );
 
     expect(groups).toHaveLength(1);
-    expect(groups[0].workspacePath).toBe('~/.openclaw/workspace');
+    expect(groups[0].workspacePath).toBe('~/.clawx/workspace');
     expect(groups[0].label).toBe('默认工作空间');
   });
 });

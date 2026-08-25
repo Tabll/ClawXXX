@@ -14,16 +14,18 @@ import type {
   EmbeddingSettingsPayload,
   FilePreviewTreeOptions,
   FileReadBinaryOptions,
-  GatewayControlUiView,
   ImageGenerationSettingsPayload,
   MediaThumbnailEntry,
   OpenClawDoctorMode,
   OpenClawDoctorResult,
+  OpenClawDreamsAction,
   OpenAttachmentWithPayload,
   OpenWorkspaceWithPayload,
   ProviderAccount,
   ProviderConfig,
   ProviderOAuthRequestPayload,
+  ProviderKernelDefaultPayload,
+  ProviderReconcilePayload,
   ProviderUpdateWithKeyPayload,
   ProviderValidationPayload,
   ReadAttachmentBinaryPayload,
@@ -50,6 +52,19 @@ import type {
   AcpChatSetConfigOptionPayload,
 } from '@shared/acp-chat/types';
 import type { CronJobCreateInput, CronJobUpdateInput } from '@shared/types/cron';
+import type {
+  KernelId,
+  KernelRunConfiguration,
+  KernelRunIdentity,
+  KernelRunRequest,
+} from '@shared/kernels/contracts';
+import type { KernelDirectoryKind } from '@shared/host-api/kernels';
+import type { ConversationId, ConversationQueryFilters, TurnId } from '@shared/conversations/contracts';
+export type {
+  KernelCrashRecord,
+  KernelLogEntry,
+  KernelRuntimeDiagnostics,
+} from '@shared/host-api/kernels';
 import { invokeHost } from './host-api-client';
 
 export type {
@@ -76,6 +91,7 @@ export type {
   DeliveryTargetsResult,
   DiagnosticsGatewaySnapshotGateway,
   DiagnosticsGatewaySnapshotResult,
+  DiagnosticsSnapshotResult,
   GatewayHealthSummary,
   GatewayRecoverySnapshot,
   GatewayRecoveryState,
@@ -91,13 +107,15 @@ export type {
   OpenAttachmentResult,
   ProviderAccountKeyInfo,
   ProviderDefaultAccountResult,
+  ProviderKernelDefault,
+  ProviderKernelProjection,
   ProviderValidationResult,
   ReadAttachmentBinaryResult,
   ReadAttachmentTextResult,
   ResolveAttachmentResult,
-  SessionHistoryResult,
-  SessionLabelSummary,
-  SessionSummariesResult,
+  ConversationGetResult,
+  ConversationListResult,
+  ConversationSearchResult,
   SettingsResetResult,
   SettingsSnapshot,
   SkillConfigsResult,
@@ -113,6 +131,7 @@ export type {
 
 export const hostApi = {
   app: {
+    relaunch: () => invokeHost('app', 'relaunch'),
     openClawDoctor: async (mode: OpenClawDoctorMode): Promise<OpenClawDoctorResult> => ({
       ...(await invokeHost('app', 'openClawDoctor', { mode })),
       mode,
@@ -122,6 +141,41 @@ export const hostApi = {
     status: () => invokeHost('openclaw', 'status'),
     getSkillsDir: () => invokeHost('openclaw', 'getSkillsDir'),
     getCliCommand: () => invokeHost('openclaw', 'getCliCommand'),
+  },
+  kernels: {
+    catalog: (refresh = false) => invokeHost('kernels', 'catalog', { refresh }),
+    install: (kernelId: KernelId) => invokeHost('kernels', 'install', { kernelId }),
+    update: (kernelId: KernelId) => invokeHost('kernels', 'update', { kernelId }),
+    repair: (kernelId: KernelId) => invokeHost('kernels', 'repair', { kernelId }),
+    rollback: (kernelId: KernelId) => invokeHost('kernels', 'rollback', { kernelId }),
+    uninstall: (kernelId: KernelId) => invokeHost('kernels', 'uninstall', { kernelId }),
+    versions: (kernelId: KernelId) => invokeHost('kernels', 'versions', { kernelId }),
+    openDirectory: (kernelId: KernelId, kind: KernelDirectoryKind) => (
+      invokeHost('kernels', 'openDirectory', { kernelId, kind })
+    ),
+    list: () => invokeHost('kernels', 'list'),
+    status: (kernelId: KernelId) => invokeHost('kernels', 'status', { kernelId }),
+    start: (kernelId: KernelId) => invokeHost('kernels', 'start', { kernelId }),
+    stop: (kernelId: KernelId) => invokeHost('kernels', 'stop', { kernelId }),
+    restart: (kernelId: KernelId) => invokeHost('kernels', 'restart', { kernelId }),
+    health: (kernelId: KernelId) => invokeHost('kernels', 'health', { kernelId }),
+    logs: (kernelId: KernelId, options?: { afterSequence?: number; limit?: number }) => (
+      invokeHost('kernels', 'logs', { kernelId, ...options })
+    ),
+    logDirectory: (kernelId: KernelId) => invokeHost('kernels', 'logDirectory', { kernelId }),
+    exportLogs: (kernelId: KernelId) => invokeHost('kernels', 'exportLogs', { kernelId }),
+    setAutoStart: (kernelId: KernelId, enabled: boolean) => (
+      invokeHost('kernels', 'setAutoStart', { kernelId, enabled })
+    ),
+    execute: (input: KernelRunRequest) => invokeHost('kernels', 'execute', input),
+    cancel: (input: KernelRunIdentity) => invokeHost('kernels', 'cancel', input),
+    updateConfiguration: (input: KernelRunConfiguration) => (
+      invokeHost('kernels', 'updateConfiguration', input)
+    ),
+    resolvePermission: (
+      input: KernelRunIdentity & { requestId: string; decision: 'allow-once' | 'reject-once' },
+    ) => invokeHost('kernels', 'resolvePermission', input),
+    diagnostics: (kernelId: KernelId) => invokeHost('kernels', 'diagnostics', { kernelId }),
   },
   shell: {
     openExternal: (url: string) => invokeHost('shell', 'openExternal', { url } satisfies ShellOpenExternalPayload),
@@ -169,18 +223,12 @@ export const hostApi = {
     ),
     reset: () => invokeHost('settings', 'reset'),
   },
-  gateway: {
-    status: () => invokeHost('gateway', 'status'),
-    start: () => invokeHost('gateway', 'start'),
-    stop: () => invokeHost('gateway', 'stop'),
-    restart: () => invokeHost('gateway', 'restart'),
-    health: (probe = false) => invokeHost('gateway', 'health', { probe }),
-    controlUi: (view?: GatewayControlUiView) => (
-      invokeHost('gateway', 'controlUi', view ? { view } : undefined)
-    ),
-    rpc: <T = unknown>(method: string, params?: unknown, timeoutMs?: number) => (
-      invokeHost('gateway', 'rpc', { method, params, timeoutMs }) as Promise<T>
-    ),
+  openClawDreams: {
+    status: () => invokeHost('openClawDreams', 'status'),
+    diary: () => invokeHost('openClawDreams', 'diary'),
+    run: (action: OpenClawDreamsAction) => invokeHost('openClawDreams', 'run', { action }),
+    setEnabled: (enabled: boolean) => invokeHost('openClawDreams', 'setEnabled', { enabled }),
+    openFullUi: () => invokeHost('openClawDreams', 'openFullUi'),
   },
   logs: {
     recent: (tailLines = 100) => invokeHost('logs', 'recent', { tailLines }),
@@ -205,19 +253,30 @@ export const hostApi = {
     deleteConfig: (channelType: string, accountId?: string) => (
       invokeHost('channels', 'deleteConfig', { channelType, accountId })
     ),
-    validateCredentials: (channelType: string, config: Record<string, unknown>) => (
-      invokeHost('channels', 'validateCredentials', { channelType, config })
+    validateCredentials: (
+      channelType: string,
+      config: Record<string, unknown>,
+      input?: { accountId?: string; kernelId?: KernelId },
+    ) => (
+      invokeHost('channels', 'validateCredentials', { channelType, config, ...input })
     ),
-    saveBinding: (input: { channelType: string; accountId: string; agentId: string }) => (
+    saveBinding: (input: {
+      channelType: string;
+      accountId: string;
+      kernelId: KernelId;
+      agentId: string;
+      targetId?: string;
+      conversationPolicy?: 'reuse' | 'per-thread' | 'per-message';
+    }) => (
       invokeHost('channels', 'bindingSave', input)
     ),
     deleteBinding: (input: { channelType: string; accountId?: string }) => (
       invokeHost('channels', 'bindingDelete', input)
     ),
-    startLogin: (channelType: string, input?: { accountId?: string }) => (
+    startLogin: (channelType: string, input?: { accountId?: string; kernelId?: KernelId }) => (
       invokeHost('channels', 'startLogin', { channelType, ...input })
     ),
-    cancelLogin: (channelType: string, input?: { accountId?: string }) => (
+    cancelLogin: (channelType: string, input?: { accountId?: string; kernelId?: KernelId }) => (
       invokeHost('channels', 'cancelLogin', { channelType, ...input })
     ),
   },
@@ -233,7 +292,13 @@ export const hostApi = {
     updateModel: (id: string, modelRef: string | null) => (
       invokeHost('agents', 'updateModel', { id, modelRef })
     ),
-    delete: (id: string) => invokeHost('agents', 'delete', { id }),
+    delete: (id: string) => invokeHost('agents', 'delete', { id, preserveHistory: true }),
+    setDefault: (id: string, kernelId: string) => (
+      invokeHost('agents', 'setDefault', { id, kernelId })
+    ),
+    reconcile: (id: string, kernelIds?: string[]) => (
+      invokeHost('agents', 'reconcile', { id, kernelIds })
+    ),
     assignChannel: (id: string, channelType: string) => (
       invokeHost('agents', 'assignChannel', { id, channelType })
     ),
@@ -242,6 +307,7 @@ export const hostApi = {
     ),
   },
   diagnostics: {
+    snapshot: () => invokeHost('diagnostics', 'snapshot'),
     gatewaySnapshot: () => invokeHost('diagnostics', 'gatewaySnapshot'),
     acpTrace: () => invokeHost('diagnostics', 'acpTrace'),
     recordAcpTrace: (input: AcpTraceRecordPayload) => invokeHost('diagnostics', 'recordAcpTrace', input),
@@ -253,14 +319,11 @@ export const hostApi = {
     hasApiKey: (providerId: string) => (
       invokeHost('providers', 'hasApiKey', { providerId })
     ),
-    getApiKey: (providerId: string) => (
-      invokeHost('providers', 'getApiKey', { providerId })
-    ),
     validateKey: (input: ProviderValidationPayload) => invokeHost('providers', 'validateKey', input),
-    save: (input: { config: ProviderConfig; apiKey?: string }) => invokeHost('providers', 'save', input),
+    save: (input: { config: ProviderConfig; credentialHandle?: string }) => invokeHost('providers', 'save', input),
     delete: (providerId: string) => invokeHost('providers', 'delete', { providerId }),
-    setApiKey: (providerId: string, apiKey: string) => (
-      invokeHost('providers', 'setApiKey', { providerId, apiKey })
+    setApiKey: (providerId: string, credentialHandle: string) => (
+      invokeHost('providers', 'setApiKey', { providerId, credentialHandle })
     ),
     updateWithKey: (input: ProviderUpdateWithKeyPayload) => invokeHost('providers', 'updateWithKey', input),
     deleteApiKey: (providerId: string) => (
@@ -276,17 +339,14 @@ export const hostApi = {
     getAccount: (accountId: string) => (
       invokeHost('providers', 'getAccount', { accountId })
     ),
-    getAccountApiKey: (accountId: string) => (
-      invokeHost('providers', 'getAccountApiKey', { accountId })
-    ),
     hasAccountApiKey: (accountId: string) => (
       invokeHost('providers', 'hasAccountApiKey', { accountId })
     ),
-    createAccount: (input: { account: ProviderAccount; apiKey?: string }) => (
+    createAccount: (input: { account: ProviderAccount; credentialHandle?: string }) => (
       invokeHost('providers', 'createAccount', input)
     ),
-    updateAccount: (accountId: string, updates: Partial<ProviderAccount>, apiKey?: string) => (
-      invokeHost('providers', 'updateAccount', { accountId, updates, apiKey })
+    updateAccount: (accountId: string, updates: Partial<ProviderAccount>, credentialHandle?: string) => (
+      invokeHost('providers', 'updateAccount', { accountId, updates, credentialHandle })
     ),
     deleteAccount: (accountId: string) => (
       invokeHost('providers', 'deleteAccount', { accountId })
@@ -296,6 +356,13 @@ export const hostApi = {
     ),
     setDefaultAccount: (accountId: string) => (
       invokeHost('providers', 'setDefaultAccount', { accountId })
+    ),
+    kernelDefaults: () => invokeHost('providers', 'kernelDefaults'),
+    setKernelDefault: (input: ProviderKernelDefaultPayload) => (
+      invokeHost('providers', 'setKernelDefault', input)
+    ),
+    reconcileAccount: (input: ProviderReconcilePayload) => (
+      invokeHost('providers', 'reconcileAccount', input)
     ),
     requestOAuth: (input: ProviderOAuthRequestPayload) => invokeHost('providers', 'requestOAuth', input),
     cancelOAuth: () => invokeHost('providers', 'cancelOAuth'),
@@ -364,24 +431,42 @@ export const hostApi = {
     saveSettings: (input: EmbeddingSettingsPayload) => invokeHost('embeddings', 'saveSettings', input),
     clearSettings: () => invokeHost('embeddings', 'clearSettings'),
   },
-  sessions: {
-    delete: (id: string) => invokeHost('sessions', 'delete', { id }),
-    rename: (id: string, title: string) => (
-      invokeHost('sessions', 'rename', { id, title })
+  conversations: {
+    list: (input?: ConversationQueryFilters & { limit?: number; cursor?: string }) => (
+      invokeHost('conversations', 'list', input)
     ),
-    pin: (id: string, pinned: boolean) => invokeHost('sessions', 'pin', { id, pinned }),
-    summaries: (input?: { sessionKeys?: string[]; limit?: number; metadataOnly?: boolean }) => (
-      invokeHost('sessions', 'summaries', input)
+    search: (
+      query: string,
+      input?: number | (ConversationQueryFilters & { limit?: number }),
+    ) => invokeHost('conversations', 'search', {
+      query,
+      ...(typeof input === 'number' ? { limit: input } : input),
+    }),
+    get: (id: ConversationId) => invokeHost('conversations', 'get', { id }),
+    rename: (id: ConversationId, title: string) => (
+      invokeHost('conversations', 'rename', { id, title })
     ),
-    history: (input: { sessionKey?: string; agentId?: string; sessionId?: string; limit?: number }) => (
-      invokeHost('sessions', 'history', input)
+    pin: (id: ConversationId, pinned: boolean) => (
+      invokeHost('conversations', 'pin', { id, pinned })
     ),
-    turnTimings: (input: { sessionKey: string; limit?: number }) => (
-      invokeHost('sessions', 'turnTimings', input)
+    delete: (id: ConversationId, hard = false) => (
+      invokeHost('conversations', 'delete', { id, hard })
     ),
+    branch: (
+      sourceConversationId: ConversationId,
+      sourceTurnId: TurnId,
+      input?: { branchConversationId?: ConversationId; title?: string },
+    ) => invokeHost('conversations', 'branch', {
+      sourceConversationId,
+      sourceTurnId,
+      ...input,
+    }),
+    export: (id: ConversationId) => invokeHost('conversations', 'export', { id }),
   },
   chat: {
-    loadAcpSession: (input: AcpChatLoadPayload) => invokeHost('chat', 'loadAcpSession', input),
+    selectConversationKernel: (input: AcpChatLoadPayload) => (
+      invokeHost('chat', 'selectConversationKernel', input)
+    ),
     sendAcpPrompt: (input: AcpChatPromptPayload) => invokeHost('chat', 'sendAcpPrompt', input),
     cancelAcpSession: (input: AcpChatCancelPayload) => invokeHost('chat', 'cancelAcpSession', input),
     setAcpSessionConfigOption: (input: AcpChatSetConfigOptionPayload) => (
@@ -398,10 +483,18 @@ export const hostApi = {
     delete: (id: string) => invokeHost('cron', 'delete', { id }),
     toggle: (id: string, enabled: boolean) => invokeHost('cron', 'toggle', { id, enabled }),
     trigger: (id: string) => invokeHost('cron', 'trigger', { id }),
+    cancel: (id: string) => invokeHost('cron', 'cancel', { id }),
     sessionHistory: (input: CronSessionHistoryPayload) => invokeHost('cron', 'sessionHistory', input),
     deliveryTargets: () => invokeHost('cron', 'deliveryTargets'),
   },
   skills: {
+    catalog: () => invokeHost('skills', 'catalog'),
+    mutate: (input: import('@shared/host-api/contract').CanonicalSkillMutationPayload) => (
+      invokeHost('skills', 'mutate', input)
+    ),
+    retry: (input: import('@shared/host-api/contract').CanonicalSkillRetryPayload) => (
+      invokeHost('skills', 'retry', input)
+    ),
     local: () => invokeHost('skills', 'local'),
     configs: () => invokeHost('skills', 'configs'),
     allConfigs: () => invokeHost('skills', 'allConfigs'),
@@ -414,8 +507,12 @@ export const hostApi = {
     clawhubCapability: () => invokeHost('skills', 'clawhubCapability'),
     clawhubList: () => invokeHost('skills', 'clawhubList'),
     clawhubSearch: (input: ClawHubSearchPayload) => invokeHost('skills', 'clawhubSearch', input),
-    clawhubInstall: (input: { slug: string; version?: string }) => invokeHost('skills', 'clawhubInstall', input),
-    clawhubUninstall: (input: { slug: string }) => invokeHost('skills', 'clawhubUninstall', input),
+    clawhubInstall: (input: import('@shared/host-api/contract').ClawHubInstallPayload) => (
+      invokeHost('skills', 'clawhubInstall', input)
+    ),
+    clawhubUninstall: (input: import('@shared/host-api/contract').ClawHubUninstallPayload) => (
+      invokeHost('skills', 'clawhubUninstall', input)
+    ),
     clawhubOpenSkillReadme: (input: { skillKey?: string; slug?: string; baseDir?: string }) => (
       invokeHost('skills', 'clawhubOpenSkillReadme', input)
     ),
@@ -426,6 +523,9 @@ export const hostApi = {
   usage: {
     recentTokenHistory: (limit?: number) => (
       invokeHost('usage', 'recentTokenHistory', { limit })
+    ),
+    query: (input: import('@shared/host-api/contract').UsageHistoryPayload & { from: string; to: string }) => (
+      invokeHost('usage', 'query', input)
     ),
   },
 };

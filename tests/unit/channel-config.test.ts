@@ -42,12 +42,12 @@ vi.mock('@electron/utils/logger', () => ({
 }));
 
 async function readOpenClawJson(): Promise<Record<string, unknown>> {
-  const content = await readFile(join(testHome, '.openclaw', 'openclaw.json'), 'utf8');
+  const content = await readFile(join(testHome, '.clawx', 'kernel-config', 'openclaw', 'openclaw.json'), 'utf8');
   return JSON.parse(content) as Record<string, unknown>;
 }
 
 async function writeOpenClawJson(config: unknown): Promise<void> {
-  const openclawDir = join(testHome, '.openclaw');
+  const openclawDir = join(testHome, '.clawx', 'kernel-config', 'openclaw');
   await mkdir(openclawDir, { recursive: true });
   await writeFile(join(openclawDir, 'openclaw.json'), JSON.stringify(config, null, 2), 'utf8');
 }
@@ -455,17 +455,17 @@ describe('WeChat dangling plugin cleanup', () => {
       },
     });
 
-    const staleStateDir = join(testHome, '.openclaw', 'openclaw-weixin', 'accounts');
+    const staleStateDir = join(testHome, '.clawx', 'kernel-config', 'openclaw', 'openclaw-weixin', 'accounts');
     await mkdir(staleStateDir, { recursive: true });
     await writeFile(join(staleStateDir, 'bot-im-bot.json'), JSON.stringify({ token: 'stale-token' }), 'utf8');
-    await writeFile(join(testHome, '.openclaw', 'openclaw-weixin', 'accounts.json'), JSON.stringify(['bot-im-bot']), 'utf8');
+    await writeFile(join(testHome, '.clawx', 'kernel-config', 'openclaw', 'openclaw-weixin', 'accounts.json'), JSON.stringify(['bot-im-bot']), 'utf8');
 
     const result = await cleanupDanglingWeChatPluginState();
     expect(result.cleanedDanglingState).toBe(true);
 
     const config = await readOpenClawJson();
     expect(config.plugins).toBeUndefined();
-    expect(existsSync(join(testHome, '.openclaw', 'openclaw-weixin'))).toBe(false);
+    expect(existsSync(join(testHome, '.clawx', 'kernel-config', 'openclaw', 'openclaw-weixin'))).toBe(false);
   });
 });
 

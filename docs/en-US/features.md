@@ -2,6 +2,14 @@
 
 This document provides the detailed version of the Features section in the README.
 
+### Optional Multi-Kernel Catalog
+
+The base ClawX installer contains no AI kernel. On first use, install OpenClaw, DeepSeek Harness, both, or neither from the Kernel Catalog. Downloads are platform-specific, signed CI artifacts with progress, cancel/resume, repair, independent update/rollback, and diagnostics. Both kernels can remain active and stream work concurrently; a failure or update in one does not stop the other.
+
+OpenClaw and DeepSeek Harness use the same Chat, Providers/Models, Agents, Channels, Cron, Skills, Usage and Diagnostics pages. “Both” operations preserve partial success instead of hiding a failed projection. A Conversation is independent of a kernel and can select another kernel for its next turn; the UI shows provenance while ClawX passes only portable, redacted history. No DeepSeek Web UI is embedded.
+
+All new history is stored once in ClawX's SQLite/Blob store. Kernel uninstall does not remove it, so conversations remain searchable, renameable, exportable and deletable offline. New Cron jobs and Channel messages use the same Conversation/Run records. Existing upstream histories are intentionally not migrated or used as fallback. See [data security and retention](data-security-retention.md).
+
 ### Zero Configuration Barrier
 
 Complete the entire setup from installation to your first AI conversation through an intuitive graphical interface. No terminal commands, YAML files, or environment-variable hunting are required.
@@ -44,15 +52,15 @@ Schedule AI tasks to run automatically. Define triggers and set intervals so AI 
 
 The Cron page lets you configure external delivery directly in the task form with separate sender-account and recipient-target selectors. For supported channels, recipient targets are discovered automatically from channel directories or known session history, so you no longer need to edit `jobs.json` by hand. The task message field supports inserting skills with the same inline `/skill` token syntax as the main chat composer, scoped to the selected agent, so scheduled prompts can trigger skills directly.
 
-The schedule picker is split into **Recurring** and **Once** tabs. Recurring offers Hourly, Daily, Weekdays, Weekly, and Custom raw cron frequencies with inline time and weekday controls. Once runs the task a single time at a chosen date, with the weekday shown, and time. One-time tasks must be scheduled for a future moment and are automatically removed by the runtime once they finish.
+The schedule picker is split into **Recurring** and **Once** tabs. Recurring offers Hourly, Daily, Weekdays, Weekly, and Custom raw cron frequencies with inline time and weekday controls. Once runs the task a single time at a chosen date, with the weekday shown, and time. One-time tasks must be scheduled for a future moment and are retired by the Main-owned ClawXScheduler after their canonical completion is committed.
 
 ### Extensible Skill System
 
 Extend your AI agents with pre-built skills. The integrated Skills page is local-first: it scans managed and workspace skill directories and lets you enable or disable skills without depending on the Gateway. Enterprise extensions may also expose an extension-provided marketplace.
 
-ClawX pre-bundles full document-processing skills (`pdf`, `xlsx`, `docx`, `pptx`), deploys them automatically to the managed skills directory (default `~/.openclaw/skills`) on startup, and enables them by default on first install.
+ClawX pre-bundles full document-processing skills (`pdf`, `xlsx`, `docx`, `pptx`) as host skill packages. The canonical Skills catalog owns their desired state and projects independent physical copies to each compatible installed kernel. OpenClaw's managed copy is created only when OpenClaw is activated; no OpenClaw directory is written merely because the base app starts.
 
-The Skills page can display skills discovered from multiple OpenClaw sources, including the managed directory, workspace, and extra skill directories. It shows each skill's actual location so you can open the real folder directly. For bundled OpenClaw skills, community builds ship and expose only `skill-creator`; non-allowlisted bundled skills are physically trimmed in both development and packaged startup, and stale `openclaw.json` entries for removed bundled skills are pruned.
+The same Skills page displays canonical packages, workspace sources and per-kernel projection state. OpenClaw-specific source discovery runs only when that optional runtime exists. Its runtime artifact exposes only the allowlisted bundled `skill-creator`; non-allowlisted upstream skills are removed while building the optional artifact, and stale managed projection entries are reconciled without changing DSH copies.
 
 ### Secure Provider Integration
 

@@ -87,13 +87,13 @@ describe('openclaw bundle config', () => {
       '@discordjs/voice',
       'discord-api-types',
       'opusscript',
-      '@tencent-connect/qqbot-connector',
       'mpg123-decoder',
       'silk-wasm',
       'acpx',
       'playwright-core',
       'qrcode-terminal',
     ]));
+    expect(EXTRA_BUNDLED_PACKAGES).not.toContain('@tencent-connect/qqbot-connector');
     const packageJson = JSON.parse(readFileSync(resolve(process.cwd(), 'package.json'), 'utf8')) as {
       dependencies?: Record<string, string>;
       devDependencies?: Record<string, string>;

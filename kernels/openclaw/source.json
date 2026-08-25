@@ -1,0 +1,50 @@
+{
+  "schemaVersion": 1,
+  "kernelId": "openclaw",
+  "displayName": "OpenClaw",
+  "upstream": "https://github.com/openclaw/openclaw",
+  "version": "2026.7.1-2",
+  "patchBase": "npm-tarball",
+  "git": {
+    "tag": "v2026.7.1-2",
+    "tagObject": "be8b8a9e8838f832e4fa47cde8bea0a33aec71ba",
+    "commit": "0790d9f593ad30c940ed93b5872a8cf6d6f3cf8c"
+  },
+  "npm": {
+    "package": "openclaw@2026.7.1-2",
+    "integrity": "sha512-ycF3yPcbjN6bUPeaUx6Mh6vze1hQWoD3CT/wWcmD7a8xaHHHRUaAlaq+lFxMHf1ssEgODVAwjlzYqp2twkYZ7g=="
+  },
+  "license": "MIT",
+  "artifactVersion": "2026.7.1-2+clawx.6",
+  "patchRevision": 6,
+  "sourceDateEpoch": 1787428800,
+  "lockfile": {
+    "descriptor": "kernels/openclaw/lock.json",
+    "descriptorSha256": "fb28ac86d71b918a8a8f75afd69b41ae4225eb25e08bea9d015d723b2455d49c",
+    "contentPath": "pnpm-lock.yaml",
+    "contentSha256": "1bbe63a40a6413d3e5fa5dc310650a696805be093c5ef4fdad5929076cddd22d"
+  },
+  "patchSeries": {
+    "path": "kernels/openclaw/patches/series",
+    "sha256": "30f1fe05082df9a78bb988981ca821d5365fca4735296a2ac7e810454edc05a8"
+  },
+  "runtime": {
+    "path": "kernels/openclaw/runtime.json",
+    "sha256": "0f1f5dfd3b235127e7b58fe438b766bec7d7d2d5a92e005fc760b89e42941bde"
+  },
+  "nodeRuntime": {
+    "path": "kernels/node-runtime.json",
+    "sha256": "e822be30955ff18aa415c17a030d3ece48344292191cde5689ad6d1dc7815821"
+  },
+  "overlay": {
+    "root": "kernels/openclaw/overlay",
+    "manifest": "kernels/openclaw/overlay.manifest.json",
+    "manifestSha256": "583b81258e83c22888045a51a08a0b548697a3e6eaca2f26d83c9598968b3e4e"
+  },
+  "patches": [
+    {
+      "path": "patches/openclaw@2026.7.1-2.patch",
+      "sha256": "6de687629ab4c08ca0d7926ac29a66668e5b1fd821ddbaad701d8a194690605a"
+    }
+  ]
+}

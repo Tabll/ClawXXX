@@ -4,6 +4,10 @@
             "title": "欢迎使用 ClawX",
             "description": "您的 AI 助手已准备好进行配置"
         },
+        "catalog": {
+            "title": "选择 AI 内核",
+            "description": "现在安装任一内核，或全部跳过并稍后下载"
+        },
         "runtime": {
             "title": "环境检查",
             "description": "验证系统要求"
@@ -27,12 +31,48 @@
     },
     "welcome": {
         "title": "欢迎使用 ClawX",
-        "description": "ClawX 是 OpenClaw 的图形界面，让您可以在喜爱的消息平台上轻松使用 AI 助手。",
+        "description": "ClawX 让多个可选 AI 内核共用一套桌面界面和一份本地历史记录。",
         "features": {
+            "optional": "只有在您选择时才下载内核",
+            "sharedUi": "聊天、渠道、定时任务、智能体和技能共用一套 UI",
+            "concurrent": "可以同时运行多个已安装内核",
+            "offlineHistory": "所有内核停止时仍可浏览和管理本地历史",
             "noCommand": "无需命令行",
             "modernUI": "现代美观的界面",
             "bundles": "预装技能包",
             "crossPlatform": "跨平台支持"
+        }
+    },
+    "progressLabel": "设置进度",
+    "catalog": {
+        "title": "内核目录",
+        "subtitle": "运行时包由 ClawX CI 构建和打补丁，并在激活前完成验证。",
+        "refresh": "刷新",
+        "continue": "继续",
+        "install": "安装",
+        "installing": "安装中…",
+        "skip": "跳过",
+        "undoSkip": "重新选择",
+        "installed": "已安装",
+        "stable": "稳定版",
+        "preview": "预览版",
+        "optional": "可选",
+        "genericDescription": "由 ClawX 管理的可选签名运行时。",
+        "installedVersion": "已安装版本",
+        "availableVersion": "可用版本",
+        "incompatible": "不兼容：{{reasons}}",
+        "sharedData": "两个内核共用 ClawX SQLite 中的对话、定时任务、智能体、技能、渠道和用量记录。卸载内核不会删除这些统一数据。",
+        "kernels": {
+            "openclaw": { "description": "带 ClawX 托管存储补丁的完整 OpenClaw 运行时。" },
+            "deepseek-harness": { "description": "带 ClawX 控制和对话桥接的 DeepSeek Harness。" }
+        },
+        "phases": {
+            "resolving": "解析运行时包",
+            "downloading": "下载中",
+            "verifying": "验证签名",
+            "staging": "安全解压",
+            "smoke-testing": "运行冒烟测试",
+            "activating": "激活中"
         }
     },
     "runtime": {
@@ -118,7 +158,11 @@
         "components": "组件",
         "gateway": "网关",
         "running": "运行中",
-        "footer": "您可以在设置中自定义技能并连接渠道"
+        "footer": "您可以在设置中自定义技能并连接渠道",
+        "installed": "已安装内核",
+        "noneInstalled": "尚未安装——仍可离线查看历史记录和设置。",
+        "restartRequired": "请重启一次 ClawX，以加载刚激活的不可变运行时及其全部适配器。",
+        "restartNow": "重启 ClawX"
     },
     "nav": {
         "next": "下一步",

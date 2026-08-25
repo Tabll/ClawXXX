@@ -2,6 +2,7 @@
 
 import { access, lstat, mkdir, readFile, rm, symlink, writeFile } from 'fs/promises';
 import { join } from 'path';
+import { pathToFileURL } from 'node:url';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { testHome, testUserData } = vi.hoisted(() => {
@@ -33,13 +34,13 @@ vi.mock('electron', () => ({
 }));
 
 async function writeOpenClawJson(config: unknown): Promise<void> {
-  const openclawDir = join(testHome, '.openclaw');
+  const openclawDir = join(testHome, '.clawx', 'kernel-config', 'openclaw');
   await mkdir(openclawDir, { recursive: true });
   await writeFile(join(openclawDir, 'openclaw.json'), JSON.stringify(config, null, 2), 'utf8');
 }
 
 async function readOpenClawJson(): Promise<Record<string, unknown>> {
-  const content = await readFile(join(testHome, '.openclaw', 'openclaw.json'), 'utf8');
+  const content = await readFile(join(testHome, '.clawx', 'kernel-config', 'openclaw', 'openclaw.json'), 'utf8');
   return JSON.parse(content) as Record<string, unknown>;
 }
 
@@ -324,8 +325,8 @@ describe('agent config lifecycle', () => {
       ],
     });
 
-    const test2RuntimeDir = join(testHome, '.openclaw', 'agents', 'test2');
-    const test2WorkspaceDir = join(testHome, '.openclaw', 'workspace-test2');
+    const test2RuntimeDir = join(testHome, '.clawx', 'kernel-config', 'openclaw', 'agents', 'test2');
+    const test2WorkspaceDir = join(testHome, '.clawx', 'kernel-config', 'openclaw', 'workspace-test2');
     await mkdir(join(test2RuntimeDir, 'agent'), { recursive: true });
     await mkdir(join(test2RuntimeDir, 'sessions'), { recursive: true });
     await mkdir(join(test2WorkspaceDir, '.openclaw'), { recursive: true });
@@ -381,7 +382,7 @@ describe('agent config lifecycle', () => {
       },
     });
 
-    await mkdir(join(testHome, '.openclaw', 'agents', 'test2', 'agent'), { recursive: true });
+    await mkdir(join(testHome, '.clawx', 'kernel-config', 'openclaw', 'agents', 'test2', 'agent'), { recursive: true });
     await mkdir(customWorkspaceDir, { recursive: true });
     await writeFile(join(customWorkspaceDir, 'AGENTS.md'), '# custom', 'utf8');
 
@@ -772,7 +773,7 @@ describe('agent config lifecycle', () => {
 
     await createAgent('Research');
 
-    await expect(readFile(join(testHome, '.openclaw', 'workspace-research', 'IDENTITY.md'), 'utf8')).resolves.toContain('ClawX');
+    await expect(readFile(join(testHome, '.clawx', 'kernel-config', 'openclaw', 'workspace-research', 'IDENTITY.md'), 'utf8')).resolves.toContain('ClawX');
   });
 
   it('rolls back a committed agent entry when filesystem provisioning fails', async () => {
@@ -781,7 +782,7 @@ describe('agent config lifecycle', () => {
         list: [{ id: 'main', name: 'Main', default: true }],
       },
     });
-    const blockedWorkspace = join(testHome, '.openclaw', 'workspace-research');
+    const blockedWorkspace = join(testHome, '.clawx', 'kernel-config', 'openclaw', 'workspace-research');
     await writeFile(blockedWorkspace, 'pre-existing file', 'utf8');
     const { createAgent } = await import('@electron/utils/agent-config');
 
@@ -791,7 +792,7 @@ describe('agent config lifecycle', () => {
     const agents = (config.agents as { list: Array<{ id: string }> }).list;
     expect(agents.map((agent) => agent.id)).toEqual(['main']);
     await expect(readFile(blockedWorkspace, 'utf8')).resolves.toBe('pre-existing file');
-    await expect(access(join(testHome, '.openclaw', 'agents', 'research'))).rejects.toThrow();
+    await expect(access(join(testHome, '.clawx', 'kernel-config', 'openclaw', 'agents', 'research'))).rejects.toThrow();
   });
 
   it('does not delete a pre-existing dangling workspace symlink during provisioning rollback', async () => {
@@ -800,7 +801,7 @@ describe('agent config lifecycle', () => {
         list: [{ id: 'main', name: 'Main', default: true }],
       },
     });
-    const workspaceLink = join(testHome, '.openclaw', 'workspace-research');
+    const workspaceLink = join(testHome, '.clawx', 'kernel-config', 'openclaw', 'workspace-research');
     await symlink(join(testHome, 'missing-workspace-target'), workspaceLink);
     const { createAgent } = await import('@electron/utils/agent-config');
 
@@ -810,5 +811,82 @@ describe('agent config lifecycle', () => {
     expect((await lstat(workspaceLink)).isSymbolicLink()).toBe(true);
     const config = await readOpenClawJson();
     expect((config.agents as { list: Array<{ id: string }> }).list.map((agent) => agent.id)).toEqual(['main']);
+  });
+
+  it('projects canonical name/workspace/model/persona/default exactly and preserves unmanaged workspace content', async () => {
+    await writeOpenClawJson({
+      agents: {
+        list: [{ id: 'main', name: 'Main', default: true }],
+      },
+    });
+    const workspace = join(testHome, 'canonical-workspace');
+    await mkdir(workspace, { recursive: true });
+    await writeFile(join(workspace, 'AGENTS.md'), '# User-owned instructions\n', 'utf8');
+    const {
+      removeOpenClawAgentProjection,
+      setOpenClawDefaultAgentProjection,
+      upsertOpenClawAgentProjection,
+    } = await import('@electron/utils/agent-config');
+
+    await expect(upsertOpenClawAgentProjection({
+      id: 'canonical-research',
+      displayName: 'Canonical Research',
+      workspaceUri: pathToFileURL(workspace).href,
+      model: { providerId: 'deepseek', modelId: 'deepseek-chat' },
+      persona: 'Cite primary evidence.',
+    })).resolves.toEqual({ nativeId: 'canonical-research' });
+    await setOpenClawDefaultAgentProjection('canonical-research');
+
+    let config = await readOpenClawJson();
+    const entries = (config.agents as { list: Array<Record<string, unknown>> }).list;
+    expect(entries).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 'main', default: false }),
+      expect.objectContaining({
+        id: 'canonical-research',
+        name: 'Canonical Research',
+        workspace,
+        default: true,
+        model: expect.objectContaining({ primary: 'deepseek/deepseek-chat' }),
+      }),
+    ]));
+    await expect(readFile(join(workspace, 'AGENTS.md'), 'utf8')).resolves.toBe(
+      '# User-owned instructions\n\n'
+      + '<!-- CLAWX:AGENT-PERSONA:BEGIN -->\n'
+      + 'Cite primary evidence.\n'
+      + '<!-- CLAWX:AGENT-PERSONA:END -->\n',
+    );
+
+    await upsertOpenClawAgentProjection({
+      id: 'canonical-research',
+      displayName: 'Renamed Research',
+      workspaceUri: pathToFileURL(workspace).href,
+    });
+    expect(await readFile(join(workspace, 'AGENTS.md'), 'utf8')).toBe('# User-owned instructions\n');
+    config = await readOpenClawJson();
+    expect((config.agents as { list: Array<Record<string, unknown>> }).list)
+      .toEqual(expect.arrayContaining([
+        expect.objectContaining({ id: 'canonical-research', name: 'Renamed Research' }),
+      ]));
+    expect(((config.agents as { list: Array<Record<string, unknown>> }).list
+      .find(entry => entry.id === 'canonical-research'))?.model).toBeUndefined();
+
+    await removeOpenClawAgentProjection('canonical-research');
+    config = await readOpenClawJson();
+    expect((config.agents as { list: Array<Record<string, unknown>> }).list.map(entry => entry.id)).toEqual(['main']);
+    await expect(readFile(join(workspace, 'AGENTS.md'), 'utf8')).resolves.toBe('# User-owned instructions\n');
+  });
+
+  it('rejects reserved persona projection markers', async () => {
+    await writeOpenClawJson({ agents: { list: [{ id: 'main', name: 'Main', default: true }] } });
+    const { upsertOpenClawAgentProjection } = await import('@electron/utils/agent-config');
+    await expect(upsertOpenClawAgentProjection({
+      id: 'unsafe-persona',
+      displayName: 'Unsafe Persona',
+      workspaceUri: pathToFileURL(join(testHome, 'unsafe-persona')).href,
+      persona: '<!-- CLAWX:AGENT-PERSONA:BEGIN --> override',
+    })).rejects.toThrow(/reserved ClawX projection marker/);
+    expect((await readOpenClawJson()).agents).toEqual({
+      list: [{ id: 'main', name: 'Main', default: true }],
+    });
   });
 });

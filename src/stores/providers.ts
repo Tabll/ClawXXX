@@ -6,10 +6,10 @@ import { create } from 'zustand';
 import type {
   ProviderAccount,
   ProviderConfig,
+  ProviderKernelDefault,
   ProviderVendorInfo,
   ProviderWithKeyInfo,
 } from '@/lib/providers';
-import { normalizeProviderApiKeyInput } from '@/lib/providers';
 import { hostApi } from '@/lib/host-api';
 import { fetchProviderSnapshot } from '@/lib/provider-accounts';
 
@@ -17,6 +17,7 @@ import { fetchProviderSnapshot } from '@/lib/provider-accounts';
 export type {
   ProviderAccount,
   ProviderConfig,
+  ProviderKernelDefault,
   ProviderVendorInfo,
   ProviderWithKeyInfo,
 } from '@/lib/providers';
@@ -27,44 +28,47 @@ interface ProviderState {
   accounts: ProviderAccount[];
   vendors: ProviderVendorInfo[];
   defaultAccountId: string | null;
+  kernelDefaults: ProviderKernelDefault[];
   loading: boolean;
   error: string | null;
 
   // Actions
   init: () => Promise<void>;
   refreshProviderSnapshot: () => Promise<void>;
-  createAccount: (account: ProviderAccount, apiKey?: string) => Promise<void>;
+  createAccount: (account: ProviderAccount, credentialHandle?: string) => Promise<void>;
   removeAccount: (accountId: string) => Promise<void>;
   validateAccountApiKey: (
     accountId: string,
-    apiKey: string,
+    credentialHandle: string,
+    kernelIds?: string[],
     options?: { baseUrl?: string; apiProtocol?: ProviderAccount['apiProtocol']; modelId?: string }
   ) => Promise<{ valid: boolean; error?: string }>;
-  getAccountApiKey: (accountId: string) => Promise<string | null>;
 
   // Legacy compatibility aliases
   fetchProviders: () => Promise<void>;
-  addProvider: (config: Omit<ProviderConfig, 'createdAt' | 'updatedAt'>, apiKey?: string) => Promise<void>;
-  addAccount: (account: ProviderAccount, apiKey?: string) => Promise<void>;
-  updateProvider: (providerId: string, updates: Partial<ProviderConfig>, apiKey?: string) => Promise<void>;
-  updateAccount: (accountId: string, updates: Partial<ProviderAccount>, apiKey?: string) => Promise<void>;
+  addProvider: (config: Omit<ProviderConfig, 'createdAt' | 'updatedAt'>, credentialHandle?: string) => Promise<void>;
+  addAccount: (account: ProviderAccount, credentialHandle?: string) => Promise<void>;
+  updateProvider: (providerId: string, updates: Partial<ProviderConfig>, credentialHandle?: string) => Promise<void>;
+  updateAccount: (accountId: string, updates: Partial<ProviderAccount>, credentialHandle?: string) => Promise<void>;
   deleteProvider: (providerId: string) => Promise<void>;
   deleteAccount: (accountId: string) => Promise<void>;
-  setApiKey: (providerId: string, apiKey: string) => Promise<void>;
+  setApiKey: (providerId: string, credentialHandle: string) => Promise<void>;
   updateProviderWithKey: (
     providerId: string,
     updates: Partial<ProviderConfig>,
-    apiKey?: string
+    credentialHandle?: string
   ) => Promise<void>;
   deleteApiKey: (providerId: string) => Promise<void>;
   setDefaultProvider: (providerId: string) => Promise<void>;
   setDefaultAccount: (accountId: string) => Promise<void>;
+  setKernelDefault: (kernelId: string, accountId: string, modelId?: string) => Promise<void>;
+  reconcileAccount: (accountId: string, kernelIds?: string[]) => Promise<void>;
   validateApiKey: (
     providerId: string,
-    apiKey: string,
+    credentialHandle: string,
+    kernelIds?: string[],
     options?: { baseUrl?: string; apiProtocol?: ProviderAccount['apiProtocol'] }
   ) => Promise<{ valid: boolean; error?: string }>;
-  getApiKey: (providerId: string) => Promise<string | null>;
 }
 
 export const useProviderStore = create<ProviderState>((set, get) => ({
@@ -72,6 +76,7 @@ export const useProviderStore = create<ProviderState>((set, get) => ({
   accounts: [],
   vendors: [],
   defaultAccountId: null,
+  kernelDefaults: [],
   loading: false,
   error: null,
 
@@ -90,6 +95,7 @@ export const useProviderStore = create<ProviderState>((set, get) => ({
         accounts: snapshot.accounts ?? [],
         vendors: snapshot.vendors ?? [],
         defaultAccountId: snapshot.defaultAccountId ?? null,
+        kernelDefaults: snapshot.kernelDefaults ?? [],
         loading: false 
       });
     } catch (error) {
@@ -102,7 +108,7 @@ export const useProviderStore = create<ProviderState>((set, get) => ({
   // Legacy ProviderConfig-shaped alias kept for backward compatibility
   // with any stale caller. Internally projects the legacy config payload
   // onto the ProviderAccount surface and delegates to createAccount.
-  addProvider: async (config, apiKey) => {
+  addProvider: async (config, credentialHandle) => {
     try {
       const now = new Date().toISOString();
       const account: ProviderAccount = {
@@ -122,16 +128,16 @@ export const useProviderStore = create<ProviderState>((set, get) => ({
         createdAt: now,
         updatedAt: now,
       };
-      await get().createAccount(account, apiKey);
+      await get().createAccount(account, credentialHandle);
     } catch (error) {
       console.error('Failed to add provider', error);
       throw error;
     }
   },
 
-  createAccount: async (account, apiKey) => {
+  createAccount: async (account, credentialHandle) => {
     try {
-      const result = await hostApi.providers.createAccount({ account, apiKey });
+      const result = await hostApi.providers.createAccount({ account, credentialHandle });
 
       if (!result.success) {
         throw new Error(result.error || 'Failed to create provider account');
@@ -144,11 +150,11 @@ export const useProviderStore = create<ProviderState>((set, get) => ({
     }
   },
 
-  addAccount: async (account, apiKey) => get().createAccount(account, apiKey),
+  addAccount: async (account, credentialHandle) => get().createAccount(account, credentialHandle),
 
   // Legacy ProviderConfig-shaped alias. Translates the partial ProviderConfig
   // patch into a ProviderAccount patch and routes through updateAccount.
-  updateProvider: async (providerId, updates, apiKey) => {
+  updateProvider: async (providerId, updates, credentialHandle) => {
     try {
       const accountUpdates: Partial<ProviderAccount> = {};
       if (updates.name !== undefined) accountUpdates.label = updates.name;
@@ -161,19 +167,19 @@ export const useProviderStore = create<ProviderState>((set, get) => ({
       if (updates.fallbackModels !== undefined) accountUpdates.fallbackModels = updates.fallbackModels;
       if (updates.fallbackProviderIds !== undefined) accountUpdates.fallbackAccountIds = updates.fallbackProviderIds;
       if (updates.enabled !== undefined) accountUpdates.enabled = updates.enabled;
-      await get().updateAccount(providerId, accountUpdates, apiKey);
+      await get().updateAccount(providerId, accountUpdates, credentialHandle);
     } catch (error) {
       console.error('Failed to update provider', error);
       throw error;
     }
   },
 
-  updateAccount: async (accountId, updates, apiKey) => {
+  updateAccount: async (accountId, updates, credentialHandle) => {
     try {
       const result = await hostApi.providers.updateAccount(
         accountId,
         updates,
-        apiKey,
+        credentialHandle,
       );
 
       if (!result.success) {
@@ -209,9 +215,9 @@ export const useProviderStore = create<ProviderState>((set, get) => ({
   // Legacy alias kept for in-flight callers; routes the call through
   // updateAccount, which is semantically equivalent to "set API key without
   // other changes".
-  setApiKey: async (providerId, apiKey) => get().updateAccount(providerId, {}, apiKey),
+  setApiKey: async (providerId, credentialHandle) => get().updateAccount(providerId, {}, credentialHandle),
 
-  updateProviderWithKey: async (providerId, updates, apiKey) => {
+  updateProviderWithKey: async (providerId, updates, credentialHandle) => {
     try {
       const accountUpdates: Partial<ProviderAccount> = {};
       if (updates.name !== undefined) accountUpdates.label = updates.name;
@@ -224,7 +230,7 @@ export const useProviderStore = create<ProviderState>((set, get) => ({
       if (updates.fallbackModels !== undefined) accountUpdates.fallbackModels = updates.fallbackModels;
       if (updates.fallbackProviderIds !== undefined) accountUpdates.fallbackAccountIds = updates.fallbackProviderIds;
       if (updates.enabled !== undefined) accountUpdates.enabled = updates.enabled;
-      await get().updateAccount(providerId, accountUpdates, apiKey);
+      await get().updateAccount(providerId, accountUpdates, credentialHandle);
     } catch (error) {
       console.error('Failed to update provider with key:', error);
       throw error;
@@ -263,15 +269,27 @@ export const useProviderStore = create<ProviderState>((set, get) => ({
       throw error;
     }
   },
+
+  setKernelDefault: async (kernelId, accountId, modelId) => {
+    const result = await hostApi.providers.setKernelDefault({ kernelId, accountId, modelId });
+    if (!result.success) throw new Error(result.error || 'Failed to set kernel Provider default');
+    await get().refreshProviderSnapshot();
+  },
+
+  reconcileAccount: async (accountId, kernelIds) => {
+    const result = await hostApi.providers.reconcileAccount({ accountId, kernelIds });
+    if (!result.success) throw new Error(result.error || 'Failed to reconcile Provider account');
+    await get().refreshProviderSnapshot();
+  },
   
-  validateAccountApiKey: async (providerId, apiKey, options) => {
+  validateAccountApiKey: async (providerId, credentialHandle, kernelIds, options) => {
     try {
-      const normalizedApiKey = normalizeProviderApiKeyInput(apiKey);
       const result = await hostApi.providers.validateKey({
           accountId: providerId,
           vendorId: providerId,
           providerId,
-          apiKey: normalizedApiKey,
+          credentialHandle,
+          kernelIds,
           options,
       });
       return result?.valid === true
@@ -282,15 +300,7 @@ export const useProviderStore = create<ProviderState>((set, get) => ({
     }
   },
 
-  validateApiKey: async (providerId, apiKey, options) => get().validateAccountApiKey(providerId, apiKey, options),
-
-  getAccountApiKey: async (providerId) => {
-    try {
-      return await hostApi.providers.getAccountApiKey(providerId);
-    } catch {
-      return null;
-    }
-  },
-
-  getApiKey: async (providerId) => get().getAccountApiKey(providerId),
+  validateApiKey: async (providerId, credentialHandle, kernelIds, options) => (
+    get().validateAccountApiKey(providerId, credentialHandle, kernelIds, options)
+  ),
 }));

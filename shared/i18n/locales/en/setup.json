@@ -4,6 +4,10 @@
             "title": "Welcome to ClawX",
             "description": "Your AI assistant is ready to be configured"
         },
+        "catalog": {
+            "title": "Choose AI kernels",
+            "description": "Install either kernel now, or skip both and download them later"
+        },
         "runtime": {
             "title": "Environment Check",
             "description": "Verifying system requirements"
@@ -27,12 +31,48 @@
     },
     "welcome": {
         "title": "Welcome to ClawX",
-        "description": "ClawX is a graphical interface for OpenClaw, making it easy to use AI assistants across your favorite messaging platforms.",
+        "description": "ClawX gives multiple optional AI kernels one shared desktop interface and one local history.",
         "features": {
+            "optional": "Kernels download only when you choose them",
+            "sharedUi": "One UI for Chat, Channels, Cron, Agents and Skills",
+            "concurrent": "Run multiple installed kernels at the same time",
+            "offlineHistory": "Browse and manage local history while every kernel is stopped",
             "noCommand": "Zero command-line required",
             "modernUI": "Modern, beautiful interface",
             "bundles": "Pre-installed skill bundles",
             "crossPlatform": "Cross-platform support"
+        }
+    },
+    "progressLabel": "Setup progress",
+    "catalog": {
+        "title": "Kernel Catalog",
+        "subtitle": "Runtime packages are built and patched by ClawX CI, then verified before activation.",
+        "refresh": "Refresh",
+        "continue": "Continue",
+        "install": "Install",
+        "installing": "Installing…",
+        "skip": "Skip",
+        "undoSkip": "Include again",
+        "installed": "Installed",
+        "stable": "Stable",
+        "preview": "Preview",
+        "optional": "Optional",
+        "genericDescription": "Optional signed runtime managed by ClawX.",
+        "installedVersion": "Installed",
+        "availableVersion": "Available",
+        "incompatible": "Not compatible: {{reasons}}",
+        "sharedData": "Both kernels use the same ClawX SQLite conversations, schedules, agents, skills, channels and usage records. Removing a kernel never removes that canonical data.",
+        "kernels": {
+            "openclaw": { "description": "Full OpenClaw runtime with the ClawX managed-storage patch." },
+            "deepseek-harness": { "description": "DeepSeek Harness with the ClawX control and conversation bridges." }
+        },
+        "phases": {
+            "resolving": "Resolving package",
+            "downloading": "Downloading",
+            "verifying": "Verifying signature",
+            "staging": "Extracting safely",
+            "smoke-testing": "Running smoke test",
+            "activating": "Activating"
         }
     },
     "runtime": {
@@ -118,7 +158,11 @@
         "components": "Components",
         "gateway": "Gateway",
         "running": "Running",
-        "footer": "You can customize skills and connect channels in Settings"
+        "footer": "You can customize skills and connect channels in Settings",
+        "installed": "Installed kernels",
+        "noneInstalled": "None yet — history and Settings remain available offline.",
+        "restartRequired": "Restart ClawX once to load the newly activated immutable runtime and all of its adapters.",
+        "restartNow": "Restart ClawX"
     },
     "nav": {
         "next": "Next",

@@ -1,0 +1,60 @@
+name: Multi-kernel runtime smoke
+
+on:
+  pull_request:
+    paths:
+      - 'electron/data/**'
+      - 'electron/kernels/**'
+      - 'shared/conversations/**'
+      - 'shared/kernels/**'
+      - 'kernels/**'
+      - 'tests/contract/kernels/**'
+      - '.github/workflows/multi-kernel-runtime-smoke.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  contract-smoke:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-14, windows-2025, ubuntu-24.04]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          run_install: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.15.0'
+          cache: pnpm
+      - name: Install frozen host dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Typecheck Main and shared contracts
+        run: pnpm run typecheck:node
+      - name: Verify Electron 43 embedded SQLite, FTS5, WAL and backup
+        run: pnpm run data:electron-smoke
+      - name: Exercise two processes, unified store, and OpenClaw store adapter
+        run: >-
+          pnpm exec vitest run
+          tests/contract/data
+          tests/contract/kernels/concurrent-runtime-spike.test.ts
+          tests/contract/kernels/data-service-spike.test.ts
+          tests/contract/kernels/package-manager.test.ts
+          tests/contract/kernels/supervisor-registry.test.ts
+          tests/contract/kernels/openclaw-conversation-store.test.ts
+          tests/contract/kernels/openclaw-driver.test.ts
+          tests/contract/kernels/openclaw-runtime-dir.test.ts
+      - name: Verify fixture runtime startup on this platform
+        shell: bash
+        run: >-
+          node tests/fixtures/kernels/stdio-runtime.mjs
+          </dev/null
+        env:
+          CLAWX_KERNEL_ID: openclaw
+          CLAWX_KERNEL_GENERATION: '1'
+        timeout-minutes: 1

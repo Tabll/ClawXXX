@@ -1,4 +1,5 @@
 import { completeSetup, expect, test } from './fixtures/electron';
+import { fillSecureSecret } from './helpers/secure-secret';
 
 const responses = {
   channels: { success: true, channels: [] },
@@ -53,19 +54,26 @@ test.describe('Plugin-backed channel save', () => {
     await channelsPage.getByRole('button', { name: /QQ Bot/ }).click();
 
     await page.locator('#appId').fill('qq-app-id');
-    await page.locator('#clientSecret').fill('qq-client-secret');
+    await fillSecureSecret(page, 'channel-secret-clientSecret', 'qq-client-secret');
     await page.getByRole('button', { name: /Save & Connect|dialog\.saveAndConnect/i }).click();
 
     await expect.poll(async () => electronApp.evaluate(() => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       return (globalThis as any).__clawxPluginChannelSavePayload;
-    })).toEqual({
+    })).not.toBeNull();
+    const payload = await electronApp.evaluate(() => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return (globalThis as any).__clawxPluginChannelSavePayload;
+    });
+    expect(payload).toEqual({
       channelType: 'qqbot',
       config: {
         appId: 'qq-app-id',
-        clientSecret: 'qq-client-secret',
+        clientSecret: expect.stringMatching(/^credential-stage:\/\//),
       },
+      kernelId: 'openclaw',
     });
+    expect(JSON.stringify(payload)).not.toContain('qq-client-secret');
     await expect(page.getByText(/Configure QQ Bot|dialog\.configureTitle/i)).not.toBeVisible();
   });
 });

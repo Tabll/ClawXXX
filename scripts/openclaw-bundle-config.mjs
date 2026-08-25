@@ -13,7 +13,9 @@ export const EXTRA_BUNDLED_PACKAGES = [
   '@discordjs/voice',
   'discord-api-types',
   'opusscript',
-  '@tencent-connect/qqbot-connector',
+  // @tencent-connect/qqbot-connector@1.1.0 declares UNLICENSED and its npm
+  // payload does not contain the advertised dist files. The QQ plugin keeps
+  // manual AppID/AppSecret setup; QR linking is intentionally not distributed.
   'mpg123-decoder',
   'silk-wasm',
 

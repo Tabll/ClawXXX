@@ -150,7 +150,28 @@ export interface ProviderAccount {
     resourceUrl?: string;
     customModels?: string[];
   };
+  /** Kernels that can consume at least one model from this account. */
+  supportedKernels?: string[];
+  /** Main-owned projection state. Runtime-native metadata is never authoritative. */
+  projections?: ProviderKernelProjection[];
   createdAt: string;
+  updatedAt: string;
+}
+
+export interface ProviderKernelProjection {
+  kernelId: string;
+  status: 'pending' | 'applying' | 'ready' | 'partial' | 'failed' | 'unsupported';
+  desiredVersion: number;
+  appliedVersion?: number;
+  nativeId?: string;
+  error?: string;
+  updatedAt: string;
+}
+
+export interface ProviderKernelDefault {
+  kernelId: string;
+  accountId: string;
+  modelId?: string;
   updatedAt: string;
 }
 

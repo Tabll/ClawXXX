@@ -1,14 +1,19 @@
 import type { ElectronApplication } from '@playwright/test';
-import { closeElectronApp, expect, getStableWindow, installIpcMocks, test } from './fixtures/electron';
+import {
+  canonicalConversationHostApi,
+  canonicalConversationSummary,
+  closeElectronApp,
+  expect,
+  getStableWindow,
+  installIpcMocks,
+  readyKernelFixture,
+  test,
+} from './fixtures/electron';
 
 const MAIN_SESSION_KEY = 'agent:main:main';
 const CANONICAL_LIST_BARRIER_KEY = 'agent:main:canonical-list-barrier';
 const DEFAULT_WORKSPACE = '~/.openclaw/workspace';
 const DEFAULT_WORKSPACE_SEGMENT = '~%2F.openclaw%2Fworkspace';
-const SESSIONS_LIST_PAYLOAD = {
-  includeDerivedTitles: true,
-  includeLastMessage: true,
-};
 
 function defaultWorkspaceSessionGroupTestId(): string {
   return `workspace-session-group-${DEFAULT_WORKSPACE_SEGMENT}`;
@@ -31,8 +36,11 @@ function stableStringify(value: unknown): string {
   return `{${entries.join(',')}}`;
 }
 
-async function installDynamicAcpPromptMocks(app: ElectronApplication): Promise<void> {
-  await app.evaluate(async ({ app: _app }, keys) => {
+async function installDynamicCanonicalPromptMocks(
+  app: ElectronApplication,
+  expectedPrompt: string,
+): Promise<void> {
+  await app.evaluate(async ({ app: _app }, fixture) => {
     const { ipcMain } = process.mainModule!.require('electron') as typeof import('electron');
     type HostRequest = {
       id?: string;
@@ -51,52 +59,84 @@ async function installDynamicAcpPromptMocks(app: ElectronApplication): Promise<v
     ipcMain.removeHandler('host:invoke');
     ipcMain.handle('host:invoke', async (event: unknown, request: HostRequest) => {
       if (
-        request.module === 'gateway'
-        && request.action === 'rpc'
-        && request.payload?.method === 'sessions.list'
+        request.module === 'conversations'
+        && request.action === 'list'
         && globals.__newChatSessionKey
       ) {
-        const now = Date.now();
+        const now = new Date().toISOString();
         return {
           id: request.id,
           ok: true,
           data: {
-            ts: now,
-            sessions: [
+            items: [
               {
-                key: globals.__newChatSessionKey,
-                displayName: 'ACP',
+                id: globals.__newChatSessionKey,
+                title: fixture.expectedPrompt,
+                createdAt: now,
                 updatedAt: now,
-                status: 'running',
+                workspaceUri: fixture.defaultWorkspace,
+                lastKernelId: 'openclaw',
+                kernelIds: ['openclaw'],
+                lastAgentId: 'main',
               },
               {
-                key: keys.barrierKey,
-                displayName: 'Canonical list applied',
-                updatedAt: now - 500,
+                id: fixture.barrierKey,
+                title: 'Canonical list applied',
+                createdAt: now,
+                updatedAt: now,
+                workspaceUri: fixture.defaultWorkspace,
+                lastKernelId: 'openclaw',
+                kernelIds: ['openclaw'],
+                lastAgentId: 'main',
               },
-              { key: keys.mainSessionKey, displayName: 'main', updatedAt: now - 1000 },
+              {
+                id: fixture.mainSessionKey,
+                title: 'main',
+                createdAt: now,
+                updatedAt: now,
+                workspaceUri: fixture.defaultWorkspace,
+                lastKernelId: 'openclaw',
+                kernelIds: ['openclaw'],
+                lastAgentId: 'main',
+              },
             ],
           },
         };
       }
-      if (request.module === 'chat' && (request.action === 'loadAcpSession' || request.action === 'sendAcpPrompt')) {
+      if (
+        request.module === 'chat'
+        && (request.action === 'selectConversationKernel' || request.action === 'sendAcpPrompt')
+      ) {
         const sessionKey = typeof request.payload?.sessionKey === 'string' ? request.payload.sessionKey : '';
         if (sessionKey) {
           globals.__newChatSessionKey = sessionKey;
         }
-        if (request.action === 'loadAcpSession' && request.payload?.createIfMissing === true) {
+        if (request.action === 'selectConversationKernel' && request.payload?.createIfMissing === true) {
           return await new Promise((resolve) => {
             globals.__resolveNewChatLoad = () => {
               globals.__resolveNewChatLoad = undefined;
-              resolve({ id: request.id, ok: true, data: { success: true, generation: 1 } });
+              resolve({
+                id: request.id,
+                ok: true,
+                data: { success: true, generation: 1, kernelId: 'openclaw' },
+              });
             };
           });
         }
-        return { id: request.id, ok: true, data: { success: true, generation: 1 } };
+        return {
+          id: request.id,
+          ok: true,
+          data: { success: true, generation: 1, kernelId: 'openclaw' },
+        };
       }
       return originalHostInvoke?.(event, request) ?? { id: request.id, ok: true, data: {} };
     });
-  }, { mainSessionKey: MAIN_SESSION_KEY, barrierKey: CANONICAL_LIST_BARRIER_KEY });
+  }, {
+    mainSessionKey: MAIN_SESSION_KEY,
+    barrierKey: CANONICAL_LIST_BARRIER_KEY,
+    defaultWorkspace: DEFAULT_WORKSPACE,
+    expectedPrompt,
+  });
 }
 
 async function getNewChatSessionKey(app: ElectronApplication): Promise<string> {
@@ -111,7 +151,7 @@ async function releaseNewChatLoad(app: ElectronApplication): Promise<void> {
   });
 }
 
-async function emitAcpSessionDisplayName(app: ElectronApplication, sessionKey: string): Promise<void> {
+async function emitLegacyRuntimeSessionDisplayName(app: ElectronApplication, sessionKey: string): Promise<void> {
   await app.evaluate(async ({ app: _app }, key) => {
     const { BrowserWindow } = process.mainModule!.require('electron') as typeof import('electron');
     for (const win of BrowserWindow.getAllWindows()) {
@@ -138,17 +178,23 @@ test.describe('ClawX chat workspace session list', () => {
       displayName: `Workspace conversation ${index + 1}`,
       updatedAt: nowMs - index,
     }));
+    const summaries = sessions.map(session => canonicalConversationSummary({
+      id: session.key,
+      title: session.displayName,
+      createdAt: session.updatedAt,
+      updatedAt: session.updatedAt,
+      workspaceUri: DEFAULT_WORKSPACE,
+      lastKernelId: 'openclaw',
+      kernelIds: ['openclaw'],
+      lastAgentId: 'main',
+    }));
 
     try {
       await installIpcMocks(app, {
         gatewayStatus: { state: 'running', port: 18789, pid: 12345, connectedAt: nowMs },
-        gatewayRpc: {
-          [stableStringify(['sessions.list', SESSIONS_LIST_PAYLOAD])]: {
-            success: true,
-            result: { sessions },
-          },
-        },
+        kernelFixture: readyKernelFixture(),
         hostApi: {
+          ...canonicalConversationHostApi(summaries),
           [stableStringify(['/api/gateway/status', 'GET'])]: {
             ok: true,
             data: {
@@ -165,9 +211,15 @@ test.describe('ClawX chat workspace session list', () => {
               json: { success: true, agents: [{ id: 'main', name: 'Main' }] },
             },
           },
-          [stableStringify(['chat', 'loadAcpSession', { sessionKey: MAIN_SESSION_KEY, workspaceRoot: DEFAULT_WORKSPACE, cwd: DEFAULT_WORKSPACE }])]: {
+          [stableStringify(['chat', 'selectConversationKernel', {
+            sessionKey: MAIN_SESSION_KEY,
+            workspaceRoot: DEFAULT_WORKSPACE,
+            cwd: DEFAULT_WORKSPACE,
+            kernelId: 'openclaw',
+          }])]: {
             success: true,
             generation: 1,
+            kernelId: 'openclaw',
           },
         },
       });
@@ -215,22 +267,22 @@ test.describe('ClawX chat workspace session list', () => {
     const app = await launchElectronApp({ skipSetup: true });
     const oldTimestampMs = Date.now() - 35 * 24 * 60 * 60 * 1000;
     const prompt = 'Investigate the sidebar title race';
+    const mainSummary = canonicalConversationSummary({
+      id: MAIN_SESSION_KEY,
+      title: 'main',
+      createdAt: oldTimestampMs,
+      updatedAt: oldTimestampMs,
+      workspaceUri: DEFAULT_WORKSPACE,
+      lastKernelId: 'openclaw',
+      kernelIds: ['openclaw'],
+      lastAgentId: 'main',
+    });
     try {
       await installIpcMocks(app, {
         gatewayStatus: { state: 'running', port: 18789, pid: 12345 },
-        gatewayRpc: {
-          [stableStringify(['sessions.list', SESSIONS_LIST_PAYLOAD])]: {
-            success: true,
-            result: {
-              sessions: [{
-                key: MAIN_SESSION_KEY,
-                displayName: 'main',
-                updatedAt: oldTimestampMs,
-              }],
-            },
-          },
-        },
+        kernelFixture: readyKernelFixture(),
         hostApi: {
+          ...canonicalConversationHostApi([mainSummary]),
           [stableStringify(['/api/gateway/status', 'GET'])]: {
             ok: true,
             data: {
@@ -247,13 +299,19 @@ test.describe('ClawX chat workspace session list', () => {
               json: { success: true, agents: [{ id: 'main', name: 'Main' }] },
             },
           },
-          [stableStringify(['chat', 'loadAcpSession', { sessionKey: MAIN_SESSION_KEY, workspaceRoot: DEFAULT_WORKSPACE, cwd: DEFAULT_WORKSPACE }])]: {
+          [stableStringify(['chat', 'selectConversationKernel', {
+            sessionKey: MAIN_SESSION_KEY,
+            workspaceRoot: DEFAULT_WORKSPACE,
+            cwd: DEFAULT_WORKSPACE,
+            kernelId: 'openclaw',
+          }])]: {
             success: true,
             generation: 1,
+            kernelId: 'openclaw',
           },
         },
       });
-      await installDynamicAcpPromptMocks(app);
+      await installDynamicCanonicalPromptMocks(app, prompt);
 
       const page = await getStableWindow(app);
       try {
@@ -270,7 +328,7 @@ test.describe('ClawX chat workspace session list', () => {
 
       await page.getByTestId('sidebar-new-chat').click();
 
-      await expect(page.getByTestId(defaultWorkspaceSessionGroupTestId()).getByText(/agent:main:session-/)).toHaveCount(0);
+      await expect(page.getByTestId(defaultWorkspaceSessionGroupTestId()).getByText(/agent:main:conversation-/)).toHaveCount(0);
       await expect(page.getByTestId(defaultWorkspaceSessionGroupToggleTestId())).toHaveAttribute('aria-expanded', 'true');
       await expect(page.getByTestId('acp-chat-empty-state')).toBeVisible();
       await page.getByTestId('chat-composer-input').fill(prompt);
@@ -292,13 +350,13 @@ test.describe('ClawX chat workspace session list', () => {
         }).__newChatTitleObservation = { observer, state };
         inspect();
       }, sessionKey);
-      await emitAcpSessionDisplayName(app, sessionKey);
-      await expect(page.getByTestId(`sidebar-session-${CANONICAL_LIST_BARRIER_KEY}`)).toBeVisible();
+      await emitLegacyRuntimeSessionDisplayName(app, sessionKey);
       await expect(sessionRow).toHaveCount(0);
       await releaseNewChatLoad(app);
 
       await expect(sessionRow).toContainText(prompt);
       await expect(sessionRow).not.toContainText('ACP');
+      await expect(page.getByTestId(`sidebar-session-${CANONICAL_LIST_BARRIER_KEY}`)).toBeVisible();
       const sawAcpTitle = await page.evaluate(() => {
         const observation = (globalThis as unknown as {
           __newChatTitleObservation?: { observer: MutationObserver; state: { sawAcpTitle: boolean } };
@@ -312,37 +370,27 @@ test.describe('ClawX chat workspace session list', () => {
     }
   });
 
-  test('cold-start heartbeat replacement uses its first prompt as the initial title', async ({ launchElectronApp }) => {
+  test('legacy runtime heartbeat metadata cannot create or retitle a canonical conversation', async ({ launchElectronApp }) => {
     const app = await launchElectronApp({ skipSetup: true });
     const nowMs = Date.now();
-    const prompt = 'Tell me a startup joke';
+    const historyKey = 'agent:main:conversation-history';
+    const historySummary = canonicalConversationSummary({
+      id: historyKey,
+      title: 'Existing conversation',
+      createdAt: nowMs - 1000,
+      updatedAt: nowMs - 1000,
+      workspaceUri: DEFAULT_WORKSPACE,
+      lastKernelId: 'openclaw',
+      kernelIds: ['openclaw'],
+      lastAgentId: 'main',
+    });
 
     try {
       await installIpcMocks(app, {
         gatewayStatus: { state: 'running', gatewayReady: true, port: 18789, pid: 12345 },
-        gatewayRpc: {
-          [stableStringify(['sessions.list', SESSIONS_LIST_PAYLOAD])]: {
-            success: true,
-            result: {
-              ts: nowMs,
-              sessions: [
-                {
-                  key: MAIN_SESSION_KEY,
-                  displayName: 'ClawX',
-                  lastMessagePreview: '[OpenClaw heartbeat poll]',
-                  updatedAt: nowMs,
-                },
-                {
-                  key: 'agent:main:session-history',
-                  displayName: 'Existing conversation',
-                  derivedTitle: 'Existing conversation',
-                  updatedAt: nowMs - 1000,
-                },
-              ],
-            },
-          },
-        },
+        kernelFixture: readyKernelFixture(),
         hostApi: {
+          ...canonicalConversationHostApi([historySummary]),
           [stableStringify(['/api/gateway/status', 'GET'])]: {
             ok: true,
             data: {
@@ -359,9 +407,14 @@ test.describe('ClawX chat workspace session list', () => {
               json: { success: true, agents: [{ id: 'main', name: 'Main' }] },
             },
           },
+          [stableStringify(['chat', 'selectConversationKernel', {
+            sessionKey: historyKey,
+            workspaceRoot: DEFAULT_WORKSPACE,
+            cwd: DEFAULT_WORKSPACE,
+            kernelId: 'openclaw',
+          }])]: { success: true, generation: 1, kernelId: 'openclaw' },
         },
       });
-      await installDynamicAcpPromptMocks(app);
 
       const page = await getStableWindow(app);
       try {
@@ -370,20 +423,12 @@ test.describe('ClawX chat workspace session list', () => {
         if (!String(error).includes('ERR_FILE_NOT_FOUND')) throw error;
       }
 
-      await expect(page.getByTestId('acp-chat-empty-state')).toBeVisible({ timeout: 30_000 });
-      await page.getByTestId('chat-composer-input').fill(prompt);
-      await page.getByTestId('chat-composer-send').click();
-
-      await expect.poll(() => getNewChatSessionKey(app)).not.toBe('');
-      const sessionKey = await getNewChatSessionKey(app);
-      const sessionRow = page.getByTestId(`sidebar-session-${sessionKey}`);
-      await expect(sessionRow).toHaveCount(0);
-
-      await releaseNewChatLoad(app);
-      await expect(sessionRow).toContainText(prompt);
-      await emitAcpSessionDisplayName(app, sessionKey);
-      await expect(sessionRow).toContainText(prompt);
-      await expect(sessionRow).not.toContainText('ACP');
+      const historyRow = page.getByTestId(`sidebar-session-${historyKey}`);
+      await expect(historyRow).toContainText('Existing conversation', { timeout: 30_000 });
+      await emitLegacyRuntimeSessionDisplayName(app, MAIN_SESSION_KEY);
+      await expect(page.getByTestId(`sidebar-session-${MAIN_SESSION_KEY}`)).toHaveCount(0);
+      await expect(historyRow).toContainText('Existing conversation');
+      await expect(historyRow).not.toContainText('ACP');
     } finally {
       await closeElectronApp(app);
     }

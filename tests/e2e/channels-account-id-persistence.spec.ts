@@ -1,4 +1,5 @@
 import { completeSetup, expect, installIpcMocks, test } from './fixtures/electron';
+import { fillSecureSecret } from './helpers/secure-secret';
 
 function stableStringify(value: unknown): string {
   if (value == null || typeof value !== 'object') return JSON.stringify(value);
@@ -65,7 +66,7 @@ test.describe('Channels account editor behavior', () => {
     await addAccountButton.click();
 
     const appIdInput = page.locator('input#appId');
-    const appSecretInput = page.locator('input#appSecret');
+    const appSecretInput = page.getByTestId('channel-secret-appSecret');
     const accountIdInput = page.locator('input#account-id');
 
     await expect(appIdInput).toBeVisible();
@@ -73,10 +74,12 @@ test.describe('Channels account editor behavior', () => {
     await expect(accountIdInput).toBeVisible();
 
     await appIdInput.fill('cli_test_app');
-    await appSecretInput.fill('secret_test_value');
+    const secretFieldId = await appSecretInput.getAttribute('data-clawx-secret-id');
+    await fillSecureSecret(page, 'channel-secret-appSecret', 'secret_test_value');
     await accountIdInput.fill('feishu-renamed-account');
 
     await expect(appIdInput).toHaveValue('cli_test_app');
-    await expect(appSecretInput).toHaveValue('secret_test_value');
+    await expect(appSecretInput).toHaveAttribute('data-clawx-secret-id', secretFieldId!);
+    await expect(page.getByRole('button', { name: /Save & Connect|dialog\.saveAndConnect/ })).toBeEnabled();
   });
 });

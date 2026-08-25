@@ -11,6 +11,13 @@
         "brainstorming": "多智能体并行"
     },
     "noLogs": "（暂无日志）",
+    "kernelSelector": {
+        "label": "下一次运行使用的内核",
+        "noneInstalled": "尚未安装内核",
+        "boundary": "下一次运行将从 {{previous}} 切换到 {{next}}；当前对话的历史记录会完整保留。",
+        "notReady": "{{kernel}} 尚未就绪；历史记录仍可离线查看。",
+        "start": "启动内核"
+    },
     "scrollToLatest": "回到底部",
     "toolbar": {
         "refresh": "刷新聊天",
@@ -73,6 +80,9 @@
         "turnDuration": "用时 {{duration}}",
         "turnElapsed": "已处理 {{duration}}",
         "metadata": {
+            "kernel": "内核 {{kernel}}",
+            "agent": "智能体 {{agent}}",
+            "agentDeleted": "已删除",
             "input": "输入 {{count}}",
             "output": "输出 {{count}}",
             "cache": "缓存 {{count}}"
@@ -242,12 +252,15 @@
         "targetChip": "@{{agent}}",
         "agentPickerTitle": "将下一条消息直接发送给其他 Agent",
         "gatewayDisconnectedPlaceholder": "网关未连接...",
+        "kernelUnavailablePlaceholder": "所选内核尚未就绪...",
         "send": "发送",
         "stop": "停止",
         "thinking": "思考中…",
         "gatewayConnected": "已连接",
         "gatewayStarting": "启动中",
         "gatewayStatus": "网关{{state}}",
+        "kernelStatus": "{{kernel}} · {{state}}",
+        "noKernelSelected": "未选择内核",
         "retryFailedAttachments": "重试失败的附件",
         "workspacePrefix": "{{workspace}}",
         "workspacePickerTitle": "选择工作空间文件夹",

@@ -10,6 +10,17 @@
         "paused": "已暂停",
         "failed": "失败"
     },
+    "kernels": { "openclaw": "OpenClaw", "deepseekHarness": "DeepSeek Harness" },
+    "kernelStates": {
+        "not-installed": "未安装", "installed": "已安装", "starting": "启动中", "ready": "就绪",
+        "stopping": "停止中", "stopped": "已停止", "degraded": "降级", "crash-loop": "反复崩溃",
+        "failed": "失败", "incompatible": "不兼容"
+    },
+    "conversationPolicies": {
+        "reuse": "复用同一对话", "new-per-run": "每次运行新建对话", "new-per-day": "每天新建对话"
+    },
+    "misfirePolicies": { "run-once": "补跑一次", "catch-up": "逐次补跑", "skip": "跳过" },
+    "overlapPolicies": { "queue": "排队", "skip": "跳过重叠运行", "replace": "替换当前运行" },
     "empty": {
         "title": "暂无定时任务",
         "description": "创建定时任务以自动化 AI 工作流。任务可以在指定时间发送消息、运行查询或执行操作。",
@@ -19,7 +30,8 @@
         "runNow": "立即运行",
         "deleteConfirm": "确定要删除此任务吗？",
         "last": "上次运行",
-        "next": "下次运行"
+        "next": "下次运行",
+        "kernelUnavailable": "未指定内核"
     },
     "dialog": {
         "createTitle": "创建任务",
@@ -35,7 +47,15 @@
         "skillSearchPlaceholder": "搜索技能",
         "skillLoading": "正在加载技能...",
         "skillEmpty": "未找到匹配的技能",
+        "kernel": "内核",
         "agent": "智能体",
+        "noCompatibleAgents": "没有兼容的智能体",
+        "executionPolicies": "执行策略",
+        "executionPoliciesDesc": "配置共享历史、错过执行、并发与超时行为。",
+        "conversationPolicy": "对话历史",
+        "misfirePolicy": "错过时间后",
+        "overlapPolicy": "并发运行",
+        "timeoutSeconds": "超时（秒）",
         "schedule": "调度计划",
         "scheduleMode": {
             "recurring": "周期",
@@ -55,6 +75,8 @@
         "weekdayLabel": "星期",
         "minuteLabel": "每小时的第几分钟",
         "cronPlaceholder": "Cron 表达式 (例如：0 9 * * *)",
+        "timezone": "时区",
+        "timezoneDesc": "使用 IANA 时区，例如 Asia/Shanghai 或 America/Los_Angeles。",
         "usePresets": "使用预设",
         "useCustomCron": "使用自定义 Cron",
         "deliveryTitle": "投递设置",
@@ -121,6 +143,8 @@
         "failedDelete": "删除任务失败",
         "nameRequired": "请输入任务名称",
         "messageRequired": "请输入消息",
+        "kernelAgentRequired": "请选择兼容的内核和智能体",
+        "timeoutInvalid": "超时必须是至少 1 秒的整数",
         "channelRequired": "请选择通道",
         "deliveryChannelUnsupported": "{{channel}} 暂不支持定时任务投递",
         "deliveryTargetRequired": "请输入投递目标",

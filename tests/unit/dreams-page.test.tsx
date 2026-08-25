@@ -2,26 +2,21 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, render, screen, waitFor } from '@testing-library/react';
 import { Dreams } from '@/pages/Dreams';
 
-const rpcMock = vi.fn();
 const tMock = (key: string) => key;
 
-const { gatewayState, hostApiMock } = vi.hoisted(() => ({
-  gatewayState: {
-    status: { state: 'running', port: 18789, gatewayReady: true } as {
-      state: string;
-      port: number;
-      gatewayReady?: boolean;
-    },
+const { kernelState, hostApiMock } = vi.hoisted(() => ({
+  kernelState: {
+    runtimes: {
+      openclaw: { kernelId: 'openclaw', state: 'ready', generation: 1, diagnostics: [] },
+    } as Record<string, Record<string, unknown>>,
   },
   hostApiMock: {
-    gateway: {
+    openClawDreams: {
       status: vi.fn(),
-      start: vi.fn(),
-      stop: vi.fn(),
-      restart: vi.fn(),
-      health: vi.fn(),
-      controlUi: vi.fn(),
-      rpc: vi.fn(),
+      diary: vi.fn(),
+      run: vi.fn(),
+      setEnabled: vi.fn(),
+      openFullUi: vi.fn(),
     },
     settings: {
       getAll: vi.fn(),
@@ -39,11 +34,8 @@ const { gatewayState, hostApiMock } = vi.hoisted(() => ({
   },
 }));
 
-vi.mock('@/stores/gateway', () => ({
-  useGatewayStore: (selector: (state: typeof gatewayState & { rpc: typeof rpcMock }) => unknown) => selector({
-    ...gatewayState,
-    rpc: rpcMock,
-  }),
+vi.mock('@/stores/kernels', () => ({
+  useKernelStore: (selector: (state: typeof kernelState) => unknown) => selector(kernelState),
 }));
 
 vi.mock('@/lib/host-api', () => ({
@@ -63,50 +55,50 @@ vi.mock('sonner', () => ({
   },
 }));
 
-describe('Dreams page gateway readiness', () => {
+describe('Dreams page OpenClaw runtime readiness', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    gatewayState.status = { state: 'running', port: 18789, gatewayReady: true };
-    rpcMock.mockImplementation(async (method: string) => {
-      if (method === 'doctor.memory.status') {
-        return {
-          dreaming: {
-            enabled: true,
-            shortTermCount: 1,
-            groundedSignalCount: 0,
-            totalSignalCount: 1,
-            promotedToday: 0,
-            shortTermEntries: [],
-            promotedEntries: [],
-          },
-        };
-      }
-      if (method === 'doctor.memory.dreamDiary') {
-        return { found: true, content: '' };
-      }
-      return {};
+    kernelState.runtimes = {
+      openclaw: { kernelId: 'openclaw', state: 'ready', generation: 1, diagnostics: [] },
+    };
+    hostApiMock.openClawDreams.status.mockResolvedValue({
+      dreaming: {
+        enabled: true,
+        shortTermCount: 1,
+        groundedSignalCount: 0,
+        totalSignalCount: 1,
+        promotedToday: 0,
+        shortTermEntries: [],
+        promotedEntries: [],
+      },
     });
+    hostApiMock.openClawDreams.diary.mockResolvedValue({ found: true, content: '' });
   });
 
-  it('does not call memory doctor RPCs until gatewayReady is true', async () => {
-    gatewayState.status = { state: 'running', port: 18789, gatewayReady: false };
+  it('does not call the allowlisted extension until the OpenClaw runtime is ready', async () => {
+    kernelState.runtimes.openclaw = {
+      kernelId: 'openclaw', state: 'starting', generation: 1, diagnostics: [],
+    };
     const { rerender } = render(<Dreams />);
 
     expect(screen.getByTestId('dreams-refresh')).toBeDisabled();
     expect(screen.getByTestId('dreams-enable')).toBeDisabled();
-    expect(screen.getByText('gatewayNotReady')).toBeVisible();
+    expect(screen.getByText('runtimeNotReady')).toBeVisible();
     await waitFor(() => {
-      expect(rpcMock).not.toHaveBeenCalled();
+      expect(hostApiMock.openClawDreams.status).not.toHaveBeenCalled();
+      expect(hostApiMock.openClawDreams.diary).not.toHaveBeenCalled();
     });
 
-    gatewayState.status = { state: 'running', port: 18789, gatewayReady: true };
+    kernelState.runtimes.openclaw = {
+      kernelId: 'openclaw', state: 'ready', generation: 1, diagnostics: [],
+    };
     await act(async () => {
       rerender(<Dreams />);
     });
 
     await waitFor(() => {
-      expect(rpcMock).toHaveBeenCalledWith('doctor.memory.status', {}, 12_000);
-      expect(rpcMock).toHaveBeenCalledWith('doctor.memory.dreamDiary', {}, 12_000);
+      expect(hostApiMock.openClawDreams.status).toHaveBeenCalledTimes(1);
+      expect(hostApiMock.openClawDreams.diary).toHaveBeenCalledTimes(1);
     });
     expect(screen.getByTestId('dreams-refresh')).toBeEnabled();
   });

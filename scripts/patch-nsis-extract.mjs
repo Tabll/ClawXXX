@@ -3,8 +3,8 @@
  * Patch electron-builder's NSIS extractUsing7za macro to extract directly into
  * $INSTDIR instead of temp + CopyFiles.
  *
- * #1026 enlarged the packaged openclaw runtime; CopyFiles over thousands of
- * files makes assisted installers look frozen (~50%) and often fails with the
+ * CopyFiles over thousands of application files can make assisted installers
+ * look frozen (~50%) and often fails with the
  * "app cannot be closed" retry dialog when AV or file locks are involved.
  *
  * Must run before makensis (package:win), not only in afterPack.
@@ -47,9 +47,6 @@ const PATCHED_EXTRACT_MACRO = [
   '    ${if} $R9 < 5',
   '      DetailPrint "Releasing file locks before retry..."',
   '      nsExec::ExecToStack \'taskkill /F /T /IM "${APP_EXECUTABLE_FILENAME}"\'',
-  '      Pop $0',
-  '      Pop $1',
-  '      nsExec::ExecToStack \'taskkill /F /IM openclaw-gateway.exe\'',
   '      Pop $0',
   '      Pop $1',
   '      Sleep 3000',

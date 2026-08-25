@@ -2,28 +2,28 @@
  * Skills Page
  * Browse and manage AI skills
  */
-import { Suspense, lazy, useEffect, useState, useCallback } from 'react';
-import { Search, Puzzle, Lock, Package, X, AlertCircle, Trash2, FolderOpen, Copy } from 'lucide-react';
+import { Suspense, lazy, useEffect, useState, useCallback, useMemo } from 'react';
+import { Search, Puzzle, Lock, Package, X, AlertCircle, Trash2, FolderOpen, Copy, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
 import { useSkillsStore } from '@/stores/skills';
-import { useGatewayStore } from '@/stores/gateway';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { cn } from '@/lib/utils';
 import { hostApi } from '@/lib/host-api';
-import { isGatewayStopped } from '@/lib/gateway-status';
 import { toast } from 'sonner';
 import type { Skill } from '@/types/skill';
-import type { GatewayStatus } from '@/types/gateway';
+import type { SkillMutationResult, SkillMutationTarget } from '@shared/domains/skills';
+import type { KernelId } from '@shared/kernels/contracts';
 import { rendererExtensionRegistry } from '@/extensions/registry';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
 import { SkillFileSections } from '@/components/file-preview/SkillFileSections';
 import type { FilePreviewTarget } from '@/components/file-preview/FilePreviewOverlay';
 import type { SkillFile } from '@/lib/skill-files';
+import { kernelDisplayName, kernelOptionsFor, useKernelStore } from '@/stores/kernels';
 
 const FilePreviewOverlayLazy = lazy(() =>
   import('@/components/file-preview/FilePreviewOverlay').then((m) => ({ default: m.FilePreviewOverlay })),
@@ -43,13 +43,18 @@ const INSTALL_ERROR_CODES = new Set(['installTimeoutError', 'installRateLimitErr
 const FETCH_ERROR_CODES = new Set(['fetchTimeoutError', 'fetchRateLimitError', 'timeoutError', 'rateLimitError']);
 const SEARCH_ERROR_CODES = new Set(['searchTimeoutError', 'searchRateLimitError', 'timeoutError', 'rateLimitError']);
 
-type SkillsGatewayBannerState = 'none' | 'stopped';
+type SkillKernelOption = { id: KernelId; label: string };
 
-function getSkillsGatewayBannerState(status: GatewayStatus): SkillsGatewayBannerState {
-  if (isGatewayStopped(status)) {
-    return 'stopped';
-  }
-  return 'none';
+function enabledForTarget(skill: Skill, target: SkillMutationTarget): boolean {
+  if (!skill.enabledForKernels || !skill.installedForKernels) return skill.enabled;
+  const kernels = target === 'all-installed' ? skill.installedForKernels : [target];
+  return kernels.length > 0 && kernels.every(kernelId => skill.enabledForKernels!.includes(kernelId));
+}
+
+function mutationHasFailures(result: SkillMutationResult | SkillMutationResult[] | undefined): boolean {
+  if (!result) return false;
+  const mutations = Array.isArray(result) ? result : [result];
+  return mutations.some(mutation => mutation.results.some(kernel => !kernel.ok));
 }
 
 // Skill detail dialog component
@@ -60,6 +65,8 @@ interface SkillDetailDialogProps {
   onToggle: (enabled: boolean) => void;
   onUninstall?: (slug: string) => void;
   onOpenFolder?: (skill: Skill) => Promise<void> | void;
+  onRetry?: (skillId: string, kernelId: KernelId) => Promise<void> | void;
+  kernelOptions: SkillKernelOption[];
 }
 
 function resolveSkillSourceLabel(skill: Skill, t: TFunction<'skills'>): string {
@@ -76,14 +83,18 @@ function resolveSkillSourceLabel(skill: Skill, t: TFunction<'skills'>): string {
   if (source === 'agents-skills-personal')
     return t('source.badge.agentsPersonal', { defaultValue: 'Personal .agents' });
   if (source === 'agents-skills-project') return t('source.badge.agentsProject', { defaultValue: 'Project .agents' });
+  if (source === 'canonical-bundled') return t('source.badge.canonicalBundled');
+  if (source === 'canonical-marketplace') return t('source.badge.canonicalMarketplace');
+  if (source === 'canonical-local') return t('source.badge.canonicalLocal');
   return source;
 }
 
 function canUninstallSkill(skill: Skill): boolean {
-  return (skill.source || '').trim().toLowerCase() === 'openclaw-managed';
+  const source = (skill.source || '').trim().toLowerCase();
+  return source === 'openclaw-managed' || source === 'canonical-marketplace';
 }
 
-function SkillDetailDialog({ skill, isOpen, onClose, onToggle, onUninstall, onOpenFolder }: SkillDetailDialogProps) {
+function SkillDetailDialog({ skill, isOpen, onClose, onToggle, onUninstall, onOpenFolder, onRetry, kernelOptions }: SkillDetailDialogProps) {
   const { t } = useTranslation('skills');
   const [openedSkillFile, setOpenedSkillFile] = useState<FilePreviewTarget | null>(null);
   const detailMetaComponents = rendererExtensionRegistry.getSkillDetailMetaComponents();
@@ -160,6 +171,61 @@ function SkillDetailDialog({ skill, isOpen, onClose, onToggle, onUninstall, onOp
           </div>
 
           <div className="space-y-7 px-1">
+            {skill.installedForKernels && (
+              <div className="space-y-3" data-testid="skill-kernel-status-list">
+                <h3 className="text-meta font-bold text-foreground/80">{t('kernel.title')}</h3>
+                {kernelOptions.map(({ id: kernelId, label }) => {
+                  const installed = skill.installedForKernels?.includes(kernelId) ?? false;
+                  const enabled = skill.enabledForKernels?.includes(kernelId) ?? false;
+                  const compatibility = skill.compatibility?.find(entry => entry.kernelId === kernelId);
+                  const projection = skill.projections?.find(entry => entry.kernelId === kernelId);
+                  const state = !compatibility?.compatible
+                    ? 'unsupported'
+                    : projection?.state ?? (installed ? 'pending' : 'notInstalled');
+                  return (
+                    <div
+                      key={kernelId}
+                      data-testid={`skill-kernel-status-${kernelId}`}
+                      className="rounded-xl border border-black/10 dark:border-white/10 p-3 bg-black/[0.02] dark:bg-white/[0.03]"
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-semibold">{label}</span>
+                            <Badge variant="outline" className="font-mono text-2xs rounded-full">
+                              {t(`kernel.state.${state}`)}
+                            </Badge>
+                            {installed && (
+                              <Badge variant="secondary" className="font-mono text-2xs rounded-full border-0">
+                                {enabled ? t('kernel.enabled') : t('kernel.disabled')}
+                              </Badge>
+                            )}
+                          </div>
+                          {(projection?.error?.message || compatibility?.reason) && (
+                            <p className="mt-1 text-xs text-muted-foreground leading-relaxed">
+                              {projection?.error?.message || compatibility?.reason}
+                            </p>
+                          )}
+                        </div>
+                        {onRetry && installed && (projection?.state === 'failed' || projection?.state === 'partial' || projection?.state === 'pending') && (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            data-testid={`skill-retry-${kernelId}`}
+                            onClick={() => onRetry(skill.id, kernelId)}
+                            className="h-8 shrink-0"
+                          >
+                            <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
+                            {t('kernel.retry')}
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
             <div className="space-y-2">
               <h3 className="text-meta font-bold text-foreground/80">{t('detail.source')}</h3>
               <div className="flex items-center gap-2 flex-wrap">
@@ -257,64 +323,38 @@ export function Skills() {
     searching,
     searchError,
     installing,
+    retryProjection,
   } = useSkillsStore();
   const { t } = useTranslation('skills');
-  const gatewayStatus = useGatewayStore((state) => state.status);
   const [searchQuery, setSearchQuery] = useState('');
   const [installQuery, setInstallQuery] = useState('');
   const [installSheetOpen, setInstallSheetOpen] = useState(false);
   const [selectedSkill, setSelectedSkill] = useState<Skill | null>(null);
   const [statusFilter, setStatusFilter] = useState<'all' | 'enabled' | 'disabled'>('all');
+  const [operationTarget, setOperationTarget] = useState<SkillMutationTarget>('all-installed');
   const [marketplaceAvailable, setMarketplaceAvailable] = useState(false);
-
-  const gatewayRunning = gatewayStatus.state === 'running';
-  const gatewayReportedReady = gatewayStatus.gatewayReady !== false;
-  const gatewayRuntimeKey = `${gatewayStatus.pid ?? 'none'}:${gatewayStatus.connectedAt ?? 'none'}:${gatewayStatus.port}`;
-  const gatewayBannerState = getSkillsGatewayBannerState(gatewayStatus);
-  const [showGatewayBanner, setShowGatewayBanner] = useState(false);
-
-  useEffect(() => {
-    let timer: NodeJS.Timeout;
-    if (gatewayBannerState === 'none') {
-      timer = setTimeout(() => {
-        setShowGatewayBanner(false);
-      }, 0);
-    } else {
-      timer = setTimeout(() => {
-        setShowGatewayBanner(true);
-      }, 1500);
-    }
-    return () => clearTimeout(timer);
-  }, [gatewayBannerState]);
+  const kernelCatalog = useKernelStore((state) => state.catalog);
+  const kernelOptions = useMemo<SkillKernelOption[]>(() => kernelOptionsFor(
+    kernelCatalog,
+    skills.flatMap(skill => [
+      ...(skill.installedForKernels ?? []),
+      ...(skill.compatibility ?? []).map(entry => entry.kernelId),
+      ...(skill.projections ?? []).map(entry => entry.kernelId),
+    ]),
+  ), [kernelCatalog, skills]);
+  const skillTargets = useMemo<SkillMutationTarget[]>(
+    () => [...kernelOptions.map(option => option.id), 'all-installed'],
+    [kernelOptions],
+  );
+  const targetLabel = useCallback((target: SkillMutationTarget) => (
+    target === 'all-installed'
+      ? t('kernel.target.all-installed')
+      : kernelOptions.find(option => option.id === target)?.label ?? kernelDisplayName(target)
+  ), [kernelOptions, t]);
 
   useEffect(() => {
-    let cancelled = false;
-    let retryTimer: ReturnType<typeof setInterval> | null = null;
-
-    const attemptFetch = async () => {
-      const ok = await fetchSkills();
-      if (cancelled || !ok) return;
-      if (retryTimer) {
-        clearInterval(retryTimer);
-        retryTimer = null;
-      }
-    };
-
-    void attemptFetch();
-
-    if (gatewayRunning && !gatewayReportedReady) {
-      retryTimer = setInterval(() => {
-        void attemptFetch();
-      }, 5_000);
-    }
-
-    return () => {
-      cancelled = true;
-      if (retryTimer) {
-        clearInterval(retryTimer);
-      }
-    };
-  }, [fetchSkills, gatewayReportedReady, gatewayRunning, gatewayRuntimeKey]);
+    void fetchSkills().then(() => undefined);
+  }, [fetchSkills]);
 
   useEffect(() => {
     let cancelled = false;
@@ -334,7 +374,7 @@ export function Skills() {
     };
   }, []);
 
-  const safeSkills = Array.isArray(skills) ? skills : [];
+  const safeSkills = useMemo(() => (Array.isArray(skills) ? skills : []), [skills]);
   const enabledSkillsCount = safeSkills.filter((skill) => skill.enabled).length;
   const disabledSkillsCount = safeSkills.filter((skill) => !skill.enabled).length;
   const filteredSkills = safeSkills
@@ -362,47 +402,32 @@ export function Skills() {
     async (skillId: string, enable: boolean) => {
       try {
         if (enable) {
-          await enableSkill(skillId);
-          toast.success(t('toast.enabled'));
+          const result = await enableSkill(skillId, operationTarget);
+          toast[mutationHasFailures(result) ? 'warning' : 'success'](
+            mutationHasFailures(result) ? t('toast.kernelPartial') : t('toast.enabled'),
+          );
         } else {
-          await disableSkill(skillId);
-          toast.success(t('toast.disabled'));
+          const result = await disableSkill(skillId, operationTarget);
+          toast[mutationHasFailures(result) ? 'warning' : 'success'](
+            mutationHasFailures(result) ? t('toast.kernelPartial') : t('toast.disabled'),
+          );
         }
       } catch (err) {
         toast.error(String(err));
       }
     },
-    [enableSkill, disableSkill, t],
+    [enableSkill, disableSkill, operationTarget, t],
   );
 
-  const hasInstalledSkills = safeSkills.some((s) => !s.isBundled);
+  useEffect(() => {
+    if (!selectedSkill) return;
+    const refreshed = safeSkills.find(skill => skill.id === selectedSkill.id);
+    if (refreshed && refreshed !== selectedSkill) setSelectedSkill(refreshed);
+  }, [safeSkills, selectedSkill]);
 
   const handleStatusFilterClick = useCallback((nextFilter: 'enabled' | 'disabled') => {
     setStatusFilter((current) => (current === nextFilter ? 'all' : nextFilter));
   }, []);
-
-  const handleOpenSkillsFolder = useCallback(async () => {
-    try {
-      const skillsDir = await hostApi.openclaw.getSkillsDir();
-      if (!skillsDir) {
-        throw new Error('Skills directory not available');
-      }
-      const result = await hostApi.shell.openPath(skillsDir);
-      if (result) {
-        if (
-          result.toLowerCase().includes('no such file') ||
-          result.toLowerCase().includes('not found') ||
-          result.toLowerCase().includes('failed to open')
-        ) {
-          toast.error(t('toast.failedFolderNotFound'));
-        } else {
-          throw new Error(result);
-        }
-      }
-    } catch (err) {
-      toast.error(t('toast.failedOpenFolder') + ': ' + String(err));
-    }
-  }, [t]);
 
   const handleOpenSkillFolder = useCallback(
     async (skill: Skill) => {
@@ -422,14 +447,7 @@ export function Skills() {
     [t],
   );
 
-  const [skillsDirPath, setSkillsDirPath] = useState('~/.openclaw/skills');
-
-  useEffect(() => {
-    hostApi.openclaw
-      .getSkillsDir()
-      .then((dir) => setSkillsDirPath(dir))
-      .catch(console.error);
-  }, []);
+  const skillsDirPath = '~/.clawx/skills';
 
   useEffect(() => {
     if (!installSheetOpen) {
@@ -451,8 +469,10 @@ export function Skills() {
   const handleInstall = useCallback(
     async (slug: string) => {
       try {
-        await installSkill(slug);
-        toast.success(t('toast.installed'));
+        const result = await installSkill(slug, undefined, operationTarget);
+        toast[mutationHasFailures(result) ? 'warning' : 'success'](
+          mutationHasFailures(result) ? t('toast.kernelPartial') : t('toast.installed'),
+        );
       } catch (err) {
         const errorMessage = err instanceof Error ? err.message : String(err);
         if (INSTALL_ERROR_CODES.has(errorMessage)) {
@@ -462,18 +482,20 @@ export function Skills() {
         }
       }
     },
-    [installSkill, t, skillsDirPath],
+    [installSkill, operationTarget, t, skillsDirPath],
   );
   const handleUninstall = useCallback(
     async (slug: string) => {
       try {
-        await uninstallSkill(slug);
-        toast.success(t('toast.uninstalled'));
+        const result = await uninstallSkill(slug, operationTarget);
+        toast[mutationHasFailures(result) ? 'warning' : 'success'](
+          mutationHasFailures(result) ? t('toast.kernelPartial') : t('toast.uninstalled'),
+        );
       } catch (err) {
         toast.error(t('toast.failedUninstall') + ': ' + String(err));
       }
     },
-    [uninstallSkill, t],
+    [uninstallSkill, operationTarget, t],
   );
 
   if (loading) {
@@ -500,29 +522,8 @@ export function Skills() {
           </div>
 
           <div className="flex items-center gap-3 md:mt-2">
-            {hasInstalledSkills && (
-              <button
-                onClick={handleOpenSkillsFolder}
-                className="hover:bg-black/5 dark:hover:bg-white/5 transition-colors shrink-0 text-meta font-medium px-4 h-8 rounded-full border border-black/10 dark:border-white/10 flex items-center justify-center text-foreground/80 hover:text-foreground"
-              >
-                <FolderOpen className="h-4 w-4 mr-2" />
-                {t('openFolder')}
-              </button>
-            )}
           </div>
         </div>
-
-        {/* Gateway Status Banner */}
-        {showGatewayBanner && gatewayBannerState !== 'none' && (
-          <div
-            data-testid="skills-gateway-banner"
-            data-state={gatewayBannerState}
-            className="mb-6 p-4 rounded-xl border border-yellow-500/50 bg-yellow-500/10 flex items-center gap-3"
-          >
-            <AlertCircle className="h-5 w-5 text-yellow-600 dark:text-yellow-400" />
-            <span className="text-sm font-medium text-yellow-700 dark:text-yellow-400">{t('gatewayWarning')}</span>
-          </div>
-        )}
 
         {/* Sub Navigation and Actions */}
         <div className="flex flex-col md:flex-row md:items-center justify-between border-b border-black/10 dark:border-white/10 pb-4 mb-4 shrink-0 gap-4">
@@ -578,6 +579,30 @@ export function Skills() {
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
+            <div
+              data-testid="skills-target-scope"
+              className="flex items-center rounded-lg border border-black/10 dark:border-white/10 p-0.5"
+              aria-label={t('kernel.targetLabel')}
+            >
+              {skillTargets.map((target) => (
+                <Button
+                  key={target}
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  data-testid={`skills-target-${target}`}
+                  onClick={() => setOperationTarget(target)}
+                  className={cn(
+                    'h-7 rounded-md px-2.5 text-2xs font-medium shadow-none',
+                    operationTarget === target
+                      ? 'bg-black/5 dark:bg-white/10 text-foreground'
+                      : 'text-muted-foreground hover:text-foreground',
+                  )}
+                >
+                  {targetLabel(target)}
+                </Button>
+              ))}
+            </div>
             {marketplaceAvailable && (
               <Button
                 variant="outline"
@@ -613,6 +638,7 @@ export function Skills() {
               filteredSkills.map((skill) => (
                 <div
                   key={skill.id}
+                  data-testid={`skill-row-${skill.id}`}
                   className="group flex flex-row items-center justify-between py-3.5 px-3 rounded-xl hover:bg-black/5 dark:hover:bg-white/5 transition-colors cursor-pointer border-b border-black/5 dark:border-white/5 last:border-0"
                   onClick={() => setSelectedSkill(skill)}
                 >
@@ -639,6 +665,35 @@ export function Skills() {
                           {skill.baseDir || t('detail.pathUnavailable')}
                         </span>
                       </div>
+                      {skill.installedForKernels && (
+                        <div className="mt-1.5 flex flex-wrap gap-1.5">
+                          {kernelOptions.map(({ id: kernelId, label }) => {
+                            const compatibility = skill.compatibility?.find(entry => entry.kernelId === kernelId);
+                            const projection = skill.projections?.find(entry => entry.kernelId === kernelId);
+                            const installed = skill.installedForKernels?.includes(kernelId);
+                            const state = !compatibility?.compatible
+                              ? 'unsupported'
+                              : projection?.state ?? (installed ? 'pending' : 'notInstalled');
+                            return (
+                              <Badge
+                                key={kernelId}
+                                variant="outline"
+                                data-testid={`skill-projection-${skill.id}-${kernelId}`}
+                                title={projection?.error?.message || compatibility?.reason}
+                                className={cn(
+                                  'font-mono text-2xs rounded-full border-black/10 dark:border-white/10',
+                                  state === 'ready' && 'text-green-700 dark:text-green-400',
+                                  (state === 'failed' || state === 'unsupported') && 'text-red-700 dark:text-red-400',
+                                  (state === 'pending' || state === 'applying' || state === 'partial')
+                                    && 'text-amber-700 dark:text-amber-400',
+                                )}
+                              >
+                                {label} · {t(`kernel.state.${state}`)}
+                              </Badge>
+                            );
+                          })}
+                        </div>
+                      )}
                     </div>
                   </div>
                   <div className="flex items-center gap-6 shrink-0" onClick={(e) => e.stopPropagation()}>
@@ -646,7 +701,8 @@ export function Skills() {
                       <span className="text-meta font-mono text-muted-foreground">v{skill.version}</span>
                     )}
                     <Switch
-                      checked={skill.enabled}
+                      data-testid={`skill-toggle-${skill.id}`}
+                      checked={enabledForTarget(skill, operationTarget)}
                       onCheckedChange={(checked) => handleToggle(skill.id, checked)}
                       disabled={skill.isCore}
                     />
@@ -668,6 +724,21 @@ export function Skills() {
               {t('marketplace.installDialogTitle')}
             </h2>
             <p className="mt-1 text-meta text-foreground/70">{t('marketplace.installDialogSubtitle')}</p>
+            <div className="mt-3 flex items-center gap-2" data-testid="skills-install-target-scope">
+              <span className="text-xs font-semibold text-foreground/70">{t('kernel.installTarget')}</span>
+              {skillTargets.map((target) => (
+                <Button
+                  key={target}
+                  type="button"
+                  variant={operationTarget === target ? 'secondary' : 'outline'}
+                  size="sm"
+                  onClick={() => setOperationTarget(target)}
+                  className="h-7 text-2xs"
+                >
+                  {targetLabel(target)}
+                </Button>
+              ))}
+            </div>
             <div className="mt-4 flex flex-col md:flex-row gap-2">
               <div className="relative flex items-center bg-black/5 dark:bg-white/5 rounded-xl px-3 py-2 border border-black/10 dark:border-white/10 flex-1">
                 <Search className="h-4 w-4 shrink-0 text-muted-foreground" />
@@ -786,6 +857,7 @@ export function Skills() {
 
       {/* Skill Detail Dialog */}
       <SkillDetailDialog
+        kernelOptions={kernelOptions}
         skill={selectedSkill}
         isOpen={!!selectedSkill}
         onClose={() => setSelectedSkill(null)}
@@ -796,6 +868,16 @@ export function Skills() {
         }}
         onUninstall={handleUninstall}
         onOpenFolder={handleOpenSkillFolder}
+        onRetry={async (skillId, kernelId) => {
+          try {
+            const result = await retryProjection(skillId, kernelId);
+            toast[mutationHasFailures(result) ? 'warning' : 'success'](
+              mutationHasFailures(result) ? t('toast.kernelPartial') : t('toast.retrySucceeded'),
+            );
+          } catch (error) {
+            toast.error(t('toast.retryFailed', { error: String(error) }));
+          }
+        }}
       />
     </div>
   );

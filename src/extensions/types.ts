@@ -1,6 +1,6 @@
 import type { ComponentType } from 'react';
 import type { Skill } from '../types/skill';
-import type { GatewayStatus } from '../types/gateway';
+import type { KernelId, KernelRuntimeSnapshot } from '@shared/kernels/contracts';
 
 export interface NavItemDef {
   to: string;
@@ -60,7 +60,8 @@ export interface ChatBeforeSendResult {
 }
 
 export interface ChatComposerStatusProps {
-  gatewayStatus: GatewayStatus;
+  kernels: KernelRuntimeSnapshot[];
+  selectedKernelId?: KernelId;
 }
 
 export interface ChatExtension {

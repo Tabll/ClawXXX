@@ -1426,7 +1426,7 @@ export function EmbeddingSettings() {
                   value={storePath}
                   onChange={(event) => setStorePath(event.target.value)}
                   className={inputClasses}
-                  placeholder="~/.openclaw/memory/search.sqlite"
+                  placeholder="~/.clawx/kernel-cache/openclaw/memory/search.sqlite"
                   data-testid="embedding-store-path"
                 />
               </AdvancedField>

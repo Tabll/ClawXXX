@@ -1,12 +1,10 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   X,
   Loader2,
   QrCode,
   ExternalLink,
   BookOpen,
-  Eye,
-  EyeOff,
   Check,
   AlertCircle,
   CheckCircle,
@@ -18,11 +16,13 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
+import { SecureSecretInput, type SecureSecretInputHandle } from '@/components/ui/secure-secret-input';
 
 import { hostApi } from '@/lib/host-api';
 import { hostEvents } from '@/lib/host-events';
 import { cn } from '@/lib/utils';
 import type { ChannelErrorEvent, ChannelQrEvent, ChannelSuccessEvent } from '@shared/host-events/contract';
+import type { KernelId } from '@shared/kernels/contracts';
 import {
   CHANNEL_ICONS,
   CHANNEL_NAMES,
@@ -46,6 +46,7 @@ import dingtalkIcon from '@/assets/channels/dingtalk.svg';
 import feishuIcon from '@/assets/channels/feishu.svg';
 import wecomIcon from '@/assets/channels/wecom.svg';
 import qqIcon from '@/assets/channels/qq.svg';
+import { kernelDisplayName, useKernelStore } from '@/stores/kernels';
 
 interface ChannelConfigModalProps {
   initialSelectedType?: ChannelType | null;
@@ -55,8 +56,13 @@ interface ChannelConfigModalProps {
   allowEditAccountId?: boolean;
   existingAccountIds?: string[];
   initialConfigValues?: Record<string, string>;
+  initialConfiguredSecretFields?: string[];
   agentId?: string;
   accountId?: string;
+  availableKernels?: string[];
+  agents?: Array<{ id: string; name: string; supportedKernels?: string[] }>;
+  initialKernelId?: string;
+  initialAgentId?: string;
   onClose: () => void;
   onChannelSaved?: (channelType: ChannelType) => void | Promise<void>;
 }
@@ -74,8 +80,13 @@ export function ChannelConfigModal({
   allowEditAccountId = false,
   existingAccountIds = [],
   initialConfigValues,
+  initialConfiguredSecretFields = [],
   agentId,
   accountId,
+  availableKernels = [],
+  agents = [],
+  initialKernelId,
+  initialAgentId,
   onClose,
   onChannelSaved,
 }: ChannelConfigModalProps) {
@@ -84,9 +95,23 @@ export function ChannelConfigModal({
   const [configValues, setConfigValues] = useState<Record<string, string>>({});
   const [channelName, setChannelName] = useState('');
   const [accountIdInput, setAccountIdInput] = useState(accountId || '');
+  const kernelCatalog = useKernelStore((state) => state.catalog);
+  const kernelOptions = useMemo(() => {
+    const candidates = [
+      ...availableKernels,
+      ...(kernelCatalog?.entries.map(entry => entry.kernelId) ?? []),
+      ...(initialKernelId ? [initialKernelId] : []),
+      ...agents.flatMap(agent => agent.supportedKernels ?? []),
+    ].filter(Boolean);
+    return [...new Set(candidates)];
+  }, [agents, availableKernels, initialKernelId, kernelCatalog]);
+  const [selectedKernelId, setSelectedKernelId] = useState(initialKernelId || kernelOptions[0] || '');
+  const [selectedAgentId, setSelectedAgentId] = useState(initialAgentId || '');
   const [accountIdError, setAccountIdError] = useState<string | null>(null);
   const [connecting, setConnecting] = useState(false);
-  const [showSecrets, setShowSecrets] = useState<Record<string, boolean>>({});
+  const [configuredSecretFields, setConfiguredSecretFields] = useState<string[]>(initialConfiguredSecretFields);
+  const [secretPresence, setSecretPresence] = useState<Record<string, boolean>>({});
+  const secretRefs = useRef<Record<string, SecureSecretInputHandle | null>>({});
   const [qrCode, setQrCode] = useState<string | null>(null);
   const [validating, setValidating] = useState(false);
   const [loadingConfig, setLoadingConfig] = useState(false);
@@ -122,11 +147,30 @@ export function ChannelConfigModal({
   }, [accountId]);
 
   useEffect(() => {
+    const nextKernel = initialKernelId && kernelOptions.includes(initialKernelId)
+      ? initialKernelId
+      : kernelOptions.includes(selectedKernelId)
+        ? selectedKernelId
+        : kernelOptions[0] || '';
+    setSelectedKernelId(nextKernel);
+    setSelectedAgentId(current => {
+      const preferred = initialAgentId || current;
+      const compatible = agents.find(agent => (
+        agent.id === preferred
+        && (!agent.supportedKernels?.length || agent.supportedKernels.includes(nextKernel))
+      ));
+      return compatible?.id ?? '';
+    });
+  }, [agents, initialAgentId, initialKernelId, kernelOptions, selectedKernelId]);
+
+  useEffect(() => {
     if (!selectedType) {
       setConfigValues({});
       setChannelName('');
       setIsExistingConfig(false);
       setValidationResult(null);
+      setConfiguredSecretFields([]);
+      setSecretPresence({});
       setQrCode(null);
       setConnecting(false);
       setAccountIdError(null);
@@ -135,6 +179,8 @@ export function ChannelConfigModal({
 
     if (!shouldLoadExistingConfig) {
       setConfigValues({});
+      setConfiguredSecretFields([]);
+      setSecretPresence({});
       setIsExistingConfig(false);
       setLoadingConfig(false);
       setChannelName(showChannelName ? CHANNEL_NAMES[selectedType] : '');
@@ -143,7 +189,9 @@ export function ChannelConfigModal({
 
     if (initialConfigValues) {
       setConfigValues(initialConfigValues);
-      setIsExistingConfig(Object.keys(initialConfigValues).length > 0);
+      setConfiguredSecretFields(initialConfiguredSecretFields);
+      setSecretPresence({});
+      setIsExistingConfig(Object.keys(initialConfigValues).length > 0 || initialConfiguredSecretFields.length > 0);
       setLoadingConfig(false);
       setChannelName(showChannelName ? CHANNEL_NAMES[selectedType] : '');
       return;
@@ -163,14 +211,20 @@ export function ChannelConfigModal({
 
         if (result.success && result.values && Object.keys(result.values).length > 0) {
           setConfigValues(result.values);
+          setConfiguredSecretFields(result.configuredSecretFields || []);
+          setSecretPresence({});
           setIsExistingConfig(true);
         } else {
           setConfigValues({});
-          setIsExistingConfig(false);
+          setConfiguredSecretFields(result.configuredSecretFields || []);
+          setSecretPresence({});
+          setIsExistingConfig((result.configuredSecretFields?.length ?? 0) > 0);
         }
       } catch {
         if (!cancelled) {
           setConfigValues({});
+          setConfiguredSecretFields([]);
+          setSecretPresence({});
           setIsExistingConfig(false);
         }
       } finally {
@@ -181,7 +235,25 @@ export function ChannelConfigModal({
     return () => {
       cancelled = true;
     };
-  }, [accountIdForConfigLoad, initialConfigValues, selectedType, shouldLoadExistingConfig, showChannelName]);
+  }, [
+    accountIdForConfigLoad,
+    initialConfigValues,
+    initialConfiguredSecretFields,
+    selectedType,
+    shouldLoadExistingConfig,
+    showChannelName,
+  ]);
+
+  const configWithStagedSecrets = async (): Promise<Record<string, unknown>> => {
+    const next: Record<string, unknown> = { ...configValues };
+    for (const field of meta?.configFields ?? []) {
+      if (field.type !== 'password' || !secretPresence[field.key]) continue;
+      const handle = await secretRefs.current[field.key]?.stage();
+      if (!handle) throw new Error(`Secure credential is unavailable: ${field.key}`);
+      next[field.key] = handle;
+    }
+    return next;
+  };
 
   useEffect(() => {
     if (selectedType && !loadingConfig && showChannelName && firstInputRef.current) {
@@ -238,18 +310,29 @@ export function ChannelConfigModal({
     };
 
     const onSuccess = async (data: ChannelSuccessEvent) => {
-      void data?.accountId;
       toast.success(translateRef.current('toast.qrConnected', { name: CHANNEL_NAMES[channelType] }));
       try {
+        const connectedAccountId = data?.accountId || resolvedAccountId || 'default';
         if (channelType === 'whatsapp') {
           const saveResult = await hostApi.channels.saveConfig({
             channelType: 'whatsapp',
             config: { enabled: true },
-            accountId: resolvedAccountId,
+            accountId: connectedAccountId,
+            kernelId: selectedKernelId,
           });
           if (!saveResult?.success) {
             throw new Error(saveResult?.error || 'Failed to save WhatsApp config');
           }
+        }
+
+        if (selectedAgentId) {
+          await hostApi.channels.saveBinding({
+            channelType,
+            accountId: connectedAccountId,
+            kernelId: selectedKernelId as KernelId,
+            agentId: selectedAgentId,
+            conversationPolicy: 'per-thread',
+          });
         }
 
         try {
@@ -282,10 +365,13 @@ export function ChannelConfigModal({
       removeQrListener();
       removeSuccessListener();
       removeErrorListener();
-      hostApi.channels.cancelLogin(channelType, resolvedAccountId ? { accountId: resolvedAccountId } : undefined)
+      hostApi.channels.cancelLogin(channelType, {
+        ...(resolvedAccountId ? { accountId: resolvedAccountId } : {}),
+        kernelId: selectedKernelId as KernelId,
+      })
         .catch(() => { });
     };
-  }, [meta?.connectionType, resolvedAccountId, selectedType]);
+  }, [meta?.connectionType, resolvedAccountId, selectedAgentId, selectedKernelId, selectedType]);
 
   const handleValidate = async () => {
     if (!selectedType || !shouldUseCredentialValidation) return;
@@ -294,7 +380,14 @@ export function ChannelConfigModal({
     setValidationResult(null);
 
     try {
-      const result = await hostApi.channels.validateCredentials(selectedType, configValues);
+      const result = await hostApi.channels.validateCredentials(
+        selectedType,
+        await configWithStagedSecrets(),
+        {
+          ...(resolvedAccountId ? { accountId: resolvedAccountId } : {}),
+          kernelId: selectedKernelId as KernelId,
+        },
+      );
 
       const warnings = result.warnings || [];
       if (result.valid && result.details) {
@@ -327,6 +420,9 @@ export function ChannelConfigModal({
     setValidationResult(null);
 
     try {
+      const stagedConfig = meta.connectionType === 'token'
+        ? await configWithStagedSecrets()
+        : { ...configValues };
       if (showAccountIdEditor) {
         const nextAccountId = accountIdInput.trim();
         if (!nextAccountId) {
@@ -355,12 +451,18 @@ export function ChannelConfigModal({
       }
 
       if (meta.connectionType === 'qr') {
-        await hostApi.channels.startLogin(selectedType, resolvedAccountId ? { accountId: resolvedAccountId } : undefined);
+        await hostApi.channels.startLogin(selectedType, {
+          ...(resolvedAccountId ? { accountId: resolvedAccountId } : {}),
+          kernelId: selectedKernelId as KernelId,
+        });
         return;
       }
 
       if (meta.connectionType === 'token' && shouldUseCredentialValidation) {
-        const validationResponse = await hostApi.channels.validateCredentials(selectedType, configValues);
+        const validationResponse = await hostApi.channels.validateCredentials(selectedType, stagedConfig, {
+          ...(resolvedAccountId ? { accountId: resolvedAccountId } : {}),
+          kernelId: selectedKernelId as KernelId,
+        });
 
         if (!validationResponse.valid) {
           setValidationResult({
@@ -387,13 +489,28 @@ export function ChannelConfigModal({
         });
       }
 
-      const config: Record<string, unknown> = { ...configValues };
-      const saveResult = await hostApi.channels.saveConfig({ channelType: selectedType, config, accountId: resolvedAccountId });
+      const config: Record<string, unknown> = stagedConfig;
+      const saveResult = await hostApi.channels.saveConfig({
+        channelType: selectedType,
+        config,
+        accountId: resolvedAccountId,
+        kernelId: selectedKernelId,
+      });
       if (!saveResult?.success) {
         throw new Error(saveResult?.error || 'Failed to save channel config');
       }
       if (typeof saveResult.warning === 'string' && saveResult.warning) {
         toast.warning(saveResult.warning);
+      }
+
+      if (selectedAgentId) {
+        await hostApi.channels.saveBinding({
+          channelType: selectedType,
+          accountId: resolvedAccountId || 'default',
+          kernelId: selectedKernelId as KernelId,
+          agentId: selectedAgentId,
+          conversationPolicy: 'per-thread',
+        });
       }
 
       try {
@@ -427,18 +544,16 @@ export function ChannelConfigModal({
   };
 
   const isFormValid = () => {
-    if (!meta) return false;
+    if (!meta || !selectedKernelId) return false;
     return meta.configFields
       .filter((field) => field.required)
-      .every((field) => configValues[field.key]?.trim());
+      .every((field) => field.type === 'password'
+        ? secretPresence[field.key] || configuredSecretFields.includes(field.key)
+        : configValues[field.key]?.trim());
   };
 
   const updateConfigValue = (key: string, value: string) => {
     setConfigValues((prev) => ({ ...prev, [key]: value }));
-  };
-
-  const toggleSecretVisibility = (key: string) => {
-    setShowSecrets((prev) => ({ ...prev, [key]: !prev[key] }));
   };
 
   return (
@@ -630,6 +745,50 @@ export function ChannelConfigModal({
                 </div>
               )}
 
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div className="space-y-2.5">
+                  <Label htmlFor="channel-kernel" className={labelClasses}>{t('account.bindKernelLabel')}</Label>
+                  <select
+                    id="channel-kernel"
+                    data-testid="channel-config-kernel"
+                    className={cn(inputClasses, 'w-full px-3')}
+                    value={selectedKernelId}
+                    onChange={(event) => {
+                      const kernelId = event.target.value;
+                      setSelectedKernelId(kernelId);
+                      setSelectedAgentId(current => {
+                        const currentAgent = agents.find(agent => agent.id === current);
+                        if (currentAgent && (!currentAgent.supportedKernels?.length
+                          || currentAgent.supportedKernels.includes(kernelId))) return current;
+                        return '';
+                      });
+                    }}
+                  >
+                    {kernelOptions.map(kernelId => (
+                      <option key={kernelId} value={kernelId}>
+                        {kernelDisplayName(kernelId)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-2.5">
+                  <Label htmlFor="channel-agent" className={labelClasses}>{t('account.bindAgentLabel')}</Label>
+                  <select
+                    id="channel-agent"
+                    data-testid="channel-config-agent"
+                    className={cn(inputClasses, 'w-full px-3')}
+                    value={selectedAgentId}
+                    onChange={(event) => setSelectedAgentId(event.target.value)}
+                  >
+                    <option value="">{t('account.unassigned')}</option>
+                    {agents
+                      .filter(agent => !agent.supportedKernels?.length
+                        || agent.supportedKernels.includes(selectedKernelId))
+                      .map(agent => <option key={agent.id} value={agent.id}>{agent.name}</option>)}
+                  </select>
+                </div>
+              </div>
+
               <div className="space-y-4">
                 {meta?.configFields.map((field) => (
                   <ConfigField
@@ -637,8 +796,11 @@ export function ChannelConfigModal({
                     field={field}
                     value={configValues[field.key] || ''}
                     onChange={(value) => updateConfigValue(field.key, value)}
-                    showSecret={showSecrets[field.key] || false}
-                    onToggleSecret={() => toggleSecretVisibility(field.key)}
+                    configuredSecret={configuredSecretFields.includes(field.key)}
+                    onSecretPresenceChange={(hasValue) => {
+                      setSecretPresence(prev => ({ ...prev, [field.key]: hasValue }));
+                    }}
+                    secretRef={(handle) => { secretRefs.current[field.key] = handle; }}
                   />
                 ))}
               </div>
@@ -750,8 +912,9 @@ interface ConfigFieldProps {
   field: ChannelConfigField;
   value: string;
   onChange: (value: string) => void;
-  showSecret: boolean;
-  onToggleSecret: () => void;
+  configuredSecret: boolean;
+  onSecretPresenceChange: (hasValue: boolean) => void;
+  secretRef: (handle: SecureSecretInputHandle | null) => void;
 }
 
 function ChannelLogo({ type }: { type: ChannelType }) {
@@ -777,7 +940,14 @@ function ChannelLogo({ type }: { type: ChannelType }) {
   }
 }
 
-function ConfigField({ field, value, onChange, showSecret, onToggleSecret }: ConfigFieldProps) {
+function ConfigField({
+  field,
+  value,
+  onChange,
+  configuredSecret,
+  onSecretPresenceChange,
+  secretRef,
+}: ConfigFieldProps) {
   const { t } = useTranslation('channels');
   const isPassword = field.type === 'password';
 
@@ -788,24 +958,27 @@ function ConfigField({ field, value, onChange, showSecret, onToggleSecret }: Con
         {field.required && <span className="text-destructive ml-1">*</span>}
       </Label>
       <div className="flex gap-2">
-        <Input
-          id={field.key}
-          type={isPassword && !showSecret ? 'password' : 'text'}
-          placeholder={field.placeholder ? t(field.placeholder) : undefined}
-          value={value}
-          onChange={(event) => onChange(event.target.value)}
-          className={inputClasses}
-        />
-        {isPassword && (
-          <Button
-            type="button"
-            variant="outline"
-            size="icon"
-            onClick={onToggleSecret}
-            className="h-[44px] w-[44px] rounded-xl bg-transparent border-black/10 dark:border-white/10 text-muted-foreground hover:text-foreground shrink-0 shadow-sm"
-          >
-            {showSecret ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-          </Button>
+        {isPassword ? (
+          <SecureSecretInput
+            id={field.key}
+            ref={secretRef}
+            data-testid={`channel-secret-${field.key}`}
+            aria-label={t(field.label)}
+            placeholder={configuredSecret
+              ? t('dialog.secretConfiguredPlaceholder')
+              : field.placeholder ? t(field.placeholder) : undefined}
+            onPresenceChange={onSecretPresenceChange}
+            className={inputClasses}
+          />
+        ) : (
+          <Input
+            id={field.key}
+            type="text"
+            placeholder={field.placeholder ? t(field.placeholder) : undefined}
+            value={value}
+            onChange={(event) => onChange(event.target.value)}
+            className={inputClasses}
+          />
         )}
       </div>
       {field.description && (

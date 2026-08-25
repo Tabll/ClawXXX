@@ -11,6 +11,13 @@
         "brainstorming": "マルチエージェント並列実行"
     },
     "noLogs": "（ログはまだありません）",
+    "kernelSelector": {
+        "label": "次の実行に使うカーネル",
+        "noneInstalled": "カーネル未インストール",
+        "boundary": "次の実行は {{previous}} から {{next}} に切り替わります。既存の履歴はこの会話に残ります。",
+        "notReady": "{{kernel}} は準備できていません。履歴はオフラインでも利用できます。",
+        "start": "カーネルを起動"
+    },
     "scrollToLatest": "最下部に戻る",
     "toolbar": {
         "refresh": "チャットを更新",
@@ -73,6 +80,9 @@
         "turnDuration": "所要時間 {{duration}}",
         "turnElapsed": "経過時間 {{duration}}",
         "metadata": {
+            "kernel": "カーネル {{kernel}}",
+            "agent": "エージェント {{agent}}",
+            "agentDeleted": "削除済み",
             "input": "入力 {{count}}",
             "output": "出力 {{count}}",
             "cache": "キャッシュ {{count}}"
@@ -242,12 +252,15 @@
         "targetChip": "@{{agent}}",
         "agentPickerTitle": "次のメッセージを別の Agent に直接送信します",
         "gatewayDisconnectedPlaceholder": "ゲートウェイ未接続...",
+        "kernelUnavailablePlaceholder": "選択したカーネルは準備できていません...",
         "send": "送信",
         "stop": "停止",
         "thinking": "考え中…",
         "gatewayConnected": "接続済み",
         "gatewayStarting": "起動中",
         "gatewayStatus": "ゲートウェイ {{state}}",
+        "kernelStatus": "{{kernel}} · {{state}}",
+        "noKernelSelected": "カーネル未選択",
         "retryFailedAttachments": "失敗した添付を再試行",
         "workspacePrefix": "{{workspace}}",
         "workspacePickerTitle": "ワークスペースフォルダーを選択",

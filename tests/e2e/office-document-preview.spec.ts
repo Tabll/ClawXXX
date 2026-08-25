@@ -170,7 +170,6 @@ test.describe('real Office document previews', () => {
       });
       const paths = await seedOfficeFiles(fixture);
       await fixture.setSessionReplay(MAIN_SESSION_KEY, fileActivityUpdates());
-      await fixture.setTranscriptResponses(MAIN_SESSION_KEY, [[]]);
 
       const page = await openChat(app);
       await page.evaluate(() => {

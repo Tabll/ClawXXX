@@ -14,7 +14,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { hostApi } from '@/lib/host-api';
 import { cn } from '@/lib/utils';
-import { useGatewayStore } from '@/stores/gateway';
+import { kernelDisplayName, useKernelStore } from '@/stores/kernels';
 import { useAgentsStore } from '@/stores/agents';
 import { useChatStore } from '@/stores/chat';
 import { useArtifactPanel } from '@/stores/artifact-panel';
@@ -29,6 +29,7 @@ import { rendererExtensionRegistry } from '@/extensions/registry';
 import { collectDroppedFiles } from '@/lib/collect-dropped-files';
 import { fetchQuickAccessSkills } from '@/lib/quick-access-skills';
 import { DEFAULT_WORKSPACE_CWD, isDefaultWorkspacePath, normalizeWorkspacePath } from '@/lib/workspace-context';
+import type { KernelId } from '@shared/kernels/contracts';
 
 // ── Types ────────────────────────────────────────────────────────
 
@@ -49,6 +50,7 @@ export interface ChatWorkspaceOption {
 }
 
 interface ChatInputProps {
+  kernelId?: KernelId;
   onSend: (text: string, attachments?: FileAttachment[], targetAgentId?: string | null) => void;
   onQueueFollowUp?: (text: string, attachments?: FileAttachment[]) => boolean;
   onStop?: () => void;
@@ -409,6 +411,7 @@ function readFileAsBase64(file: globalThis.File): Promise<string> {
 // ── Component ────────────────────────────────────────────────────
 
 export function ChatInput({
+  kernelId,
   onSend,
   onQueueFollowUp,
   onStop,
@@ -449,7 +452,7 @@ export function ChatInput({
   const modelPickerRef = useRef<HTMLDivElement>(null);
   const workspaceMenuRef = useRef<HTMLDivElement>(null);
   const isComposingRef = useRef(false);
-  const gatewayStatus = useGatewayStore((s) => s.status);
+  const kernelRuntimes = useKernelStore((state) => state.runtimes);
   const agents = useAgentsStore((s) => s.agents);
   const updateAgentModel = useAgentsStore((s) => s.updateAgentModel);
   const defaultModelRef = useAgentsStore((s) => s.defaultModelRef);
@@ -516,9 +519,9 @@ export function ChatInput({
   );
   const showModelPicker = !sessionModelConfig && modelOptions.length > 1;
   const chatComposerStatusComponents = rendererExtensionRegistry.getChatComposerStatusComponents();
-  const isGatewayUsable = gatewayStatus.state === 'running' && gatewayStatus.gatewayReady !== false;
+  const selectedKernel = kernelId ? kernelRuntimes[kernelId] : undefined;
+  const isKernelReady = selectedKernel?.state === 'ready';
   const inputDisabled = disabled;
-  const gatewayUnavailable = !isGatewayUsable;
   const workspaceSelectorDisabled = workspaceReadOnly || inputDisabled || sending || !onSelectWorkspace;
   const skillTokenRanges = useMemo(() => findSkillTokenRanges(input), [input]);
   const openArtifactPreview = useArtifactPanel((s) => s.openPreview);
@@ -535,22 +538,6 @@ export function ChatInput({
       cancelled = true;
     };
   }, [refreshProviderSnapshot]);
-
-  useEffect(() => {
-    if (gatewayStatus.state === 'running') return;
-    let cancelled = false;
-    hostApi.gateway.status()
-      .then((status) => {
-        if (cancelled) return;
-        if (status.state === 'running') {
-          void refreshProviderSnapshot();
-        }
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, [gatewayStatus.state, refreshProviderSnapshot]);
 
   useEffect(() => {
     setOptimisticModelRef(null);
@@ -1255,7 +1242,7 @@ export function ChatInput({
                 isComposingRef.current = false;
               }}
               onPaste={handlePaste}
-              placeholder={inputDisabled && gatewayUnavailable ? t('composer.gatewayDisconnectedPlaceholder') : ''}
+              placeholder={inputDisabled && !isKernelReady ? t('composer.kernelUnavailablePlaceholder') : ''}
               disabled={inputDisabled}
               data-testid="chat-composer-input"
               className={cn(
@@ -1622,19 +1609,22 @@ export function ChatInput({
             <div className="flex min-w-0 items-center justify-end gap-1.5 overflow-hidden">
               <div className={cn(
                 'h-1.5 w-1.5 shrink-0 rounded-full',
-                isGatewayUsable ? 'bg-green-500/80' : 'bg-red-500/80',
+                isKernelReady ? 'bg-green-600 dark:bg-green-400' : 'bg-muted-foreground/50',
               )} />
               <span className="min-w-0 truncate">
-                {t('composer.gatewayStatus', {
-                  state: isGatewayUsable
-                    ? t('composer.gatewayConnected')
-                    : gatewayStatus.state === 'running'
-                      ? t('composer.gatewayStarting')
-                      : gatewayStatus.state,
+                {t('composer.kernelStatus', {
+                  kernel: kernelId ? kernelDisplayName(kernelId) : t('composer.noKernelSelected'),
+                  state: selectedKernel
+                    ? t(`common:kernels.states.${selectedKernel.state}`)
+                    : t('common:kernels.states.not-installed'),
                 })}
               </span>
               {chatComposerStatusComponents.map((Component, index) => (
-                <Component key={`${index}`} gatewayStatus={gatewayStatus} />
+                <Component
+                  key={`${index}`}
+                  kernels={Object.values(kernelRuntimes)}
+                  selectedKernelId={kernelId}
+                />
               ))}
             </div>
             {hasFailedAttachments && (

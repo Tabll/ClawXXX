@@ -66,6 +66,12 @@ export type UsageSessionMetadata = {
 };
 
 export type UsageHistoryEntry = {
+  id?: string;
+  eventKey?: string;
+  runId?: string;
+  kernelId?: string;
+  requestId?: string;
+  source?: 'runtime-event' | 'provider-response';
   timestamp: string;
   sessionId: string;
   agentId: string;
@@ -76,11 +82,13 @@ export type UsageHistoryEntry = {
   contextWeight?: UsageContextWeight;
   sessionMeta?: UsageSessionMetadata;
   usageStatus?: 'available' | 'missing' | 'error';
-  inputTokens: number;
-  outputTokens: number;
-  cacheReadTokens: number;
-  cacheWriteTokens: number;
-  totalTokens: number;
+  inputTokens?: number;
+  outputTokens?: number;
+  cacheReadTokens?: number;
+  cacheWriteTokens?: number;
+  totalTokens?: number;
+  cost?: number;
+  currency?: string;
   costUsd?: number;
   inputCostUsd?: number;
   outputCostUsd?: number;
@@ -96,6 +104,8 @@ export type UsageSessionBreakdownItem = {
   totalTokens: number;
   count: number;
   costUsd: number;
+  unknownTokenEntries: number;
+  unknownCostEntries: number;
 };
 
 export type UsageSessionSummary = {
@@ -123,6 +133,8 @@ export type UsageSessionSummary = {
   availableEntries: number;
   missingEntries: number;
   errorEntries: number;
+  unknownTokenEntries: number;
+  unknownCostEntries: number;
   contentPreview?: string;
   contextWeight?: UsageContextWeight;
   sessionMeta?: UsageSessionMetadata;
@@ -140,6 +152,8 @@ export type UsageGroup = {
   cacheTokens: number;
   costUsd: number;
   count: number;
+  unknownTokenEntries: number;
+  unknownCostEntries: number;
   sortKey: number | string;
 };
 
@@ -167,20 +181,31 @@ export function resolveVisibleUsageHistory(
   return currentEntries;
 }
 
-export function formatUsageDay(timestamp: string): string {
+export function formatUsageDay(timestamp: string, timeZone?: string): string {
   const date = new Date(timestamp);
   if (Number.isNaN(date.getTime())) return timestamp;
   return new Intl.DateTimeFormat(undefined, {
     month: 'short',
     day: 'numeric',
+    ...(timeZone ? { timeZone } : {}),
   }).format(date);
 }
 
-export function getUsageDaySortKey(timestamp: string): number {
+export function getUsageDaySortKey(timestamp: string, timeZone?: string): number {
   const date = new Date(timestamp);
   if (Number.isNaN(date.getTime())) return 0;
-  date.setHours(0, 0, 0, 0);
-  return date.getTime();
+  if (!timeZone) {
+    date.setHours(0, 0, 0, 0);
+    return date.getTime();
+  }
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    year: 'numeric',
+    month: 'numeric',
+    day: 'numeric',
+  }).formatToParts(date);
+  const value = (type: Intl.DateTimeFormatPartTypes) => Number(parts.find(part => part.type === type)?.value);
+  return Date.UTC(value('year'), value('month') - 1, value('day'));
 }
 
 function getEntryTime(entry: UsageHistoryEntry): number {
@@ -190,6 +215,19 @@ function getEntryTime(entry: UsageHistoryEntry): number {
 
 function getEntryCost(entry: UsageHistoryEntry): number {
   return typeof entry.costUsd === 'number' && Number.isFinite(entry.costUsd) ? entry.costUsd : 0;
+}
+
+function getEntryToken(entry: UsageHistoryEntry, key: 'inputTokens' | 'outputTokens' | 'cacheReadTokens' | 'cacheWriteTokens'): number {
+  const value = entry[key];
+  return typeof value === 'number' && Number.isFinite(value) ? value : 0;
+}
+
+function getEntryTotal(entry: UsageHistoryEntry): number {
+  if (typeof entry.totalTokens === 'number' && Number.isFinite(entry.totalTokens)) return entry.totalTokens;
+  return getEntryToken(entry, 'inputTokens')
+    + getEntryToken(entry, 'outputTokens')
+    + getEntryToken(entry, 'cacheReadTokens')
+    + getEntryToken(entry, 'cacheWriteTokens');
 }
 
 function getEntryCostPart(entry: UsageHistoryEntry, key: 'inputCostUsd' | 'outputCostUsd' | 'cacheReadCostUsd' | 'cacheWriteCostUsd'): number {
@@ -208,10 +246,14 @@ function addBreakdownValue(
     totalTokens: 0,
     count: 0,
     costUsd: 0,
+    unknownTokenEntries: 0,
+    unknownCostEntries: 0,
   };
-  current.totalTokens += entry.totalTokens;
+  current.totalTokens += getEntryTotal(entry);
   current.count += 1;
   current.costUsd += getEntryCost(entry);
+  if (entry.totalTokens === undefined) current.unknownTokenEntries += 1;
+  if (entry.costUsd === undefined) current.unknownCostEntries += 1;
   map.set(resolvedLabel, current);
 }
 
@@ -260,15 +302,17 @@ export function aggregateUsageSessions(entries: UsageHistoryEntry[]): UsageSessi
       availableEntries: 0,
       missingEntries: 0,
       errorEntries: 0,
+      unknownTokenEntries: 0,
+      unknownCostEntries: 0,
     };
 
     current.entries.push(entry);
-    current.inputTokens += entry.inputTokens;
-    current.outputTokens += entry.outputTokens;
-    current.cacheReadTokens += entry.cacheReadTokens;
-    current.cacheWriteTokens += entry.cacheWriteTokens;
-    current.cacheTokens += entry.cacheReadTokens + entry.cacheWriteTokens;
-    current.totalTokens += entry.totalTokens;
+    current.inputTokens += getEntryToken(entry, 'inputTokens');
+    current.outputTokens += getEntryToken(entry, 'outputTokens');
+    current.cacheReadTokens += getEntryToken(entry, 'cacheReadTokens');
+    current.cacheWriteTokens += getEntryToken(entry, 'cacheWriteTokens');
+    current.cacheTokens += getEntryToken(entry, 'cacheReadTokens') + getEntryToken(entry, 'cacheWriteTokens');
+    current.totalTokens += getEntryTotal(entry);
     current.costUsd += getEntryCost(entry);
     current.inputCostUsd += getEntryCostPart(entry, 'inputCostUsd');
     current.outputCostUsd += getEntryCostPart(entry, 'outputCostUsd');
@@ -281,6 +325,8 @@ export function aggregateUsageSessions(entries: UsageHistoryEntry[]): UsageSessi
     } else {
       current.availableEntries += 1;
     }
+    if (entry.totalTokens === undefined) current.unknownTokenEntries += 1;
+    if (entry.costUsd === undefined) current.unknownCostEntries += 1;
     addBreakdownValue(current.modelMap, entry.model, entry);
     addBreakdownValue(current.providerMap, entry.provider, entry);
     if (entry.content?.trim()) {
@@ -331,6 +377,8 @@ export function aggregateUsageSessions(entries: UsageHistoryEntry[]): UsageSessi
       availableEntries: session.availableEntries,
       missingEntries: session.missingEntries,
       errorEntries: session.errorEntries,
+      unknownTokenEntries: session.unknownTokenEntries,
+      unknownCostEntries: session.unknownCostEntries,
       ...(session.contentPreview ? { contentPreview: session.contentPreview } : {}),
       ...(session.contextWeight ? { contextWeight: session.contextWeight } : {}),
       ...(session.sessionMeta ? {
@@ -379,33 +427,39 @@ export function matchesUsageSession(session: UsageSessionSummary, rawQuery: stri
   return searchable.some((value) => value.toLowerCase().includes(query));
 }
 
-function getUsageGroupLabel(entry: UsageHistoryEntry, groupBy: UsageGroupBy): string {
+function getUsageGroupLabel(entry: UsageHistoryEntry, groupBy: UsageGroupBy, timeZone?: string): string {
   switch (groupBy) {
     case 'provider':
       return entry.provider || 'Unknown';
     case 'agent':
       return entry.agentId || 'Unknown';
     case 'day':
-      return formatUsageDay(entry.timestamp);
+      return formatUsageDay(entry.timestamp, timeZone);
     case 'model':
     default:
       return entry.model || 'Unknown';
   }
 }
 
-function getUsageGroupSortKey(entry: UsageHistoryEntry, label: string, groupBy: UsageGroupBy): number | string {
-  if (groupBy === 'day') return getUsageDaySortKey(entry.timestamp);
+function getUsageGroupSortKey(
+  entry: UsageHistoryEntry,
+  label: string,
+  groupBy: UsageGroupBy,
+  timeZone?: string,
+): number | string {
+  if (groupBy === 'day') return getUsageDaySortKey(entry.timestamp, timeZone);
   return label.toLowerCase();
 }
 
 export function groupUsageHistory(
   entries: UsageHistoryEntry[],
   groupBy: UsageGroupBy,
+  options: { timeZone?: string } = {},
 ): UsageGroup[] {
   const grouped = new Map<string, UsageGroup>();
 
   for (const entry of entries) {
-    const label = getUsageGroupLabel(entry, groupBy);
+    const label = getUsageGroupLabel(entry, groupBy, options.timeZone);
     const current = grouped.get(label) ?? {
       label,
       totalTokens: 0,
@@ -416,16 +470,20 @@ export function groupUsageHistory(
       cacheTokens: 0,
       costUsd: 0,
       count: 0,
-      sortKey: getUsageGroupSortKey(entry, label, groupBy),
+      unknownTokenEntries: 0,
+      unknownCostEntries: 0,
+      sortKey: getUsageGroupSortKey(entry, label, groupBy, options.timeZone),
     };
-    current.totalTokens += entry.totalTokens;
-    current.inputTokens += entry.inputTokens;
-    current.outputTokens += entry.outputTokens;
-    current.cacheReadTokens += entry.cacheReadTokens;
-    current.cacheWriteTokens += entry.cacheWriteTokens;
-    current.cacheTokens += entry.cacheReadTokens + entry.cacheWriteTokens;
+    current.totalTokens += getEntryTotal(entry);
+    current.inputTokens += getEntryToken(entry, 'inputTokens');
+    current.outputTokens += getEntryToken(entry, 'outputTokens');
+    current.cacheReadTokens += getEntryToken(entry, 'cacheReadTokens');
+    current.cacheWriteTokens += getEntryToken(entry, 'cacheWriteTokens');
+    current.cacheTokens += getEntryToken(entry, 'cacheReadTokens') + getEntryToken(entry, 'cacheWriteTokens');
     current.costUsd += getEntryCost(entry);
     current.count += 1;
+    if (entry.totalTokens === undefined) current.unknownTokenEntries += 1;
+    if (entry.costUsd === undefined) current.unknownCostEntries += 1;
     grouped.set(label, current);
   }
 

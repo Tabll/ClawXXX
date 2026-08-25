@@ -1,204 +1,140 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { createCronApi } from '../../electron/services/cron-api';
-import type { GatewayManager } from '../../electron/gateway/manager';
+// @vitest-environment node
 
-const sessionMocks = vi.hoisted(() => ({
-  loadSessionTranscriptByKey: vi.fn(),
-}));
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { ClawXDataService, type ClawXDataClient } from '@electron/data/clawx-data-service';
+import { createCronApi } from '@electron/services/cron-api';
+import { asConversationId } from '@shared/conversations/contracts';
+import { asAgentId, asCronJobId } from '@shared/domains/identity';
 
-vi.mock('../../electron/services/sessions-api', () => ({
-  loadSessionTranscriptByKey: sessionMocks.loadSessionTranscriptByKey,
-}));
+const services: ClawXDataService[] = [];
 
-type RpcParams = {
-  schedule?: Record<string, unknown>;
-  patch?: { schedule?: Record<string, unknown> };
-};
+afterEach(async () => {
+  await Promise.all(services.splice(0).map(service => service.close()));
+});
 
-function makeGatewayJob(schedule: Record<string, unknown>) {
+function remote(client: ClawXDataClient) {
   return {
-    id: 'job-1',
-    name: 'Test job',
-    enabled: true,
-    createdAtMs: 1_700_000_000_000,
-    updatedAtMs: 1_700_000_000_000,
-    schedule,
-    payload: { kind: 'agentTurn', message: 'hi' },
-    delivery: { mode: 'none' },
-    state: {},
+    call<T>(method: string, ...args: unknown[]): Promise<T> {
+      const fn = (client as unknown as Record<string, unknown>)[method];
+      if (typeof fn !== 'function') return Promise.reject(new Error(`Unknown method: ${method}`));
+      return Reflect.apply(fn, client, args) as Promise<T>;
+    },
   };
 }
 
-function setupCronApi() {
-  const calls: Array<{ method: string; params: RpcParams }> = [];
-  const rpc = vi.fn(async (method: string, params: unknown) => {
-    const typed = (params ?? {}) as RpcParams;
-    calls.push({ method, params: typed });
-    if (method === 'cron.add') return makeGatewayJob(typed.schedule ?? { kind: 'cron', expr: '* * * * *' });
-    if (method === 'cron.update') return makeGatewayJob(typed.patch?.schedule ?? { kind: 'cron', expr: '* * * * *' });
-    return makeGatewayJob({ kind: 'cron', expr: '* * * * *' });
-  });
-  const gatewayManager = { rpc } as unknown as GatewayManager;
-  const api = createCronApi({ gatewayManager });
-  return { api, calls };
+function fixture(trigger?: Parameters<typeof createCronApi>[0]['trigger']) {
+  const root = mkdtempSync(join(tmpdir(), 'clawx-canonical-cron-'));
+  const service = new ClawXDataService(join(root, 'clawx.sqlite'));
+  services.push(service);
+  const main = service.connect({ role: 'main' });
+  return { main, api: createCronApi({ dataClient: remote(main), trigger }) };
 }
 
-describe('cron schedule normalization', () => {
-  it('wraps a plain cron expression string into a cron schedule on create', async () => {
-    const { api, calls } = setupCronApi();
-    await api.create({ name: 'n', message: 'm', schedule: '0 9 * * *' });
-    const add = calls.find((call) => call.method === 'cron.add');
-    expect(add?.params.schedule).toEqual({ kind: 'cron', expr: '0 9 * * *' });
-  });
-
-  it('passes a one-time at schedule through unchanged on create', async () => {
-    const { api, calls } = setupCronApi();
-    await api.create({
-      name: 'n',
-      message: 'm',
-      schedule: { kind: 'at', at: '2030-01-01T09:00:00.000Z' },
+describe('canonical Cron repository API', () => {
+  it('normalizes cron/at/interval schedules and preserves kernel routing', async () => {
+    const { api } = fixture();
+    const cron = await api.create({
+      name: 'Cron',
+      message: 'run cron',
+      schedule: '0 * * * *',
+      kernelId: 'deepseek-harness',
+      agentId: 'analyst',
     });
-    const add = calls.find((call) => call.method === 'cron.add');
-    expect(add?.params.schedule).toEqual({ kind: 'at', at: '2030-01-01T09:00:00.000Z' });
-  });
-
-  it('normalizes a cron string into a cron object on update', async () => {
-    const { api, calls } = setupCronApi();
-    await api.update({ id: 'job-1', input: { schedule: '30 * * * *' } });
-    const update = calls.find((call) => call.method === 'cron.update');
-    expect(update?.params.patch?.schedule).toEqual({ kind: 'cron', expr: '30 * * * *' });
-  });
-
-  it('passes a one-time at schedule through on update', async () => {
-    const { api, calls } = setupCronApi();
-    await api.update({ id: 'job-1', input: { schedule: { kind: 'at', at: '2031-02-03T10:30:00.000Z' } } });
-    const update = calls.find((call) => call.method === 'cron.update');
-    expect(update?.params.patch?.schedule).toEqual({ kind: 'at', at: '2031-02-03T10:30:00.000Z' });
-  });
-});
-
-describe('cron session history', () => {
-  beforeEach(() => {
-    sessionMocks.loadSessionTranscriptByKey.mockReset();
-  });
-
-  it('reads SQLite-backed run summaries through cron.runs', async () => {
-    const job = makeGatewayJob({ kind: 'cron', expr: '* * * * *' });
-    const rpc = vi.fn(async (method: string) => {
-      if (method === 'cron.list') return { jobs: [job] };
-      if (method === 'cron.runs') {
-        return {
-          entries: [{
-            jobId: 'job-1',
-            status: 'ok',
-            summary: 'Time to drink water.',
-            sessionId: 'run-session-1',
-            ts: 1_700_000_005_000,
-            runAtMs: 1_700_000_000_000,
-            durationMs: 5000,
-            provider: 'provider-a',
-            model: 'model-a',
-          }],
-        };
-      }
-      return {};
+    expect(cron).toMatchObject({
+      schedule: { kind: 'cron', expr: '0 * * * *', tz: 'UTC' },
+      kernelId: 'deepseek-harness',
+      agentId: 'analyst',
+      conversationPolicy: 'new-per-run',
     });
-    const api = createCronApi({ gatewayManager: { rpc } as unknown as GatewayManager });
-
-    const result = await api.sessionHistory({
-      sessionKey: 'agent:main:cron:job-1',
-      limit: 200,
+    const at = await api.create({
+      name: 'Once', message: 'once', schedule: { kind: 'at', at: '2026-08-24T00:00:00Z' },
     });
-
-    expect(rpc).toHaveBeenCalledWith('cron.runs', {
-      id: 'job-1',
-      limit: 200,
-      sortDir: 'asc',
-    }, 8000);
-    expect(result).toMatchObject({
-      messages: [
-        { role: 'user', content: 'hi' },
-        { role: 'assistant', content: expect.stringContaining('Time to drink water.') },
-      ],
+    expect(at.schedule).toEqual({ kind: 'at', at: '2026-08-24T00:00:00.000Z' });
+    const interval = await api.update({
+      id: at.id,
+      input: { schedule: { kind: 'every', everyMs: 60_000, anchorMs: Date.parse('2026-08-24T00:00:00Z') } },
     });
-    expect(sessionMocks.loadSessionTranscriptByKey).not.toHaveBeenCalled();
-  });
-
-  it('restores a bounded run summary from the derived run transcript key', async () => {
-    const job = makeGatewayJob({ kind: 'cron', expr: '* * * * *' });
-    const summaryPrefix = 'A'.repeat(2000);
-    const fullReply = `${summaryPrefix}${'B'.repeat(500)}`;
-    const rpc = vi.fn(async (method: string) => {
-      if (method === 'cron.list') return { jobs: [job] };
-      if (method === 'cron.runs') {
-        return {
-          entries: [{
-            jobId: 'job-1',
-            status: 'ok',
-            summary: `${summaryPrefix}…`,
-            sessionId: 'run-session-1',
-            ts: 1_700_000_005_000,
-            runAtMs: 1_700_000_000_000,
-            durationMs: 5000,
-            provider: 'provider-a',
-            model: 'model-a',
-          }],
-        };
-      }
-      return {};
-    });
-    sessionMocks.loadSessionTranscriptByKey.mockResolvedValue([
-      { role: 'user', content: 'hi' },
-      { role: 'assistant', content: [{ type: 'text', text: fullReply }], stopReason: 'stop' },
-    ]);
-    const api = createCronApi({ gatewayManager: { rpc } as unknown as GatewayManager });
-
-    const result = await api.sessionHistory({
-      sessionKey: 'agent:main:cron:job-1',
-      limit: 200,
-    });
-
-    expect(sessionMocks.loadSessionTranscriptByKey).toHaveBeenCalledWith(
-      'agent:main:cron:job-1:run:run-session-1',
-      1000,
-    );
-    expect(result.messages?.[1]).toMatchObject({
-      role: 'assistant',
-      content: `${fullReply}\n\nDuration: 5.0s | Model: provider-a/model-a`,
+    expect(interval.schedule).toEqual({
+      kind: 'every', everyMs: 60_000, anchorMs: Date.parse('2026-08-24T00:00:00Z'),
     });
   });
 
-  it('keeps the bounded summary when the transcript does not share its prefix', async () => {
-    const job = makeGatewayJob({ kind: 'cron', expr: '* * * * *' });
-    const summary = `${'A'.repeat(2000)}…`;
-    const runSessionKey = 'agent:main:cron:job-1:run:run-session-1';
-    const rpc = vi.fn(async (method: string) => {
-      if (method === 'cron.list') return { jobs: [job] };
-      if (method === 'cron.runs') {
-        return {
-          entries: [{
-            jobId: 'job-1',
-            status: 'ok',
-            summary,
-            sessionId: 'ignored-session-id',
-            sessionKey: runSessionKey,
-            ts: 1_700_000_005_000,
-          }],
-        };
-      }
-      return {};
+  it('persists idempotent admissions/run history in SQLite and never queries runtime history', async () => {
+    const { main, api } = fixture();
+    const job = await api.create({ name: 'Stored', message: 'do it', schedule: '0 0 * * *' });
+    const admission = {
+      id: 'admission-one',
+      jobId: asCronJobId(job.id),
+      scheduledFor: '2026-08-24T00:00:00.000Z',
+      triggerKind: 'scheduled' as const,
+      snapshot: {
+        jobUpdatedAt: job.updatedAt,
+        kernelId: job.kernelId,
+        agentId: asAgentId(job.agentId),
+        prompt: job.message,
+        conversationPolicy: job.conversationPolicy,
+        conversationId: asConversationId(`cron:${job.id}:reuse`),
+        timeoutMs: job.timeoutMs,
+      },
+      admittedAt: '2026-08-24T00:00:00.010Z',
+    };
+    expect(await main.admitCron(admission)).toEqual({ inserted: true, admission });
+    expect(await main.admitCron({ ...admission, id: 'duplicate' })).toEqual({ inserted: false, admission });
+    await main.putCronRun({
+      id: 'cron-run-one',
+      admissionId: admission.id,
+      status: 'failed',
+      startedAt: '2026-08-24T00:00:01.000Z',
+      completedAt: '2026-08-24T00:00:02.000Z',
+      error: 'canonical failure',
     });
-    sessionMocks.loadSessionTranscriptByKey.mockResolvedValue([
-      { role: 'assistant', content: `${'X'.repeat(2000)}more` },
-    ]);
-    const api = createCronApi({ gatewayManager: { rpc } as unknown as GatewayManager });
-
-    const result = await api.sessionHistory({
-      sessionKey: 'agent:main:cron:job-1',
-      limit: 200,
+    await expect(api.sessionHistory({ sessionKey: `cron:${job.id}` })).resolves.toEqual({
+      messages: [{
+        id: 'cron-run-one',
+        role: 'assistant',
+        content: 'canonical failure',
+        timestamp: Date.parse('2026-08-24T00:00:02.000Z'),
+        isError: true,
+      }],
     });
+    expect((await api.list())[0]).toMatchObject({
+      id: job.id,
+      lastRun: { success: false, error: 'canonical failure', duration: 1_000 },
+    });
+  });
 
-    expect(sessionMocks.loadSessionTranscriptByKey).toHaveBeenCalledWith(runSessionKey, 1000);
-    expect(result.messages?.[1]).toMatchObject({ role: 'assistant', content: summary });
+  it('delegates manual trigger to the ClawX Scheduler and fails closed if it is absent', async () => {
+    const trigger = vi.fn(async () => undefined);
+    const withScheduler = fixture(trigger);
+    const job = await withScheduler.api.create({ name: 'Manual', message: 'go', schedule: '0 * * * *' });
+    await expect(withScheduler.api.trigger({ id: job.id })).resolves.toEqual({ success: true });
+    expect(trigger).toHaveBeenCalledWith(expect.objectContaining({ id: job.id }));
+
+    const withoutScheduler = fixture();
+    const unavailable = await withoutScheduler.api.create({ name: 'No scheduler', message: 'go', schedule: '0 * * * *' });
+    await expect(withoutScheduler.api.trigger({ id: unavailable.id })).rejects.toThrow(/Scheduler is unavailable/);
+  });
+
+  it('rejects invalid canonical schedules, policies, timeouts and delivery targets at the Main boundary', async () => {
+    const { api } = fixture();
+    const base = { name: 'Validated', message: 'run', schedule: '0 * * * *' };
+
+    await expect(api.create({ ...base, schedule: '0 0 * * * *' })).rejects.toThrow(/exactly five fields/);
+    await expect(api.create({
+      ...base,
+      schedule: { kind: 'cron', expr: '0 * * * *', tz: 'Not/A-Timezone' },
+    })).rejects.toThrow(/Invalid IANA timezone/);
+    await expect(api.create({ ...base, timeoutMs: 999 })).rejects.toThrow(/Cron timeout/);
+    await expect(api.create({
+      ...base,
+      overlapPolicy: 'parallel' as never,
+    })).rejects.toThrow(/Invalid Cron overlap policy/);
+    await expect(api.create({
+      ...base,
+      delivery: { mode: 'announce', channel: 'telegram', accountId: 'telegram:default' },
+    })).rejects.toThrow(/delivery target is required/);
   });
 });

@@ -30,6 +30,12 @@ declare global {
     clawx?: {
       hostInvoke: <T = unknown>(request: HostInvokeRequest) => Promise<HostInvokeResponse<T>>;
     };
+    clawxSecureSecrets?: {
+      stage(id: string): Promise<string | null>;
+      clear(id: string): void;
+      focus(id: string): void;
+      setValueForTesting?(id: string, value: string): void;
+    };
   }
 }
 

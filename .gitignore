@@ -66,8 +66,12 @@ resources/bin
 
 build/
 artifacts/
+temp/
 .delivery/
 docs/pr-session-notes-*.md
+
+# Local optional-runtime state created by direct bridge/self-test launches
+.clawx-dsh-runtime/
 
 .cursor/
 .claude/

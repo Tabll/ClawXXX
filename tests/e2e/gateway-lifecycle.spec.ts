@@ -1,4 +1,11 @@
-import { completeSetup, expect, installIpcMocks, test } from './fixtures/electron';
+import {
+  canonicalConversationHostApi,
+  canonicalConversationSummary,
+  completeSetup,
+  expect,
+  installIpcMocks,
+  test,
+} from './fixtures/electron';
 
 function stableStringify(value: unknown): string {
   if (value == null || typeof value !== 'object') return JSON.stringify(value);
@@ -9,10 +16,6 @@ function stableStringify(value: unknown): string {
   return `{${entries.join(',')}}`;
 }
 
-const SESSIONS_LIST_PAYLOAD = {
-  includeDerivedTitles: true,
-  includeLastMessage: true,
-};
 const MAIN_SESSION_KEY = 'agent:main:main';
 const DEFAULT_WORKSPACE = '~/.openclaw/workspace';
 
@@ -125,7 +128,7 @@ test.describe('ClawX gateway lifecycle resilience', () => {
     await expect(page.getByTestId('main-layout')).toBeVisible();
   });
 
-  test('uses the existing sidebar restart indicator for owned recovery instead of page-level warnings', async ({ electronApp, page }) => {
+  test('keeps legacy global Gateway recovery out of kernel-neutral domain pages', async ({ electronApp, page }) => {
     await installIpcMocks(electronApp, {
       gatewayStatus: { state: 'running', port: 18789, pid: 100, connectedAt: 1, gatewayReady: true },
       hostApi: {
@@ -142,7 +145,26 @@ test.describe('ClawX gateway lifecycle resilience', () => {
           data: {
             status: 200,
             ok: true,
-            json: { success: true, agents: [{ id: 'main', name: 'main' }] },
+            json: {
+              success: true,
+              agents: [{
+                id: 'main',
+                name: 'main',
+                supportedKernels: ['openclaw'],
+                defaultForKernels: ['openclaw'],
+                projections: [],
+                channelTypes: [],
+                version: 1,
+              }],
+              kernelDefaults: [{
+                kernelId: 'openclaw',
+                agentId: 'main',
+                updatedAt: '2026-08-24T00:00:00.000Z',
+              }],
+              configuredChannelTypes: [],
+              channelOwners: {},
+              channelAccountOwners: {},
+            },
           },
         },
         [stableStringify(['/api/channels/accounts', 'GET'])]: {
@@ -218,11 +240,8 @@ test.describe('ClawX gateway lifecycle resilience', () => {
     await completeSetup(page);
 
     await page.getByTestId('sidebar-nav-channels').click();
-    await expect(page.getByTestId('channels-health-banner')).toBeVisible();
-    await expect(page.getByTestId('channels-recovery-status')).toContainText(/ClawX is restarting its Gateway/i);
-    await expect(page.getByText('Gateway control plane appears unresponsive.')).toBeVisible();
-    await page.getByTestId('channels-toggle-diagnostics').click();
-    await expect(page.getByTestId('channels-diagnostics')).toContainText('"state": "restart-executing"');
+    await expect(page.getByTestId('channels-page')).toBeVisible();
+    await expect(page.getByTestId('channels-health-banner')).toHaveCount(0);
 
     await electronApp.evaluate(({ BrowserWindow }) => {
       const win = BrowserWindow.getAllWindows()[0];
@@ -234,8 +253,7 @@ test.describe('ClawX gateway lifecycle resilience', () => {
     });
 
     const restartIndicator = page.getByTestId('sidebar-gateway-restarting');
-    await expect(restartIndicator).toHaveAttribute('data-state', 'visible');
-    await expect(restartIndicator).toContainText(/gateway.*restart|重启中/i);
+    await expect(restartIndicator).toHaveCount(0);
 
     const oldWarningCopy = /Gateway service is not running|Gateway is not running\.|Gateway 服务未运行|Agent 或频道变更|网关未运行。|没有活跃的网关|Scheduled tasks cannot be managed|无法管理定时任务|Channels cannot connect|无法管理频道/i;
 
@@ -266,13 +284,22 @@ test.describe('ClawX gateway lifecycle resilience', () => {
       });
     });
 
-    await expect(restartIndicator).toHaveAttribute('data-state', 'hidden');
+    await expect(restartIndicator).toHaveCount(0);
   });
 
-  test('chat sidebar session catalog reloads when gateway becomes ready after restart', async ({ electronApp, page }) => {
+  test('global Gateway lifecycle cannot replace the canonical Conversation catalog', async ({ electronApp, page }) => {
+    const summary = canonicalConversationSummary({
+      id: MAIN_SESSION_KEY,
+      title: 'SQLite history remains authoritative',
+      workspaceUri: DEFAULT_WORKSPACE,
+      lastKernelId: 'openclaw',
+      kernelIds: ['openclaw'],
+      lastAgentId: 'main',
+    });
     await installIpcMocks(electronApp, {
       gatewayStatus: { state: 'running', port: 18789, pid: 100, connectedAt: 1, gatewayReady: false },
       hostApi: {
+        ...canonicalConversationHostApi([summary]),
         [stableStringify(['/api/gateway/status', 'GET'])]: {
           ok: true,
           data: {
@@ -289,60 +316,22 @@ test.describe('ClawX gateway lifecycle resilience', () => {
             json: { success: true, agents: [{ id: 'main', name: 'main', workspace: DEFAULT_WORKSPACE, mainSessionKey: MAIN_SESSION_KEY }] },
           },
         },
-        [stableStringify(['chat', 'loadAcpSession', { sessionKey: MAIN_SESSION_KEY, workspaceRoot: DEFAULT_WORKSPACE, cwd: DEFAULT_WORKSPACE }])]: {
-          success: true,
-          generation: 1,
-        },
       },
       gatewayRpc: {
-        [stableStringify(['sessions.list', SESSIONS_LIST_PAYLOAD])]: {
+        [stableStringify(['sessions.list', { includeDerivedTitles: true, includeLastMessage: true }])]: {
           success: true,
-          result: { sessions: [] },
+          result: {
+            sessions: [{ key: MAIN_SESSION_KEY, displayName: 'runtime must not win', updatedAt: 1001 }],
+          },
         },
       },
     });
 
     await completeSetup(page);
-    await expect(page.getByTestId('sidebar-gateway-restarting')).toHaveAttribute('data-state', 'visible');
-    await expect(page.getByText('history after ready')).toHaveCount(0);
-
-    await installIpcMocks(electronApp, {
-      gatewayStatus: { state: 'running', port: 18789, pid: 200, connectedAt: 2, gatewayReady: true },
-      hostApi: {
-        [stableStringify(['/api/gateway/status', 'GET'])]: {
-          ok: true,
-          data: {
-            status: 200,
-            ok: true,
-            json: { state: 'running', port: 18789, pid: 200, connectedAt: 2, gatewayReady: true },
-          },
-        },
-        [stableStringify(['/api/agents', 'GET'])]: {
-          ok: true,
-          data: {
-            status: 200,
-            ok: true,
-            json: { success: true, agents: [{ id: 'main', name: 'main', workspace: DEFAULT_WORKSPACE, mainSessionKey: MAIN_SESSION_KEY }] },
-          },
-        },
-        [stableStringify(['chat', 'loadAcpSession', { sessionKey: MAIN_SESSION_KEY, workspaceRoot: DEFAULT_WORKSPACE, cwd: DEFAULT_WORKSPACE }])]: {
-          success: true,
-          generation: 1,
-        },
-      },
-      gatewayRpc: {
-        [stableStringify(['sessions.list', SESSIONS_LIST_PAYLOAD])]: {
-          success: true,
-          result: {
-            sessions: [{ key: MAIN_SESSION_KEY, displayName: 'history after ready', updatedAt: 1001 }],
-          },
-        },
-      },
-    });
-
-    // Chat session loading is throttled; let the initial empty load age out so
-    // the ready transition exercises the reload path instead of the throttle.
-    await page.waitForTimeout(1_300);
+    await expect(page.getByTestId('sidebar-gateway-restarting')).toHaveCount(0);
+    const canonicalRow = page.getByTestId(`sidebar-session-${MAIN_SESSION_KEY}`);
+    await expect(canonicalRow).toContainText('SQLite history remains authoritative');
+    await expect(page.getByText('runtime must not win')).toHaveCount(0);
 
     await electronApp.evaluate(({ BrowserWindow }) => {
       const win = BrowserWindow.getAllWindows()[0];
@@ -355,7 +344,8 @@ test.describe('ClawX gateway lifecycle resilience', () => {
       });
     });
 
-    await expect(page.getByTestId(`sidebar-session-${MAIN_SESSION_KEY}`)).toContainText('history after ready', { timeout: 10_000 });
-    await expect(page.getByTestId('sidebar-gateway-restarting')).toHaveAttribute('data-state', 'hidden');
+    await expect(canonicalRow).toContainText('SQLite history remains authoritative');
+    await expect(page.getByText('runtime must not win')).toHaveCount(0);
+    await expect(page.getByTestId('sidebar-gateway-restarting')).toHaveCount(0);
   });
 });

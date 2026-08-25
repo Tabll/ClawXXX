@@ -5,17 +5,10 @@ import { Models } from '@/pages/Models/index';
 const hostApiFetchMock = vi.fn();
 const trackUiEventMock = vi.fn();
 
-const { gatewayState, settingsState } = vi.hoisted(() => ({
-  gatewayState: {
-    status: { state: 'running', port: 18789, connectedAt: 1, pid: 1234 },
-  },
+const { settingsState } = vi.hoisted(() => ({
   settingsState: {
     devModeUnlocked: false,
   },
-}));
-
-vi.mock('@/stores/gateway', () => ({
-  useGatewayStore: (selector: (state: typeof gatewayState) => unknown) => selector(gatewayState),
 }));
 
 vi.mock('@/stores/settings', () => ({
@@ -71,7 +64,6 @@ describe('Models page auto refresh', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.clearAllMocks();
-    gatewayState.status = { state: 'running', port: 18789, connectedAt: 1, pid: 1234 };
     Object.defineProperty(document, 'visibilityState', {
       configurable: true,
       value: 'visible',

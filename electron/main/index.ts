@@ -4,6 +4,8 @@
  */
 import { app, BrowserWindow, nativeImage, session, shell, type Session } from 'electron';
 import { join } from 'path';
+import { existsSync, mkdirSync, readFileSync } from 'node:fs';
+import { pathToFileURL } from 'node:url';
 import { GatewayManager } from '../gateway/manager';
 import { registerOpenClawConfigCoordinator } from '../gateway/config-delivery';
 import { registerIpcHandlers } from './ipc-handlers';
@@ -54,6 +56,95 @@ import { deviceOAuthManager } from '../utils/device-oauth';
 import { browserOAuthManager } from '../utils/browser-oauth';
 import { whatsAppLoginManager } from '../utils/whatsapp-login';
 import { syncAllProviderAuthToRuntime } from '../services/providers/provider-runtime-sync';
+import { configureCanonicalProviderStore } from '../services/providers/provider-store';
+import { ensureProviderStoreMigrated } from '../services/providers/provider-migration';
+import { migrateLegacyProviderSecrets } from '../services/secrets/secret-store';
+import { ClawXDataServiceUtilityHost, type RemoteDataServiceClient } from '../data/data-service-utility-host';
+import { ElectronDataServiceTransport } from '../data/electron-utility-transport';
+import { prepareClawXDataStore } from '../data/data-recovery';
+import { KernelLaunchRegistry } from '../kernels/launch-registry';
+import { KernelSupervisorRegistry } from '../kernels/supervisor-registry';
+import { RuntimeLifecycleCoordinator } from '../kernels/runtime-lifecycle-coordinator';
+import { getKernelAutoStartPolicies } from '../kernels/auto-start-policy';
+import {
+  clearOpenClawChannelHandoffEndpoint,
+  configureOpenClawChannelHandoffEndpoint,
+  configureOpenClawRuntimeLocation,
+  clearOpenClawRuntimeLocation,
+  createDevelopmentOpenClawRuntimeLocation,
+  resolveOpenClawRuntimeLocation,
+  type OpenClawRuntimeLocation,
+} from '../kernels/openclaw/runtime-location';
+import {
+  buildDeepSeekHarnessEnvironment,
+  createDevelopmentDeepSeekHarnessRuntimeLocation,
+  resolveDeepSeekHarnessRuntimeLocation,
+  type DeepSeekHarnessRuntimeLocation,
+} from '../kernels/deepseek-harness/runtime-location';
+import { OpenClawKernelDriver } from '../kernels/openclaw/openclaw-driver';
+import { OpenClawAcpChatAdapter } from '../kernels/openclaw/acp-chat-adapter';
+import { createOpenClawGatewayControlPlane } from '../kernels/openclaw/gateway-control-plane';
+import { purgeForbiddenOpenClawHistory } from '../kernels/openclaw/managed-history-guard';
+import { RemoteConversationStoreProtocolClient } from '../data/conversation-store-client';
+import { AcpSessionAccessRegistry } from '../services/acp-session-access-registry';
+import { createAcpChatService, type AcpChatService } from '../services/acp-chat-service';
+import { OpenClawLegacyExtensionAdapter } from '../extensions/openclaw-legacy-adapter';
+import type { KernelDriver } from '@shared/kernels/contracts';
+import { ConversationRouter } from '../conversations/conversation-router';
+import { HOST_EVENT_CHANNELS } from '@shared/host-events/contract';
+import { CredentialBroker, type CredentialPurpose } from '../security/credential-broker';
+import {
+  ProviderProjectionReconciler,
+  createOpenClawProviderProjectionAdapter,
+  createSupervisorProviderAdapter,
+} from '../services/providers/provider-projection-reconciler';
+import type { KernelProviderDefault } from '@shared/domains/providers';
+import type { KernelAgentDefault } from '@shared/domains/agents';
+import { CanonicalAgentService } from '../domains/agents/agent-service';
+import { ensureCanonicalAgentCatalog } from '../domains/agents/agent-migration';
+import {
+  AgentProjectionReconciler,
+  createSupervisorAgentProjectionAdapter,
+} from '../domains/agents/agent-projection-reconciler';
+import { createOpenClawAgentProjectionAdapter } from '../domains/agents/openclaw-agent-adapter';
+import { listAgentsSnapshot } from '../utils/agent-config';
+import { CanonicalSkillPackageStore, assertIndependentSkillRoots } from '../domains/skills/skill-package-store';
+import { CanonicalSkillService } from '../domains/skills/skill-service';
+import { ensureCanonicalSkillCatalog } from '../domains/skills/skill-migration';
+import { SkillProjectionReconciler } from '../domains/skills/skill-projection-reconciler';
+import { createOpenClawSkillProjectionAdapter } from '../domains/skills/openclaw-skill-adapter';
+import { createSupervisorSkillProjectionAdapter } from '../domains/skills/supervisor-skill-adapter';
+import { listLocalSkills } from '../services/skills/local-skill-service';
+import { getOpenClawSkillsDir } from '../utils/paths';
+import { SafeStorageChannelSecretStore } from '../channels/channel-secret-store';
+import {
+  CanonicalChannelAccountService,
+  ensureCanonicalChannelCatalog,
+} from '../channels/channel-account-service';
+import { scanLegacyOpenClawChannels } from '../channels/channel-migration';
+import { ChannelConnectorRegistry } from '../channels/channel-connector-registry';
+import { registerBuiltinChannelConnectors } from '../channels/connectors';
+import { ChannelAdapterRegistry } from '../channels/channel-adapter-registry';
+import { RelayChannelAdapter } from '../channels/relay-channel-adapter';
+import { OpenClawChannelAdapter } from '../channels/openclaw-channel-adapter';
+import {
+  ManagedOpenClawChannelBackend,
+  ensureHandoffPluginProjection,
+} from '../channels/managed-openclaw-channel-backend';
+import { ChannelHandoffServer } from '../channels/channel-handoff-server';
+import { ChannelOwnerCoordinator } from '../channels/channel-owner-coordinator';
+import { ChannelBindingService } from '../channels/channel-binding-service';
+import { ChannelOrchestrator } from '../channels/channel-orchestrator';
+import { ClawXScheduler } from '../scheduler/clawx-scheduler';
+import { listCanonicalOpenClawChannelTargets } from '../services/channels-api';
+import { RemoteKernelPackageStateStore } from '../kernels/package-manager/state';
+import { KernelPackageManager } from '../kernels/package-manager';
+import { KernelPackageController } from '../kernels/package-manager/controller';
+import {
+  createKernelHostCompatibility,
+  loadKernelDistributionConfiguration,
+} from '../kernels/package-manager/config';
+import type { KernelRuntimeSnapshot } from '@shared/kernels/contracts';
 
 const WINDOWS_APP_USER_MODEL_ID = 'app.clawx.desktop';
 const isE2EMode = process.env.CLAWX_E2E === '1';
@@ -119,16 +210,338 @@ const gotTheLock = gotElectronLock && gotFileLock;
 let mainWindow: BrowserWindow | null = null;
 let gatewayManager!: GatewayManager;
 let clawHubService!: ClawHubService;
+let dataServiceHost: ClawXDataServiceUtilityHost | undefined;
+let mainDataClient: RemoteDataServiceClient | undefined;
+let conversationRouter: ConversationRouter | undefined;
+let openClawAcp: { service: AcpChatService; access: AcpSessionAccessRegistry } | undefined;
+let openClawRuntimeLocation: OpenClawRuntimeLocation | undefined;
+let deepSeekHarnessRuntimeLocation: DeepSeekHarnessRuntimeLocation | undefined;
+let providerProjectionReconciler: ProviderProjectionReconciler | undefined;
+let agentService: CanonicalAgentService | undefined;
+let agentProjectionReconciler: AgentProjectionReconciler | undefined;
+let skillService: CanonicalSkillService | undefined;
+let skillProjectionReconciler: SkillProjectionReconciler | undefined;
+let skillPackageStore: CanonicalSkillPackageStore | undefined;
+let channelAccountService: CanonicalChannelAccountService | undefined;
+let channelAdapterRegistry: ChannelAdapterRegistry | undefined;
+let channelOwnerCoordinator: ChannelOwnerCoordinator | undefined;
+let channelBindingService: ChannelBindingService | undefined;
+let channelOrchestrator: ChannelOrchestrator | undefined;
+let clawXScheduler: ClawXScheduler | undefined;
+let kernelPackageController: KernelPackageController | undefined;
+let channelHandoffServer: ChannelHandoffServer | undefined;
+let relayChannelAdapter: RelayChannelAdapter | undefined;
+let openClawChannelAdapter: OpenClawChannelAdapter | undefined;
+const activeKernelDrivers = new Map<string, KernelDriver>();
 const hostApiRegistry = new HostApiRegistry();
 const webBrowserGuestRegistry = new WebBrowserGuestRegistry();
 let webBrowserSession!: Session;
 const mainWindowFocusState = createMainWindowFocusState();
 const quitLifecycleState = createQuitLifecycleState();
+const kernelLaunchRegistry = new KernelLaunchRegistry();
+const kernelSupervisorRegistry = new KernelSupervisorRegistry(
+  (kernelId, generation) => kernelLaunchRegistry.resolve(kernelId, generation),
+  { isLaunchAvailable: kernelId => kernelLaunchRegistry.has(kernelId) },
+);
+const runtimeLifecycleCoordinator = new RuntimeLifecycleCoordinator();
+const credentialBroker = new CredentialBroker({
+  getAccount: async accountId => {
+    const { getCanonicalProviderAccount } = await import('../services/providers/provider-store');
+    return getCanonicalProviderAccount(accountId);
+  },
+  getSecret: async accountId => {
+    const { getProviderSecret } = await import('../services/secrets/secret-store');
+    return getProviderSecret(accountId);
+  },
+  audit: event => logger.debug('[credential-broker] authorization event', event),
+});
 
 function sendMainWindowEvent(channel: string, payload: unknown): void {
   const win = mainWindow;
   if (!win || win.isDestroyed()) return;
   win.webContents.send(channel, payload);
+}
+
+async function resolveManagedOpenClawRuntime(): Promise<OpenClawRuntimeLocation | undefined> {
+  const userDataRoot = app.getPath('userData');
+  if (app.isPackaged) {
+    const installation = await mainDataClient?.call<import('@shared/kernels/package-manager').KernelInstallationRecord | undefined>(
+      'getKernelInstallation',
+      'openclaw',
+    );
+    if (!installation) return undefined;
+    return resolveOpenClawRuntimeLocation({
+      installation,
+      packageRoot: join(userDataRoot, 'kernels'),
+      userDataRoot,
+    });
+  }
+
+  const packageDir = process.env.CLAWX_OPENCLAW_DEV_PACKAGE_DIR?.trim()
+    || join(__dirname, '../../node_modules/openclaw');
+  const packagePath = join(packageDir, 'package.json');
+  const entryPath = join(packageDir, 'openclaw.mjs');
+  if (!existsSync(packagePath) || !existsSync(entryPath)) return undefined;
+  const metadata = JSON.parse(readFileSync(packagePath, 'utf8')) as { version?: string };
+  return createDevelopmentOpenClawRuntimeLocation({
+    packageDir,
+    userDataRoot,
+    artifactVersion: metadata.version ? `${metadata.version}+development` : 'development',
+  });
+}
+
+async function registerManagedOpenClawRuntime(window: BrowserWindow): Promise<void> {
+  openClawRuntimeLocation = await resolveManagedOpenClawRuntime();
+  if (!openClawRuntimeLocation) {
+    logger.info('OpenClaw optional runtime is not installed; no OpenClaw lifecycle or file side effects will run');
+    return;
+  }
+  configureOpenClawRuntimeLocation(openClawRuntimeLocation);
+  const access = new AcpSessionAccessRegistry();
+  const service = createAcpChatService(window, access, gatewayManager);
+  openClawAcp = { service, access };
+
+  kernelLaunchRegistry.register('openclaw', async (generation) => {
+    if (!dataServiceHost || !openClawRuntimeLocation) {
+      throw new Error('OpenClaw cannot start before DataService and its verified runtime are ready');
+    }
+    const dataClient = await dataServiceHost.connect({ role: 'kernel', kernelId: 'openclaw', generation });
+    const store = new RemoteConversationStoreProtocolClient(dataClient, 'openclaw');
+    const credentialIdentity = {
+      kernelId: 'openclaw' as const,
+      generation,
+      pid: process.pid,
+      artifactVersion: openClawRuntimeLocation.artifactVersion,
+    };
+    const revokeCredentials = credentialBroker.registerProcess(credentialIdentity);
+    const chat = new OpenClawAcpChatAdapter(
+      service,
+      async () => { await purgeForbiddenOpenClawHistory(openClawRuntimeLocation!); },
+    );
+    const driver = new OpenClawKernelDriver({
+      generation,
+      runtime: openClawRuntimeLocation,
+      gateway: gatewayManager,
+      chat,
+      control: createOpenClawGatewayControlPlane(gatewayManager),
+      hooks: {
+        beforeStart: async () => {
+          await purgeForbiddenOpenClawHistory(openClawRuntimeLocation!);
+          await syncAllProviderAuthToRuntime();
+          await ensureClawXDefaultIdentity();
+          await repairClawXOnlyBootstrapFiles();
+          await ensureBuiltinSkillsInstalled();
+          await trimBundledOpenClawSkillsAndConfigs();
+          await ensurePreinstalledSkillsInstalled();
+        },
+        afterStart: async () => {
+          await ensureClawXContext();
+          if (app.isPackaged) {
+            await autoInstallCliIfNeeded((installedPath) => {
+              mainWindow?.webContents.send('openclaw:cli-installed', installedPath);
+            });
+            generateCompletionCache();
+            installCompletionToProfile();
+          }
+        },
+        afterStop: async () => {
+          revokeCredentials();
+          await purgeForbiddenOpenClawHistory(openClawRuntimeLocation!);
+          await dataClient.disconnect();
+          if (activeKernelDrivers.get('openclaw') === driver) activeKernelDrivers.delete('openclaw');
+        },
+      },
+    });
+    activeKernelDrivers.set('openclaw', driver);
+    return {
+      kind: 'driver',
+      driver,
+      artifactVersion: openClawRuntimeLocation.artifactVersion,
+      host: {
+        store,
+        // ConversationRouter is the sole canonical event writer. The in-process
+        // runtime forwards this same event to the supervisor after this hook.
+        emit: async () => undefined,
+        log: (level, message, fields) => {
+          logger[level](`[kernel:openclaw:g${generation}] ${message}`, fields ?? {});
+          kernelSupervisorRegistry.recordLog('openclaw', generation, level, message, fields);
+        },
+        requestCredential: async (input) => {
+          if (input.kernelId !== 'openclaw' || input.generation !== generation) {
+            throw new Error('Credential request is outside the OpenClaw generation');
+          }
+          return credentialBroker.resolve({
+            ...credentialIdentity,
+            accountId: input.accountId,
+            purpose: input.purpose,
+          });
+        },
+      },
+    };
+  });
+}
+
+async function resolveManagedDeepSeekHarnessRuntime(): Promise<DeepSeekHarnessRuntimeLocation | undefined> {
+  const userDataRoot = app.getPath('userData');
+  if (app.isPackaged) {
+    const installation = await mainDataClient?.call<import('@shared/kernels/package-manager').KernelInstallationRecord | undefined>(
+      'getKernelInstallation',
+      'deepseek-harness',
+    );
+    if (!installation) return undefined;
+    return resolveDeepSeekHarnessRuntimeLocation({
+      installation,
+      packageRoot: join(userDataRoot, 'kernels'),
+      userDataRoot,
+    });
+  }
+  const packageDir = process.env.CLAWX_DSH_DEV_PACKAGE_DIR?.trim();
+  if (!packageDir) return undefined;
+  return createDevelopmentDeepSeekHarnessRuntimeLocation({
+    packageDir,
+    userDataRoot,
+    artifactVersion: process.env.CLAWX_DSH_DEV_ARTIFACT_VERSION ?? 'development',
+    capabilitiesDigest: process.env.CLAWX_DSH_DEV_CAPABILITIES_DIGEST ?? 'development-unverified',
+  });
+}
+
+async function registerManagedDeepSeekHarnessRuntime(): Promise<void> {
+  deepSeekHarnessRuntimeLocation = await resolveManagedDeepSeekHarnessRuntime();
+  if (!deepSeekHarnessRuntimeLocation) {
+    logger.info('DeepSeek Harness optional runtime is not installed; no DSH process will be started');
+    return;
+  }
+  const location = deepSeekHarnessRuntimeLocation;
+  kernelLaunchRegistry.register('deepseek-harness', (generation) => ({
+    command: location.nodeExecutable,
+    args: [location.entryPath],
+    cwd: location.packageDir,
+    env: buildDeepSeekHarnessEnvironment(location, generation),
+    artifactVersion: location.artifactVersion,
+    startupTimeoutMs: 30_000,
+    shutdownTimeoutMs: 10_000,
+    ...(() => {
+      let revoke = () => {};
+      return {
+        onProcessReady: (identity: import('../kernels/stdio-kernel-process').KernelOwnedProcessIdentity) => {
+          revoke = credentialBroker.registerProcess(identity);
+        },
+        onProcessExit: () => { revoke(); },
+        handleHostRequest: async (request: import('../kernels/stdio-kernel-process').KernelHostRequest) => {
+          if (request.method !== 'credential.resolve'
+            || !request.params
+            || typeof request.params !== 'object'
+            || Array.isArray(request.params)) {
+            throw new Error('Unsupported or invalid kernel host request');
+          }
+          const params = request.params as Record<string, unknown>;
+          const accountId = typeof params.accountId === 'string' ? params.accountId.trim() : '';
+          const purpose = params.purpose;
+          if (!accountId
+            || (purpose !== 'model-request' && purpose !== 'channel-connect' && purpose !== 'provider-validate')) {
+            throw new Error('Credential request account or purpose is invalid');
+          }
+          const value = await credentialBroker.resolve({
+            kernelId: request.kernelId,
+            generation: request.generation,
+            pid: request.pid,
+            artifactVersion: request.artifactVersion,
+            accountId,
+            purpose: purpose as CredentialPurpose,
+          });
+          return { value };
+        },
+      };
+    })(),
+  }));
+}
+
+async function initializeChannelRuntime(): Promise<void> {
+  if (!mainDataClient || !conversationRouter) {
+    throw new Error('Channel runtime requires ClawX DataService and ConversationRouter');
+  }
+  channelAccountService = new CanonicalChannelAccountService(
+    mainDataClient,
+    new SafeStorageChannelSecretStore(),
+  );
+  await ensureCanonicalChannelCatalog({
+    service: channelAccountService,
+    scanLegacy: openClawRuntimeLocation ? scanLegacyOpenClawChannels : async () => [],
+  });
+
+  const connectors = new ChannelConnectorRegistry();
+  registerBuiltinChannelConnectors(connectors, {
+    projectionRoot: join(app.getPath('userData'), 'kernel-config', 'channel-relay'),
+    persistCredential: (accountId, values) => channelAccountService!.updateSecrets(accountId, values),
+  });
+  channelAdapterRegistry = new ChannelAdapterRegistry();
+  relayChannelAdapter = new RelayChannelAdapter(connectors);
+  channelAdapterRegistry.register(relayChannelAdapter);
+
+  if (openClawRuntimeLocation) {
+    channelHandoffServer = new ChannelHandoffServer();
+    const endpoint = await channelHandoffServer.start();
+    configureOpenClawChannelHandoffEndpoint(endpoint);
+    const pluginPath = app.isPackaged
+      ? join(openClawRuntimeLocation.packageDir, 'clawx-channel-handoff')
+      : join(process.cwd(), 'kernels', 'openclaw', 'overlay', 'clawx-channel-handoff');
+    if (!existsSync(join(pluginPath, 'openclaw.plugin.json'))) {
+      throw new Error(`Verified OpenClaw Channel handoff plugin is missing: ${pluginPath}`);
+    }
+    await ensureHandoffPluginProjection(pluginPath);
+    const backend = new ManagedOpenClawChannelBackend(
+      gatewayManager,
+      channelHandoffServer,
+      pluginPath,
+      (channelType, nativeAccountId, query) => listCanonicalOpenClawChannelTargets({
+        channelType,
+        accountId: nativeAccountId,
+        query,
+      }),
+      (accountId, values) => channelAccountService!.updateSecrets(accountId, values),
+    );
+    openClawChannelAdapter = new OpenClawChannelAdapter(backend);
+    channelAdapterRegistry.register(openClawChannelAdapter);
+  }
+
+  await channelAccountService.extendSupportedKernels(account => (
+    channelAdapterRegistry!.list()
+      .filter(adapter => adapter.supportedChannels.includes(account.channelType))
+      .map(adapter => adapter.kernelId)
+  ));
+
+  let admission: ChannelOrchestrator | undefined;
+  channelOwnerCoordinator = new ChannelOwnerCoordinator(
+    mainDataClient,
+    channelAccountService,
+    channelAdapterRegistry,
+    async envelope => {
+      if (!admission) throw new Error('Channel Orchestrator is not ready');
+      await admission.acceptInbound(envelope);
+    },
+  );
+  channelOrchestrator = new ChannelOrchestrator(
+    mainDataClient,
+    conversationRouter,
+    channelOwnerCoordinator,
+  );
+  admission = channelOrchestrator;
+  channelBindingService = new ChannelBindingService(mainDataClient, channelOwnerCoordinator);
+}
+
+async function stopChannelRuntime(): Promise<void> {
+  channelOrchestrator?.stop();
+  await channelOwnerCoordinator?.stop().catch(error => {
+    logger.warn('Channel owner shutdown failed', error);
+  });
+  await Promise.allSettled([
+    relayChannelAdapter?.stop(),
+    openClawChannelAdapter?.stop(),
+  ]);
+  await channelHandoffServer?.stop().catch(error => {
+    logger.warn('Channel handoff shutdown failed', error);
+  });
+  clearOpenClawChannelHandoffEndpoint();
 }
 
 /**
@@ -301,10 +714,144 @@ function createMainWindow(): BrowserWindow {
 async function initialize(): Promise<void> {
   // Initialize logger first
   logger.init();
+  kernelSupervisorRegistry.configureLogRoot(join(app.getPath('userData'), 'logs', 'kernels'));
   logger.info('=== ClawX Application Starting ===');
   logger.debug(
     `Runtime: platform=${process.platform}/${process.arch}, electron=${process.versions.electron}, node=${process.versions.node}, packaged=${app.isPackaged}, pid=${process.pid}, ppid=${process.ppid}`
   );
+
+  const dataRoot = join(app.getPath('userData'), 'state');
+  const databasePath = join(dataRoot, 'clawx.sqlite');
+  const recovery = prepareClawXDataStore({
+    databasePath,
+    quarantineRoot: join(dataRoot, 'quarantine'),
+  });
+  if (recovery.state === 'read-only') {
+    throw new Error(`ClawX data store is read-only; runtime dispatch is disabled. ${recovery.diagnostic ?? ''}`.trim());
+  }
+  if (recovery.state === 'quarantined' || recovery.state === 'restored-backup') {
+    logger.warn('ClawX data recovery completed before DataService startup', recovery);
+  } else {
+    logger.info(`ClawX data recovery check: ${recovery.state}`);
+  }
+  const dataEntry = join(__dirname, '../data/utility-process-entry.js');
+  dataServiceHost = new ClawXDataServiceUtilityHost(() => new ElectronDataServiceTransport(
+    dataEntry,
+    databasePath,
+    join(dataRoot, 'blobs'),
+  ));
+  await dataServiceHost.start();
+  mainDataClient = await dataServiceHost.connect({ role: 'main' });
+  const kernelPackageState = new RemoteKernelPackageStateStore(mainDataClient);
+  const kernelDistribution = loadKernelDistributionConfiguration({
+    packaged: app.isPackaged,
+    resourcesPath: process.resourcesPath,
+    projectRoot: process.cwd(),
+  });
+  const kernelHostCompatibility = createKernelHostCompatibility({ hostVersion: app.getVersion() });
+  const kernelPackageManager = kernelDistribution.trustStore
+    ? new KernelPackageManager({
+      root: join(app.getPath('userData'), 'kernels'),
+      state: kernelPackageState,
+      trustStore: kernelDistribution.trustStore,
+      host: kernelHostCompatibility,
+      isVersionInUse: (kernelId, artifactVersion) => (
+        kernelSupervisorRegistry.isVersionInUse(kernelId, artifactVersion)
+      ),
+      isKernelBusy: kernelId => kernelSupervisorRegistry.isKernelBusy(kernelId),
+    })
+    : undefined;
+  if (kernelPackageManager) {
+    await kernelPackageManager.recoverInterruptedOperations();
+  } else if (kernelDistribution.unavailableReason) {
+    logger.warn(kernelDistribution.unavailableReason);
+  }
+  kernelPackageController = new KernelPackageController({
+    ...(kernelPackageManager ? { manager: kernelPackageManager } : {}),
+    ...(kernelDistribution.unavailableReason
+      ? { unavailableReason: kernelDistribution.unavailableReason }
+      : {}),
+    state: kernelPackageState,
+    supervisors: kernelSupervisorRegistry,
+    host: kernelHostCompatibility,
+    channel: kernelDistribution.channel,
+    catalogUrls: kernelDistribution.catalogUrls,
+    mirrorBaseUrls: kernelDistribution.mirrorBaseUrls,
+    onProgress: progress => sendMainWindowEvent(HOST_EVENT_CHANNELS.kernels.packageProgress, progress),
+    onChanged: () => sendMainWindowEvent(HOST_EVENT_CHANNELS.kernels.catalogChanged, undefined),
+    onActivated: async (kernelId) => {
+      // The immutable launch resolver captures an exact verified artifact.
+      // Prevent a stale launch after activation; the next app generation
+      // rebuilds all dependent adapters and projections from the new pointer.
+      kernelLaunchRegistry.unregister(kernelId);
+      if (kernelId === 'openclaw') {
+        clearOpenClawRuntimeLocation();
+        openClawRuntimeLocation = undefined;
+      } else if (kernelId === 'deepseek-harness') {
+        deepSeekHarnessRuntimeLocation = undefined;
+      }
+      return { restartRequired: true };
+    },
+    onUninstalled: async (kernelId) => {
+      kernelLaunchRegistry.unregister(kernelId);
+      if (kernelId === 'openclaw') {
+        clearOpenClawRuntimeLocation();
+        openClawRuntimeLocation = undefined;
+      } else if (kernelId === 'deepseek-harness') {
+        deepSeekHarnessRuntimeLocation = undefined;
+      }
+    },
+    openDirectory: async (kernelId, kind) => {
+      const directory = kind === 'logs'
+        ? join(app.getPath('userData'), 'logs', 'kernels', kernelId)
+        : join(app.getPath('userData'), 'kernel-config', kernelId);
+      mkdirSync(directory, { recursive: true, mode: 0o700 });
+      const failure = await shell.openPath(directory);
+      if (failure) throw new Error(failure);
+    },
+  });
+  const agentWorkspaceRoot = join(app.getPath('userData'), 'workspaces');
+  const defaultAgentWorkspaceUri = (agentId: string): string => {
+    const workspace = join(agentWorkspaceRoot, agentId);
+    mkdirSync(workspace, { recursive: true, mode: 0o700 });
+    return pathToFileURL(workspace).href;
+  };
+  agentService = new CanonicalAgentService(mainDataClient, defaultAgentWorkspaceUri);
+  configureCanonicalProviderStore(mainDataClient);
+  await ensureProviderStoreMigrated();
+  await migrateLegacyProviderSecrets();
+  conversationRouter = new ConversationRouter({
+    supervisors: kernelSupervisorRegistry,
+    mainData: mainDataClient,
+    connectKernelData: async (kernelId, generation) => {
+      if (!dataServiceHost) throw new Error('ClawX DataService is not available');
+      return dataServiceHost.connect({ role: 'kernel', kernelId, generation });
+    },
+    resolveProviderDefault: kernelId => (
+      mainDataClient!.call<KernelProviderDefault | undefined>('getProviderDefault', kernelId)
+    ),
+    resolveAgentSnapshot: input => agentService!.resolveRunSnapshot(input),
+  });
+  conversationRouter.on('event', (event) => {
+    sendMainWindowEvent(HOST_EVENT_CHANNELS.chat.kernelEvent, event);
+  });
+  conversationRouter.on('started', (event) => {
+    sendMainWindowEvent(HOST_EVENT_CHANNELS.conversations.catalogChanged, {
+      conversationId: event.conversationId,
+      kernelId: event.kernelId,
+      hasActiveRun: true,
+      updatedAt: event.updatedAt,
+    });
+  });
+  conversationRouter.on('terminal', (event) => {
+    sendMainWindowEvent(HOST_EVENT_CHANNELS.conversations.catalogChanged, {
+      conversationId: event.conversationId,
+      kernelId: event.kernelId,
+      hasActiveRun: false,
+      updatedAt: event.updatedAt,
+    });
+  });
+  logger.info('ClawX DataService utility process is ready');
 
   webBrowserSession = configureWebBrowserSession({
     registry: webBrowserGuestRegistry,
@@ -330,6 +877,87 @@ async function initialize(): Promise<void> {
 
   // Create the main window
   const window = createMainWindow();
+
+  // Optional OpenClaw is registered only after DataService and the window exist.
+  // In packaged builds absence is the normal first-launch state.
+  await registerManagedOpenClawRuntime(window);
+  await registerManagedDeepSeekHarnessRuntime();
+  const dshSkillRoot = join(app.getPath('userData'), 'kernel-config', 'deepseek-harness', 'skills');
+  await assertIndependentSkillRoots(getOpenClawSkillsDir(), dshSkillRoot);
+  skillPackageStore = new CanonicalSkillPackageStore(join(dataRoot, 'skill-packages'));
+  skillService = new CanonicalSkillService(mainDataClient, skillPackageStore);
+  await ensureCanonicalSkillCatalog({ service: skillService, scanOpenClawSkills: listLocalSkills });
+  skillProjectionReconciler = new SkillProjectionReconciler(mainDataClient, skillPackageStore, [
+    createOpenClawSkillProjectionAdapter(kernelSupervisorRegistry, skillPackageStore),
+    createSupervisorSkillProjectionAdapter(kernelSupervisorRegistry, 'deepseek-harness'),
+  ]);
+  await skillProjectionReconciler.reconcileAll();
+  await skillProjectionReconciler.reconcileDeleted();
+  await ensureCanonicalAgentCatalog({
+    data: mainDataClient,
+    defaultWorkspaceUri: defaultAgentWorkspaceUri('main'),
+    openClawAvailable: await kernelSupervisorRegistry.isLaunchAvailable('openclaw'),
+    loadOpenClawSnapshot: async () => {
+      const snapshot = await listAgentsSnapshot();
+      return {
+        agents: snapshot.agents.map(agent => ({
+          id: agent.id,
+          name: agent.name,
+          workspace: agent.workspace,
+          modelRef: agent.modelRef,
+        })),
+        defaultAgentId: snapshot.defaultAgentId,
+      };
+    },
+  });
+  agentProjectionReconciler = new AgentProjectionReconciler(mainDataClient, [
+    createOpenClawAgentProjectionAdapter(kernelSupervisorRegistry),
+    createSupervisorAgentProjectionAdapter(kernelSupervisorRegistry, 'deepseek-harness'),
+  ]);
+  await agentProjectionReconciler.reconcileAll();
+  await agentProjectionReconciler.reconcileDeleted();
+  const agentDefaults = await mainDataClient.call<KernelAgentDefault[]>('listAgentDefaults');
+  await Promise.all(agentDefaults.map(entry => agentProjectionReconciler!.reconcileDefault(entry)));
+  await initializeChannelRuntime();
+  clawXScheduler = new ClawXScheduler(
+    mainDataClient,
+    conversationRouter,
+    channelOrchestrator,
+  );
+  providerProjectionReconciler = new ProviderProjectionReconciler(mainDataClient, [
+    createOpenClawProviderProjectionAdapter(kernelSupervisorRegistry),
+    createSupervisorProviderAdapter(kernelSupervisorRegistry, 'deepseek-harness'),
+  ]);
+  kernelSupervisorRegistry.on('status', (snapshot: KernelRuntimeSnapshot) => {
+    sendMainWindowEvent(HOST_EVENT_CHANNELS.kernels.statusChanged, snapshot);
+    if (snapshot.state !== 'ready' || !mainDataClient) return;
+    if (providerProjectionReconciler) {
+      void providerProjectionReconciler.reconcileAll(snapshot.kernelId).then(async () => {
+        const defaults = await mainDataClient!.call<KernelProviderDefault[]>('listProviderDefaults');
+        await Promise.all(defaults
+          .filter(entry => entry.kernelId === snapshot.kernelId)
+          .map(entry => providerProjectionReconciler!.reconcileDefault(entry)));
+      }).catch(error => logger.warn(`Provider reconciliation failed for ${snapshot.kernelId}`, error));
+    }
+    if (agentProjectionReconciler) {
+      void agentProjectionReconciler.reconcileAll(snapshot.kernelId).then(async () => {
+        await agentProjectionReconciler!.reconcileDeleted(snapshot.kernelId);
+        const defaults = await mainDataClient!.call<KernelAgentDefault[]>('listAgentDefaults');
+        await Promise.all(defaults
+          .filter(entry => entry.kernelId === snapshot.kernelId)
+          .map(entry => agentProjectionReconciler!.reconcileDefault(entry)));
+      }).catch(error => logger.warn(`Agent reconciliation failed for ${snapshot.kernelId}`, error));
+    }
+    if (skillProjectionReconciler) {
+      void (async () => {
+        if (snapshot.kernelId === 'openclaw' && skillService) {
+          await ensureCanonicalSkillCatalog({ service: skillService, scanOpenClawSkills: listLocalSkills });
+        }
+        await skillProjectionReconciler!.reconcileAll(snapshot.kernelId);
+        await skillProjectionReconciler!.reconcileDeleted(snapshot.kernelId);
+      })().catch(error => logger.warn(`Skill reconciliation failed for ${snapshot.kernelId}`, error));
+    }
+  });
 
   // Override security headers ONLY for the OpenClaw Gateway Control UI.
   // The URL filter ensures this callback only fires for gateway requests,
@@ -362,6 +990,21 @@ async function initialize(): Promise<void> {
     hostApiRegistry,
     webBrowserSession,
     webBrowserGuestRegistry,
+    kernelSupervisorRegistry,
+    openClawAcp,
+    mainDataClient,
+    conversationRouter,
+    providerProjectionReconciler,
+    agentService,
+    agentProjectionReconciler,
+    skillService,
+    skillProjectionReconciler,
+    channelAccountService,
+    channelBindingService,
+    channelOwnerCoordinator,
+    channelAdapterRegistry,
+    clawXScheduler,
+    kernelPackageController,
   );
 
   loadMainWindow(window);
@@ -373,7 +1016,19 @@ async function initialize(): Promise<void> {
 
   // Initialize extension system
   await extensionRegistry.initialize({
-    gatewayManager,
+    kernels: new OpenClawLegacyExtensionAdapter({
+      gateway: gatewayManager,
+      list: async () => kernelSupervisorRegistry.snapshots(),
+      getDriver: (kernelId) => activeKernelDrivers.get(kernelId),
+      diagnostics: (kernelId) => ({
+        ...kernelSupervisorRegistry.diagnostics(kernelId),
+        logDirectory: kernelSupervisorRegistry.logDirectory(kernelId),
+      }),
+      getInstallation: async (kernelId) => mainDataClient?.call('getKernelInstallation', kernelId),
+      getRuntimeVersion: async (kernelId, artifactVersion) => (
+        mainDataClient?.call('getKernelRuntimeVersion', kernelId, artifactVersion)
+      ),
+    }).createKernelApi(),
     getMainWindow: () => mainWindow,
     hostApi: {
       register: (extensionId, contributions) => (
@@ -393,55 +1048,6 @@ async function initialize(): Promise<void> {
 
   // Note: Auto-check for updates is driven by the renderer (update store init)
   // so it respects the user's "Auto-check for updates" setting.
-
-  // Seed a stable default IDENTITY.md before the Gateway initializes the
-  // workspace so ClawX desktop sessions skip OpenClaw's chat-first bootstrap.
-  if (!isE2EMode) {
-    void ensureClawXDefaultIdentity().catch((error) => {
-      logger.warn('Failed to seed default ClawX identity:', error);
-    });
-  }
-
-  // Repair any bootstrap files that only contain ClawX markers (no OpenClaw
-  // template content). This fixes a race condition where ensureClawXContext()
-  // previously created the file before the gateway could seed the full template.
-  if (!isE2EMode) {
-    void repairClawXOnlyBootstrapFiles().catch((error) => {
-      logger.warn('Failed to repair bootstrap files:', error);
-    });
-  }
-
-  // Pre-deploy built-in skills (feishu-doc, feishu-drive, feishu-perm, feishu-wiki)
-  // to ~/.openclaw/skills/ so they are immediately available without manual install.
-  if (!isE2EMode) {
-    void ensureBuiltinSkillsInstalled().catch((error) => {
-      logger.warn('Failed to install built-in skills:', error);
-    });
-  }
-
-  // Keep community builds aligned with Clawx-biz by physically trimming
-  // bundled OpenClaw consumer skills on startup (dev + packaged), keeping only
-  // `skill-creator`. This also prunes stale openclaw.json entries for trimmed
-  // bundled skills so we do not keep `enabled: false` config for skills that no
-  // longer exist.
-  if (!isE2EMode) {
-    void trimBundledOpenClawSkillsAndConfigs().then(({ removed, removedConfigs, kept }) => {
-      if (removed > 0 || removedConfigs > 0) {
-        logger.info(
-          `Trimmed bundled OpenClaw skills: removed ${removed}, pruned configs ${removedConfigs}, kept ${kept.join(', ')}`,
-        );
-      }
-    });
-  }
-
-  // Pre-deploy bundled third-party skills from resources/preinstalled-skills.
-  // This installs full skill directories (not only SKILL.md) in an idempotent,
-  // non-destructive way and never blocks startup.
-  if (!isE2EMode) {
-    void ensurePreinstalledSkillsInstalled().catch((error) => {
-      logger.warn('Failed to install preinstalled skills:', error);
-    });
-  }
 
   // Plugin installation is now configuration-driven:
   // - When a channel is added via UI: ensureXxxPluginInstalled() in IPC handlers
@@ -485,6 +1091,7 @@ async function initialize(): Promise<void> {
 
   gatewayManager.on('channel:status', (data) => {
     sendMainWindowEvent('gateway:channel-status', data);
+    sendMainWindowEvent('channels:status-changed', data);
   });
 
   gatewayManager.on('exit', (code) => {
@@ -527,44 +1134,26 @@ async function initialize(): Promise<void> {
     sendMainWindowEvent('channel:whatsapp-error', error);
   });
 
-  // Start Gateway automatically (this seeds missing bootstrap files with full templates)
-  const gatewayAutoStart = await getSetting('gatewayAutoStart');
-  if (!isE2EMode && gatewayAutoStart) {
-    try {
-      await syncAllProviderAuthToRuntime();
-      logger.debug('Auto-starting Gateway...');
-      await gatewayManager.start();
-      logger.info('Gateway auto-start succeeded');
-    } catch (error) {
-      logger.error('Gateway auto-start failed:', error);
-      mainWindow?.webContents.send('gateway:error', String(error));
+  // Start each installed runtime according to its independent policy. The
+  // legacy Gateway participates through the same coordinator until M6 wraps it
+  // as OpenClawKernelDriver.
+  if (!isE2EMode) {
+    const policies = await getKernelAutoStartPolicies();
+    const failures = await runtimeLifecycleCoordinator.autoStart(policies);
+    for (const failure of failures) {
+      logger.error(`Runtime auto-start failed (${failure.id}): ${failure.error}`);
+      mainWindow?.webContents.send('gateway:error', failure.error);
     }
+    const channelResults = await channelOwnerCoordinator?.reconcile() ?? [];
+    for (const result of channelResults) {
+      if (!result.ok) logger.warn(`Channel owner activation failed (${result.accountId}/${result.kernelId}): ${result.error}`);
+    }
+    await channelOrchestrator?.retryPending();
   } else if (isE2EMode) {
-    logger.info('Gateway auto-start skipped in E2E mode');
-  } else {
-    logger.info('Gateway auto-start disabled in settings');
+    logger.info('Kernel auto-start skipped in E2E mode');
   }
+  await clawXScheduler.start();
 
-  // Merge ClawX context snippets into the workspace bootstrap files.
-  // The gateway seeds workspace files asynchronously after its HTTP server
-  // is ready, so ensureClawXContext will retry until the target files appear.
-  if (!isE2EMode) {
-    void ensureClawXContext().catch((error) => {
-      logger.warn('Failed to merge ClawX context into workspace:', error);
-    });
-  }
-
-  // Auto-install openclaw CLI and shell completions (non-blocking).
-  if (!isE2EMode) {
-    void autoInstallCliIfNeeded((installedPath) => {
-      mainWindow?.webContents.send('openclaw:cli-installed', installedPath);
-    }).then(() => {
-      generateCompletionCache();
-      installCompletionToProfile();
-    }).catch((error) => {
-      logger.warn('CLI auto-install failed:', error);
-    });
-  }
 }
 
 if (gotTheLock) {
@@ -591,6 +1180,12 @@ if (gotTheLock) {
   gatewayManager = new GatewayManager();
   registerOpenClawConfigCoordinator(gatewayManager);
   clawHubService = new ClawHubService();
+  runtimeLifecycleCoordinator.register({
+    id: 'managed-kernel-supervisors',
+    autoStart: async (policies) => kernelSupervisorRegistry.autoStartAll(policies),
+    stop: async (deadlineMs) => kernelSupervisorRegistry.stopAllForQuit(deadlineMs),
+    forceTerminate: async () => kernelSupervisorRegistry.forceTerminateAll(),
+  });
 
   // Register builtin extensions and load manifest
   registerAllBuiltinExtensions();
@@ -659,22 +1254,30 @@ if (gotTheLock) {
 
     void extensionRegistry.teardownAll();
 
-    const stopPromise = gatewayManager.stop().catch((err) => {
-      logger.warn('gatewayManager.stop() error during quit:', err);
-    });
+    const stopPromise = (async () => {
+      await clawXScheduler?.stop().catch((err) => {
+        logger.warn('ClawXScheduler shutdown error during quit:', err);
+      });
+      await stopChannelRuntime();
+      await runtimeLifecycleCoordinator.stopAllForQuit(4500).catch((err) => {
+        logger.warn('Runtime lifecycle shutdown error during quit:', err);
+      });
+      await conversationRouter?.close().catch((err) => {
+        logger.warn('ConversationRouter shutdown error during quit:', err);
+      });
+      await dataServiceHost?.close().catch((err) => {
+        logger.warn('DataService shutdown error during quit:', err);
+      });
+    })();
     const timeoutPromise = new Promise<'timeout'>((resolve) => {
       setTimeout(() => resolve('timeout'), 5000);
     });
 
     void Promise.race([stopPromise.then(() => 'stopped' as const), timeoutPromise]).then((result) => {
       if (result === 'timeout') {
-        logger.warn('Gateway shutdown timed out during app quit; proceeding with forced quit');
-        void gatewayManager.forceTerminateOwnedProcessForQuit().then((terminated) => {
-          if (terminated) {
-            logger.warn('Forced gateway process termination completed after quit timeout');
-          }
-        }).catch((err) => {
-          logger.warn('Forced gateway termination failed after quit timeout:', err);
+        logger.warn('Runtime shutdown timed out during app quit; proceeding with forced quit');
+        void runtimeLifecycleCoordinator.forceTerminateAll().catch((err) => {
+          logger.warn('Forced runtime termination failed after quit timeout:', err);
         });
       }
       markQuitCleanupCompleted(quitLifecycleState);
@@ -685,12 +1288,17 @@ if (gotTheLock) {
   // Best-effort Gateway cleanup on unexpected crashes.
   // These handlers attempt to terminate the Gateway child process within a
   // short timeout before force-exiting, preventing orphaned processes.
-  const emergencyGatewayCleanup = (reason: string, error: unknown): void => {
+  const emergencyRuntimeCleanup = (reason: string, error: unknown): void => {
     logger.error(`${reason}:`, error);
     try {
-      void gatewayManager?.stop().catch(() => { /* ignore */ });
+      channelOrchestrator?.stop();
+      void clawXScheduler?.stop().catch(() => undefined);
+      void channelOwnerCoordinator?.stop().catch(() => undefined);
+      void channelHandoffServer?.stop().catch(() => undefined);
+      void runtimeLifecycleCoordinator.forceTerminateAll().catch(() => { /* ignore */ });
+      void dataServiceHost?.close().catch(() => { /* ignore */ });
     } catch {
-      // ignore — stop() may not be callable if state is corrupted
+      // ignore — cleanup may not be callable if state is corrupted
     }
     // Give Gateway stop a brief window, then force-exit.
     setTimeout(() => {
@@ -699,13 +1307,27 @@ if (gotTheLock) {
   };
 
   process.on('uncaughtException', (error) => {
-    emergencyGatewayCleanup('Uncaught exception in main process', error);
+    emergencyRuntimeCleanup('Uncaught exception in main process', error);
   });
 
   process.on('unhandledRejection', (reason) => {
-    emergencyGatewayCleanup('Unhandled promise rejection in main process', reason);
+    emergencyRuntimeCleanup('Unhandled promise rejection in main process', reason);
   });
 }
 
 // Export for testing
-export { mainWindow, gatewayManager };
+export {
+  mainWindow,
+  gatewayManager,
+  dataServiceHost,
+  mainDataClient,
+  conversationRouter,
+  clawXScheduler,
+  kernelLaunchRegistry,
+  kernelSupervisorRegistry,
+  kernelPackageController,
+  runtimeLifecycleCoordinator,
+  providerProjectionReconciler,
+  agentService,
+  agentProjectionReconciler,
+};

@@ -182,8 +182,60 @@ function bundleOnePlugin({ npmName, pluginId }) {
   //    their JS output than what openclaw.plugin.json declares.  The Gateway
   //    validates that these match, so we fix it post-copy.
   patchPluginId(outputDir, pluginId);
+  if (pluginId === 'qqbot') removeUnlicensedQQConnector(outputDir);
+  pruneNestedPackageTests(outputDir);
 
   echo`   ✅ ${pluginId}: copied ${copiedCount} deps (skipped dupes: ${skippedDupes})`;
+}
+
+function pruneNestedPackageTests(pluginRoot) {
+  const pending = [path.join(pluginRoot, 'node_modules')];
+  let removed = 0;
+  while (pending.length > 0) {
+    const directory = pending.pop();
+    if (!fs.existsSync(directory)) continue;
+    for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue;
+      const child = path.join(directory, entry.name);
+      if (/^(?:test|tests|__tests__|coverage)$/i.test(entry.name)) {
+        fs.rmSync(child, { recursive: true, force: true });
+        removed += 1;
+      } else {
+        pending.push(child);
+      }
+    }
+  }
+  if (removed > 0) echo`   🧹 Removed ${removed} nested dependency test tree(s)`;
+}
+
+function removeUnlicensedQQConnector(pluginRoot) {
+  const connector = path.join(pluginRoot, 'node_modules', '@tencent-connect', 'qqbot-connector');
+  if (fs.existsSync(connector)) fs.rmSync(connector, { recursive: true, force: true });
+
+  const packagePath = path.join(pluginRoot, 'package.json');
+  const metadata = JSON.parse(fs.readFileSync(packagePath, 'utf8'));
+  if (metadata.dependencies) delete metadata.dependencies['@tencent-connect/qqbot-connector'];
+  if (Array.isArray(metadata.bundledDependencies)) {
+    metadata.bundledDependencies = metadata.bundledDependencies
+      .filter(name => name !== '@tencent-connect/qqbot-connector');
+  }
+  fs.writeFileSync(packagePath, `${JSON.stringify(metadata, null, 2)}\n`, 'utf8');
+
+  const shrinkwrapPath = path.join(pluginRoot, 'npm-shrinkwrap.json');
+  if (fs.existsSync(shrinkwrapPath)) {
+    const shrinkwrap = JSON.parse(fs.readFileSync(shrinkwrapPath, 'utf8'));
+    if (shrinkwrap.packages?.['']) {
+      delete shrinkwrap.packages[''].dependencies?.['@tencent-connect/qqbot-connector'];
+      if (Array.isArray(shrinkwrap.packages[''].bundledDependencies)) {
+        shrinkwrap.packages[''].bundledDependencies = shrinkwrap.packages[''].bundledDependencies
+          .filter(name => name !== '@tencent-connect/qqbot-connector');
+      }
+    }
+    delete shrinkwrap.packages?.['node_modules/@tencent-connect/qqbot-connector'];
+    delete shrinkwrap.dependencies?.['@tencent-connect/qqbot-connector'];
+    fs.writeFileSync(shrinkwrapPath, `${JSON.stringify(shrinkwrap, null, 2)}\n`, 'utf8');
+  }
+  echo`   🔒 Removed UNLICENSED QQ QR connector; manual AppID/AppSecret setup remains available`;
 }
 
 /**

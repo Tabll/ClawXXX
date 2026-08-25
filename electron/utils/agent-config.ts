@@ -1,6 +1,7 @@
-import { copyFile, lstat, mkdir, readdir, rm } from 'fs/promises';
+import { copyFile, lstat, mkdir, readFile, readdir, rm, writeFile } from 'fs/promises';
 import { join, normalize } from 'path';
 import { isDeepStrictEqual } from 'node:util';
+import { fileURLToPath } from 'node:url';
 import { mutateOpenClawConfig } from '../gateway/config-delivery';
 import { deleteAgentChannelAccounts, listConfiguredChannelsFromConfig, readOpenClawConfig } from './channel-config';
 import type { OpenClawConfig } from './channel-config';
@@ -12,7 +13,7 @@ import { ensureClawXIdentityFile } from './openclaw-workspace';
 const MAIN_AGENT_ID = 'main';
 const MAIN_AGENT_NAME = 'Main Agent';
 const DEFAULT_ACCOUNT_ID = 'default';
-const DEFAULT_WORKSPACE_PATH = '~/.openclaw/workspace';
+const DEFAULT_WORKSPACE_PATH = join(getOpenClawConfigDir(), 'workspace');
 const AGENT_BOOTSTRAP_FILES = [
   'AGENTS.md',
   'SOUL.md',
@@ -175,7 +176,11 @@ function getDefaultWorkspacePath(config: AgentConfigDocument): string {
 }
 
 function getDefaultAgentDirPath(agentId: string): string {
-  return `~/.openclaw/agents/${agentId}/agent`;
+  return join(getOpenClawConfigDir(), 'agents', agentId, 'agent');
+}
+
+function getDefaultAgentWorkspacePath(agentId: string): string {
+  return join(getOpenClawConfigDir(), `workspace-${agentId}`);
 }
 
 function createImplicitMainEntry(config: AgentConfigDocument): AgentListEntry {
@@ -357,7 +362,7 @@ function trimTrailingSeparators(path: string): string {
 function getManagedWorkspaceDirectory(agent: AgentListEntry): string | null {
   if (agent.id === MAIN_AGENT_ID) return null;
 
-  const configuredWorkspace = expandPath(agent.workspace || `~/.openclaw/workspace-${agent.id}`);
+  const configuredWorkspace = expandPath(agent.workspace || getDefaultAgentWorkspacePath(agent.id));
   const managedWorkspace = join(getOpenClawConfigDir(), `workspace-${agent.id}`);
   const normalizedConfigured = trimTrailingSeparators(normalize(configuredWorkspace));
   const normalizedManaged = trimTrailingSeparators(normalize(managedWorkspace));
@@ -416,7 +421,7 @@ async function provisionAgentFilesystem(
   const { entries } = normalizeAgentsConfig(config);
   const mainEntry = entries.find((entry) => entry.id === MAIN_AGENT_ID) ?? createImplicitMainEntry(config);
   const sourceWorkspace = expandPath(mainEntry.workspace || getDefaultWorkspacePath(config));
-  const targetWorkspace = expandPath(agent.workspace || `~/.openclaw/workspace-${agent.id}`);
+  const targetWorkspace = expandPath(agent.workspace || getDefaultAgentWorkspacePath(agent.id));
   const sourceAgentDir = expandPath(mainEntry.agentDir || getDefaultAgentDirPath(MAIN_AGENT_ID));
   const targetAgentDir = expandPath(agent.agentDir || getDefaultAgentDirPath(agent.id));
   const targetSessionsDir = join(getOpenClawConfigDir(), 'agents', agent.id, 'sessions');
@@ -525,7 +530,7 @@ async function buildSnapshotFromConfig(config: AgentConfigDocument, preloadedCha
       modelRef: explicitModelRef || defaultModelRef || null,
       overrideModelRef: explicitModelRef,
       inheritedModel,
-      workspace: entry.workspace || (entry.id === MAIN_AGENT_ID ? getDefaultWorkspacePath(config) : `~/.openclaw/workspace-${entry.id}`),
+      workspace: entry.workspace || (entry.id === MAIN_AGENT_ID ? getDefaultWorkspacePath(config) : getDefaultAgentWorkspacePath(entry.id)),
       agentDir: entry.agentDir || getDefaultAgentDirPath(entry.id),
       mainSessionKey: buildAgentMainSessionKey(config, entry.id),
       channelTypes: configuredChannels
@@ -622,7 +627,7 @@ export async function createAgent(
     const newAgent: AgentListEntry = {
       id: nextId,
       name: normalizedName,
-      workspace: `~/.openclaw/workspace-${nextId}`,
+      workspace: getDefaultAgentWorkspacePath(nextId),
       agentDir: getDefaultAgentDirPath(nextId),
     };
 
@@ -970,4 +975,110 @@ export async function ensureScopedChannelBinding(channelType: string, accountId?
     }
   });
   logger.info('Ensured scoped channel binding', { channelType, accountId: normalizedAccountId });
+}
+
+const CLAWX_PERSONA_BEGIN = '<!-- CLAWX:AGENT-PERSONA:BEGIN -->';
+const CLAWX_PERSONA_END = '<!-- CLAWX:AGENT-PERSONA:END -->';
+
+function assertProjectionPersonaSafe(persona: string | undefined): void {
+  if (persona?.includes(CLAWX_PERSONA_BEGIN) || persona?.includes(CLAWX_PERSONA_END)) {
+    throw new Error('Agent persona contains a reserved ClawX projection marker');
+  }
+}
+
+export type OpenClawAgentProjectionInput = {
+  id: string;
+  displayName: string;
+  workspaceUri: string;
+  model?: { providerId: string; modelId: string };
+  persona?: string;
+};
+
+function projectionWorkspacePath(workspaceUri: string): string {
+  const parsed = new URL(workspaceUri);
+  if (parsed.protocol !== 'file:') throw new Error('OpenClaw Agent workspaces must use file:// URIs');
+  return fileURLToPath(parsed);
+}
+
+async function projectManagedPersona(workspace: string, persona: string | undefined): Promise<void> {
+  assertProjectionPersonaSafe(persona);
+  const path = join(workspace, 'AGENTS.md');
+  const existing = await readFile(path, 'utf8').catch((error: NodeJS.ErrnoException) => {
+    if (error.code === 'ENOENT') return '';
+    throw error;
+  });
+  const escapedBegin = CLAWX_PERSONA_BEGIN.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const escapedEnd = CLAWX_PERSONA_END.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const withoutManaged = existing
+    .replace(new RegExp(`(?:\\r?\\n)?${escapedBegin}[\\s\\S]*?${escapedEnd}(?:\\r?\\n)?`, 'g'), '\n')
+    .trimEnd();
+  const normalized = persona?.trim();
+  const next = normalized
+    ? `${withoutManaged ? `${withoutManaged}\n\n` : ''}${CLAWX_PERSONA_BEGIN}\n${normalized}\n${CLAWX_PERSONA_END}\n`
+    : `${withoutManaged}${withoutManaged ? '\n' : ''}`;
+  if (next === existing || (!existing && !normalized)) return;
+  await ensureDir(workspace);
+  await writeFile(path, next, { encoding: 'utf8', mode: 0o600 });
+}
+
+/** Idempotently projects one canonical Agent into OpenClaw config/workspace. */
+export async function upsertOpenClawAgentProjection(
+  input: OpenClawAgentProjectionInput,
+  nativeId = input.id,
+): Promise<{ nativeId: string }> {
+  assertProjectionPersonaSafe(input.persona);
+  const workspace = projectionWorkspacePath(input.workspaceUri);
+  let projected: AgentListEntry | undefined;
+  let provisioningConfig: AgentConfigDocument | undefined;
+  await mutateOpenClawConfig(async configSnapshot => {
+    const config = configSnapshot as AgentConfigDocument;
+    const { agentsConfig, entries, syntheticMain } = normalizeAgentsConfig(config);
+    const nextEntries = syntheticMain
+      ? [createImplicitMainEntry(config), ...entries.filter((_, index) => index > 0)]
+      : [...entries];
+    const index = nextEntries.findIndex(entry => entry.id === nativeId);
+    const existing = index >= 0 ? nextEntries[index]! : undefined;
+    const next: AgentListEntry = {
+      ...(existing ?? {}),
+      id: nativeId,
+      name: input.displayName,
+      workspace,
+      agentDir: existing?.agentDir ?? getDefaultAgentDirPath(nativeId),
+    };
+    if (input.model) {
+      const primary = `${input.model.providerId}/${input.model.modelId}`;
+      next.model = typeof existing?.model === 'object'
+        ? { ...existing.model, primary }
+        : { primary };
+    } else {
+      delete next.model;
+    }
+    if (index >= 0) nextEntries[index] = next;
+    else nextEntries.push(next);
+    config.agents = { ...agentsConfig, list: nextEntries };
+    projected = next;
+    provisioningConfig = structuredClone(config);
+  });
+  await provisionAgentFilesystem(provisioningConfig!, projected!);
+  await projectManagedPersona(workspace, input.persona);
+  return { nativeId };
+}
+
+export async function removeOpenClawAgentProjection(nativeId: string): Promise<void> {
+  await deleteAgentConfig(nativeId);
+}
+
+export async function setOpenClawDefaultAgentProjection(nativeId: string): Promise<void> {
+  await mutateOpenClawConfig(configSnapshot => {
+    const config = configSnapshot as AgentConfigDocument;
+    const { agentsConfig, entries } = normalizeAgentsConfig(config);
+    if (!entries.some(entry => entry.id === nativeId)) throw new Error(`Agent "${nativeId}" not found`);
+    config.agents = {
+      ...agentsConfig,
+      list: entries.map(entry => ({
+        ...entry,
+        ...(entry.id === nativeId ? { default: true } : { default: false }),
+      })),
+    };
+  });
 }

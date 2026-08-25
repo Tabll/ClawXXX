@@ -72,8 +72,9 @@ describe('cron store fetchJobs dedupe', () => {
     expect(useCronStore.getState().jobs.map((job) => job.id)).toEqual(['recurring-job']);
   });
 
-  it('preserves a just-created cached job the Gateway has not surfaced yet', async () => {
-    // Bridges the brief race where an optimistic create is not yet in cron.list.
+  it('replaces optimistic cached rows with the canonical SQLite snapshot', async () => {
+    // The Main-owned SQLite list is authoritative. Runtime/Gateway visibility
+    // and renderer cache age must never manufacture a second source of truth.
     const freshJob = {
       id: 'fresh-job',
       name: 'fresh',
@@ -86,6 +87,6 @@ describe('cron store fetchJobs dedupe', () => {
 
     await useCronStore.getState().fetchJobs();
 
-    expect(useCronStore.getState().jobs.map((job) => job.id)).toEqual(['recurring-job', 'fresh-job']);
+    expect(useCronStore.getState().jobs.map((job) => job.id)).toEqual(['recurring-job']);
   });
 });

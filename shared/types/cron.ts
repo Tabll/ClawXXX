@@ -4,6 +4,8 @@
  */
 
 import type { ChannelType } from './channel';
+import type { KernelId } from '../kernels/contracts';
+import type { CronMisfirePolicy, CronOverlapPolicy } from '../domains/cron';
 
 export type CronJobDeliveryMode = 'none' | 'announce';
 
@@ -59,6 +61,12 @@ export interface CronJob {
   lastRun?: CronJobLastRun;
   nextRun?: string;
   agentId: string;
+  /** Execution runtime is fixed for each scheduled turn. */
+  kernelId: KernelId;
+  conversationPolicy: 'reuse' | 'new-per-run' | 'new-per-day';
+  misfirePolicy: CronMisfirePolicy;
+  overlapPolicy: CronOverlapPolicy;
+  timeoutMs: number;
 }
 
 /**
@@ -75,6 +83,11 @@ export interface CronJobCreateInput {
   delivery?: CronJobDelivery;
   enabled?: boolean;
   agentId?: string;
+  kernelId?: KernelId;
+  conversationPolicy?: 'reuse' | 'new-per-run' | 'new-per-day';
+  misfirePolicy?: CronMisfirePolicy;
+  overlapPolicy?: CronOverlapPolicy;
+  timeoutMs?: number;
 }
 
 /**
@@ -87,6 +100,11 @@ export interface CronJobUpdateInput {
   delivery?: CronJobDelivery;
   enabled?: boolean;
   agentId?: string;
+  kernelId?: KernelId;
+  conversationPolicy?: 'reuse' | 'new-per-run' | 'new-per-day';
+  misfirePolicy?: CronMisfirePolicy;
+  overlapPolicy?: CronOverlapPolicy;
+  timeoutMs?: number;
 }
 
 /**

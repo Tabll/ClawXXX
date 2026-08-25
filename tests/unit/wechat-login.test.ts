@@ -90,14 +90,29 @@ describe('wechat login utility', () => {
     expect(normalizedAccountId).toBe('bot-im-bot');
 
     const accountFile = JSON.parse(
-      await readFile(join(testHome, '.openclaw', 'openclaw-weixin', 'accounts', 'bot-im-bot.json'), 'utf-8'),
+      await readFile(join(
+        testHome,
+        '.clawx',
+        'kernel-config',
+        'openclaw',
+        'openclaw-weixin',
+        'accounts',
+        'bot-im-bot.json',
+      ), 'utf-8'),
     ) as { token?: string; baseUrl?: string; userId?: string };
     expect(accountFile.token).toBe('secret-token');
     expect(accountFile.baseUrl).toBe('https://ilinkai.weixin.qq.com');
     expect(accountFile.userId).toBe('user-123');
 
     const accountIndex = JSON.parse(
-      await readFile(join(testHome, '.openclaw', 'openclaw-weixin', 'accounts.json'), 'utf-8'),
+      await readFile(join(
+        testHome,
+        '.clawx',
+        'kernel-config',
+        'openclaw',
+        'openclaw-weixin',
+        'accounts.json',
+      ), 'utf-8'),
     ) as string[];
     expect(accountIndex).toEqual(['bot-im-bot']);
   });

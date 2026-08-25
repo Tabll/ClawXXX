@@ -4,7 +4,6 @@ import { E2E_EXCLUSIVE_TAG } from './parallel-policy';
 
 const SESSION_KEY = 'agent:main:main';
 const MAIN_WORKSPACE = '/workspace';
-const DEFAULT_WORKSPACE = '~/.openclaw/workspace';
 
 type AcpSessionUpdate = Record<string, unknown> & { sessionUpdate: string };
 
@@ -20,42 +19,89 @@ function stableStringify(value: unknown): string {
 async function emitAcpSessionUpdates(
   app: ElectronApplication,
   updates: AcpSessionUpdate[],
-  historical = false,
 ) {
   await app.evaluate(
     async ({ app: _app }, payload) => {
       const { BrowserWindow } = process.mainModule!.require('electron') as typeof import('electron');
+      const pending = globalThis as typeof globalThis & {
+        streamdownRun?: {
+          conversationId: string;
+          turnId: string;
+          runId: string;
+          kernelId: string;
+          generation: number;
+          eventSeq: number;
+        };
+      };
+      const run = pending.streamdownRun;
+      if (!run) throw new Error('Streamdown run identity is not available');
       for (const update of payload.updates) {
+        const content = update.content;
+        const text = Array.isArray(content)
+          ? content.map(part => (
+              part && typeof part === 'object' && typeof part.text === 'string' ? part.text : ''
+            )).join('')
+          : content && typeof content === 'object' && typeof content.text === 'string'
+            ? content.text
+            : '';
+        const kind = update.sessionUpdate === 'agent_message_chunk'
+          ? 'assistant.delta'
+          : update.sessionUpdate === 'agent_message'
+            ? 'assistant.final'
+            : null;
+        if (!kind) throw new Error(`Unsupported Streamdown fixture update: ${update.sessionUpdate}`);
+        run.eventSeq += 1;
         for (const window of BrowserWindow.getAllWindows()) {
-          window.webContents.send('chat:acp-session-update', {
-            sessionKey: payload.sessionKey,
-            generation: 1,
-            ...(payload.historical ? { historical: true } : {}),
-            notification: {
-              sessionId: payload.sessionKey,
-              update,
-            },
+          window.webContents.send('chat:kernel-event', {
+            protocol: 'clawx.kernel/v1',
+            conversationId: run.conversationId,
+            turnId: run.turnId,
+            runId: run.runId,
+            kernelId: run.kernelId,
+            generation: run.generation,
+            eventSeq: run.eventSeq,
+            emittedAt: new Date().toISOString(),
+            event: { kind, payload: { text } },
           });
         }
       }
     },
-    { sessionKey: SESSION_KEY, updates, historical },
+    { sessionKey: SESSION_KEY, updates },
   );
 }
 
 async function deferAcpPrompt(app: ElectronApplication) {
   await app.evaluate(async ({ app: _app }) => {
     const { ipcMain } = process.mainModule!.require('electron') as typeof import('electron');
-    type HostRequest = { id?: string; module?: string; action?: string };
+    type HostRequest = { id?: string; module?: string; action?: string; payload?: Record<string, unknown> };
     type HostInvokeHandler = (event: unknown, request: HostRequest) => Promise<unknown>;
     const currentHostInvoke = (ipcMain as unknown as {
       _invokeHandlers?: Map<string, HostInvokeHandler>;
     })._invokeHandlers?.get('host:invoke');
-    const pending = globalThis as typeof globalThis & { resolveStreamdownPrompt?: () => void };
+    const pending = globalThis as typeof globalThis & {
+      resolveStreamdownPrompt?: () => void;
+      streamdownRun?: {
+        conversationId: string;
+        turnId: string;
+        runId: string;
+        kernelId: string;
+        generation: number;
+        eventSeq: number;
+      };
+    };
 
     ipcMain.removeHandler('host:invoke');
     ipcMain.handle('host:invoke', async (event: unknown, request: HostRequest) => {
       if (request?.module === 'chat' && request.action === 'sendAcpPrompt') {
+        const payload = request.payload ?? {};
+        pending.streamdownRun = {
+          conversationId: String(payload.conversationId ?? payload.sessionKey ?? ''),
+          turnId: String(payload.turnId ?? ''),
+          runId: String(payload.runId ?? ''),
+          kernelId: String(payload.kernelId ?? 'openclaw'),
+          generation: Number(payload.generation ?? 1),
+          eventSeq: 0,
+        };
         return await new Promise((resolve) => {
           pending.resolveStreamdownPrompt = () => resolve({
             id: request.id,
@@ -84,47 +130,120 @@ test.describe('ClawX streaming Markdown rendering', { tag: E2E_EXCLUSIVE_TAG }, 
     const app = await launchElectronApp({ skipSetup: true });
 
     try {
+      const summary = {
+        id: SESSION_KEY,
+        title: 'Streamdown fixture',
+        createdAt: '2026-08-24T00:00:00.000Z',
+        updatedAt: '2026-08-24T00:00:01.000Z',
+        workspaceUri: `file://${MAIN_WORKSPACE}`,
+        lastKernelId: 'openclaw',
+        kernelIds: ['openclaw'],
+        lastAgentId: 'main',
+      };
       await installIpcMocks(app, {
         gatewayStatus: { state: 'running', port: 18789, pid: 12345, gatewayReady: true },
-        gatewayRpc: {
-          [stableStringify(['sessions.list', {}])]: {
-            success: true,
-            result: { sessions: [{ key: SESSION_KEY, displayName: 'main', workspacePath: MAIN_WORKSPACE }] },
+        kernelFixture: {
+          catalog: {
+            source: 'network',
+            stale: false,
+            refreshedAt: '2026-08-24T00:00:00.000Z',
+            entries: [{
+              kernelId: 'openclaw',
+              displayName: 'OpenClaw',
+              installation: {
+                kernelId: 'openclaw',
+                state: 'installed',
+                activeVersion: '2026.8.1-clawx.1',
+                updatedAt: '2026-08-24T00:00:00.000Z',
+              },
+              runtime: {
+                kernelId: 'openclaw',
+                state: 'ready',
+                generation: 1,
+                artifactVersion: '2026.8.1-clawx.1',
+                diagnostics: [],
+              },
+              updateAvailable: false,
+              installAllowed: true,
+              compatibilityFailures: [],
+            }],
           },
+          runtimes: [{
+            kernelId: 'openclaw',
+            state: 'ready',
+            generation: 1,
+            artifactVersion: '2026.8.1-clawx.1',
+            diagnostics: [],
+          }],
         },
         hostApi: {
-          [stableStringify(['chat', 'loadAcpSession', { sessionKey: SESSION_KEY, workspaceRoot: MAIN_WORKSPACE, cwd: MAIN_WORKSPACE }])]: {
+          [stableStringify(['settings', 'getAll', null])]: {
+            language: 'en',
+            setupComplete: true,
+            chatWorkspacePath: MAIN_WORKSPACE,
+            recentWorkspacePaths: [MAIN_WORKSPACE],
+          },
+          [stableStringify(['conversations', 'list', { limit: 100 }])]: {
+            items: [summary],
+          },
+          [stableStringify(['conversations', 'get', { id: SESSION_KEY }])]: {
+            schema: 'clawx.conversation-export/v1',
+            conversation: summary,
+            turns: [{
+              id: 'completed-assistant',
+              role: 'assistant',
+              position: 0,
+              createdAt: '2026-08-24T00:00:01.000Z',
+              blocks: [{
+                id: 'completed-assistant-text',
+                type: 'text',
+                visibility: 'portable',
+                text: 'Earlier completed answer.',
+              }],
+            }],
+            runs: [],
+            usage: [],
+          },
+          [stableStringify(['chat', 'selectConversationKernel', {
+            sessionKey: SESSION_KEY,
+            workspaceRoot: MAIN_WORKSPACE,
+            cwd: MAIN_WORKSPACE,
+            kernelId: 'openclaw',
+          }])]: {
             success: true,
             generation: 1,
+            kernelId: 'openclaw',
           },
-          [stableStringify(['chat', 'loadAcpSession', { sessionKey: SESSION_KEY, workspaceRoot: MAIN_WORKSPACE, cwd: MAIN_WORKSPACE, createIfMissing: true }])]: {
-            success: true,
-            generation: 1,
-          },
-          [stableStringify(['chat', 'loadAcpSession', { sessionKey: SESSION_KEY, workspaceRoot: DEFAULT_WORKSPACE, cwd: DEFAULT_WORKSPACE }])]: {
-            success: true,
-            generation: 1,
-          },
-          [stableStringify(['chat', 'loadAcpSession', { sessionKey: SESSION_KEY, workspaceRoot: DEFAULT_WORKSPACE, cwd: DEFAULT_WORKSPACE, createIfMissing: true }])]: {
-            success: true,
-            generation: 1,
-          },
-          [stableStringify(['/api/gateway/status', 'GET'])]: {
+          [stableStringify(['files', 'resolveWorkspaceContext', {
+            workspaceRoot: MAIN_WORKSPACE,
+            executionCwd: MAIN_WORKSPACE,
+          }])]: {
             ok: true,
-            data: {
-              status: 200,
-              ok: true,
-              json: { state: 'running', port: 18789, pid: 12345, gatewayReady: true },
-            },
+            workspaceRoot: MAIN_WORKSPACE,
+            executionCwd: MAIN_WORKSPACE,
           },
-          [stableStringify(['/api/agents', 'GET'])]: {
-            ok: true,
-            data: {
-              status: 200,
-              ok: true,
-              json: { success: true, agents: [{ id: 'main', name: 'main', workspace: MAIN_WORKSPACE, mainSessionKey: SESSION_KEY }] },
-            },
+          [stableStringify(['agents', 'list', null])]: {
+            success: true,
+            agents: [{
+              id: 'main',
+              name: 'main',
+              workspace: MAIN_WORKSPACE,
+              mainSessionKey: SESSION_KEY,
+              supportedKernels: ['openclaw'],
+              defaultForKernels: ['openclaw'],
+              projections: [],
+              channelTypes: [],
+            }],
+            defaultAgentId: 'main',
+            configuredChannelTypes: [],
+            channelOwners: {},
+            channelAccountOwners: {},
           },
+          [stableStringify(['providers', 'accounts', null])]: [],
+          [stableStringify(['providers', 'accountKeyInfo', null])]: [],
+          [stableStringify(['providers', 'vendors', null])]: [],
+          [stableStringify(['providers', 'getDefaultAccount', null])]: { accountId: null },
+          [stableStringify(['providers', 'kernelDefaults', null])]: [],
         },
       });
       await deferAcpPrompt(app);
@@ -137,12 +256,6 @@ test.describe('ClawX streaming Markdown rendering', { tag: E2E_EXCLUSIVE_TAG }, 
       }
 
       await expect(page.getByTestId('main-layout')).toBeVisible();
-      await expect(page.getByTestId('acp-chat-empty-state')).toBeVisible({ timeout: 30_000 });
-      await emitAcpSessionUpdates(app, [{
-        sessionUpdate: 'agent_message',
-        messageId: 'completed-assistant',
-        content: [{ type: 'text', text: 'Earlier completed answer.' }],
-      }], true);
       await expect(page.getByText('Earlier completed answer.')).toBeVisible({ timeout: 30_000 });
 
       await page.getByTestId('chat-composer-input').fill('Stream a Markdown response');

@@ -44,12 +44,12 @@ afterEach(() => {
 });
 
 describe('uv mirror environment', () => {
-  it('writes a ClawX-managed uv.toml under ~/.openclaw and exposes it via UV_CONFIG_FILE', async () => {
+  it('writes a ClawX-managed uv.toml under the OpenClaw kernel config root', async () => {
     const { getUvMirrorEnv } = await import('@electron/utils/uv-env');
 
     const env = await getUvMirrorEnv();
 
-    const expectedPath = path.join(tempHome, '.openclaw', 'clawx', 'uv.toml');
+    const expectedPath = path.join(tempHome, '.clawx', 'kernel-config', 'openclaw', 'clawx', 'uv.toml');
     expect(env.UV_INDEX_URL).toBe('https://pypi.tuna.tsinghua.edu.cn/simple/');
     expect(env.UV_PYTHON_INSTALL_MIRROR).toBe('https://registry.npmmirror.com/-/binary/python-build-standalone/');
     expect(env.UV_CONFIG_FILE).toBe(expectedPath);

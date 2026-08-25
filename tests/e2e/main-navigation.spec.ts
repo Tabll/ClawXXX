@@ -18,6 +18,7 @@ test.describe('ClawX main navigation without setup flow', () => {
     const app = await launchElectronApp({ skipSetup: true });
 
     try {
+      await getStableWindow(app);
       const reloadItems = await app.evaluate(({ Menu }) => {
         const menu = Menu.getApplicationMenu();
         const findById = (items: Electron.MenuItem[], id: string): Electron.MenuItem | undefined => {

@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AcpTimelineSnapshot } from '@/lib/acp/timeline-types';
 
-const { acpState, agentsState, artifactPanelState, chatState, gatewayState, stickState } = vi.hoisted(() => ({
+const { acpState, agentsState, artifactPanelState, chatState, stickState } = vi.hoisted(() => ({
   acpState: {
     timeline: null as AcpTimelineSnapshot | null,
     loading: false,
@@ -40,9 +40,6 @@ const { acpState, agentsState, artifactPanelState, chatState, gatewayState, stic
     selectAcpSession: vi.fn(),
     acknowledgeAcpSessionCreated: vi.fn(),
   },
-  gatewayState: {
-    status: { state: 'running', gatewayReady: true, port: 18789 },
-  },
   stickState: {
     isAtBottom: true,
     scrollToBottom: vi.fn(),
@@ -61,10 +58,6 @@ vi.mock('@/lib/host-api', () => ({
 vi.mock('@/stores/acp-chat-session', () => ({
   ensureAcpChatSubscriptions,
   useAcpChatSessionStore: (selector: (state: typeof acpState) => unknown) => selector(acpState),
-}));
-
-vi.mock('@/stores/gateway', () => ({
-  useGatewayStore: (selector: (state: typeof gatewayState) => unknown) => selector(gatewayState),
 }));
 
 vi.mock('@/stores/agents', () => ({
@@ -246,7 +239,6 @@ describe('ACP Chat page inline timeline lifecycle', () => {
     artifactPanelState.close.mockReset();
     chatState.currentSessionKey = 'agent:main:main';
     chatState.currentAgentId = 'main';
-    gatewayState.status = { state: 'running', gatewayReady: true, port: 18789 };
     stickState.isAtBottom = true;
     stickState.scrollToBottom.mockReset();
   });

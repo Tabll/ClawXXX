@@ -1,5 +1,12 @@
 import type { Page } from '@playwright/test';
-import { completeSetup, expect, installIpcMocks, test } from './fixtures/electron';
+import {
+  completeSetup,
+  expect,
+  installIpcMocks,
+  readyKernelFixture,
+  test,
+  type KernelHostFixtureConfig,
+} from './fixtures/electron';
 
 function stableStringify(value: unknown): string {
   if (value == null || typeof value !== 'object') return JSON.stringify(value);
@@ -26,6 +33,24 @@ function buildDreamingEnabledPatchRaw(enabled: boolean): string {
   });
 }
 
+function stoppedOpenClawKernelFixture(): KernelHostFixtureConfig {
+  const ready = readyKernelFixture();
+  const runtime = {
+    kernelId: 'openclaw' as const,
+    state: 'stopped' as const,
+    generation: 0,
+    artifactVersion: '2026.8.1-clawx.1',
+    diagnostics: [],
+  };
+  return {
+    catalog: {
+      ...ready.catalog,
+      entries: ready.catalog.entries.map(entry => ({ ...entry, runtime })),
+    },
+    runtimes: [runtime],
+  };
+}
+
 async function enableDeveloperMode(page: Page): Promise<void> {
   await page.getByTestId('sidebar-nav-settings').click();
   await expect(page.getByTestId('settings-page')).toBeVisible();
@@ -39,10 +64,6 @@ async function enableDeveloperMode(page: Page): Promise<void> {
 
 test.describe('OpenClaw Dreams', () => {
   const dreamsRpcMocks = {
-    [stableStringify(['sessions.list', {}])]: {
-      success: true,
-      result: { sessions: [] },
-    },
     [stableStringify(['doctor.memory.status', {}])]: {
       success: true,
       result: {
@@ -112,11 +133,28 @@ test.describe('OpenClaw Dreams', () => {
     },
   };
 
+  const rpcResult = (method: string): unknown => (
+    dreamsRpcMocks[stableStringify([method, {}]) as keyof typeof dreamsRpcMocks] as {
+      result?: unknown;
+    } | undefined
+  )?.result;
+
+  const dreamsHostApiMocks = (overrides: Record<string, unknown> = {}): Record<string, unknown> => ({
+    [stableStringify(['openClawDreams', 'status', null])]: rpcResult('doctor.memory.status'),
+    [stableStringify(['openClawDreams', 'diary', null])]: rpcResult('doctor.memory.dreamDiary'),
+    [stableStringify(['openClawDreams', 'run', { action: 'backfill' }])]: rpcResult('doctor.memory.backfillDreamDiary'),
+    [stableStringify(['openClawDreams', 'run', { action: 'dedupe' }])]: rpcResult('doctor.memory.dedupeDreamDiary'),
+    [stableStringify(['openClawDreams', 'run', { action: 'resetDiary' }])]: rpcResult('doctor.memory.resetDreamDiary'),
+    [stableStringify(['openClawDreams', 'run', { action: 'resetGrounded' }])]: rpcResult('doctor.memory.resetGroundedShortTerm'),
+    ...overrides,
+  });
+
   test('renders the native Dreams page and runs a maintenance action', async ({ electronApp, page }) => {
     await installIpcMocks(electronApp, {
       gatewayStatus: { state: 'running', port: 18789, pid: 12345, gatewayReady: true },
-      gatewayRpc: dreamsRpcMocks,
+      kernelFixture: readyKernelFixture(),
       hostApi: {
+        ...dreamsHostApiMocks(),
         [stableStringify(['/api/gateway/status', 'GET'])]: {
           ok: true,
           data: {
@@ -168,11 +206,10 @@ test.describe('OpenClaw Dreams', () => {
     const configHash = 'dreams-config-hash';
     await installIpcMocks(electronApp, {
       gatewayStatus: { state: 'running', port: 18789, pid: 12345, gatewayReady: true },
-      gatewayRpc: {
-        ...dreamsRpcMocks,
-        [stableStringify(['doctor.memory.status', {}])]: {
-          success: true,
-          result: {
+      kernelFixture: readyKernelFixture(),
+      hostApi: {
+        ...dreamsHostApiMocks({
+          [stableStringify(['openClawDreams', 'status', null])]: {
             dreaming: {
               enabled: false,
               timezone: 'Asia/Shanghai',
@@ -190,21 +227,12 @@ test.describe('OpenClaw Dreams', () => {
               promotedEntries: [],
             },
           },
-        },
-        [stableStringify(['config.get', {}])]: {
-          success: true,
-          result: { hash: configHash },
-        },
-        [stableStringify(['config.patch', {
-          raw: buildDreamingEnabledPatchRaw(true),
-          baseHash: configHash,
-          note: 'Enable memory dreaming from ClawX Dreams.',
-        }])]: {
-          success: true,
-          result: { ok: true },
-        },
-      },
-      hostApi: {
+          [stableStringify(['openClawDreams', 'setEnabled', { enabled: true }])]: {
+            success: true,
+            configHash,
+            raw: buildDreamingEnabledPatchRaw(true),
+          },
+        }),
         [stableStringify(['/api/gateway/status', 'GET'])]: {
           ok: true,
           data: {
@@ -227,11 +255,12 @@ test.describe('OpenClaw Dreams', () => {
     await expect(page.getByTestId('dreams-disable')).toBeVisible();
   });
 
-  test('waits for the gateway process before loading Dreams data', async ({ electronApp, page }) => {
+  test('waits for the OpenClaw runtime before loading Dreams data', async ({ electronApp, page }) => {
     await installIpcMocks(electronApp, {
       gatewayStatus: { state: 'stopped', port: 18789 },
-      gatewayRpc: dreamsRpcMocks,
+      kernelFixture: stoppedOpenClawKernelFixture(),
       hostApi: {
+        ...dreamsHostApiMocks(),
         [stableStringify(['/api/gateway/status', 'GET'])]: {
           ok: true,
           data: {
@@ -256,6 +285,15 @@ test.describe('OpenClaw Dreams', () => {
 
     await electronApp.evaluate(({ BrowserWindow }) => {
       const win = BrowserWindow.getAllWindows()[0];
+      win?.webContents.send('kernels:status-changed', {
+        kernelId: 'openclaw',
+        state: 'ready',
+        generation: 1,
+        artifactVersion: '2026.8.1-clawx.1',
+        diagnostics: [],
+      });
+      // A stale global Gateway event remains harmless, but Dreams must become
+      // available from the kernel-scoped lifecycle event above.
       win?.webContents.send('gateway:status-changed', {
         state: 'running',
         port: 18789,

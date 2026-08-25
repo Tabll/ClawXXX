@@ -29,9 +29,8 @@ interface SettingsState {
   themeColor: string;
   macOSNativeFontSmoothing: boolean;
 
-  // Gateway
-  gatewayAutoStart: boolean;
-  gatewayPort: number;
+  // Kernel/runtime network policy
+  kernelAutoStartPolicies: Record<string, boolean>;
   proxyEnabled: boolean;
   proxyServer: string;
   proxyHttpServer: string;
@@ -64,8 +63,7 @@ interface SettingsState {
   setAppFontFamily: (value: string) => void;
   setThemeColor: (value: string) => void;
   setMacOSNativeFontSmoothing: (value: boolean) => void;
-  setGatewayAutoStart: (value: boolean) => void;
-  setGatewayPort: (port: number) => void;
+  setKernelAutoStart: (kernelId: string, value: boolean) => void;
   setProxyEnabled: (value: boolean) => void;
   setProxyServer: (value: string) => void;
   setProxyHttpServer: (value: string) => void;
@@ -93,8 +91,7 @@ const defaultSettings = {
   appFontFamily: '',
   themeColor: DEFAULT_THEME_COLOR,
   macOSNativeFontSmoothing: false,
-  gatewayAutoStart: true,
-  gatewayPort: 18789,
+  kernelAutoStartPolicies: {},
   proxyEnabled: false,
   proxyServer: '',
   proxyHttpServer: '',
@@ -125,9 +122,12 @@ export const useSettingsStore = create<SettingsState>()(
           const resolvedLanguage = settings.language
             ? resolveSupportedLanguage(settings.language)
             : undefined;
+          const rendererSettings = { ...settings };
+          delete rendererSettings.gatewayAutoStart;
+          delete rendererSettings.gatewayPort;
           set((state) => ({
             ...state,
-            ...settings,
+            ...rendererSettings,
             ...(resolvedLanguage ? { language: resolvedLanguage } : {}),
             ...(typeof settings.sidebarWidth === 'number'
               ? { sidebarWidth: clampSidebarWidth(settings.sidebarWidth) }
@@ -173,13 +173,12 @@ export const useSettingsStore = create<SettingsState>()(
         set({ macOSNativeFontSmoothing });
         void hostApi.settings.set('macOSNativeFontSmoothing', macOSNativeFontSmoothing).catch(() => { });
       },
-      setGatewayAutoStart: (gatewayAutoStart) => {
-        set({ gatewayAutoStart });
-        void hostApi.settings.set('gatewayAutoStart', gatewayAutoStart).catch(() => { });
-      },
-      setGatewayPort: (gatewayPort) => {
-        set({ gatewayPort });
-        void hostApi.settings.set('gatewayPort', gatewayPort).catch(() => { });
+      setKernelAutoStart: (kernelId, value) => {
+        set((state) => {
+          const kernelAutoStartPolicies = { ...state.kernelAutoStartPolicies, [kernelId]: value };
+          void hostApi.settings.setMany({ kernelAutoStartPolicies }).catch(() => { });
+          return { kernelAutoStartPolicies };
+        });
       },
       setProxyEnabled: (proxyEnabled) => set({ proxyEnabled }),
       setProxyServer: (proxyServer) => set({ proxyServer }),

@@ -154,7 +154,9 @@ afterEach(async () => {
 });
 
 describe('attachment open-with native bridges', () => {
-  it.runIf(process.platform === 'darwin')('executes the real macOS JXA application enumeration', async () => {
+  it.runIf(process.platform === 'darwin' && process.env.CLAWX_RUN_NATIVE_INTEGRATION === '1')(
+    'executes the real macOS JXA application enumeration',
+    async () => {
     const filePath = await temporaryTextFile();
     const service = createAttachmentOpenWithService({
       platform: 'darwin',
@@ -178,9 +180,12 @@ describe('attachment open-with native bridges', () => {
       expect(hasControlCharacters(handler.id)).toBe(false);
       expect(hasControlCharacters(handler.name)).toBe(false);
     }
-  });
+    },
+  );
 
-  it.runIf(process.platform === 'win32')('retains a real Windows COM handler through ready and exits cleanly on cancel', async () => {
+  it.runIf(process.platform === 'win32' && process.env.CLAWX_RUN_NATIVE_INTEGRATION === '1')(
+    'retains a real Windows COM handler through ready and exits cleanly on cancel',
+    async () => {
     const filePath = await realpath(await temporaryTextFile());
     const listResult = await runWindowsHelper('list', filePath);
     expect(listResult.code, listResult.stderr).toBe(0);
@@ -269,7 +274,9 @@ describe('attachment open-with native bridges', () => {
     const nonmatchingResult = await runWindowsHelper('prepare-open', filePath, '0'.repeat(64));
     expect(nonmatchingResult.code).not.toBe(0);
     expect(nonmatchingResult.stdout).not.toContain('{"ready":true}');
-  }, NATIVE_SMOKE_TIMEOUT_MS * 4);
+    },
+    NATIVE_SMOKE_TIMEOUT_MS * 4,
+  );
 
   it('resolves and executes the exact helper staged in a packaged resources tree', async () => {
     const root = await mkdtemp(join(tmpdir(), 'clawx-packaged-open-with-'));

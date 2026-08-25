@@ -40,6 +40,7 @@ import {
   type UsageWindow,
 } from '@/lib/usage-history';
 import { cn } from '@/lib/utils';
+import { kernelDisplayName, useKernelStore } from '@/stores/kernels';
 
 const DEFAULT_USAGE_FETCH_MAX_ATTEMPTS = 2;
 const WINDOWS_USAGE_FETCH_MAX_ATTEMPTS = 3;
@@ -76,7 +77,13 @@ type UsageTotals = {
   providers: number;
   missingEntries: number;
   errorEntries: number;
+  knownTokenEntries: number;
+  unknownTokenEntries: number;
+  knownCostEntries: number;
+  unknownCostEntries: number;
 };
+
+type UsageKernelFilter = 'all' | string;
 
 function isHiddenUsageSource(source?: string): boolean {
   if (!source) return false;
@@ -110,6 +117,41 @@ function formatUsd(value: number): string {
     currency: 'USD',
     maximumFractionDigits: value >= 1 ? 2 : 4,
   }).format(value);
+}
+
+function formatKnownNumber(value: number | undefined, unknown: string, formatter = formatTokenCount): string {
+  return typeof value === 'number' && Number.isFinite(value) ? formatter(value) : unknown;
+}
+
+function knownTokenSubtotal(entry: UsageHistoryEntry): number {
+  return (entry.inputTokens ?? 0)
+    + (entry.outputTokens ?? 0)
+    + (entry.cacheReadTokens ?? 0)
+    + (entry.cacheWriteTokens ?? 0);
+}
+
+function formatEntryCost(entry: UsageHistoryEntry, unknown: string): string {
+  if (typeof entry.cost !== 'number' || !Number.isFinite(entry.cost)) return unknown;
+  if (!entry.currency || entry.currency === 'USD') return formatUsd(entry.cost);
+  return `${Intl.NumberFormat().format(entry.cost)} ${entry.currency}`;
+}
+
+function formatSessionTokenField(
+  session: UsageSessionSummary,
+  key: 'inputTokens' | 'outputTokens' | 'cacheReadTokens' | 'cacheWriteTokens' | 'totalTokens',
+  unknown: string,
+): string {
+  const hasKnownValue = session.entries.some(entry => (
+    typeof entry[key] === 'number' && Number.isFinite(entry[key])
+  ));
+  return hasKnownValue ? formatTokenCount(session[key]) : unknown;
+}
+
+function formatSessionUsdCost(session: UsageSessionSummary, unknown: string): string {
+  const hasKnownUsdCost = session.entries.some(entry => (
+    typeof entry.costUsd === 'number' && Number.isFinite(entry.costUsd)
+  ));
+  return hasKnownUsdCost ? formatUsd(session.costUsd) : unknown;
 }
 
 function estimateContextTokens(chars: number): number {
@@ -165,15 +207,23 @@ function buildTotals(entries: UsageHistoryEntry[]): UsageTotals {
     providers: 0,
     missingEntries: 0,
     errorEntries: 0,
+    knownTokenEntries: 0,
+    unknownTokenEntries: 0,
+    knownCostEntries: 0,
+    unknownCostEntries: 0,
   };
 
   for (const entry of entries) {
-    totals.totalTokens += entry.totalTokens;
-    totals.inputTokens += entry.inputTokens;
-    totals.outputTokens += entry.outputTokens;
-    totals.cacheReadTokens += entry.cacheReadTokens;
-    totals.cacheWriteTokens += entry.cacheWriteTokens;
+    totals.totalTokens += entry.totalTokens ?? knownTokenSubtotal(entry);
+    totals.inputTokens += entry.inputTokens ?? 0;
+    totals.outputTokens += entry.outputTokens ?? 0;
+    totals.cacheReadTokens += entry.cacheReadTokens ?? 0;
+    totals.cacheWriteTokens += entry.cacheWriteTokens ?? 0;
     totals.costUsd += typeof entry.costUsd === 'number' && Number.isFinite(entry.costUsd) ? entry.costUsd : 0;
+    if (entry.totalTokens === undefined) totals.unknownTokenEntries += 1;
+    else totals.knownTokenEntries += 1;
+    if (entry.costUsd === undefined) totals.unknownCostEntries += 1;
+    else totals.knownCostEntries += 1;
     if (entry.usageStatus === 'missing') totals.missingEntries += 1;
     if (entry.usageStatus === 'error') totals.errorEntries += 1;
     if (entry.sessionId) sessionIds.add(`${entry.agentId || 'Unknown'}::${entry.sessionId}`);
@@ -205,6 +255,8 @@ export function TokenUsageSettings() {
     : DEFAULT_USAGE_FETCH_MAX_ATTEMPTS;
 
   const [usageWindow, setUsageWindow] = useState<UsageWindow>('7d');
+  const [kernelFilter, setKernelFilter] = useState<UsageKernelFilter>('all');
+  const kernelCatalog = useKernelStore((state) => state.catalog);
   const [usageGroupBy, setUsageGroupBy] = useState<UsageGroupBy>('model');
   const [query, setQuery] = useState('');
   const [usagePage, setUsagePage] = useState(1);
@@ -277,7 +329,7 @@ export function TokenUsageSettings() {
     dispatchFetch({ type: 'start' });
     const generation = usageFetchGenerationRef.current + 1;
     usageFetchGenerationRef.current = generation;
-    const restartMarker = `local-transcripts:${generation}`;
+    const restartMarker = `canonical-sqlite:${generation}`;
     trackUiEvent('settings.token_usage_fetch_started', { generation, restartMarker });
 
     const safetyTimeout = setTimeout(() => {
@@ -339,12 +391,19 @@ export function TokenUsageSettings() {
   }, [usageFetchMaxAttempts, usageRefreshNonce]);
 
   const visibleUsageHistory = useMemo(() => {
-    const usageHistory = fetchState.data.filter((entry) => !shouldHideUsageEntry(entry));
-    const stableUsageHistory = fetchState.stableData.filter((entry) => !shouldHideUsageEntry(entry));
+    const matchesKernel = (entry: UsageHistoryEntry) => kernelFilter === 'all' || entry.kernelId === kernelFilter;
+    const usageHistory = fetchState.data.filter((entry) => !shouldHideUsageEntry(entry) && matchesKernel(entry));
+    const stableUsageHistory = fetchState.stableData.filter((entry) => !shouldHideUsageEntry(entry) && matchesKernel(entry));
     return resolveVisibleUsageHistory(usageHistory, stableUsageHistory, {
       preferStableOnEmpty: fetchState.status === 'loading',
     });
-  }, [fetchState.data, fetchState.stableData, fetchState.status]);
+  }, [fetchState.data, fetchState.stableData, fetchState.status, kernelFilter]);
+  const usageKernelIds = useMemo(() => {
+    const ids = new Set(kernelCatalog?.entries.map(entry => entry.kernelId) ?? []);
+    fetchState.data.forEach(entry => { if (entry.kernelId) ids.add(entry.kernelId); });
+    fetchState.stableData.forEach(entry => { if (entry.kernelId) ids.add(entry.kernelId); });
+    return [...ids];
+  }, [fetchState.data, fetchState.stableData, kernelCatalog]);
 
   const windowedUsageHistory = useMemo(
     () => filterUsageHistoryByWindow(visibleUsageHistory, usageWindow),
@@ -446,6 +505,27 @@ export function TokenUsageSettings() {
                 {t(`tokenUsage.windows.${windowId}`)}
               </Button>
             ))}
+            <span className="mx-1 h-8 w-px bg-border/65" aria-hidden="true" />
+            {(['all', ...usageKernelIds] as UsageKernelFilter[]).map((kernelId) => (
+              <Button
+                key={kernelId}
+                variant={kernelFilter === kernelId ? 'secondary' : 'outline'}
+                size="sm"
+                className={cn(
+                  'h-8 rounded-lg text-meta',
+                  kernelFilter === kernelId
+                    ? 'border-primary/45 bg-primary/10 text-primary shadow-none'
+                    : 'bg-surface-modal/70 text-muted-foreground hover:border-ring/35 hover:bg-surface-modal',
+                )}
+                onClick={() => {
+                  setKernelFilter(kernelId);
+                  setUsagePage(1);
+                }}
+                data-testid={`token-usage-kernel-${kernelId}`}
+              >
+                {kernelId === 'all' ? t('tokenUsage.kernels.all') : kernelDisplayName(kernelId)}
+              </Button>
+            ))}
           </div>
           <div className="flex min-w-0 flex-1 flex-col gap-2 sm:flex-row lg:max-w-xl">
             <div className="relative min-w-0 flex-1">
@@ -480,6 +560,9 @@ export function TokenUsageSettings() {
             ? t('tokenUsage.refreshing')
             : t('tokenUsage.showingSessions', { shown: filteredUsageSessions.length, total: windowedUsageSessions.length })}
         </p>
+        <p className="text-tiny text-muted-foreground" data-testid="token-usage-cost-semantics">
+          {t('tokenUsage.costSemantics')}
+        </p>
       </div>
 
       {usageLoading ? (
@@ -504,6 +587,7 @@ export function TokenUsageSettings() {
             cacheWrite: t('tokenUsage.metrics.cacheWrite'),
             models: t('tokenUsage.metrics.models'),
             providers: t('tokenUsage.metrics.providers'),
+            unknown: t('tokenUsage.unknown'),
             rawTokensDetail: t('tokenUsage.metrics.rawTokensDetail', { value: formatTokenCount(totals.totalTokens) }),
             unpricedError: t('tokenUsage.metrics.unpricedError', { count: totals.missingEntries + totals.errorEntries }),
             averageSession: t('tokenUsage.metrics.averageSession', { value: formatCompactNumber(averageTokensPerSession) }),
@@ -525,6 +609,7 @@ export function TokenUsageSettings() {
                 output: t('tokenUsage.metrics.output'),
                 cache: t('tokenUsage.breakdown.cacheShort'),
                 cost: t('tokenUsage.metrics.cost'),
+                unknown: t('tokenUsage.unknown'),
               }}
             />
             <UsageCompositionCard
@@ -684,15 +769,15 @@ function UsageMetricGrid({
     {
       key: 'total',
       label: labels.totalTokens,
-      value: formatCompactNumber(totals.totalTokens),
-      detail: labels.rawTokensDetail,
+      value: totals.knownTokenEntries > 0 ? formatCompactNumber(totals.totalTokens) : labels.unknown,
+      detail: totals.knownTokenEntries > 0 ? labels.rawTokensDetail : labels.unknown,
       icon: Sigma,
       className: 'from-cyan-500/18 via-blue-500/10 to-transparent',
     },
     {
       key: 'cost',
       label: labels.cost,
-      value: formatUsd(totals.costUsd),
+      value: totals.knownCostEntries > 0 ? formatUsd(totals.costUsd) : labels.unknown,
       detail: labels.unpricedError,
       icon: Coins,
       className: 'from-emerald-500/18 via-teal-500/10 to-transparent',
@@ -962,12 +1047,20 @@ function UsageTrendChart({
             >
               <div className="mb-2 flex items-start justify-between gap-3">
                 <p className="text-sm font-semibold text-foreground">{hoveredPoint.group.label}</p>
-                <p className="text-meta font-semibold text-usage-input">{formatCompactNumber(hoveredPoint.group.totalTokens)}</p>
+                <p className="text-meta font-semibold text-usage-input">
+                  {hoveredPoint.group.count > hoveredPoint.group.unknownTokenEntries
+                    ? formatCompactNumber(hoveredPoint.group.totalTokens)
+                    : labels.unknown}
+                </p>
               </div>
               <div className="space-y-1.5 text-tiny font-medium text-muted-foreground">
                 <div className="flex justify-between gap-3">
                   <span>{labels.total}</span>
-                  <span className="text-foreground">{formatTokenCount(hoveredPoint.group.totalTokens)}</span>
+                  <span className="text-foreground">
+                    {hoveredPoint.group.count > hoveredPoint.group.unknownTokenEntries
+                      ? formatTokenCount(hoveredPoint.group.totalTokens)
+                      : labels.unknown}
+                  </span>
                 </div>
                 <div className="flex justify-between gap-3">
                   <span>{labels.input}</span>
@@ -983,7 +1076,11 @@ function UsageTrendChart({
                 </div>
                 <div className="flex justify-between gap-3 border-t border-border/55 pt-1.5">
                   <span>{labels.cost}</span>
-                  <span className="text-foreground">{formatUsd(hoveredPoint.group.costUsd)}</span>
+                  <span className="text-foreground">
+                    {hoveredPoint.group.count > hoveredPoint.group.unknownCostEntries
+                      ? formatUsd(hoveredPoint.group.costUsd)
+                      : labels.unknown}
+                  </span>
                 </div>
               </div>
             </div>
@@ -1074,7 +1171,7 @@ function UsageBreakdown({
               <div className="flex items-center justify-between gap-3 text-sm">
                 <span className="truncate font-medium text-foreground">{group.label === 'Unknown' ? unknownLabel : group.label}</span>
                 <span className="shrink-0 text-meta font-medium text-muted-foreground">
-                  {totalLabel}: {formatCompactNumber(group.totalTokens)}
+                  {totalLabel}: {group.count > group.unknownTokenEntries ? formatCompactNumber(group.totalTokens) : unknownLabel}
                 </span>
               </div>
               <div className="h-3 overflow-hidden rounded-full bg-surface-input/75">
@@ -1089,7 +1186,7 @@ function UsageBreakdown({
               </div>
               <div className="flex flex-wrap gap-x-4 gap-y-1 text-tiny font-medium text-muted-foreground">
                 <span>{countLabel}: {formatTokenCount(group.count)}</span>
-                <span>{costLabel}: {formatUsd(group.costUsd)}</span>
+                <span>{costLabel}: {group.count > group.unknownCostEntries ? formatUsd(group.costUsd) : unknownLabel}</span>
                 <span>{inputLabel}: {formatCompactNumber(group.inputTokens)}</span>
                 <span>{outputLabel}: {formatCompactNumber(group.outputTokens)}</span>
                 <span>{cacheLabel}: {formatCompactNumber(group.cacheTokens)}</span>
@@ -1161,20 +1258,24 @@ function UsageSessionList({
                   <p className="mt-1 truncate text-meta text-muted-foreground">{sourceLine}</p>
                   <SessionTokenBar session={session} className="mt-3" />
                   <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1.5 text-meta font-medium text-muted-foreground">
-                    <span>{labels.input}: {formatTokenCount(session.inputTokens)}</span>
-                    <span>{labels.output}: {formatTokenCount(session.outputTokens)}</span>
-                    <span>{labels.cacheRead}: {formatTokenCount(session.cacheReadTokens)}</span>
-                    <span>{labels.cacheWrite}: {formatTokenCount(session.cacheWriteTokens)}</span>
+                    <span>{labels.input}: {formatSessionTokenField(session, 'inputTokens', labels.unknown)}</span>
+                    <span>{labels.output}: {formatSessionTokenField(session, 'outputTokens', labels.unknown)}</span>
+                    <span>{labels.cacheRead}: {formatSessionTokenField(session, 'cacheReadTokens', labels.unknown)}</span>
+                    <span>{labels.cacheWrite}: {formatSessionTokenField(session, 'cacheWriteTokens', labels.unknown)}</span>
                     <span>{labels.calls}: {formatTokenCount(session.entries.length)}</span>
                   </div>
                 </div>
                 <div className="flex shrink-0 items-end justify-between gap-4 lg:flex-col lg:items-end">
                   <div className="text-left lg:text-right">
-                    <p className="text-base font-semibold text-foreground">{formatTokenCount(session.totalTokens)}</p>
+                    <p className="text-base font-semibold text-foreground" data-testid="token-usage-session-total">
+                      {formatSessionTokenField(session, 'totalTokens', labels.unknown)}
+                    </p>
                     <p className="mt-0.5 text-tiny text-muted-foreground">
                       {labels.updated}: {formatUsageTimestamp(session.lastTimestamp)}
                     </p>
-                    <p className="mt-1 text-tiny font-medium text-muted-foreground">{labels.cost}: {formatUsd(session.costUsd)}</p>
+                    <p className="mt-1 text-tiny font-medium text-muted-foreground" data-testid="token-usage-session-cost">
+                      {labels.cost}: {formatSessionUsdCost(session, labels.unknown)}
+                    </p>
                   </div>
                   <Button
                     variant="outline"
@@ -1306,15 +1407,15 @@ function UsageSessionDetailDialog({
             <DetailMetricCard
               icon={Sigma}
               label={labels.totalTokens}
-              value={formatTokenCount(session.totalTokens)}
-              detail={`${labels.averageTokens}: ${formatTokenCount(averageTokens)}`}
+              value={formatSessionTokenField(session, 'totalTokens', labels.unknown)}
+              detail={`${labels.averageTokens}: ${session.unknownTokenEntries < session.entries.length ? formatTokenCount(averageTokens) : labels.unknown}`}
               className="from-cyan-500/18 via-blue-500/10 to-transparent"
             />
             <DetailMetricCard
               icon={Coins}
               label={labels.cost}
-              value={formatUsd(session.costUsd)}
-              detail={`${labels.averageCost}: ${formatUsd(averageCost)}`}
+              value={formatSessionUsdCost(session, labels.unknown)}
+              detail={`${labels.averageCost}: ${session.unknownCostEntries < session.entries.length ? formatUsd(averageCost) : labels.unknown}`}
               className="from-emerald-500/18 via-teal-500/10 to-transparent"
             />
             <DetailMetricCard
@@ -1810,12 +1911,12 @@ function UsageCallTimeline({
                 <p className="mt-0.5 truncate text-meta text-muted-foreground">{entry.provider || labels.unknown}</p>
               </div>
               <div className="grid grid-cols-2 gap-2 text-right text-tiny font-medium text-muted-foreground sm:grid-cols-3 xl:min-w-[430px]">
-                <span>{labels.totalTokens}: <b className="font-semibold text-foreground">{formatTokenCount(entry.totalTokens)}</b></span>
-                <span>{labels.cost}: <b className="font-semibold text-foreground">{formatUsd(entry.costUsd ?? 0)}</b></span>
-                <span>{labels.input}: <b className="font-semibold text-foreground">{formatTokenCount(entry.inputTokens)}</b></span>
-                <span>{labels.output}: <b className="font-semibold text-foreground">{formatTokenCount(entry.outputTokens)}</b></span>
-                <span>{labels.cacheRead}: <b className="font-semibold text-foreground">{formatTokenCount(entry.cacheReadTokens)}</b></span>
-                <span>{labels.cacheWrite}: <b className="font-semibold text-foreground">{formatTokenCount(entry.cacheWriteTokens)}</b></span>
+                <span>{labels.totalTokens}: <b className="font-semibold text-foreground">{formatKnownNumber(entry.totalTokens, labels.unknown)}</b></span>
+                <span>{labels.cost}: <b className="font-semibold text-foreground">{formatEntryCost(entry, labels.unknown)}</b></span>
+                <span>{labels.input}: <b className="font-semibold text-foreground">{formatKnownNumber(entry.inputTokens, labels.unknown)}</b></span>
+                <span>{labels.output}: <b className="font-semibold text-foreground">{formatKnownNumber(entry.outputTokens, labels.unknown)}</b></span>
+                <span>{labels.cacheRead}: <b className="font-semibold text-foreground">{formatKnownNumber(entry.cacheReadTokens, labels.unknown)}</b></span>
+                <span>{labels.cacheWrite}: <b className="font-semibold text-foreground">{formatKnownNumber(entry.cacheWriteTokens, labels.unknown)}</b></span>
               </div>
             </div>
             <div className="mt-3 rounded-lg border border-border/45 bg-surface-input/45 p-3">

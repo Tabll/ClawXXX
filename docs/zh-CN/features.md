@@ -2,6 +2,14 @@
 
 本文档是 README「功能特性」一节的详细说明。
 
+### 可选多内核目录
+
+ClawX 主安装包不含 AI 内核。首次使用可在 Kernel Catalog 安装 OpenClaw、DeepSeek Harness、两者或暂不安装。下载项是按平台预制的签名 CI 制品，支持进度、取消/续传、Repair、独立更新/回滚和诊断。两个内核可同时 ready、同时流式工作，一个失败或更新不会停止另一个。
+
+两个内核完全共用 Chat、Providers/Models、Agents、Channels、Cron、Skills、Usage 与 Diagnostics 页面；“Both” 操作会保留 partial success，不掩盖单侧投影失败。Conversation 身份与内核无关，可为下一 turn 选择另一个内核；UI 显示 provenance，ClawX 只传递 portable、已脱敏历史，不嵌入 DSH Web UI。
+
+全部新历史只在 ClawX SQLite/Blob 保存一次。卸载内核不删除历史，没有内核时仍可搜索、重命名、导出和删除。Cron 与 Channel 也使用相同 Conversation/Run；旧上游 history 有意不迁移且不作 fallback。参见[数据安全与保留策略](data-security-retention.md)。
+
 ### 🎯 零配置门槛
 从安装到第一次 AI 对话，全程通过直观的图形界面完成。无需终端命令，无需 YAML 文件，无需到处寻找环境变量。
 
@@ -27,13 +35,13 @@ ClawX 现在还内置了腾讯官方个人微信渠道插件，可直接在 Chan
 
 ### ⏰ 定时任务自动化
 调度 AI 任务自动执行。定义触发器、设置时间间隔，让 AI 智能体 7×24 小时不间断工作。
-现在定时任务页面已经可以直接配置外部投递，统一拆成“发送账号”和“接收目标”两个下拉选择。对于已支持的通道，接收目标会从通道目录能力或已知会话历史中自动发现，不需要再手动修改 `jobs.json`。任务的消息输入框也支持像主对话框那样以内联 `/skill` 令牌的方式插入技能（按所选智能体范围加载），让定时提示词可以直接触发技能。调度选择器现在分为**周期**和**单次**两个选项卡：周期支持每小时、每天、工作日、每周、自定义（原始 cron）等频率，并内置时间/星期选择；单次则在所选日期（显示星期）和时间执行一次。单次任务必须设置为未来时间，并会在执行完成后由运行时自动清除。
+现在定时任务页面已经可以直接配置外部投递，统一拆成“发送账号”和“接收目标”两个下拉选择。对于已支持的通道，接收目标会从通道目录能力或已知会话历史中自动发现，不需要再手动修改 `jobs.json`。任务的消息输入框也支持像主对话框那样以内联 `/skill` 令牌的方式插入技能（按所选智能体范围加载），让定时提示词可以直接触发技能。调度选择器现在分为**周期**和**单次**两个选项卡：周期支持每小时、每天、工作日、每周、自定义（原始 cron）等频率，并内置时间/星期选择；单次则在所选日期（显示星期）和时间执行一次。单次任务必须设置为未来时间，并在 canonical completion 提交后由 Main-owned ClawXScheduler 结束其生命周期。
 
 
 ### 🧩 可扩展技能系统
 通过预构建的技能扩展 AI 智能体的能力。集成的 Skills 页面采用“本地优先”方式：会扫描托管目录与 workspace 技能目录，并且无需依赖 Gateway 即可启用或停用技能；在企业扩展接管时，也可以显示扩展提供的 marketplace。
-ClawX 还会内置预装完整的文档处理技能（`pdf`、`xlsx`、`docx`、`pptx`），在启动时自动部署到托管技能目录（默认 `~/.openclaw/skills`），并在首次安装时默认启用。
-Skills 页面可展示来自多个 OpenClaw 来源的技能（托管目录、workspace、额外技能目录），并显示每个技能的实际路径，便于直接打开真实安装位置。对于 OpenClaw 自带的 bundled skills，社区版现在在打包产物里只保留并展示 `skill-creator`；开发模式和打包版启动时都会直接清理其它 bundled skill，同时把这些已删除 bundled skill 在 `openclaw.json` 中残留的旧配置一并移除。
+ClawX 将完整文档处理技能（`pdf`、`xlsx`、`docx`、`pptx`）作为宿主技能包预置，由 canonical Skills catalog 保存目标状态，并向每个兼容且已安装的内核投影相互独立的物理副本。OpenClaw 的 managed 副本只在 OpenClaw 激活时创建；仅启动无内核的主程序不会写入 OpenClaw 目录。
+同一个 Skills 页面展示 canonical package、workspace 来源和逐内核 projection 状态。只有可选 OpenClaw runtime 存在时才扫描其专有来源；该可选 runtime artifact 只保留 allowlist 中的 bundled `skill-creator`，其它上游 bundled skill 在构建 artifact 时移除，旧 managed projection 通过 reconciliation 清理而不影响 DSH 副本。
 
 ### 🔐 安全的供应商集成
 连接多个 AI 供应商（OpenAI、Anthropic、Z.AI / GLM 等），凭证安全存储在系统原生密钥链中。OpenAI 同时支持 API Key 与浏览器 OAuth（Codex 订阅）登录。

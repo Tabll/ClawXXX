@@ -40,6 +40,7 @@ import {
 } from './attachment-open-with';
 import {
   expandPath,
+  getDataDir,
   resolveOpenClawConfigDir,
   resolveOpenClawStateDir,
 } from '../utils/paths';
@@ -96,6 +97,9 @@ export type AttachmentAccess = {
 type AttachmentAccessDependencies = {
   sessionAccessRegistry: AcpSessionAccessRegistry;
   stagedAttachments: StagedAttachmentRegistry;
+  dataClient?: {
+    call<T = unknown>(method: string, ...args: unknown[]): Promise<T>;
+  };
   stateDir?: string;
   configDir?: string;
   fs?: AttachmentFs;
@@ -103,7 +107,7 @@ type AttachmentAccessDependencies = {
   openWith: AttachmentOpenWithService;
 };
 
-type LocalScope = 'workspace' | 'openclaw-media' | 'staging';
+type LocalScope = 'workspace' | 'openclaw-media' | 'staging' | 'canonical-blob';
 
 type ResolvedLocal = {
   kind: 'local';
@@ -122,7 +126,15 @@ type ResolvedRemote = {
   size: number;
 };
 
-type ResolvedTarget = ResolvedLocal | ResolvedRemote;
+type ResolvedCanonicalBlob = {
+  kind: 'canonical-blob';
+  conversationId: string;
+  blobHash: string;
+  mimeType: string;
+  size: number;
+};
+
+type ResolvedTarget = ResolvedLocal | ResolvedRemote | ResolvedCanonicalBlob;
 
 type PinnedDirectory = {
   canonicalPath: string;
@@ -167,8 +179,8 @@ export class StagedAttachmentRegistry {
   }
 }
 
-export function resolveClawXStagingDir(stateDir = resolveOpenClawStateDir()): string {
-  return join(resolve(stateDir), 'media', 'outbound', 'clawx-staging');
+export function resolveClawXStagingDir(dataRoot = getDataDir()): string {
+  return join(resolve(dataRoot), 'media', 'outbound', 'clawx-staging');
 }
 
 function attachmentFailure(error: unknown): AttachmentAccessError {
@@ -312,6 +324,11 @@ function parseOutgoingUrl(uri: string): { attachmentId: string; sessionKey: stri
     throw new AttachmentFailure('invalidReference');
   }
   return { attachmentId, sessionKey };
+}
+
+function parseCanonicalBlobUri(uri: string): string | null {
+  const match = /^clawx-blob:\/\/([a-f0-9]{64})\/?$/iu.exec(uri);
+  return match?.[1]?.toLowerCase() ?? null;
 }
 
 async function canonicalManagedMediaRoots(
@@ -659,6 +676,22 @@ export function createAttachmentAccess(dependencies: AttachmentAccessDependencie
       throw new AttachmentFailure('invalidReference');
     }
     validateReferenceSyntax(ref.uri);
+    const canonicalBlobHash = parseCanonicalBlobUri(ref.uri);
+    if (canonicalBlobHash) {
+      if (!dependencies.dataClient) throw new AttachmentFailure('unavailable');
+      const metadata = await dependencies.dataClient.call<{ mimeType: string; size: number } | undefined>(
+        'getConversationBlobMetadata',
+        { conversationId: ref.sessionKey, blobHash: canonicalBlobHash },
+      );
+      if (!metadata) throw new AttachmentFailure('unavailable');
+      return {
+        kind: 'canonical-blob',
+        conversationId: ref.sessionKey,
+        blobHash: canonicalBlobHash,
+        mimeType: metadata.mimeType,
+        size: metadata.size,
+      };
+    }
     const context = dependencies.sessionAccessRegistry.get(ref.sessionKey, ref.generation);
     if (!context) throw new AttachmentFailure('staleSession');
 
@@ -696,6 +729,16 @@ export function createAttachmentAccess(dependencies: AttachmentAccessDependencie
           target: { kind: 'remote', ref, url: target.normalizedUrl },
         };
       }
+      if (target.kind === 'canonical-blob') {
+        return {
+          ok: true,
+          identity: opaqueIdentity(`${target.conversationId}:${target.blobHash}`),
+          displayName: finalDisplayName,
+          mimeType: target.mimeType,
+          size: target.size,
+          target: { kind: 'local', scope: 'canonical-blob', entryKind: 'file', ref },
+        };
+      }
       const displayPath = ref.stagingId
         ? dependencies.stagedAttachments.getDisplayPath(ref.stagingId)
         : null;
@@ -717,6 +760,28 @@ export function createAttachmentAccess(dependencies: AttachmentAccessDependencie
     let opened: { handle: FileHandle; stat: Stats } | undefined;
     try {
       const target = await resolveTarget(ref);
+      if (target.kind === 'canonical-blob') {
+        if (target.size > FILE_PREVIEW_MAX_TEXT_BYTES) {
+          return { ok: false, error: 'tooLarge', size: target.size };
+        }
+        const result = await dependencies.dataClient!.call<{
+          data: Uint8Array;
+          mimeType: string;
+          size: number;
+        }>('readConversationBlob', {
+          conversationId: target.conversationId,
+          blobHash: target.blobHash,
+        });
+        const buffer = Buffer.from(result.data);
+        if (looksLikeBinary(buffer)) return { ok: false, error: 'binary', size: buffer.length };
+        return {
+          ok: true,
+          content: buffer.toString('utf8'),
+          mimeType: result.mimeType,
+          size: result.size,
+          readOnly: true,
+        };
+      }
       if (target.kind !== 'local') throw new AttachmentFailure('invalidReference');
       if (target.entryKind !== 'file') throw new AttachmentFailure('notFile');
       opened = await openRevalidatedLocal(target, await getFs());
@@ -749,6 +814,25 @@ export function createAttachmentAccess(dependencies: AttachmentAccessDependencie
     let opened: { handle: FileHandle; stat: Stats } | undefined;
     try {
       const target = await resolveTarget(payload?.ref);
+      if (target.kind === 'canonical-blob') {
+        const cap = boundedBinaryCap(payload.maxBytes);
+        if (target.size > cap) return { ok: false, error: 'tooLarge', size: target.size };
+        const result = await dependencies.dataClient!.call<{
+          data: Uint8Array;
+          mimeType: string;
+          size: number;
+        }>('readConversationBlob', {
+          conversationId: target.conversationId,
+          blobHash: target.blobHash,
+        });
+        return {
+          ok: true,
+          data: result.data,
+          mimeType: result.mimeType,
+          size: result.size,
+          readOnly: true,
+        };
+      }
       if (target.kind !== 'local') throw new AttachmentFailure('invalidReference');
       if (target.entryKind !== 'file') throw new AttachmentFailure('notFile');
       opened = await openRevalidatedLocal(target, await getFs());
@@ -787,6 +871,10 @@ export function createAttachmentAccess(dependencies: AttachmentAccessDependencie
           throw new AttachmentFailure('staleSession');
         }
         await shell.openExternal(target.normalizedUrl);
+      } else if (target.kind === 'canonical-blob') {
+        // Canonical blobs are previewed through bounded DataService reads. They
+        // are never exposed as stable filesystem paths to another process.
+        throw new AttachmentFailure('operationFailed');
       } else {
         sourceKind = 'local';
         identity = opaqueIdentity(target.canonicalPath);

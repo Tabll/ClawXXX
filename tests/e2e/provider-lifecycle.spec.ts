@@ -3,19 +3,46 @@ import { completeSetup, expect, test } from './fixtures/electron';
 const TEST_PROVIDER_ID = 'moonshot-e2e';
 const TEST_PROVIDER_LABEL = 'Moonshot E2E';
 
+async function fillSecureSecret(
+  page: Parameters<typeof completeSetup>[0],
+  testId: string,
+  value: string,
+): Promise<void> {
+  await page.getByTestId(testId).evaluate((element, nextValue) => {
+    const id = element.getAttribute('data-clawx-secret-id');
+    const setValue = window.clawxSecureSecrets?.setValueForTesting;
+    if (!id || typeof setValue !== 'function') {
+      throw new Error('Secure test input bridge is unavailable');
+    }
+    setValue(id, nextValue);
+  }, value);
+}
+
 async function seedTestProvider(page: Parameters<typeof completeSetup>[0]): Promise<void> {
   await page.evaluate(async ({ providerId, providerLabel }) => {
     const now = new Date().toISOString();
-    await window.electron.ipcRenderer.invoke('provider:save', {
-      id: providerId,
-      name: providerLabel,
-      type: 'moonshot',
-      baseUrl: 'https://api.moonshot.cn/v1',
-      model: 'kimi-k2.6',
-      enabled: true,
-      createdAt: now,
-      updatedAt: now,
+    const response = await window.clawx!.hostInvoke({
+      id: crypto.randomUUID(),
+      module: 'providers',
+      action: 'createAccount',
+      payload: {
+        account: {
+          id: providerId,
+          label: providerLabel,
+          vendorId: 'moonshot',
+          authMode: 'api_key',
+          baseUrl: 'https://api.moonshot.cn/v1',
+          model: 'kimi-k2.6',
+          enabled: true,
+          isDefault: false,
+          createdAt: now,
+          updatedAt: now,
+        },
+      },
     });
+    if (!response.ok || !(response.data as { success?: boolean })?.success) {
+      throw new Error('Failed to seed Provider account');
+    }
   }, { providerId: TEST_PROVIDER_ID, providerLabel: TEST_PROVIDER_LABEL });
 }
 
@@ -28,30 +55,41 @@ test.describe('ClawX provider lifecycle', () => {
       const providers = [
         {
           id: 'moonshot-default-e2e',
-          name: 'Moonshot Default E2E',
-          type: 'moonshot',
+          label: 'Moonshot Default E2E',
+          vendorId: 'moonshot',
+          authMode: 'api_key',
           baseUrl: 'https://api.moonshot.cn/v1',
           model: 'kimi-k2.6',
           enabled: true,
+          isDefault: false,
           createdAt: now,
           updatedAt: now,
         },
         {
           id: 'deepseek-replacement-e2e',
-          name: 'DeepSeek Replacement E2E',
-          type: 'deepseek',
+          label: 'DeepSeek Replacement E2E',
+          vendorId: 'deepseek',
+          authMode: 'api_key',
           baseUrl: 'https://api.deepseek.com/v1',
           model: 'deepseek-v4-pro',
           enabled: true,
+          isDefault: false,
           createdAt: now,
           updatedAt: new Date(Date.now() + 1_000).toISOString(),
         },
       ];
 
       for (const provider of providers) {
-        await window.electron.ipcRenderer.invoke('provider:save', provider);
+        await window.clawx!.hostInvoke({
+          id: crypto.randomUUID(), module: 'providers', action: 'createAccount', payload: { account: provider },
+        });
       }
-      await window.electron.ipcRenderer.invoke('provider:setDefault', providers[0].id);
+      await window.clawx!.hostInvoke({
+        id: crypto.randomUUID(),
+        module: 'providers',
+        action: 'setKernelDefault',
+        payload: { kernelId: 'openclaw', accountId: providers[0].id, modelId: providers[0].model },
+      });
     });
 
     await page.getByTestId('sidebar-nav-models').click();
@@ -163,11 +201,12 @@ test.describe('ClawX provider lifecycle', () => {
         if (request.action === 'accountKeyInfo') return respond(request.id, keyInfo);
         if (request.action === 'vendors') return respond(request.id, []);
         if (request.action === 'getDefaultAccount') return respond(request.id, { accountId: defaultAccountId });
+        if (request.action === 'kernelDefaults') return respond(request.id, []);
         if (request.action === 'list') return respond(request.id, statuses);
 
         if (request.action === 'validateKey') {
-          if (body.apiKey !== 'sk-lm-test') {
-            return respond(request.id, { valid: false, error: `unexpected key: ${String(body.apiKey)}` });
+          if (typeof body.credentialHandle !== 'string' || !body.credentialHandle.startsWith('credential-stage://') || body.apiKey !== undefined) {
+            return respond(request.id, { valid: false, error: 'credential was not staged securely' });
           }
           const options = body.options as Record<string, unknown> | undefined;
           if (options?.modelId !== 'local-model') {
@@ -184,8 +223,8 @@ test.describe('ClawX provider lifecycle', () => {
           accounts = [account];
           keyInfo = [{
             accountId: String(account.id),
-            hasKey: Boolean(body.apiKey),
-            keyMasked: body.apiKey ? 'sk-***' : null,
+            hasKey: Boolean(body.credentialHandle),
+            keyMasked: body.credentialHandle ? '••••••••' : null,
           }];
           statuses = [{
             id: account.id,
@@ -196,8 +235,8 @@ test.describe('ClawX provider lifecycle', () => {
             enabled: account.enabled,
             createdAt: account.createdAt,
             updatedAt: account.updatedAt,
-            hasKey: Boolean(body.apiKey),
-            keyMasked: body.apiKey ? 'sk-***' : null,
+            hasKey: Boolean(body.credentialHandle),
+            keyMasked: body.credentialHandle ? '••••••••' : null,
           }];
           return respond(request.id, { success: true, account });
         }
@@ -219,7 +258,7 @@ test.describe('ClawX provider lifecycle', () => {
 
     await page.getByTestId('add-provider-type-custom').click();
     await page.getByTestId('add-provider-name-input').fill('LM Studio Local');
-    await page.getByTestId('add-provider-api-key-input').fill('  sk-lm-test \n');
+    await fillSecureSecret(page, 'add-provider-api-key-input', '  sk-lm-test \n');
     await page.getByTestId('add-provider-base-url-input').fill('http://127.0.0.1:1234/v1');
     await page.getByTestId('add-provider-model-id-input').fill('local-model');
     await page.getByTestId('add-provider-submit-button').click();
@@ -246,6 +285,7 @@ test.describe('ClawX provider lifecycle', () => {
         updatedAt: new Date().toISOString(),
       };
       let storedKey = 'sk-existing';
+      let validationAttempt = 0;
       let keyInfo = [{ accountId: provider.id, hasKey: true, keyMasked: 'sk-***' }];
       const originalHostInvoke = (ipcMain as unknown as {
         _invokeHandlers?: Map<string, (event: unknown, request: unknown) => Promise<unknown>>;
@@ -273,10 +313,15 @@ test.describe('ClawX provider lifecycle', () => {
         if (request.action === 'accountKeyInfo') return respond(request.id, keyInfo);
         if (request.action === 'vendors') return respond(request.id, []);
         if (request.action === 'getDefaultAccount') return respond(request.id, { accountId: provider.id });
+        if (request.action === 'kernelDefaults') return respond(request.id, []);
         if (request.action === 'list') return respond(request.id, [provider]);
 
         if (request.action === 'validateKey') {
-          if (body.apiKey === 'sk-good') {
+          validationAttempt += 1;
+          if (validationAttempt === 2
+            && typeof body.credentialHandle === 'string'
+            && body.credentialHandle.startsWith('credential-stage://')
+            && body.apiKey === undefined) {
             const options = body.options as Record<string, unknown> | undefined;
             if (options?.modelId !== 'kimi-k2.6') {
               return respond(request.id, {
@@ -295,7 +340,7 @@ test.describe('ClawX provider lifecycle', () => {
             ...(body.updates as Record<string, unknown> | undefined),
             updatedAt: new Date().toISOString(),
           };
-          if (body.apiKey) storedKey = String(body.apiKey);
+          if (body.credentialHandle) storedKey = String(body.credentialHandle);
           keyInfo = [{ accountId: provider.id, hasKey: Boolean(storedKey), keyMasked: 'sk-***' }];
           return respond(request.id, { success: true, account: provider });
         }
@@ -317,11 +362,11 @@ test.describe('ClawX provider lifecycle', () => {
       'The model ID cannot be changed after creation.',
     );
 
-    await page.getByTestId('provider-edit-key-input-moonshot-edit').fill('sk-bad');
+    await fillSecureSecret(page, 'provider-edit-key-input-moonshot-edit', 'sk-bad');
     await page.getByTestId('provider-edit-save-moonshot-edit').click();
     await expect(page.getByTestId('provider-edit-validation-error-moonshot-edit')).toContainText('Invalid API key');
 
-    await page.getByTestId('provider-edit-key-input-moonshot-edit').fill('sk-good');
+    await fillSecureSecret(page, 'provider-edit-key-input-moonshot-edit', 'sk-good');
     await expect(page.getByTestId('provider-edit-validation-error-moonshot-edit')).toHaveCount(0);
     await page.getByTestId('provider-edit-save-moonshot-edit').click();
 
@@ -372,6 +417,23 @@ test.describe('ClawX provider lifecycle', () => {
         apiProtocol: 'openai-completions',
         model: 'qwen/qwen3.6-35b-a3b',
         modelCapabilities: { reasoning: false, imageInput: false },
+        supportedKernels: ['openclaw', 'deepseek-harness'],
+        projections: [
+          {
+            kernelId: 'openclaw',
+            status: 'ready',
+            desiredVersion: 3,
+            appliedVersion: 3,
+            updatedAt: new Date().toISOString(),
+          },
+          {
+            kernelId: 'deepseek-harness',
+            status: 'failed',
+            desiredVersion: 3,
+            error: 'Harness projection rejected this endpoint',
+            updatedAt: new Date().toISOString(),
+          },
+        ],
         enabled: true,
         isDefault: true,
         createdAt: new Date().toISOString(),
@@ -405,6 +467,13 @@ test.describe('ClawX provider lifecycle', () => {
         if (request.action === 'accountKeyInfo') return respond(request.id, keyInfo);
         if (request.action === 'vendors') return respond(request.id, []);
         if (request.action === 'getDefaultAccount') return respond(request.id, { accountId: provider.id });
+        if (request.action === 'kernelDefaults') {
+          return respond(request.id, [{
+            kernelId: 'openclaw',
+            accountId: provider.id,
+            modelId: provider.model,
+          }]);
+        }
         if (request.action === 'list') return respond(request.id, [provider]);
         if (request.action === 'updateAccount') {
           (globalThis as typeof globalThis & { __lastProviderCapabilityUpdate?: unknown })
@@ -423,6 +492,16 @@ test.describe('ClawX provider lifecycle', () => {
     await page.getByTestId('sidebar-nav-models').click();
     await expect(page.getByTestId('providers-settings')).toBeVisible();
     await expect(page.getByTestId('provider-card-capability-edit')).toBeVisible();
+    await expect(page.getByTestId('provider-kernel-capability-edit-openclaw')).toContainText('Ready');
+    await expect(page.getByTestId('provider-kernel-capability-edit-openclaw')).toContainText('Default');
+    await expect(page.getByTestId('provider-kernel-capability-edit-deepseek-harness')).toContainText('Failed');
+    await expect(page.getByTestId('provider-kernel-capability-edit-deepseek-harness')).toHaveAttribute(
+      'title',
+      'Harness projection rejected this endpoint',
+    );
+    await expect(page.getByTestId('provider-kernel-default-openclaw')).toHaveValue(
+      'capability-edit:qwen%2Fqwen3.6-35b-a3b',
+    );
     await page.getByTestId('provider-card-capability-edit').hover();
     await page.getByTestId('provider-edit-capability-edit').click();
     await expect(page.getByTestId('provider-edit-model-capabilities-capability-edit')).toBeVisible();

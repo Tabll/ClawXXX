@@ -1,19 +1,19 @@
 import { createRequire } from 'node:module';
 import { randomUUID } from 'node:crypto';
 import { chmod, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
-import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { deflateSync } from 'node:zlib';
 import { readOpenClawConfigSnapshot } from '../gateway/config-delivery';
 import { normalizeOpenClawAccountId } from './channel-alias';
 import { resolveOpenClawRuntimeModulePath } from './runtime-package-resolution';
+import { getOpenClawConfigDir } from './paths';
 
 export const DEFAULT_WECHAT_BASE_URL = 'https://ilinkai.weixin.qq.com';
 const DEFAULT_ILINK_BOT_TYPE = '3';
 const ACTIVE_LOGIN_TTL_MS = 5 * 60_000;
 const QR_POLL_TIMEOUT_MS = 35_000;
 const MAX_QR_REFRESH_COUNT = 3;
-const OPENCLAW_DIR = join(homedir(), '.openclaw');
+const OPENCLAW_DIR = getOpenClawConfigDir();
 const WECHAT_STATE_DIR = join(OPENCLAW_DIR, 'openclaw-weixin');
 const WECHAT_ACCOUNT_INDEX_FILE = join(WECHAT_STATE_DIR, 'accounts.json');
 const WECHAT_ACCOUNTS_DIR = join(WECHAT_STATE_DIR, 'accounts');
@@ -43,10 +43,19 @@ function getQrRenderDeps(): QrRenderDeps {
     return qrRenderDeps;
   }
 
-  const qrCodeModulePath = resolveOpenClawRuntimeModulePath('qrcode-terminal/vendor/QRCode/index.js');
-  const qrErrorCorrectLevelPath = resolveOpenClawRuntimeModulePath(
-    'qrcode-terminal/vendor/QRCode/QRErrorCorrectLevel.js',
-  );
+  let qrCodeModulePath: string;
+  let qrErrorCorrectLevelPath: string;
+  try {
+    qrCodeModulePath = resolveOpenClawRuntimeModulePath('qrcode-terminal/vendor/QRCode/index.js');
+    qrErrorCorrectLevelPath = resolveOpenClawRuntimeModulePath(
+      'qrcode-terminal/vendor/QRCode/QRErrorCorrectLevel.js',
+    );
+  } catch {
+    // QR login is a ClawX host capability. It must remain available when the
+    // optional OpenClaw runtime is not installed (for example DSH + Relay).
+    qrCodeModulePath = require.resolve('qrcode-terminal/vendor/QRCode/index.js');
+    qrErrorCorrectLevelPath = require.resolve('qrcode-terminal/vendor/QRCode/QRErrorCorrectLevel.js');
+  }
   qrRenderDeps = {
     QRCode: require(qrCodeModulePath),
     QRErrorCorrectLevel: require(qrErrorCorrectLevelPath),
@@ -176,7 +185,7 @@ function encodePngRgba(buffer: Buffer, width: number, height: number) {
   ]);
 }
 
-async function renderQrPngDataUrl(
+export async function renderQrPngDataUrl(
   input: string,
   opts: { scale?: number; marginModules?: number } = {},
 ): Promise<string> {

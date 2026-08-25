@@ -1,4 +1,5 @@
 import { completeSetup, expect, test } from './fixtures/electron';
+import { fillSecureSecret } from './helpers/secure-secret';
 
 test.describe('Channels binding regression', () => {
   test('keeps newly added non-default Feishu accounts unassigned until the user binds an agent', async ({ electronApp, page }) => {
@@ -113,14 +114,14 @@ test.describe('Channels binding regression', () => {
     const newAccountId = await accountIdInput.inputValue();
     await expect(accountIdInput).toHaveValue(/feishu-/);
     await page.locator('#appId').fill('cli_test');
-    await page.locator('#appSecret').fill('secret_test');
+    await fillSecureSecret(page, 'channel-secret-appSecret', 'secret_test');
 
     await page.getByRole('button', { name: /Save & Connect|dialog\.saveAndConnect/ }).click();
     await expect(page.getByText(/Configure Feishu \/ Lark|dialog\.configureTitle/)).toBeHidden();
 
     const newAccountRow = page.locator('div.rounded-xl').filter({ hasText: newAccountId }).first();
     await expect(newAccountRow).toBeVisible();
-    const bindingSelect = newAccountRow.locator('select');
+    const bindingSelect = page.getByTestId(`channel-agent-feishu-${newAccountId}`);
     await expect(bindingSelect).toHaveValue('');
 
     await bindingSelect.selectOption('code');

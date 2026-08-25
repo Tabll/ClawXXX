@@ -13,13 +13,11 @@ import {
 import { formatSessionRelativeTime } from '@/lib/relative-time';
 import { useAgentsStore } from '@/stores/agents';
 import { useChatStore } from '@/stores/chat';
-import { useGatewayStore } from '@/stores/gateway';
 import { useSessionAttentionStore } from '@/stores/session-attention';
 import { useSettingsStore } from '@/stores/settings';
 
 const initialAgentsState = useAgentsStore.getState();
 const initialChatState = useChatStore.getState();
-const initialGatewayState = useGatewayStore.getState();
 const initialSessionAttentionState = useSessionAttentionStore.getState();
 const initialSettingsState = useSettingsStore.getState();
 const initialElectronPlatform = window.electron?.platform;
@@ -44,9 +42,6 @@ function seedSidebarState(renameSession = vi.fn().mockResolvedValue(undefined)) 
     sidebarWidth: 280,
     devModeUnlocked: false,
   });
-  useGatewayStore.setState({
-    status: { state: 'stopped', port: 18789 },
-  });
   useAgentsStore.setState({
     fetchAgents: vi.fn().mockResolvedValue(undefined),
   });
@@ -68,7 +63,6 @@ afterEach(() => {
   }
   useAgentsStore.setState(initialAgentsState, true);
   useChatStore.setState(initialChatState, true);
-  useGatewayStore.setState(initialGatewayState, true);
   useSessionAttentionStore.setState(initialSessionAttentionState, true);
   useSettingsStore.setState(initialSettingsState, true);
   localStorage.removeItem('clawx.session-attention');
@@ -257,20 +251,10 @@ describe('sidebar session helpers', () => {
     expect(screen.getByTestId(`sidebar-session-time-${sidebarSessionKey}`)).toBeInTheDocument();
   });
 
-  it('loads only the session catalog when the Gateway becomes ready', async () => {
+  it('loads the canonical conversation catalog without waiting for a runtime', async () => {
     const loadSessions = vi.fn().mockResolvedValue(undefined);
     seedSidebarState();
     useChatStore.setState({ loadSessions });
-    useGatewayStore.setState({
-      status: {
-        state: 'running',
-        gatewayReady: true,
-        port: 18789,
-        pid: 1234,
-        connectedAt: 5678,
-      },
-    });
-
     renderSidebar();
 
     await waitFor(() => expect(loadSessions).toHaveBeenCalledTimes(1));

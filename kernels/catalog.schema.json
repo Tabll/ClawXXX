@@ -1,0 +1,254 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://claw-x.com/schemas/kernel-catalog-v1.json",
+  "title": "ClawX signed kernel catalog envelope v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "channel",
+    "sequence",
+    "issuedAt",
+    "expiresAt",
+    "artifacts",
+    "revokedArtifactIdentities",
+    "catalogSignature"
+  ],
+  "properties": {
+    "$schema": { "type": "string" },
+    "schemaVersion": { "const": 1 },
+    "channel": { "enum": ["staging", "production"] },
+    "sequence": { "type": "integer", "minimum": 1 },
+    "issuedAt": { "type": "string", "format": "date-time" },
+    "expiresAt": { "type": "string", "format": "date-time" },
+    "artifacts": {
+      "type": "array",
+      "maxItems": 1000,
+      "items": { "$ref": "#/$defs/artifact" }
+    },
+    "revokedArtifactIdentities": {
+      "type": "array",
+      "maxItems": 10000,
+      "items": { "type": "string", "minLength": 1, "maxLength": 512 },
+      "uniqueItems": true
+    },
+    "emergencyRollback": { "$ref": "#/$defs/rollbackAuthorization" },
+    "catalogSignature": { "$ref": "#/$defs/signature" }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "signature": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["algorithm", "keyId", "signature"],
+      "properties": {
+        "algorithm": { "const": "Ed25519" },
+        "keyId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "signature": {
+          "type": "string",
+          "minLength": 32,
+          "maxLength": 256,
+          "pattern": "^[A-Za-z0-9_-]+={0,2}$"
+        }
+      }
+    },
+    "protocolRange": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "min", "max"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "min": { "type": "integer", "minimum": 1 },
+        "max": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "kernelId",
+        "displayName",
+        "upstreamVersion",
+        "upstreamCommit",
+        "patchRevision",
+        "artifactVersion",
+        "platform",
+        "arch",
+        "minHostVersion",
+        "maxHostVersion",
+        "capabilityContractVersion",
+        "protocols",
+        "checkpointCodecs",
+        "storage",
+        "node",
+        "archive",
+        "entrypoints",
+        "supplyChain",
+        "budgets",
+        "publishedAt",
+        "expiresAt",
+        "descriptorSignature"
+      ],
+      "properties": {
+        "schemaVersion": { "const": 1 },
+        "kernelId": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{0,63}$" },
+        "displayName": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "upstreamVersion": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "upstreamCommit": { "type": "string", "pattern": "^[a-f0-9]{40}$" },
+        "patchRevision": { "type": "integer", "minimum": 1 },
+        "artifactVersion": {
+          "type": "string",
+          "maxLength": 192,
+          "pattern": "^[0-9A-Za-z][0-9A-Za-z._+-]{0,126}\\+clawx\\.[1-9][0-9]*$"
+        },
+        "platform": { "enum": ["darwin", "linux", "win32"] },
+        "arch": { "enum": ["arm64", "x64"] },
+        "minHostVersion": { "type": "string", "minLength": 1 },
+        "maxHostVersion": { "type": "string", "minLength": 1 },
+        "capabilityContractVersion": { "const": 1 },
+        "protocols": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["chat", "control", "conversationStore"],
+          "properties": {
+            "chat": { "$ref": "#/$defs/protocolRange" },
+            "control": {
+              "allOf": [
+                { "$ref": "#/$defs/protocolRange" },
+                { "properties": { "name": { "const": "clawx-kernel" } } }
+              ]
+            },
+            "conversationStore": {
+              "allOf": [
+                { "$ref": "#/$defs/protocolRange" },
+                { "properties": { "name": { "const": "clawx-conversation-store" } } }
+              ]
+            }
+          }
+        },
+        "checkpointCodecs": {
+          "type": "array",
+          "maxItems": 32,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "schemaVersion", "portable"],
+            "properties": {
+              "id": { "type": "string", "minLength": 1, "maxLength": 128 },
+              "schemaVersion": { "type": "integer", "minimum": 1 },
+              "portable": { "const": false }
+            }
+          }
+        },
+        "storage": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["authority", "nativeDurableHistory", "regressionReportSha256"],
+          "properties": {
+            "authority": { "const": "clawx-data-service" },
+            "nativeDurableHistory": { "const": false },
+            "regressionReportSha256": { "$ref": "#/$defs/sha256" }
+          }
+        },
+        "node": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["version", "moduleAbi", "distributionSha256"],
+          "properties": {
+            "version": { "type": "string", "pattern": "^24\\.[0-9]+\\.[0-9]+$" },
+            "moduleAbi": { "type": "integer", "minimum": 1 },
+            "distributionSha256": { "$ref": "#/$defs/sha256" }
+          }
+        },
+        "archive": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["format", "url", "sha256", "compressedSize", "unpackedSize", "fileCount"],
+          "properties": {
+            "format": { "const": "tar.zst" },
+            "url": { "type": "string", "format": "uri", "pattern": "^https://" },
+            "sha256": { "$ref": "#/$defs/sha256" },
+            "compressedSize": { "type": "integer", "minimum": 1 },
+            "unpackedSize": { "type": "integer", "minimum": 1 },
+            "fileCount": { "type": "integer", "minimum": 1 }
+          }
+        },
+        "entrypoints": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^(?!/)(?![A-Za-z]:)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*\\\\).+$"
+          }
+        },
+        "supplyChain": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "sourceSha256",
+            "lockfileSha256",
+            "patchSeriesSha256",
+            "fileManifestSha256",
+            "sbomSha256",
+            "noticesSha256",
+            "provenanceSha256",
+            "testReportSha256"
+          ],
+          "properties": {
+            "sourceSha256": { "$ref": "#/$defs/sha256" },
+            "lockfileSha256": { "$ref": "#/$defs/sha256" },
+            "patchSeriesSha256": { "$ref": "#/$defs/sha256" },
+            "fileManifestSha256": { "$ref": "#/$defs/sha256" },
+            "sbomSha256": { "$ref": "#/$defs/sha256" },
+            "noticesSha256": { "$ref": "#/$defs/sha256" },
+            "provenanceSha256": { "$ref": "#/$defs/sha256" },
+            "testReportSha256": { "$ref": "#/$defs/sha256" }
+          }
+        },
+        "budgets": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["coldReadyMs", "idleRssBytes"],
+          "properties": {
+            "coldReadyMs": { "type": "integer", "minimum": 1 },
+            "idleRssBytes": { "type": "integer", "minimum": 1 }
+          }
+        },
+        "publishedAt": { "type": "string", "format": "date-time" },
+        "expiresAt": { "type": "string", "format": "date-time" },
+        "descriptorSignature": { "$ref": "#/$defs/signature" }
+      }
+    },
+    "rollbackAuthorization": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "authorizationId",
+        "fromSequence",
+        "toSequence",
+        "catalogSha256",
+        "reason",
+        "issuedAt",
+        "expiresAt",
+        "signing"
+      ],
+      "properties": {
+        "schemaVersion": { "const": 1 },
+        "authorizationId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "fromSequence": { "type": "integer", "minimum": 1 },
+        "toSequence": { "type": "integer", "minimum": 1 },
+        "catalogSha256": { "$ref": "#/$defs/sha256" },
+        "reason": { "type": "string", "minLength": 16, "maxLength": 2048 },
+        "issuedAt": { "type": "string", "format": "date-time" },
+        "expiresAt": { "type": "string", "format": "date-time" },
+        "signing": { "$ref": "#/$defs/signature" }
+      }
+    }
+  }
+}

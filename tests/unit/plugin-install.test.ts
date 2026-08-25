@@ -120,6 +120,20 @@ vi.mock('@electron/gateway/config-delivery', () => ({
   mutateOpenClawConfig: mockMutateOpenClawConfig,
 }));
 
+vi.mock('@electron/utils/paths', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@electron/utils/paths')>();
+  return {
+    ...actual,
+    getOpenClawConfigDir: () => path.join(
+      mockHomedir(),
+      '.clawx',
+      'kernel-config',
+      'openclaw',
+    ),
+    getOpenClawResolvedDir: () => '/app/resources/openclaw',
+  };
+});
+
 function setPlatform(platform: NodeJS.Platform): void {
   Object.defineProperty(process, 'platform', {
     value: platform,
@@ -167,7 +181,7 @@ describe('plugin installer diagnostics', () => {
   });
 
   it('adds the WeCom channel descriptor while preserving valid upstream npm metadata', async () => {
-    const targetDir = '/home/test/.openclaw/extensions/wecom';
+    const targetDir = '/home/test/.clawx/kernel-config/openclaw/extensions/wecom';
     mockExistsSync.mockImplementation((input: string) => [
       `${targetDir}/openclaw.plugin.json`,
       `${targetDir}/package.json`,
@@ -302,7 +316,7 @@ describe('plugin installer diagnostics', () => {
       '[plugin] Bundled mirror install failed for WeCom',
       expect.objectContaining({
         sourceDir,
-        targetDir: expect.stringContaining('.openclaw/extensions/wecom'),
+        targetDir: expect.stringContaining('kernel-config/openclaw/extensions/wecom'),
         platform: 'win32',
         attempts: [
           expect.objectContaining({ attempt: 1, code: 'EPERM' }),
@@ -313,7 +327,7 @@ describe('plugin installer diagnostics', () => {
   });
 
   it('writes trusted SQLite metadata for mirrored official whatsapp plugin', async () => {
-    const targetDir = '/home/test/.openclaw/extensions/whatsapp';
+    const targetDir = '/home/test/.clawx/kernel-config/openclaw/extensions/whatsapp';
     const sourceDir = '/bundle/whatsapp';
 
     mockExistsSync.mockImplementation((input: string) => {
@@ -343,7 +357,7 @@ describe('plugin installer diagnostics', () => {
   });
 
   it('reports a failed OpenClaw peer link repair for an installed mirror', async () => {
-    const targetDir = '/home/test/.openclaw/extensions/qqbot';
+    const targetDir = '/home/test/.clawx/kernel-config/openclaw/extensions/qqbot';
 
     mockExistsSync.mockImplementation((input: string) => {
       const value = String(input);
@@ -371,7 +385,7 @@ describe('plugin installer diagnostics', () => {
   });
 
   it('removes WeCom updater metadata for the patched legacy-compatible plugin id', async () => {
-    const targetDir = '/home/test/.openclaw/extensions/wecom';
+    const targetDir = '/home/test/.clawx/kernel-config/openclaw/extensions/wecom';
     configState.authoritative = {
       gatewayOnly: true,
       plugins: {
@@ -415,7 +429,7 @@ describe('plugin installer diagnostics', () => {
   });
 
   it('replaces legacy Feishu npm ownership with the ClawX path mirror', async () => {
-    const targetDir = '/home/test/.openclaw/extensions/feishu-openclaw-plugin';
+    const targetDir = '/home/test/.clawx/kernel-config/openclaw/extensions/feishu-openclaw-plugin';
     configState.authoritative = {
       gatewayOnly: true,
       plugins: {
@@ -468,7 +482,7 @@ describe('plugin installer diagnostics', () => {
   });
 
   it('links a mirrored plugin openclaw peer to the bundled runtime', async () => {
-    const targetDir = '/home/test/.openclaw/extensions/qqbot';
+    const targetDir = '/home/test/.clawx/kernel-config/openclaw/extensions/qqbot';
     const openclawDir = '/app/resources/openclaw';
     const nodeModulesDir = `${targetDir}/node_modules`;
     const linkPath = `${nodeModulesDir}/openclaw`;

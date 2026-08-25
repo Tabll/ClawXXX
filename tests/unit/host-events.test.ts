@@ -13,14 +13,34 @@ beforeEach(() => {
 });
 
 describe('hostEvents', () => {
-  it('subscribes to gateway status over IPC', async () => {
+  it('subscribes to canonical Conversation catalog changes over IPC', async () => {
+    const { hostEvents } = await import('@/lib/host-events');
+    const handler = vi.fn();
+
+    hostEvents.onConversationCatalogChanged(handler);
+    const callback = on.mock.calls[0]?.[1] as ((payload: unknown) => void) | undefined;
+    callback?.({
+      conversationId: 'conversation-one',
+      kernelId: 'openclaw',
+      hasActiveRun: true,
+      updatedAt: '2026-08-24T00:00:00.000Z',
+    });
+
+    expect(on).toHaveBeenCalledWith('conversations:catalog-changed', expect.any(Function));
+    expect(handler).toHaveBeenCalledWith(expect.objectContaining({
+      conversationId: 'conversation-one',
+      hasActiveRun: true,
+    }));
+  });
+
+  it('subscribes to canonical kernel status over IPC', async () => {
     on.mockReturnValueOnce(() => undefined);
     const { hostEvents } = await import('@/lib/host-events');
     const handler = vi.fn();
 
-    hostEvents.onGatewayStatus(handler);
+    hostEvents.onKernelStatusChanged(handler);
 
-    expect(on).toHaveBeenCalledWith('gateway:status-changed', expect.any(Function));
+    expect(on).toHaveBeenCalledWith('kernels:status-changed', expect.any(Function));
   });
 
   it('passes typed payloads from IPC callbacks', async () => {
@@ -80,7 +100,7 @@ describe('hostEvents', () => {
     on.mockReturnValueOnce(() => undefined);
     const { hostEvents } = await import('@/lib/host-events');
 
-    hostEvents.onGatewayNotification(vi.fn());
+    hostEvents.onKernelCatalogChanged(vi.fn());
 
     expect(eventSource).not.toHaveBeenCalled();
   });

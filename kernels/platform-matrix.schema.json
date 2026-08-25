@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://claw-x.com/schemas/kernel-platform-matrix-v1.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "frozenAt", "nodeRuntime", "targets", "deferred"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "version": { "const": 1 },
+    "frozenAt": { "type": "string", "format": "date" },
+    "nodeRuntime": { "type": "string", "minLength": 1 },
+    "targets": {
+      "type": "array",
+      "minItems": 5,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["platform", "arch", "formats", "release"],
+        "properties": {
+          "platform": { "enum": ["darwin", "win32", "linux"] },
+          "arch": { "enum": ["arm64", "x64"] },
+          "formats": { "type": "array", "minItems": 1, "items": { "type": "string" } },
+          "release": { "const": "required" },
+          "packageNotes": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    },
+    "deferred": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["platform", "arch", "format", "reason"],
+        "properties": {
+          "platform": { "type": "string" },
+          "arch": { "type": "string" },
+          "format": { "type": "string" },
+          "reason": { "type": "string", "minLength": 1 }
+        }
+      }
+    }
+  }
+}

@@ -16,6 +16,7 @@ import {
   getDefaultProviderAccountId,
   getProviderAccount,
   listProviderAccounts,
+  isCanonicalProviderStoreConfigured,
   providerAccountToConfig,
   providerConfigToAccount,
   saveProviderAccount,
@@ -43,12 +44,10 @@ import {
 import type { ProviderWithKeyInfo } from '../../shared/providers/types';
 import { logger } from '../../utils/logger';
 
-function maskApiKey(apiKey: string | null): string | null {
-  if (!apiKey) return null;
-  if (apiKey.length > 12) {
-    return `${apiKey.substring(0, 4)}${'*'.repeat(apiKey.length - 8)}${apiKey.substring(apiKey.length - 4)}`;
-  }
-  return '*'.repeat(apiKey.length);
+function configuredKeyMarker(configured: boolean): string | null {
+  // Never derive UI metadata from the credential value. A fixed marker leaks
+  // presence only and cannot reveal prefix, suffix or length.
+  return configured ? '••••••••' : null;
 }
 
 const legacyProviderApiWarned = new Set<string>();
@@ -170,6 +169,13 @@ export class ProviderService {
 
   async listAccounts(): Promise<ProviderAccount[]> {
     await ensureProviderStoreMigrated();
+
+    // Once DataService is attached, canonical SQLite owns account identity.
+    // OpenClaw config is only a projection target: a stopped/uninstalled or
+    // temporarily inconsistent runtime must not hide canonical accounts.
+    if (isCanonicalProviderStoreConfigured()) {
+      return listProviderAccounts();
+    }
 
     // ── openclaw.json is the ONLY source of truth ──
     // The provider list is derived entirely from openclaw.json.
@@ -489,7 +495,7 @@ export class ProviderService {
       results.push({
         ...provider,
         hasKey: !!apiKey,
-        keyMasked: maskApiKey(apiKey),
+        keyMasked: configuredKeyMarker(Boolean(apiKey)),
       });
     }
     return results;
@@ -561,14 +567,13 @@ export class ProviderService {
     const accounts = await this.listAccounts();
     const results: Array<{ accountId: string; hasKey: boolean; keyMasked: string | null }> = [];
     for (const account of accounts) {
-      const runtimeProviderKey = resolveOpenClawProviderKey(account);
-      const apiKey = (await getProviderApiKeyFromOpenClaw(runtimeProviderKey))
-        ?? (await getApiKey(account.id))
-        ?? (runtimeProviderKey !== account.id ? await getApiKey(runtimeProviderKey) : null);
+      // Credential presence is Main-owned. A runtime projection may contain a
+      // copied credential, but it never becomes the canonical source again.
+      const apiKey = await getApiKey(account.id);
       results.push({
         accountId: account.id,
         hasKey: !!apiKey,
-        keyMasked: maskApiKey(apiKey),
+        keyMasked: configuredKeyMarker(Boolean(apiKey)),
       });
     }
     return results;

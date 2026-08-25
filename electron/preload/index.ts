@@ -5,6 +5,7 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron';
 import type { HostRequest } from '@shared/host-api/types';
 import { HOST_EVENT_CHANNELS } from '@shared/host-events/contract';
+import './secure-secret-input.js';
 
 const validStaticEventChannels: Set<string> = new Set(
   Object.values(HOST_EVENT_CHANNELS).flatMap((moduleChannels) => Object.values(moduleChannels)),
@@ -42,7 +43,6 @@ const electronAPI = {
         'app:version',
         'app:name',
         'app:platform',
-        'app:request',
         // Window controls
         'window:minimize',
         'window:maximize',
@@ -69,19 +69,9 @@ const electronAPI = {
         'env:getConfig',
         'env:setApiKey',
         'env:deleteApiKey',
-        // Provider
-        'provider:list',
-        'provider:get',
-        'provider:save',
-        'provider:delete',
-        'provider:setApiKey',
-        'provider:updateWithKey',
-        'provider:deleteApiKey',
-        'provider:hasApiKey',
-        'provider:getApiKey',
-        'provider:setDefault',
-        'provider:getDefault',
-        'provider:validateKey',
+        // Provider operations use typed hostInvoke exclusively. Raw secret
+        // fields are staged by the closed-shadow preload element and never
+        // exposed through this generic Renderer IPC bridge.
         // File preview (sandboxed read/write/list/tree)
         'file:readText',
         'file:readBinary',

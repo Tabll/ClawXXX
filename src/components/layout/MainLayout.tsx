@@ -8,6 +8,7 @@ import { TitleBar } from './TitleBar';
 import { MAC_SIDEBAR_CHROME_HEIGHT } from '@shared/sidebar-layout';
 import { cn } from '@/lib/utils';
 import { WebBrowserHost } from '@/components/web-browser/WebBrowserHost';
+import { KernelTitleStatus } from '@/components/kernels/KernelStatus';
 
 export function MainLayout() {
   const platform = window.electron?.platform;
@@ -35,6 +36,7 @@ export function MainLayout() {
             !isWin && 'border-t border-border/60',
           )}
         >
+          <div className="absolute right-4 top-3 z-20"><KernelTitleStatus /></div>
           {isMac && (
             <div
               data-testid="mac-main-drag-region"

@@ -1,319 +1,118 @@
 // @vitest-environment node
 
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { DatabaseSync } from 'node:sqlite';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { join } from 'node:path';
+import { afterEach, describe, expect, it } from 'vitest';
+import { ClawXDataService, type ClawXDataClient } from '@electron/data/clawx-data-service';
+import { createSessionsApi } from '@electron/services/sessions-api';
+import { asConversationId, asRunId, asTurnId } from '@shared/conversations/contracts';
+import { testAgentRouting } from '../helpers/canonical-agent';
 
-const testOpenClawDir = join(tmpdir(), `clawx-session-workspace-${process.pid}`);
-const testOpenClawConfigDir = join(tmpdir(), `clawx-session-config-${process.pid}`);
+const services: ClawXDataService[] = [];
 
-vi.mock('@electron/utils/paths', () => ({
-  getOpenClawConfigDir: () => testOpenClawDir,
-  resolveOpenClawStateDir: () => testOpenClawDir,
-  resolveOpenClawConfigDir: () => testOpenClawConfigDir,
-}));
+afterEach(async () => {
+  await Promise.all(services.splice(0).map(service => service.close()));
+});
 
-function seedAcpCwd(sessionKey: string, cwd: string) {
-  const stateDir = join(testOpenClawDir, 'state');
-  mkdirSync(stateDir, { recursive: true });
-  const db = new DatabaseSync(join(stateDir, 'openclaw.sqlite'));
-  try {
-    db.exec('CREATE TABLE acp_sessions (session_key TEXT PRIMARY KEY, cwd TEXT)');
-    db.prepare('INSERT INTO acp_sessions (session_key, cwd) VALUES (?, ?)').run(sessionKey, cwd);
-  } finally {
-    db.close();
-  }
+function callClient(client: ClawXDataClient) {
+  return {
+    call<T>(method: string, ...args: unknown[]): Promise<T> {
+      const fn = (client as unknown as Record<string, unknown>)[method];
+      if (typeof fn !== 'function') return Promise.reject(new Error(`Unknown method: ${method}`));
+      return Reflect.apply(fn, client, args) as Promise<T>;
+    },
+  };
 }
 
-function seedAcpReplayCwd(sessionKey: string, cwd: string, updatedAt = 2000) {
-  const stateDir = join(testOpenClawDir, 'state');
-  mkdirSync(stateDir, { recursive: true });
-  const db = new DatabaseSync(join(stateDir, 'openclaw.sqlite'));
-  try {
-    db.exec('CREATE TABLE acp_replay_sessions (session_id TEXT PRIMARY KEY, session_key TEXT NOT NULL, cwd TEXT NOT NULL, complete INTEGER NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, next_seq INTEGER NOT NULL)');
-    db.prepare('INSERT INTO acp_replay_sessions (session_id, session_key, cwd, complete, created_at, updated_at, next_seq) VALUES (?, ?, ?, 1, 1000, ?, 1)')
-      .run(`${sessionKey}:ledger`, sessionKey, cwd, updatedAt);
-  } finally {
-    db.close();
-  }
-}
-
-function seedAcpRuntimeOptionsCwd(sessionKey: string, cwd: string) {
-  const stateDir = join(testOpenClawDir, 'state');
-  mkdirSync(stateDir, { recursive: true });
-  const db = new DatabaseSync(join(stateDir, 'openclaw.sqlite'));
-  try {
-    db.exec('CREATE TABLE acp_sessions (session_key TEXT PRIMARY KEY, runtime_options_json TEXT, cwd TEXT)');
-    db.prepare('INSERT INTO acp_sessions (session_key, runtime_options_json, cwd) VALUES (?, ?, ?)')
-      .run(sessionKey, JSON.stringify({ cwd }), '/Users/alex/fallback-cwd');
-  } finally {
-    db.close();
-  }
-}
-
-function seedTranscript(sessionKey: string, messages: unknown[]) {
-  const sessionsDir = join(testOpenClawDir, 'agents', 'main', 'sessions');
-  mkdirSync(sessionsDir, { recursive: true });
-  writeFileSync(join(sessionsDir, 'sessions.json'), JSON.stringify({ [sessionKey]: 'heartbeat.jsonl' }), 'utf8');
-  writeFileSync(
-    join(sessionsDir, 'heartbeat.jsonl'),
-    messages.map((message) => JSON.stringify({ type: 'message', message })).join('\n'),
-    'utf8',
-  );
-}
-
-function seedTranscriptRecords(sessionKey: string, records: unknown[]) {
-  const sessionsDir = join(testOpenClawDir, 'agents', 'main', 'sessions');
-  mkdirSync(sessionsDir, { recursive: true });
-  writeFileSync(join(sessionsDir, 'sessions.json'), JSON.stringify({ [sessionKey]: 'timings.jsonl' }), 'utf8');
-  writeFileSync(
-    join(sessionsDir, 'timings.jsonl'),
-    records.map((record) => JSON.stringify(record)).join('\n'),
-    'utf8',
-  );
-}
-
-describe('sessions API workspace summaries', () => {
-  beforeEach(() => {
-    rmSync(testOpenClawDir, { recursive: true, force: true });
-    rmSync(testOpenClawConfigDir, { recursive: true, force: true });
+async function fixture() {
+  const root = mkdtempSync(join(tmpdir(), 'clawx-canonical-sessions-'));
+  const service = new ClawXDataService(join(root, 'data', 'clawx.sqlite'));
+  services.push(service);
+  const main = service.connect({ role: 'main' });
+  const kernel = service.connect({ role: 'kernel', kernelId: 'openclaw', generation: 1 });
+  const conversationId = asConversationId('conversation-canonical');
+  const runId = asRunId('run-canonical');
+  const userTurnId = asTurnId('turn-user');
+  await main.createConversation({
+    id: conversationId,
+    title: 'Canonical title',
+    createdAt: '2026-08-23T10:00:00.000Z',
   });
-
-  it('loads transcript history from the state dir when the config path is elsewhere', async () => {
-    seedTranscript('agent:main:session-state', [{
-      role: 'assistant',
-      content: 'state transcript',
-      timestamp: 10_000,
-    }]);
-    mkdirSync(testOpenClawConfigDir, { recursive: true });
-    writeFileSync(join(testOpenClawConfigDir, 'openclaw.json'), '{}');
-    const { createSessionsApi } = await import('@electron/services/sessions-api');
-
-    await expect(createSessionsApi().history({
-      sessionKey: 'agent:main:session-state',
-      limit: 5,
-    })).resolves.toMatchObject({
-      success: true,
-      messages: [{ content: 'state transcript' }],
-    });
+  await main.admitRun({
+    conversationId,
+    turnId: userTurnId,
+    runId,
+    routing: {
+      kernelId: 'openclaw',
+      kernelVersion: 'test',
+      generation: 1,
+      ...testAgentRouting('openclaw'),
+      contextCompilerVersion: 'v1',
+    },
+    userBlocks: [{ id: 'user-text', type: 'text', visibility: 'portable', text: 'canonical prompt' }],
+    createdAt: '2026-08-23T10:00:01.000Z',
   });
+  await kernel.markRunStarted(runId, '2026-08-23T10:00:02.000Z');
+  await kernel.commitTerminalRun({
+    conversationId,
+    userTurnId,
+    assistantTurnId: asTurnId('turn-assistant'),
+    runId,
+    kernelId: 'openclaw',
+    generation: 1,
+    outcome: 'completed',
+    assistantBlocks: [{ id: 'answer', type: 'text', visibility: 'portable', text: 'canonical answer' }],
+    completedAt: '2026-08-23T10:00:06.000Z',
+  });
+  return { main, api: createSessionsApi({ dataClient: callClient(main) }), conversationId };
+}
 
-  it('extracts bounded whole-turn timings without treating inter-session messages as new turns', async () => {
-    seedTranscriptRecords('agent:main:session-timings', [
-      {
-        type: 'message',
-        timestamp: '2026-07-22T10:00:00.000Z',
-        message: { role: 'user', content: '[Working directory: /tmp/project]\nRepeat this' },
-      },
-      {
-        type: 'message',
-        timestamp: '2026-07-22T10:00:01.000Z',
-        message: { role: 'assistant', content: [{ type: 'toolCall', id: 'tool-1' }] },
-      },
-      {
-        type: 'message',
-        timestamp: '2026-07-22T10:00:03.000Z',
-        message: { role: 'toolResult', content: 'tool result', toolCallId: 'tool-1' },
-      },
-      {
-        type: 'message',
-        timestamp: '2026-07-22T10:00:05.000Z',
-        message: { role: 'assistant', content: 'First answer' },
-      },
-      {
-        type: 'message',
-        timestamp: '2026-07-22T10:01:00.000Z',
-        message: { role: 'user', content: 'Repeat this' },
-      },
-      {
-        type: 'message',
-        timestamp: '2026-07-22T10:01:01.000Z',
-        message: {
-          role: 'user',
-          content: '[Inter-session message] async continuation',
-          provenance: { kind: 'inter_session' },
-        },
-      },
-      {
-        type: 'message',
-        timestamp: '2026-07-22T10:01:02.000Z',
-        message: { role: 'tool_result', content: 'continued tool result', toolCallId: 'tool-2' },
-      },
-      {
-        type: 'message',
-        timestamp: '2026-07-22T10:01:04.000Z',
-        message: { role: 'assistant', content: 'Second answer' },
-      },
-      {
-        type: 'message',
-        timestamp: '2026-07-22T10:02:00.000Z',
-        message: { role: 'user', content: 'Incomplete turn' },
-      },
-    ]);
-    const { createSessionsApi } = await import('@electron/services/sessions-api');
-
-    const result = await createSessionsApi().turnTimings({
-      sessionKey: 'agent:main:session-timings',
-      limit: 1000,
-    });
-
-    expect(result).toEqual({
+describe('sessions API canonical Conversation repository compatibility', () => {
+  it('loads summaries, history and timings only from ClawX SQLite', async () => {
+    const { api, conversationId } = await fixture();
+    await expect(api.summaries({ sessionKeys: [conversationId] })).resolves.toEqual({
       success: true,
-      timings: [
-        {
-          normalizedUserText: 'Repeat this',
-          userOccurrenceFromTail: 2,
-          durationMs: 5_000,
-        },
-        {
-          normalizedUserText: 'Repeat this',
-          userOccurrenceFromTail: 1,
-          durationMs: 4_000,
-        },
+      summaries: [{
+        sessionKey: conversationId,
+        firstUserText: 'Canonical title',
+        lastTimestamp: Date.parse('2026-08-23T10:00:06.000Z'),
+        workspacePath: null,
+        pinned: false,
+      }],
+    });
+    await expect(api.history({ sessionKey: conversationId })).resolves.toMatchObject({
+      success: true,
+      messages: [
+        { id: 'turn-user', role: 'user', content: 'canonical prompt' },
+        { id: 'turn-assistant', role: 'assistant', content: 'canonical answer' },
       ],
     });
-  });
-
-  it('falls back to message timestamps and omits negative or orphan turn timings', async () => {
-    seedTranscriptRecords('agent:main:session-timing-fallback', [
-      {
-        type: 'message',
-        message: { role: 'assistant', content: 'orphan', timestamp: 2_000_000_000_000 },
-      },
-      {
-        type: 'message',
-        message: { role: 'user', content: 'Fallback', timestamp: 2_000_000_001_000 },
-      },
-      {
-        type: 'message',
-        message: { role: 'assistant', content: 'answer', timestamp: 2_000_000_003_500 },
-      },
-      {
-        type: 'message',
-        timestamp: '2026-07-22T10:03:10.000Z',
-        message: { role: 'user', content: 'Clock skew' },
-      },
-      {
-        type: 'message',
-        timestamp: '2026-07-22T10:03:09.000Z',
-        message: { role: 'assistant', content: 'older answer' },
-      },
-    ]);
-    const { createSessionsApi } = await import('@electron/services/sessions-api');
-
-    const result = await createSessionsApi().turnTimings({
-      sessionKey: 'agent:main:session-timing-fallback',
-      limit: 1000,
-    });
-
-    expect(result).toEqual({
+    await expect(api.turnTimings({ sessionKey: conversationId })).resolves.toEqual({
       success: true,
       timings: [{
-        normalizedUserText: 'Fallback',
+        normalizedUserText: 'canonical prompt',
         userOccurrenceFromTail: 1,
-        durationMs: 2_500,
+        durationMs: 5_000,
       }],
     });
   });
 
-  it('returns OpenClaw ACP cwd as workspacePath when available', async () => {
-    seedAcpCwd('agent:main:session-a', '/Users/alex/workspace/ClawX');
-    const { createSessionsApi } = await import('@electron/services/sessions-api');
-    const api = createSessionsApi();
-
-    const result = await api.summaries({ sessionKeys: ['agent:main:session-a'] });
-
-    expect(result.success).toBe(true);
-    expect(result.summaries?.[0]).toMatchObject({
-      sessionKey: 'agent:main:session-a',
-      workspacePath: '/Users/alex/workspace/ClawX',
-    });
+  it('renames, pins and hard-deletes the canonical Conversation', async () => {
+    const { main, api, conversationId } = await fixture();
+    await expect(api.rename({ id: conversationId, title: 'Renamed' })).resolves.toEqual({ success: true });
+    await expect(api.pin({ id: conversationId, pinned: true })).resolves.toEqual({ success: true });
+    expect(await main.getConversation(conversationId)).toEqual(expect.objectContaining({
+      title: 'Renamed',
+      pinnedAt: expect.any(String),
+    }));
+    await expect(api.delete({ id: conversationId })).resolves.toEqual({ success: true });
+    expect(await main.getConversation(conversationId)).toBeUndefined();
   });
 
-  it('returns ACP bridge replay cwd as workspacePath when available', async () => {
-    seedAcpReplayCwd('agent:main:session-a', '/Users/alex/workspace/ReplayProject');
-    const { createSessionsApi } = await import('@electron/services/sessions-api');
+  it('fails closed instead of falling back to a runtime transcript', async () => {
     const api = createSessionsApi();
-
-    const result = await api.summaries({ sessionKeys: ['agent:main:session-a'] });
-
-    expect(result.success).toBe(true);
-    expect(result.summaries?.[0]).toMatchObject({
-      sessionKey: 'agent:main:session-a',
-      workspacePath: '/Users/alex/workspace/ReplayProject',
-    });
-  });
-
-  it('prefers ACP runtime_options_json cwd over legacy acp_sessions cwd', async () => {
-    seedAcpRuntimeOptionsCwd('agent:main:session-a', '/Users/alex/workspace/RuntimeProject');
-    const { createSessionsApi } = await import('@electron/services/sessions-api');
-    const api = createSessionsApi();
-
-    const result = await api.summaries({ sessionKeys: ['agent:main:session-a'] });
-
-    expect(result.success).toBe(true);
-    expect(result.summaries?.[0]).toMatchObject({
-      sessionKey: 'agent:main:session-a',
-      workspacePath: '/Users/alex/workspace/RuntimeProject',
-    });
-  });
-
-  it('returns null workspacePath when OpenClaw cwd is unavailable', async () => {
-    const { createSessionsApi } = await import('@electron/services/sessions-api');
-    const api = createSessionsApi();
-
-    const result = await api.summaries({ sessionKeys: ['agent:main:session-missing'] });
-
-    expect(result.success).toBe(true);
-    expect(result.summaries?.[0]).toMatchObject({
-      sessionKey: 'agent:main:session-missing',
-      workspacePath: null,
-    });
-  });
-
-  it('marks heartbeat-only transcripts without using them as titles', async () => {
-    seedTranscript('agent:main:session-heartbeat', [
-      {
-        role: 'user',
-        content: '[OpenClaw heartbeat poll]',
-        timestamp: 9_000,
-      },
-    ]);
-    const { createSessionsApi } = await import('@electron/services/sessions-api');
-    const api = createSessionsApi();
-
-    const result = await api.summaries({ sessionKeys: ['agent:main:session-heartbeat'] });
-
-    expect(result.success).toBe(true);
-    expect(result.summaries?.[0]).toMatchObject({
-      sessionKey: 'agent:main:session-heartbeat',
-      firstUserText: null,
-      lastTimestamp: 9_000_000,
-      heartbeatOnly: true,
-    });
-  });
-
-  it('does not mark other internal-only transcript prompts as heartbeat sessions', async () => {
-    seedTranscript('agent:main:session-time-poll', [
-      {
-        role: 'user',
-        content: 'Current time: local / 2026-05-06 12:00 UTC',
-        timestamp: 9_001,
-      },
-    ]);
-    const { createSessionsApi } = await import('@electron/services/sessions-api');
-    const api = createSessionsApi();
-
-    const result = await api.summaries({ sessionKeys: ['agent:main:session-time-poll'] });
-
-    expect(result.success).toBe(true);
-    expect(result.summaries?.[0]).toMatchObject({
-      sessionKey: 'agent:main:session-time-poll',
-      firstUserText: null,
-      lastTimestamp: 9_001_000,
-    });
-    expect(result.summaries?.[0]?.heartbeatOnly).toBeUndefined();
+    await expect(api.history({ sessionKey: 'agent:main:legacy' }))
+      .rejects.toThrow(/Canonical Conversation DataService is unavailable/);
   });
 });

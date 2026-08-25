@@ -7,6 +7,7 @@ import { isPythonReady, setupManagedPython } from '../utils/uv-setup';
 import { logger } from '../utils/logger';
 import { prependPathEntry } from '../utils/env-path';
 import { probeGatewayReady } from './ws-client';
+import { buildManagedOpenClawEnvironment } from '../kernels/openclaw/runtime-location';
 
 export function warmupManagedPythonReadiness(): void {
   void isPythonReady().then((pythonReady) => {
@@ -290,7 +291,7 @@ export async function runOpenClawDoctorRepair(): Promise<boolean> {
 
   return await new Promise<boolean>((resolve) => {
     const forkEnv: Record<string, string | undefined> = {
-      ...baseEnvPatched,
+      ...buildManagedOpenClawEnvironment(undefined, baseEnvPatched),
       ...uvEnv,
       OPENCLAW_NO_RESPAWN: '1',
     };

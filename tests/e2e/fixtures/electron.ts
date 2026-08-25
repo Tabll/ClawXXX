@@ -5,11 +5,33 @@ import { access, mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promise
 import { tmpdir } from 'node:os';
 import { dirname, join, relative, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import type { RawMessage } from '../../../shared/chat/types';
+import type { KernelEventEnvelopeV1, KernelRuntimeSnapshot } from '../../../shared/kernels/contracts';
+import type {
+  ConversationExport,
+  ConversationSummary,
+} from '../../../shared/conversations/contracts';
+import type {
+  KernelCatalogSnapshot,
+  KernelPackageProgressEvent,
+} from '../../../shared/host-api/kernels';
 
 export type LaunchElectronOptions = {
   skipSetup?: boolean;
   additionalArgs?: string[];
+};
+
+export type KernelFixtureOperation = {
+  error?: string;
+  result?: unknown;
+  catalog?: KernelCatalogSnapshot;
+  runtimes?: KernelRuntimeSnapshot[];
+  progress?: KernelPackageProgressEvent[];
+};
+
+export type KernelHostFixtureConfig = {
+  catalog: KernelCatalogSnapshot;
+  runtimes: KernelRuntimeSnapshot[];
+  operations?: Record<string, KernelFixtureOperation[]>;
 };
 
 type IpcMockConfig = {
@@ -19,6 +41,7 @@ type IpcMockConfig = {
   hostApiErrors?: Record<string, string>;
   recordHostInvocations?: boolean;
   recordLegacyIpcInvocations?: boolean;
+  kernelFixture?: KernelHostFixtureConfig;
 };
 
 export type RecordedHostInvocation = {
@@ -37,11 +60,6 @@ export type AttachmentFixtureSession = {
   title: string;
 };
 
-export type AttachmentFixtureTranscriptResponse = RawMessage[] | {
-  messages: RawMessage[];
-  deferId: string;
-};
-
 export type AttachmentOpenHandlersFixtureResult = {
   ok: boolean;
   platform?: 'darwin' | 'win32' | 'linux';
@@ -53,6 +71,104 @@ export type AttachmentOpenHandlersFixtureResult = {
   }>;
   error?: string;
 };
+
+export type CanonicalConversationFixture = {
+  id: string;
+  title?: string;
+  createdAt?: string | number;
+  updatedAt?: string | number;
+  workspaceUri?: string;
+  lastKernelId?: 'openclaw' | 'deepseek-harness' | (string & {});
+  kernelIds?: Array<'openclaw' | 'deepseek-harness' | (string & {})>;
+  lastAgentId?: string;
+  hasActiveRun?: boolean;
+};
+
+function fixtureIso(value: string | number | undefined, fallback: string): string {
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number') return new Date(value).toISOString();
+  return fallback;
+}
+
+/** Canonical SQLite catalog row used by E2E Host API fixtures. */
+export function canonicalConversationSummary(
+  input: CanonicalConversationFixture,
+): ConversationSummary {
+  const createdAt = fixtureIso(input.createdAt, '2026-08-24T00:00:00.000Z');
+  const updatedAt = fixtureIso(input.updatedAt, createdAt);
+  return {
+    id: input.id as ConversationSummary['id'],
+    ...(input.title ? { title: input.title } : {}),
+    createdAt,
+    updatedAt,
+    ...(input.workspaceUri ? { workspaceUri: input.workspaceUri } : {}),
+    ...(input.lastKernelId ? { lastKernelId: input.lastKernelId } : {}),
+    ...(input.kernelIds ? { kernelIds: input.kernelIds } : {}),
+    ...(input.lastAgentId ? { lastAgentId: input.lastAgentId } : {}),
+    ...(input.hasActiveRun ? { hasActiveRun: true } : {}),
+  } as ConversationSummary;
+}
+
+export function emptyCanonicalConversation(
+  summary: ConversationSummary,
+): ConversationExport {
+  return {
+    schema: 'clawx.conversation-export/v1',
+    conversation: summary,
+    turns: [],
+    runs: [],
+    usage: [],
+  };
+}
+
+/** Exact Host API responses for the first canonical catalog page and exports. */
+export function canonicalConversationHostApi(
+  summaries: ConversationSummary[],
+): Record<string, unknown> {
+  return {
+    [stableStringify(['conversations', 'list', { limit: 100 }])]: { items: summaries },
+    ...Object.fromEntries(summaries.map(summary => [
+      stableStringify(['conversations', 'get', { id: summary.id }]),
+      emptyCanonicalConversation(summary),
+    ])),
+  };
+}
+
+export function readyKernelFixture(
+  kernelId: 'openclaw' | 'deepseek-harness' = 'openclaw',
+): KernelHostFixtureConfig {
+  const displayName = kernelId === 'openclaw' ? 'OpenClaw' : 'DeepSeek Harness';
+  const artifactVersion = kernelId === 'openclaw' ? '2026.8.1-clawx.1' : '0.1.1-clawx.1';
+  const runtime: KernelRuntimeSnapshot = {
+    kernelId,
+    state: 'ready',
+    generation: 1,
+    artifactVersion,
+    diagnostics: [],
+  };
+  return {
+    catalog: {
+      source: 'network',
+      stale: false,
+      refreshedAt: '2026-08-24T00:00:00.000Z',
+      entries: [{
+        kernelId,
+        displayName,
+        installation: {
+          kernelId,
+          state: 'installed',
+          activeVersion: artifactVersion,
+          updatedAt: '2026-08-24T00:00:00.000Z',
+        },
+        runtime,
+        updateAvailable: false,
+        installAllowed: true,
+        compatibilityFailures: [],
+      }],
+    },
+    runtimes: [runtime],
+  };
+}
 
 export type AttachmentHostFixture = {
   workspaceDir: string;
@@ -66,27 +182,17 @@ export type AttachmentHostFixture = {
   emitAcpSessionUpdates: (input: {
     sessionKey: string;
     updates: Array<Record<string, unknown> & { sessionUpdate: string }>;
-    generation?: number;
-    historical?: boolean;
   }) => Promise<void>;
   setPromptUpdates: (
     prompt: string,
     updates: Array<Record<string, unknown> & { sessionUpdate: string }>,
   ) => Promise<void>;
+  deferPromptResponse: (prompt: string) => Promise<void>;
+  releasePromptResponse: (prompt: string, timeoutMs?: number) => Promise<void>;
   setSessionReplay: (
     sessionKey: string,
     updates: Array<Record<string, unknown> & { sessionUpdate: string }>,
   ) => Promise<void>;
-  setTranscriptResponses: (
-    sessionKey: string,
-    responses: AttachmentFixtureTranscriptResponse[],
-  ) => Promise<void>;
-  releaseTranscriptResponse: (deferId: string) => Promise<void>;
-  waitForDeferredTranscriptReady: (deferId: string, timeoutMs?: number) => Promise<void>;
-  waitForDeferredTranscriptCompleted: (deferId: string, timeoutMs?: number) => Promise<void>;
-  waitForHistoryRequestCount: (sessionKey: string, count: number, timeoutMs?: number) => Promise<number[]>;
-  clearHistoryRequestTimes: (sessionKey?: string) => Promise<void>;
-  waitForHistoryQuiet: (sessionKey: string, quietMs?: number, timeoutMs?: number) => Promise<void>;
   setOpenHandlersResult: (result: AttachmentOpenHandlersFixtureResult) => Promise<void>;
   getHostInvocations: () => Promise<RecordedHostInvocation[]>;
   getShellInvocations: () => Promise<RecordedHostInvocation[]>;
@@ -173,37 +279,55 @@ async function getStableWindow(app: ElectronApplication): Promise<Page> {
 }
 
 async function closeElectronApp(app: ElectronApplication, timeoutMs = 5_000): Promise<void> {
-  let closed = false;
+  const child = app.process();
+  const hasExited = () => child.exitCode !== null || child.signalCode !== null;
+  const waitForExit = () => (
+    hasExited()
+      ? Promise.resolve()
+      : new Promise<void>((resolveExit) => child.once('exit', () => resolveExit()))
+  );
+  let exited = hasExited();
 
   await Promise.race([
     (async () => {
-      const [closeResult] = await Promise.allSettled([
+      const [, exitResult] = await Promise.allSettled([
         app.waitForEvent('close', { timeout: timeoutMs }),
-        app.evaluate(({ app: electronApp }) => {
-          electronApp.quit();
-        }),
+        (async () => {
+          await app.evaluate(({ app: electronApp }) => {
+            electronApp.quit();
+          });
+          await waitForExit();
+        })(),
       ]);
 
-      if (closeResult.status === 'fulfilled') {
-        closed = true;
+      if (exitResult.status === 'fulfilled' || hasExited()) {
+        exited = true;
       }
     })(),
     new Promise((resolve) => setTimeout(resolve, timeoutMs)),
   ]);
 
-  if (closed) {
+  if (exited || hasExited()) {
     return;
   }
 
   try {
     await app.close();
-    return;
+    await Promise.race([
+      waitForExit(),
+      new Promise((resolve) => setTimeout(resolve, timeoutMs)),
+    ]);
+    if (hasExited()) return;
   } catch {
     // Fall through to process kill if Playwright cannot close the app cleanly.
   }
 
   try {
-    app.process().kill('SIGKILL');
+    child.kill('SIGKILL');
+    await Promise.race([
+      waitForExit(),
+      new Promise((resolve) => setTimeout(resolve, timeoutMs)),
+    ]);
   } catch {
     // Ignore process kill failures during e2e teardown.
   }
@@ -323,34 +447,6 @@ export { closeElectronApp };
 export { getStableWindow };
 export { expect };
 
-export async function emitAcpSessionUpdates(
-  app: ElectronApplication,
-  input: {
-    sessionKey: string;
-    updates: Array<Record<string, unknown> & { sessionUpdate: string }>;
-    generation?: number;
-    historical?: boolean;
-    intervalMs?: number;
-  },
-): Promise<void> {
-  await app.evaluate(async ({ app: _app }, event) => {
-    const { BrowserWindow } = process.mainModule!.require('electron') as typeof import('electron');
-    for (const update of event.updates) {
-      for (const window of BrowserWindow.getAllWindows()) {
-        window.webContents.send('chat:acp-session-update', {
-          sessionKey: event.sessionKey,
-          generation: event.generation ?? 1,
-          ...(event.historical ? { historical: true } : {}),
-          notification: { sessionId: event.sessionKey, update },
-        });
-      }
-      if (event.intervalMs && event.intervalMs > 0) {
-        await new Promise((resolveWait) => setTimeout(resolveWait, event.intervalMs));
-      }
-    }
-  }, input);
-}
-
 export async function startMainCpuProfile(app: ElectronApplication): Promise<void> {
   await app.evaluate(async () => {
     const inspector = process.mainModule!.require('node:inspector') as typeof import('node:inspector');
@@ -415,6 +511,21 @@ export async function installIpcMocks(
   await app.evaluate(
     async ({ app: _app }, mockConfig) => {
       const { ipcMain } = process.mainModule!.require('electron') as typeof import('electron');
+      const invokeHandlers = (ipcMain as unknown as {
+        _invokeHandlers?: Map<string, (event: unknown, request: unknown) => Promise<unknown>>;
+      })._invokeHandlers;
+      // Initialization is asynchronous and now includes the DataService and
+      // canonical scheduler. Installing a mock before the production Host API
+      // handler exists races registerIpcHandlers and makes Electron reject the
+      // later registration as a duplicate. Wait for the real boundary, then
+      // replace it; callers still reload the first window after mocks install.
+      const deadline = Date.now() + 30_000;
+      while (!invokeHandlers?.has('host:invoke') && Date.now() < deadline) {
+        await new Promise(resolveWait => setTimeout(resolveWait, 10));
+      }
+      if (!invokeHandlers?.has('host:invoke')) {
+        throw new Error('Timed out waiting for the production host:invoke handler');
+      }
       const stableStringify = (value: unknown): string => {
         if (value == null || typeof value !== 'object') return JSON.stringify(value);
         if (Array.isArray(value)) return `[${value.map((item) => stableStringify(item)).join(',')}]`;
@@ -424,15 +535,15 @@ export async function installIpcMocks(
         return `{${entries.join(',')}}`;
       };
 
-      const originalHostInvoke = (ipcMain as unknown as {
-        _invokeHandlers?: Map<string, (event: unknown, request: unknown) => Promise<unknown>>;
-      })._invokeHandlers?.get('host:invoke');
+      const originalHostInvoke = invokeHandlers.get('host:invoke');
       const globals = globalThis as unknown as {
         __e2eHostInvocations?: RecordedHostInvocation[];
         __e2eLegacyIpcInvocations?: RecordedLegacyIpcInvocation[];
+        __e2eKernelFixture?: KernelHostFixtureConfig;
       };
       if (mockConfig.recordHostInvocations) globals.__e2eHostInvocations = [];
       if (mockConfig.recordLegacyIpcInvocations) globals.__e2eLegacyIpcInvocations = [];
+      if (mockConfig.kernelFixture) globals.__e2eKernelFixture = mockConfig.kernelFixture;
       type IpcInvokeHandler = (event: unknown, ...args: unknown[]) => Promise<unknown>;
       const getInvokeHandler = (channel: string): IpcInvokeHandler | undefined => {
         return (ipcMain as unknown as {
@@ -557,7 +668,7 @@ export async function installIpcMocks(
         return null;
       };
 
-      if (mockConfig.gatewayRpc || mockConfig.hostApi || mockConfig.hostApiErrors || mockConfig.gatewayStatus) {
+      if (mockConfig.gatewayRpc || mockConfig.hostApi || mockConfig.hostApiErrors || mockConfig.gatewayStatus || mockConfig.kernelFixture) {
         ipcMain.removeHandler('host:invoke');
         ipcMain.handle('host:invoke', async (event: unknown, request: {
           id?: string;
@@ -578,6 +689,72 @@ export async function installIpcMocks(
             request?.action ?? null,
             request?.payload ?? null,
           ]);
+
+          const kernelFixture = globals.__e2eKernelFixture;
+          if (kernelFixture && request?.module === 'kernels') {
+            const payload = request.payload ?? {};
+            const kernelId = typeof payload.kernelId === 'string' ? payload.kernelId : '';
+            if (request.action === 'catalog') return respond(request.id, kernelFixture.catalog);
+            if (request.action === 'list') return respond(request.id, kernelFixture.runtimes);
+            if (request.action === 'status' || request.action === 'health') {
+              const snapshot = kernelFixture.runtimes.find(runtime => runtime.kernelId === kernelId);
+              return snapshot ? respond(request.id, snapshot) : fail(request.id, `Unknown kernel: ${kernelId}`);
+            }
+            if (request.action === 'logs') return respond(request.id, []);
+            if (request.action === 'versions') return respond(request.id, { versions: [] });
+            if (request.action === 'openDirectory') return respond(request.id, { success: true });
+            if (request.action === 'exportLogs') {
+              return respond(request.id, {
+                kernelId,
+                fileName: `${kernelId || 'kernel'}-logs.ndjson`,
+                content: '',
+                entryCount: 0,
+              });
+            }
+
+            const operationKey = `${request.action ?? ''}:${kernelId}`;
+            const script = kernelFixture.operations?.[operationKey];
+            const step = script?.length ? script.shift() : undefined;
+            if (step?.progress?.length) {
+              const { BrowserWindow } = process.mainModule!.require('electron') as typeof import('electron');
+              for (const progress of step.progress) {
+                for (const window of BrowserWindow.getAllWindows()) {
+                  window.webContents.send('kernels:package-progress', progress);
+                }
+              }
+            }
+            if (step?.catalog) kernelFixture.catalog = step.catalog;
+            if (step?.runtimes) kernelFixture.runtimes = step.runtimes;
+            if (step?.error) return fail(request.id, step.error);
+            if (step && 'result' in step) {
+              const result = step.result;
+              if (result && typeof result === 'object') {
+                const record = result as Record<string, unknown>;
+                const runtime = (
+                  record.runtime && typeof record.runtime === 'object'
+                    ? record.runtime
+                    : typeof record.kernelId === 'string' && typeof record.state === 'string'
+                      ? record
+                      : undefined
+                ) as KernelRuntimeSnapshot | undefined;
+                const installation = record.installation as KernelCatalogSnapshot['entries'][number]['installation'] | undefined;
+                if (runtime) {
+                  kernelFixture.runtimes = [
+                    ...kernelFixture.runtimes.filter(item => item.kernelId !== runtime.kernelId),
+                    runtime,
+                  ];
+                  kernelFixture.catalog = {
+                    ...kernelFixture.catalog,
+                    entries: kernelFixture.catalog.entries.map(entry => entry.kernelId === runtime.kernelId
+                      ? { ...entry, runtime, ...(installation ? { installation } : {}) }
+                      : entry),
+                  };
+                }
+              }
+              return respond(request.id, result);
+            }
+          }
+
           if (mockConfig.hostApiErrors && typedKey in mockConfig.hostApiErrors) {
             return fail(request.id, mockConfig.hostApiErrors[typedKey]);
           }
@@ -671,6 +848,15 @@ export async function installIpcMocks(
         ipcMain.removeHandler('gateway:status');
         ipcMain.handle('gateway:status', async () => mockConfig.gatewayStatus);
       }
+
+      if (mockConfig.kernelFixture) {
+        const { BrowserWindow } = process.mainModule!.require('electron') as typeof import('electron');
+        setTimeout(() => {
+          for (const window of BrowserWindow.getAllWindows()) {
+            window.webContents.send('kernels:catalog-changed', { reason: 'e2e-fixture-installed' });
+          }
+        }, 0);
+      }
     },
     config,
   );
@@ -721,6 +907,40 @@ export async function installAttachmentHostFixture(
   const sessionKeys = options.sessions.map((session) => session.key);
   await installIpcMocks(app, {
     gatewayStatus: { state: 'running', gatewayReady: true, port: 18789, pid: 12345, connectedAt: now },
+    kernelFixture: {
+      catalog: {
+        source: 'network',
+        stale: false,
+        refreshedAt: new Date(now).toISOString(),
+        entries: [{
+          kernelId: 'openclaw',
+          displayName: 'OpenClaw',
+          installation: {
+            kernelId: 'openclaw',
+            state: 'installed',
+            activeVersion: '2026.8.1-clawx.1',
+            updatedAt: new Date(now).toISOString(),
+          },
+          runtime: {
+            kernelId: 'openclaw',
+            state: 'ready',
+            generation: 1,
+            artifactVersion: '2026.8.1-clawx.1',
+            diagnostics: [],
+          },
+          updateAvailable: false,
+          installAllowed: true,
+          compatibilityFailures: [],
+        }],
+      },
+      runtimes: [{
+        kernelId: 'openclaw',
+        state: 'ready',
+        generation: 1,
+        artifactVersion: '2026.8.1-clawx.1',
+        diagnostics: [],
+      }],
+    },
     gatewayRpc: {
       [stableStringify(['sessions.list', {}])]: sessionsList,
       [stableStringify(['sessions.list', { includeDerivedTitles: true, includeLastMessage: true }])]: sessionsList,
@@ -757,7 +977,6 @@ export async function installAttachmentHostFixture(
   await app.evaluate(async ({ app: _app }, payload) => {
     const { BrowserWindow, ipcMain, shell } = process.mainModule!.require('electron') as typeof import('electron');
     type AcpUpdate = Record<string, unknown> & { sessionUpdate: string };
-    type TranscriptResponse = { messages: RawMessage[]; deferId?: string };
     type HostRequest = {
       id?: string;
       module?: string;
@@ -770,18 +989,21 @@ export async function installAttachmentHostFixture(
       generation: number;
       replays: Record<string, AcpUpdate[]>;
       promptUpdates: Record<string, AcpUpdate[]>;
-      transcriptResponses: Record<string, TranscriptResponse[]>;
-      transcriptIndexes: Record<string, number>;
-      historyRequestTimes: Record<string, number[]>;
-      replayReady: Record<string, Promise<void> | undefined>;
-      deferredTranscriptResolvers: Record<string, (() => void) | undefined>;
-      deferredTranscriptReady: Record<string, boolean>;
-      deferredTranscriptReturned: Record<string, boolean>;
-      deferredTranscriptCompleted: Record<string, boolean>;
+      deferredPromptResponses: Record<string, boolean>;
+      deferredPromptResolvers: Record<string, (() => void) | undefined>;
       openHandlersResult: AttachmentOpenHandlersFixtureResult;
       hostInvocations: RecordedHostInvocation[];
       shellInvocations: RecordedHostInvocation[];
       stagedAttachments?: { register: (id: string, canonicalPath: string, displayPath?: string) => void };
+      activeRun?: {
+        conversationId: string;
+        turnId: string;
+        runId: string;
+        kernelId: string;
+        generation: number;
+        eventSeq: number;
+      };
+      emitUpdates?: (updates: AcpUpdate[]) => void;
     };
     const globals = globalThis as unknown as { __e2eAttachmentFixture?: FixtureState };
     const state: FixtureState = {
@@ -789,14 +1011,8 @@ export async function installAttachmentHostFixture(
       generation: 0,
       replays: {},
       promptUpdates: {},
-      transcriptResponses: {},
-      transcriptIndexes: {},
-      historyRequestTimes: {},
-      replayReady: {},
-      deferredTranscriptResolvers: {},
-      deferredTranscriptReady: {},
-      deferredTranscriptReturned: {},
-      deferredTranscriptCompleted: {},
+      deferredPromptResponses: {},
+      deferredPromptResolvers: {},
       openHandlersResult: {
         ok: true,
         platform: process.platform === 'win32' ? 'win32' : process.platform === 'darwin' ? 'darwin' : 'linux',
@@ -864,17 +1080,246 @@ export async function installAttachmentHostFixture(
       ok: true,
       data,
     });
-    const emitUpdates = (sessionKey: string, generation: number, historical: boolean, updates: AcpUpdate[]) => {
-      for (const update of updates) {
-        for (const window of BrowserWindow.getAllWindows()) {
-          window.webContents.send('chat:acp-session-update', {
-            sessionKey,
-            generation,
-            ...(historical ? { historical: true } : {}),
-            notification: { sessionId: sessionKey, update },
+    const textAndResources = (content: unknown) => {
+      const blocks = Array.isArray(content) ? content : content && typeof content === 'object' ? [content] : [];
+      const text: string[] = [];
+      const resources: Array<Record<string, unknown>> = [];
+      const images: Array<Record<string, unknown>> = [];
+      for (const block of blocks) {
+        if (!block || typeof block !== 'object') continue;
+        const record = block as Record<string, unknown>;
+        if (typeof record.text === 'string') text.push(record.text);
+        if (record.type === 'image' && (typeof record.uri === 'string' || typeof record.data === 'string')) {
+          images.push({
+            type: 'image',
+            ...(typeof record.uri === 'string' ? { uri: record.uri } : {}),
+            ...(typeof record.data === 'string' ? { data: record.data } : {}),
+            ...(typeof record.mimeType === 'string' ? { mimeType: record.mimeType } : {}),
+            ...(record._meta && typeof record._meta === 'object' ? { _meta: structuredClone(record._meta) } : {}),
+          });
+        }
+        if (record.type === 'resource_link' && typeof record.uri === 'string') {
+          resources.push({
+            uri: record.uri,
+            name: typeof record.name === 'string' ? record.name : record.uri,
+            ...(typeof record.mimeType === 'string' ? { mimeType: record.mimeType } : {}),
+            ...(typeof record.size === 'number' ? { size: record.size } : {}),
           });
         }
       }
+      return { text: text.join(''), resources, images };
+    };
+    const emitUpdates = (updates: AcpUpdate[]) => {
+      const run = state.activeRun;
+      if (!run) return;
+      for (const update of updates) {
+        const projected = textAndResources(update.content);
+        const kind = update.sessionUpdate === 'agent_message_chunk'
+          ? 'assistant.delta'
+          : update.sessionUpdate === 'agent_message'
+            ? 'assistant.final'
+            : update.sessionUpdate === 'agent_thought_chunk'
+              ? 'reasoning.visibility'
+              : update.sessionUpdate === 'tool_call'
+                ? 'tool.start'
+                : update.sessionUpdate === 'tool_call_update'
+                  ? (['completed', 'failed'].includes(String(update.status).toLowerCase()) ? 'tool.result' : 'tool.progress')
+                  : update.sessionUpdate === 'usage_update'
+                    ? 'usage'
+                    : update.sessionUpdate === 'plan'
+                      ? 'diagnostic'
+                      : null;
+        if (!kind) continue;
+        const eventPayload = kind === 'assistant.delta' || kind === 'assistant.final'
+          ? {
+              text: projected.text,
+              messageId: update.messageId,
+              ...(projected.resources.length > 0 ? { resources: projected.resources } : {}),
+              ...(projected.images.length > 0 ? { content: projected.images } : {}),
+            }
+          : kind === 'reasoning.visibility'
+            ? { visibility: 'private', text: projected.text }
+            : kind === 'diagnostic'
+              ? { category: 'plan', ...update }
+              : update;
+        run.eventSeq += 1;
+        const envelope = {
+          protocol: 'clawx.kernel/v1' as const,
+          conversationId: run.conversationId,
+          turnId: run.turnId,
+          runId: run.runId,
+          kernelId: run.kernelId,
+          generation: run.generation,
+          eventSeq: run.eventSeq,
+          emittedAt: new Date().toISOString(),
+          event: { kind, payload: eventPayload },
+        } as KernelEventEnvelopeV1;
+        for (const window of BrowserWindow.getAllWindows()) {
+          window.webContents.send('chat:kernel-event', envelope);
+        }
+      }
+    };
+    state.emitUpdates = emitUpdates;
+    const contentBlocks = (turnId: string, content: unknown, role: 'user' | 'assistant') => {
+      const values = Array.isArray(content) ? content : content && typeof content === 'object' ? [content] : [];
+      return values.flatMap((value, index) => {
+        if (!value || typeof value !== 'object') return [];
+        const block = value as Record<string, unknown>;
+        const id = `${turnId}:block:${index}`;
+        if (typeof block.text === 'string') {
+          return [{ id, type: 'text', visibility: 'portable', text: block.text }];
+        }
+        if (block.type === 'image' && (typeof block.uri === 'string' || typeof block.data === 'string')) {
+          return [{
+            id,
+            type: 'image',
+            visibility: role === 'user' ? 'portable' : 'kernel',
+            ...(role === 'assistant' ? { kernelId: 'openclaw' } : {}),
+            ...(typeof block.mimeType === 'string' ? { mimeType: block.mimeType } : {}),
+            json: {
+              ...(typeof block.uri === 'string' ? { uri: block.uri } : {}),
+              ...(typeof block.data === 'string' ? { data: block.data } : {}),
+              ...(block._meta && typeof block._meta === 'object' ? { _meta: block._meta } : {}),
+            },
+          }];
+        }
+        if (block.type === 'resource_link' && typeof block.uri === 'string') {
+          return [{
+            id,
+            type: 'resource-link',
+            visibility: role === 'user' ? 'portable' : 'kernel',
+            ...(role === 'assistant' ? { kernelId: 'openclaw' } : {}),
+            ...(typeof block.mimeType === 'string' ? { mimeType: block.mimeType } : {}),
+            json: {
+              uri: block.uri,
+              name: typeof block.name === 'string' ? block.name : block.uri,
+              ...(typeof block.size === 'number' ? { size: block.size } : {}),
+              ...(block._meta && typeof block._meta === 'object' ? { _meta: block._meta } : {}),
+            },
+          }];
+        }
+        return [];
+      });
+    };
+    const exportConversation = (sessionKey: string) => {
+      const session = payload.sessions.find(item => item.key === sessionKey);
+      if (!session) return null;
+      const createdAt = '2026-08-24T00:00:00.000Z';
+      const updatedAt = '2026-08-24T00:00:01.000Z';
+      const turns: Array<Record<string, unknown>> = [];
+      const runBuilders: Array<{
+        turnId: string;
+        assistantTurnId?: string;
+        events: Array<Record<string, unknown>>;
+      }> = [];
+      let currentUserTurnId: string | undefined;
+      let currentRun: (typeof runBuilders)[number] | undefined;
+      let currentAssistant: { id: string; role: 'assistant'; position: number; createdAt: string; blocks: Array<Record<string, unknown>> } | undefined;
+      const flushAssistant = () => {
+        if (!currentAssistant) return;
+        turns.push(currentAssistant);
+        if (currentRun) currentRun.assistantTurnId = currentAssistant.id;
+        currentAssistant = undefined;
+      };
+      for (const [updateIndex, update] of (state.replays[sessionKey] ?? []).entries()) {
+        const messageId = typeof update.messageId === 'string' ? update.messageId : `${update.sessionUpdate}-${updateIndex}`;
+        if (update.sessionUpdate === 'user_message' || update.sessionUpdate === 'user_message_chunk') {
+          flushAssistant();
+          currentUserTurnId = `fixture-user:${messageId}`;
+          turns.push({
+            id: currentUserTurnId,
+            role: 'user',
+            position: turns.length,
+            createdAt,
+            blocks: contentBlocks(currentUserTurnId, update.content, 'user'),
+          });
+          currentRun = { turnId: currentUserTurnId, events: [] };
+          runBuilders.push(currentRun);
+          continue;
+        }
+        if (update.sessionUpdate === 'agent_message' || update.sessionUpdate === 'agent_message_chunk') {
+          currentAssistant ??= {
+            id: `fixture-assistant:${messageId}`,
+            role: 'assistant',
+            position: turns.length,
+            createdAt: updatedAt,
+            blocks: [],
+          };
+          currentAssistant.blocks.push(...contentBlocks(
+            `${currentAssistant.id}:${updateIndex}`,
+            update.content,
+            'assistant',
+          ));
+          continue;
+        }
+        const eventKind = update.sessionUpdate === 'agent_thought_chunk'
+          ? 'reasoning.visibility'
+          : update.sessionUpdate === 'tool_call'
+            ? 'tool.start'
+            : update.sessionUpdate === 'tool_call_update'
+              ? (['completed', 'failed'].includes(String(update.status).toLowerCase()) ? 'tool.result' : 'tool.progress')
+              : update.sessionUpdate === 'usage_update'
+                ? 'usage'
+                : update.sessionUpdate === 'plan'
+                  ? 'diagnostic'
+                  : null;
+        if (eventKind && currentRun) {
+          currentRun.events.push({
+            eventSeq: currentRun.events.length + 1,
+            kind: eventKind,
+            payload: eventKind === 'reasoning.visibility'
+              ? { visibility: 'private', ...textAndResources(update.content) }
+              : eventKind === 'diagnostic'
+                ? { category: 'plan', ...update }
+                : update,
+            emittedAt: updatedAt,
+          });
+        }
+      }
+      flushAssistant();
+      turns.forEach((turn, position) => { turn.position = position; });
+      const summary = {
+        id: sessionKey,
+        title: session.title,
+        createdAt,
+        updatedAt,
+        workspaceUri: payload.workspaceUri,
+        lastKernelId: 'openclaw',
+        kernelIds: ['openclaw'],
+        lastAgentId: 'main',
+      };
+      return {
+        schema: 'clawx.conversation-export/v1',
+        conversation: summary,
+        turns,
+        runs: runBuilders.flatMap((builder, index) => (
+          builder.events.length > 0 || builder.assistantTurnId
+            ? [{
+                id: `fixture-run:${sessionKey}:${index}`,
+                turnId: builder.turnId,
+                ...(builder.assistantTurnId ? { assistantTurnId: builder.assistantTurnId } : {}),
+                kernelId: 'openclaw',
+                kernelVersion: '2026.8.1-clawx.1',
+                generation: 1,
+                agentId: 'main',
+                agentSnapshot: {
+                  agentId: 'main',
+                  displayName: 'Main',
+                  kernelId: 'openclaw',
+                  workspaceUri: payload.workspaceUri,
+                  canonicalVersion: 1,
+                },
+                workspaceUri: payload.workspaceUri,
+                status: 'completed',
+                createdAt,
+                startedAt: createdAt,
+                completedAt: updatedAt,
+                events: builder.events,
+              }]
+            : []
+        )),
+        usage: [],
+      };
     };
     const handlers = (ipcMain as unknown as { _invokeHandlers?: Map<string, HostHandler> })._invokeHandlers;
     const originalHostInvoke = handlers?.get('host:invoke');
@@ -882,7 +1327,15 @@ export async function installAttachmentHostFixture(
     ipcMain.handle('host:invoke', async (event: unknown, request: HostRequest) => {
       state.hostInvocations.push({ module: request.module, action: request.action, payload: request.payload });
 
-      if (request.module === 'chat' && request.action === 'loadAcpSession') {
+      if (request.module === 'conversations' && request.action === 'list') {
+        return respond(request.id, {
+          items: payload.sessions.map(session => exportConversation(session.key)!.conversation),
+        });
+      }
+      if (request.module === 'conversations' && request.action === 'get') {
+        return respond(request.id, exportConversation(String(request.payload?.id ?? '')));
+      }
+      if (request.module === 'chat' && request.action === 'selectConversationKernel') {
         const sessionKey = String(request.payload?.sessionKey ?? '');
         state.generation += 1;
         state.activeSessionKey = sessionKey;
@@ -890,46 +1343,41 @@ export async function installAttachmentHostFixture(
         const grant = await productionSessionAccess.prepareGrant({
           sessionKey,
           generation,
-          workspaceRoot: payload.workspaceDir,
-          executionCwd: payload.workspaceDir,
+          workspaceRoot: typeof request.payload?.workspaceRoot === 'string'
+            ? request.payload.workspaceRoot
+            : payload.workspaceDir,
+          executionCwd: typeof request.payload?.cwd === 'string'
+            ? request.payload.cwd
+            : payload.workspaceDir,
         });
         productionSessionAccess.commitGrant(grant);
-        const replay = state.replays[sessionKey] ?? [];
-        state.replayReady[sessionKey] = new Promise((resolveReplay) => {
-          setTimeout(() => {
-            emitUpdates(sessionKey, generation, true, replay);
-            resolveReplay();
-          }, 0);
-        });
-        return respond(request.id, { success: true, generation });
+        return respond(request.id, { success: true, generation, kernelId: 'openclaw' });
       }
       if (request.module === 'chat' && request.action === 'sendAcpPrompt') {
         const sessionKey = String(request.payload?.sessionKey ?? '');
         const prompt = String(request.payload?.message ?? '');
         if (sessionKey === state.activeSessionKey) {
-          emitUpdates(sessionKey, state.generation, false, state.promptUpdates[prompt] ?? []);
+          state.activeRun = {
+            conversationId: String(request.payload?.conversationId ?? sessionKey),
+            turnId: String(request.payload?.turnId ?? `fixture-live-turn:${Date.now()}`),
+            runId: String(request.payload?.runId ?? request.payload?.messageId ?? `fixture-live-run:${Date.now()}`),
+            kernelId: String(request.payload?.kernelId ?? 'openclaw'),
+            generation: state.generation,
+            eventSeq: 0,
+          };
+          emitUpdates(state.promptUpdates[prompt] ?? []);
         }
-        return respond(request.id, { success: true, generation: state.generation });
-      }
-      if (request.module === 'sessions' && request.action === 'history') {
-        const sessionKey = String(request.payload?.sessionKey ?? '');
-        const times = state.historyRequestTimes[sessionKey] ?? [];
-        times.push(Date.now());
-        state.historyRequestTimes[sessionKey] = times;
-        await state.replayReady[sessionKey];
-        const responses = state.transcriptResponses[sessionKey] ?? [{ messages: [] }];
-        const index = state.transcriptIndexes[sessionKey] ?? 0;
-        state.transcriptIndexes[sessionKey] = index + 1;
-        const response = responses[Math.min(index, responses.length - 1)] ?? { messages: [] };
-        if (response.deferId) {
-          state.deferredTranscriptReady[response.deferId] = true;
-          await new Promise<void>((resolveResponse) => {
-            state.deferredTranscriptResolvers[response.deferId!] = resolveResponse;
+        if (state.deferredPromptResponses[prompt]) {
+          await new Promise<void>((resolvePrompt) => {
+            state.deferredPromptResolvers[prompt] = resolvePrompt;
           });
-          delete state.deferredTranscriptResolvers[response.deferId];
-          state.deferredTranscriptReturned[response.deferId] = true;
+          delete state.deferredPromptResolvers[prompt];
         }
-        return respond(request.id, { success: true, messages: response.messages });
+        return respond(request.id, {
+          success: true,
+          generation: state.generation,
+          ...(state.activeRun ?? {}),
+        });
       }
       if (request.module === 'files' && request.action === 'resolveWorkspaceContext') {
         const workspaceRoot = typeof request.payload?.workspaceRoot === 'string'
@@ -972,17 +1420,17 @@ export async function installAttachmentHostFixture(
         return respond(request.id, await productionMediaApi.thumbnails(request.payload));
       }
       if (request.module === 'diagnostics' && request.action === 'recordAcpTrace') {
-        if (request.payload?.event === 'openclaw-media:projection-stale') {
-          for (const deferId of Object.keys(state.deferredTranscriptReturned)) {
-            state.deferredTranscriptCompleted[deferId] = true;
-          }
-        }
         return respond(request.id, { success: true });
       }
 
       return originalHostInvoke?.(event, request) ?? respond(request.id, {});
     });
-  }, { workspaceDir, productionAttachmentBundlePath });
+  }, {
+    workspaceDir,
+    workspaceUri: pathToFileURL(workspaceDir).href,
+    productionAttachmentBundlePath,
+    sessions: options.sessions,
+  });
 
   const writeFixtureFile = async (root: string, relativePath: string, data: string | Uint8Array) => {
     const filePath = resolve(root, relativePath);
@@ -997,18 +1445,12 @@ export async function installAttachmentHostFixture(
   const readState = async () => await app.evaluate(async () => {
     const state = (globalThis as unknown as {
       __e2eAttachmentFixture?: {
-        historyRequestTimes: Record<string, number[]>;
-        deferredTranscriptReady: Record<string, boolean>;
-        deferredTranscriptCompleted: Record<string, boolean>;
         hostInvocations: RecordedHostInvocation[];
         shellInvocations: RecordedHostInvocation[];
       };
     }).__e2eAttachmentFixture;
     if (!state) throw new Error('Attachment fixture is not installed');
     return {
-      historyRequestTimes: state.historyRequestTimes,
-      deferredTranscriptReady: state.deferredTranscriptReady,
-      deferredTranscriptCompleted: state.deferredTranscriptCompleted,
       hostInvocations: state.hostInvocations,
       shellInvocations: state.shellInvocations,
     };
@@ -1039,22 +1481,17 @@ export async function installAttachmentHostFixture(
     },
     emitAcpSessionUpdates: async (input) => {
       await app.evaluate(async ({ app: _app }, event) => {
-        const { BrowserWindow } = process.mainModule!.require('electron') as typeof import('electron');
         const state = (globalThis as unknown as {
-          __e2eAttachmentFixture?: { activeSessionKey: string; generation: number };
+          __e2eAttachmentFixture?: {
+            activeRun?: { conversationId: string };
+            emitUpdates?: (updates: Array<Record<string, unknown> & { sessionUpdate: string }>) => void;
+          };
         }).__e2eAttachmentFixture;
         if (!state) throw new Error('Attachment fixture is not installed');
-        const generation = event.generation ?? state.generation;
-        for (const update of event.updates) {
-          for (const window of BrowserWindow.getAllWindows()) {
-            window.webContents.send('chat:acp-session-update', {
-              sessionKey: event.sessionKey,
-              generation,
-              ...(event.historical ? { historical: true } : {}),
-              notification: { sessionId: event.sessionKey, update },
-            });
-          }
+        if (state.activeRun?.conversationId !== event.sessionKey || !state.emitUpdates) {
+          throw new Error(`No active canonical run for ${event.sessionKey}`);
         }
+        state.emitUpdates(event.updates);
       }, input);
     },
     setPromptUpdates: async (prompt, updates) => {
@@ -1066,6 +1503,37 @@ export async function installAttachmentHostFixture(
         state.promptUpdates[input.prompt] = input.updates;
       }, { prompt, updates });
     },
+    deferPromptResponse: async (prompt) => {
+      await app.evaluate(async ({ app: _app }, value) => {
+        const state = (globalThis as unknown as {
+          __e2eAttachmentFixture?: { deferredPromptResponses: Record<string, boolean> };
+        }).__e2eAttachmentFixture;
+        if (!state) throw new Error('Attachment fixture is not installed');
+        state.deferredPromptResponses[value] = true;
+      }, prompt);
+    },
+    releasePromptResponse: async (prompt, timeoutMs = 5_000) => {
+      const deadline = Date.now() + timeoutMs;
+      while (Date.now() < deadline) {
+        const released = await app.evaluate(async ({ app: _app }, value) => {
+          const state = (globalThis as unknown as {
+            __e2eAttachmentFixture?: {
+              deferredPromptResponses: Record<string, boolean>;
+              deferredPromptResolvers: Record<string, (() => void) | undefined>;
+            };
+          }).__e2eAttachmentFixture;
+          if (!state) throw new Error('Attachment fixture is not installed');
+          const resolvePrompt = state.deferredPromptResolvers[value];
+          if (!resolvePrompt) return false;
+          delete state.deferredPromptResponses[value];
+          resolvePrompt();
+          return true;
+        }, prompt);
+        if (released) return;
+        await new Promise(resolveWait => setTimeout(resolveWait, 25));
+      }
+      throw new Error(`Timed out waiting for deferred prompt response: ${prompt}`);
+    },
     setSessionReplay: async (sessionKey, updates) => {
       await app.evaluate(async ({ app: _app }, input) => {
         const state = (globalThis as unknown as {
@@ -1074,88 +1542,6 @@ export async function installAttachmentHostFixture(
         if (!state) throw new Error('Attachment fixture is not installed');
         state.replays[input.sessionKey] = input.updates;
       }, { sessionKey, updates });
-    },
-    setTranscriptResponses: async (sessionKey, responses) => {
-      const normalized = responses.map((response) => Array.isArray(response)
-        ? { messages: response }
-        : response);
-      await app.evaluate(async ({ app: _app }, input) => {
-        const state = (globalThis as unknown as {
-          __e2eAttachmentFixture?: {
-            transcriptResponses: Record<string, unknown[]>;
-            transcriptIndexes: Record<string, number>;
-          };
-        }).__e2eAttachmentFixture;
-        if (!state) throw new Error('Attachment fixture is not installed');
-        state.transcriptResponses[input.sessionKey] = input.responses;
-        state.transcriptIndexes[input.sessionKey] = 0;
-      }, { sessionKey, responses: normalized });
-    },
-    releaseTranscriptResponse: async (deferId) => {
-      await app.evaluate(async ({ app: _app }, id) => {
-        const state = (globalThis as unknown as {
-          __e2eAttachmentFixture?: { deferredTranscriptResolvers: Record<string, (() => void) | undefined> };
-        }).__e2eAttachmentFixture;
-        if (!state) throw new Error('Attachment fixture is not installed');
-        const release = state.deferredTranscriptResolvers[id];
-        if (!release) throw new Error(`Deferred transcript response is not ready: ${id}`);
-        delete state.deferredTranscriptResolvers[id];
-        release();
-      }, deferId);
-    },
-    waitForDeferredTranscriptReady: async (deferId, timeoutMs = 5_000) => {
-      const deadline = Date.now() + timeoutMs;
-      while (Date.now() < deadline) {
-        if ((await readState()).deferredTranscriptReady[deferId]) return;
-        await new Promise((resolveWait) => setTimeout(resolveWait, 25));
-      }
-      throw new Error(`Timed out waiting for deferred transcript response to become ready: ${deferId}`);
-    },
-    waitForDeferredTranscriptCompleted: async (deferId, timeoutMs = 5_000) => {
-      const deadline = Date.now() + timeoutMs;
-      while (Date.now() < deadline) {
-        if ((await readState()).deferredTranscriptCompleted[deferId]) return;
-        await new Promise((resolveWait) => setTimeout(resolveWait, 25));
-      }
-      throw new Error(`Timed out waiting for deferred transcript response to complete: ${deferId}`);
-    },
-    waitForHistoryRequestCount: async (sessionKey, count, timeoutMs = 5_000) => {
-      const deadline = Date.now() + timeoutMs;
-      while (Date.now() < deadline) {
-        const times = (await readState()).historyRequestTimes[sessionKey] ?? [];
-        if (times.length >= count) return times;
-        await new Promise((resolveWait) => setTimeout(resolveWait, 25));
-      }
-      throw new Error(`Timed out waiting for ${count} transcript requests for ${sessionKey}`);
-    },
-    clearHistoryRequestTimes: async (sessionKey) => {
-      await app.evaluate(async ({ app: _app }, key) => {
-        const state = (globalThis as unknown as {
-          __e2eAttachmentFixture?: { historyRequestTimes: Record<string, number[]> };
-        }).__e2eAttachmentFixture;
-        if (!state) throw new Error('Attachment fixture is not installed');
-        if (key) {
-          state.historyRequestTimes[key] = [];
-          return;
-        }
-        state.historyRequestTimes = {};
-      }, sessionKey);
-    },
-    waitForHistoryQuiet: async (sessionKey, quietMs = 300, timeoutMs = 5_000) => {
-      const deadline = Date.now() + timeoutMs;
-      let lastCount = -1;
-      let quietSince = Date.now();
-      while (Date.now() < deadline) {
-        const times = (await readState()).historyRequestTimes[sessionKey] ?? [];
-        if (times.length !== lastCount) {
-          lastCount = times.length;
-          quietSince = Date.now();
-        } else if (Date.now() - quietSince >= quietMs) {
-          return;
-        }
-        await new Promise((resolveWait) => setTimeout(resolveWait, 25));
-      }
-      throw new Error(`Timed out waiting for transcript requests to stay quiet for ${sessionKey}`);
     },
     setOpenHandlersResult: async (result) => {
       await app.evaluate(async ({ app: _app }, nextResult) => {
@@ -1188,6 +1574,61 @@ export async function getRecordedHostInvocations(app: ElectronApplication): Prom
   return await app.evaluate(async ({ app: _app }) => (
     (globalThis as unknown as { __e2eHostInvocations?: RecordedHostInvocation[] }).__e2eHostInvocations ?? []
   ));
+}
+
+export async function emitKernelStatus(
+  app: ElectronApplication,
+  snapshot: KernelRuntimeSnapshot,
+): Promise<void> {
+  await app.evaluate(async ({ app: _app }, nextSnapshot) => {
+    const { BrowserWindow } = process.mainModule!.require('electron') as typeof import('electron');
+    const globals = globalThis as unknown as { __e2eKernelFixture?: KernelHostFixtureConfig };
+    if (globals.__e2eKernelFixture) {
+      globals.__e2eKernelFixture.runtimes = [
+        ...globals.__e2eKernelFixture.runtimes.filter(item => item.kernelId !== nextSnapshot.kernelId),
+        nextSnapshot,
+      ];
+      globals.__e2eKernelFixture.catalog = {
+        ...globals.__e2eKernelFixture.catalog,
+        entries: globals.__e2eKernelFixture.catalog.entries.map(entry => entry.kernelId === nextSnapshot.kernelId
+          ? { ...entry, runtime: nextSnapshot }
+          : entry),
+      };
+    }
+    for (const window of BrowserWindow.getAllWindows()) {
+      window.webContents.send('kernels:status-changed', nextSnapshot);
+    }
+  }, snapshot);
+}
+
+export async function emitKernelPackageProgress(
+  app: ElectronApplication,
+  progress: KernelPackageProgressEvent,
+): Promise<void> {
+  await app.evaluate(async ({ app: _app }, nextProgress) => {
+    const { BrowserWindow } = process.mainModule!.require('electron') as typeof import('electron');
+    for (const window of BrowserWindow.getAllWindows()) {
+      window.webContents.send('kernels:package-progress', nextProgress);
+    }
+  }, progress);
+}
+
+export async function emitKernelEvents(
+  app: ElectronApplication,
+  events: KernelEventEnvelopeV1[],
+  intervalMs = 0,
+): Promise<void> {
+  await app.evaluate(async ({ app: _app }, input) => {
+    const { BrowserWindow } = process.mainModule!.require('electron') as typeof import('electron');
+    for (const event of input.events) {
+      for (const window of BrowserWindow.getAllWindows()) {
+        window.webContents.send('chat:kernel-event', event);
+      }
+      if (input.intervalMs > 0) {
+        await new Promise(resolveWait => setTimeout(resolveWait, input.intervalMs));
+      }
+    }
+  }, { events, intervalMs });
 }
 
 export async function getRecordedLegacyIpcInvocations(app: ElectronApplication): Promise<RecordedLegacyIpcInvocation[]> {

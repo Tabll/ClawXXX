@@ -1,9 +1,44 @@
 diff --git a/dist/acp-cli-BXc5GttU.js b/dist/acp-cli-BXc5GttU.js
-index 6c7de7d60ac87a733632c36a744ada0e4e48d077..62797972ce78076c545d712809d99f4a13f8e0ee 100644
+index 6c7de7d60ac87a733632c36a744ada0e4e48d077..0e47848a06a5ec8e2af2c247d5b290549ef372d7 100644
 --- a/dist/acp-cli-BXc5GttU.js
 +++ b/dist/acp-cli-BXc5GttU.js
-@@ -1622,8 +1622,25 @@ function buildSessionUsageSnapshot(row) {
+@@ -1620,10 +1620,60 @@ function buildSessionUsageSnapshot(row) {
+ 		used: Math.max(0, Math.min(Math.floor(totalTokens), size))
+ 	};
  }
++function buildLiveUsageUpdate(usage, runId) {
++	if (!usage || typeof usage !== "object") return;
++	const read = (...keys) => {
++		for (const key of keys) {
++			const value = usage[key];
++			if (typeof value === "number" && Number.isFinite(value) && value >= 0) return value;
++		}
++	};
++	const inputTokens = read("inputTokens", "input_tokens", "input", "promptTokens", "prompt_tokens");
++	const outputTokens = read("outputTokens", "output_tokens", "output", "completionTokens", "completion_tokens");
++	const cacheReadTokens = read("cacheReadTokens", "cache_read_tokens", "cacheRead", "cachedInputTokens");
++	const cacheWriteTokens = read("cacheWriteTokens", "cache_write_tokens", "cacheWrite", "cacheCreationTokens");
++	const totalTokens = read("totalTokens", "total_tokens", "total") ?? [
++		inputTokens,
++		outputTokens,
++		cacheReadTokens,
++		cacheWriteTokens
++	].filter((value) => value !== void 0).reduce((sum, value) => sum + value, 0);
++	const used = Math.max(0, Math.floor(totalTokens));
++	return {
++		sessionUpdate: "usage_update",
++		used,
++		size: Math.max(used, 1),
++		_meta: {
++			clawx: {
++				...usage,
++				eventKey: `openclaw:${runId}:final`,
++				requestId: runId,
++				source: "provider-response"
++			}
++		}
++	};
++}
  //#endregion
  //#region src/acp/translator.replay.ts
 +function extractToolResultReplay(message) {
@@ -28,7 +63,7 @@ index 6c7de7d60ac87a733632c36a744ada0e4e48d077..62797972ce78076c545d712809d99f4a
  	if (role !== "user" && role !== "assistant") return [];
  	if (typeof message.content === "string") return message.content.length > 0 ? [{
  		sessionUpdate: role === "user" ? "user_message_chunk" : "agent_message_chunk",
-@@ -1641,6 +1658,22 @@ function extractReplayChunks(message) {
+@@ -1641,6 +1691,22 @@ function extractReplayChunks(message) {
  			});
  			continue;
  		}
@@ -51,7 +86,7 @@ index 6c7de7d60ac87a733632c36a744ada0e4e48d077..62797972ce78076c545d712809d99f4a
  		if (role === "assistant" && typedBlock.type === "thinking" && typeof typedBlock.thinking === "string" && typedBlock.thinking) replayChunks.push({
  			sessionUpdate: "agent_thought_chunk",
  			text: typedBlock.thinking
-@@ -1849,6 +1882,8 @@ const ACP_AGENT_INFO = {
+@@ -1849,6 +1915,8 @@ const ACP_AGENT_INFO = {
  const MAX_PROMPT_BYTES = 2 * 1024 * 1024;
  const ACP_LOAD_SESSION_REPLAY_LIMIT = 1e6;
  const ACP_GATEWAY_DISCONNECT_GRACE_MS = 5e3;
@@ -60,7 +95,7 @@ index 6c7de7d60ac87a733632c36a744ada0e4e48d077..62797972ce78076c545d712809d99f4a
  function normalizedChatSendAckStatus(status) {
  	return typeof status === "string" ? status.trim().toLowerCase() : "";
  }
-@@ -1959,10 +1993,13 @@ var AcpGatewayAgent = class {
+@@ -1959,10 +2027,13 @@ var AcpGatewayAgent = class {
  	}
  	handleGatewayReconnect() {
  		this.log("gateway reconnected");
@@ -76,7 +111,7 @@ index 6c7de7d60ac87a733632c36a744ada0e4e48d077..62797972ce78076c545d712809d99f4a
  	}
  	handleGatewayDisconnect(reason) {
  		this.log(`gateway disconnected: ${reason}`);
-@@ -1985,7 +2022,7 @@ var AcpGatewayAgent = class {
+@@ -1985,7 +2056,7 @@ var AcpGatewayAgent = class {
  			this.handleExecApprovalRequestEvent(evt);
  			return;
  		}
@@ -85,7 +120,7 @@ index 6c7de7d60ac87a733632c36a744ada0e4e48d077..62797972ce78076c545d712809d99f4a
  	}
  	async initialize(params) {
  		this.clientCapabilities = normalizeClientCapabilities(params.clientCapabilities);
-@@ -2299,7 +2336,8 @@ var AcpGatewayAgent = class {
+@@ -2299,7 +2370,8 @@ var AcpGatewayAgent = class {
  			};
  			sendWithProvenanceFallback().catch((err) => {
  				const promptKey = this.pendingPromptKey(params.sessionId, runId);
@@ -95,7 +130,7 @@ index 6c7de7d60ac87a733632c36a744ada0e4e48d077..62797972ce78076c545d712809d99f4a
  				this.clearApprovalRelaysForPrompt(params.sessionId, runId, { denyActive: true });
  				this.pendingPrompts.delete(params.sessionId);
  				this.sessionStore.clearActiveRun(params.sessionId);
-@@ -2336,6 +2374,7 @@ var AcpGatewayAgent = class {
+@@ -2336,6 +2408,7 @@ var AcpGatewayAgent = class {
  		const data = payload.data;
  		const sessionKey = payload.sessionKey;
  		if (!stream || !data || !sessionKey) return;
@@ -103,7 +138,7 @@ index 6c7de7d60ac87a733632c36a744ada0e4e48d077..62797972ce78076c545d712809d99f4a
  		if (stream === "approval") {
  			await this.handleApprovalEvent({
  				sessionKey,
-@@ -2349,7 +2388,6 @@ var AcpGatewayAgent = class {
+@@ -2349,7 +2422,6 @@ var AcpGatewayAgent = class {
  		const name = data.name;
  		const toolCallId = data.toolCallId;
  		if (!toolCallId) return;
@@ -111,7 +146,7 @@ index 6c7de7d60ac87a733632c36a744ada0e4e48d077..62797972ce78076c545d712809d99f4a
  		if (!pending) return;
  		if (phase === "start") {
  			if (!pending.toolCalls) pending.toolCalls = /* @__PURE__ */ new Map();
-@@ -2442,13 +2480,15 @@ var AcpGatewayAgent = class {
+@@ -2442,13 +2514,15 @@ var AcpGatewayAgent = class {
  		if (!sessionKey) return;
  		this.startApprovalRelay({
  			sessionKey,
@@ -128,7 +163,7 @@ index 6c7de7d60ac87a733632c36a744ada0e4e48d077..62797972ce78076c545d712809d99f4a
  		if (!pending) return;
  		const relay = {
  			approvalId: approvalEvent.approvalId,
-@@ -2526,7 +2566,7 @@ var AcpGatewayAgent = class {
+@@ -2526,13 +2600,22 @@ var AcpGatewayAgent = class {
  		const runId = payload.runId;
  		const messageData = payload.message;
  		if (!sessionKey || !state) return;
@@ -137,7 +172,22 @@ index 6c7de7d60ac87a733632c36a744ada0e4e48d077..62797972ce78076c545d712809d99f4a
  		if (!pending) return;
  		if (messageData && (state === "delta" || state === "final")) {
  			await this.handleDeltaEvent(pending.sessionId, messageData);
-@@ -2619,18 +2659,55 @@ var AcpGatewayAgent = class {
+ 			if (state === "delta") return;
+ 		}
+ 		if (state === "final") {
++			const usageUpdate = buildLiveUsageUpdate(payload.usage, runId ?? pending.idempotencyKey);
++			if (usageUpdate) await this.sessionUpdates.emit({
++				sessionId: pending.sessionId,
++				sessionKey: pending.sessionKey,
++				...pending.ledgerSessionId ? { ledgerSessionId: pending.ledgerSessionId } : {},
++				runId: pending.idempotencyKey,
++				record: true,
++				update: usageUpdate
++			});
+ 			const stopReason = payload.stopReason === "max_tokens" ? "max_tokens" : "end_turn";
+ 			await this.finishPrompt(pending.sessionId, pending, stopReason);
+ 			return;
+@@ -2619,18 +2702,55 @@ var AcpGatewayAgent = class {
  			this.settlingPromptKeys.delete(promptKey);
  		}
  	}
@@ -194,7 +244,7 @@ index 6c7de7d60ac87a733632c36a744ada0e4e48d077..62797972ce78076c545d712809d99f4a
  	findUniquePendingBySessionKey(sessionKey) {
  		let match;
  		for (const pending of this.pendingPrompts.values()) {
-@@ -2652,12 +2729,12 @@ var AcpGatewayAgent = class {
+@@ -2652,12 +2772,12 @@ var AcpGatewayAgent = class {
  		clearTimeout(this.disconnectTimer);
  		this.disconnectTimer = null;
  	}
@@ -210,7 +260,7 @@ index 6c7de7d60ac87a733632c36a744ada0e4e48d077..62797972ce78076c545d712809d99f4a
  		this.disconnectTimer.unref?.();
  	}
  	rejectPendingPrompt(pending, error) {
-@@ -2668,14 +2745,10 @@ var AcpGatewayAgent = class {
+@@ -2668,14 +2788,10 @@ var AcpGatewayAgent = class {
  		if (this.pendingPrompts.size === 0) this.clearDisconnectTimer();
  		pending.reject(error);
  	}
@@ -228,7 +278,7 @@ index 6c7de7d60ac87a733632c36a744ada0e4e48d077..62797972ce78076c545d712809d99f4a
  		if (this.pendingPrompts.size === 0) {
  			if (this.disconnectGeneration === observedDisconnectGeneration) this.clearDisconnectTimer();
  			return;
-@@ -2685,32 +2758,35 @@ var AcpGatewayAgent = class {
+@@ -2685,32 +2801,35 @@ var AcpGatewayAgent = class {
  		for (const [sessionId, pending] of pendingEntries) {
  			if (this.pendingPrompts.get(sessionId) !== pending) continue;
  			if (pending.disconnectContext?.generation !== observedDisconnectGeneration) continue;
@@ -274,7 +324,7 @@ index 6c7de7d60ac87a733632c36a744ada0e4e48d077..62797972ce78076c545d712809d99f4a
  		if (!currentPending) return false;
  		if (result?.status === "ok") {
  			await this.finishPrompt(sessionId, currentPending, "end_turn");
-@@ -2720,15 +2796,14 @@ var AcpGatewayAgent = class {
+@@ -2720,15 +2839,14 @@ var AcpGatewayAgent = class {
  			this.finishPrompt(sessionId, currentPending, "end_turn");
  			return false;
  		}
@@ -293,7 +343,7 @@ index 6c7de7d60ac87a733632c36a744ada0e4e48d077..62797972ce78076c545d712809d99f4a
  		}
  		return true;
  	}
-@@ -2890,13 +2965,13 @@ var AcpGatewayAgent = class {
+@@ -2890,13 +3008,13 @@ var AcpGatewayAgent = class {
  			const replayChunks = extractReplayChunks(message);
  			for (const chunk of replayChunks) await this.sessionUpdates.emit({
  				sessionId,
@@ -369,36 +419,107 @@ diff --git a/dist/agent-tools-BD8WL7ny.js b/dist/agent-tools-BD8WL7ny.js
 index c16af06126dfcd8070fa0eb203799aba7a16bd95..75fe92b0994ced97fc8f7014a76dacb0c4dedc65 100644
 --- a/dist/agent-tools-BD8WL7ny.js
 +++ b/dist/agent-tools-BD8WL7ny.js
-@@ -1132,0 +1133 @@ function createOpenClawCodingTools(options) {
+@@ -1129,6 +1129,7 @@ function createOpenClawCodingTools(options) {
+ 		allowBackground,
+ 		scopeKey,
+ 		sessionKey: options?.sessionKey,
 +		runId: options?.runId,
+ 		sessionId: options?.sessionId,
+ 		sessionStore: options?.config?.session?.store,
+ 		mainKey: options?.config?.session?.mainKey,
 diff --git a/dist/bash-tools-DHyGpWCr.js b/dist/bash-tools-DHyGpWCr.js
-index def4eecc41bf57190eac84a5df1dcf1d7c70664b..ba0013d6148de2410bad04b392e84a8ab3a8529d 100644
+index def4eecc41bf57190eac84a5df1dcf1d7c70664b..2ebd66504a8af50afb7f4d488bf6684b2a66935d 100644
 --- a/dist/bash-tools-DHyGpWCr.js
 +++ b/dist/bash-tools-DHyGpWCr.js
-@@ -100,0 +101,3 @@ function buildExecApprovalRequestToolParams(params) {
+@@ -97,6 +97,9 @@ function buildExecApprovalRequestToolParams(params) {
+ 		agentId: params.agentId,
+ 		resolvedPath: params.resolvedPath,
+ 		sessionKey: params.sessionKey,
 +		sessionId: params.sessionId,
 +		runId: params.runId,
 +		toolCallId: params.toolCallId,
-@@ -214,0 +218,3 @@ async function buildHostApprovalDecisionParams(params) {
+ 		turnSourceChannel: params.turnSourceChannel,
+ 		turnSourceTo: params.turnSourceTo,
+ 		turnSourceAccountId: params.turnSourceAccountId,
+@@ -211,6 +214,9 @@ async function buildHostApprovalDecisionParams(params) {
+ 			agentId: params.agentId,
+ 			sessionKey: params.sessionKey
+ 		}),
 +		sessionId: params.sessionId,
 +		runId: params.runId,
 +		toolCallId: params.toolCallId,
-@@ -1146,0 +1153,3 @@ async function processGatewayAllowlist(params) {
+ 		resolvedPath: params.resolvedPath,
+ 		requireDeliveryRoute: params.requireDeliveryRoute,
+ 		suppressDelivery: params.suppressDelivery,
+@@ -1143,6 +1149,9 @@ async function processGatewayAllowlist(params) {
+ 				agentId: params.agentId,
+ 				sessionKey: params.sessionKey
+ 			}),
 +			sessionId: params.sessionId,
 +			runId: params.runId,
 +			toolCallId: params.toolCallId,
-@@ -1879,0 +1889,2 @@ async function executeNodeHostCommand(params) {
+ 			approvalReviewerDeviceIds: params.approvalReviewerDeviceId ? [params.approvalReviewerDeviceId] : void 0,
+ 			resolvedPath: resolveApprovalAuditTrustPath(allowlistEval.segments[0]?.resolution ?? null, params.workdir),
+ 			...buildExecApprovalTurnSourceContext(params)
+@@ -1876,6 +1885,8 @@ async function executeNodeHostCommand(params) {
+ 			agentId: prepared.agentId,
+ 			sessionKey: prepared.sessionKey
+ 		}),
 +		runId: params.runId,
 +		toolCallId: params.toolCallId,
-@@ -3216 +3227 @@ function createExecTool(defaults) {
+ 		approvalReviewerDeviceIds: params.approvalReviewerDeviceId ? [params.approvalReviewerDeviceId] : void 0,
+ 		...options.requireDeliveryRoute !== void 0 ? { requireDeliveryRoute: options.requireDeliveryRoute } : {},
+ 		...options.suppressDelivery !== void 0 ? { suppressDelivery: options.suppressDelivery } : {},
+@@ -3213,7 +3224,7 @@ function createExecTool(defaults) {
+ 			if (workdirState) markResolvedExecWorkdirPrepared(execParams, workdirState);
+ 			return execParams;
+ 		},
 -		execute: async (_toolCallId, args, signal, onUpdate) => {
 +		execute: async (toolCallId, args, signal, onUpdate) => {
-@@ -3375,0 +3387,2 @@ function createExecTool(defaults) {
+ 			let params = stripMalformedXmlArgValueSuffixFromKeys(args, XML_ARG_VALUE_EXEC_PARAM_KEYS);
+ 			const resolveExecEnvPrepared = isResolveExecEnvPrepared(args);
+ 			const deferredResolveExecEnvState = getDeferredResolveExecEnvPreparedState(params);
+@@ -3372,6 +3383,8 @@ function createExecTool(defaults) {
+ 				if (host === "node") return executeNodeHostCommand({
+ 					command: params.command,
+ 					workdir,
 +					toolCallId,
 +					runId: defaults?.runId,
-@@ -3427,0 +3441,2 @@ function createExecTool(defaults) {
+ 					env,
+ 					requestedEnv,
+ 					requestedNode: params.node?.trim(),
+@@ -3424,6 +3437,8 @@ function createExecTool(defaults) {
+ 						trigger: defaults?.trigger,
+ 						agentId,
+ 						sessionKey: defaults?.sessionKey,
 +						runId: defaults?.runId,
 +						toolCallId,
+ 						sessionId: defaults?.sessionId,
+ 						sessionStore: defaults?.sessionStore,
+ 						bashElevated: elevatedDefaults,
+diff --git a/dist/cron-tool-C9qaFGtt.js b/dist/cron-tool-C9qaFGtt.js
+index eb8018079c99c7bcb64d1b89dba732a013d54c97..58baeaa5b53efad64d6fd1e7d79cb9cf1f6a4adc 100644
+--- a/dist/cron-tool-C9qaFGtt.js
++++ b/dist/cron-tool-C9qaFGtt.js
+@@ -402,8 +402,7 @@ function createCronPayloadSchema() {
+ function createCronTriggerSchema(params) {
+ 	const trigger = Type.Object({
+ 		script: Type.String({
+-			minLength: 1,
+-			maxLength: 65536
++			minLength: 1
+ 		}),
+ 		once: Type.Optional(Type.Boolean())
+ 	}, { additionalProperties: false });
+@@ -473,7 +472,7 @@ function createCronJobObjectSchema() {
+ 			description: "Idempotent declaration identity key",
+ 			minLength: 1,
+ 			maxLength: 200,
+-			pattern: "\\S"
++			pattern: "^(.|\\n|\\r|\\u2028|\\u2029)*[^\\u0009-\\u000D\\u0020\\u00A0\\u1680\\u2000-\\u200A\\u2028\\u2029\\u202F\\u205F\\u3000\\uFEFF](.|\\n|\\r|\\u2028|\\u2029)*$"
+ 		})),
+ 		displayName: Type.Optional(Type.String({
+ 			description: "Human-readable declarative job label",
 diff --git a/dist/exec-approval-DRfKKxhu.js b/dist/exec-approval-DRfKKxhu.js
 index f76d64d4041f579301e4ffacc38a20a7887567ef..eb4243089d8329eab00d9af9b106b46ef260df8c 100644
 --- a/dist/exec-approval-DRfKKxhu.js
@@ -432,7 +553,7 @@ index f76d64d4041f579301e4ffacc38a20a7887567ef..eb4243089d8329eab00d9af9b106b46e
  				turnSourceTo: normalizeOptionalString(p.turnSourceTo) ?? null,
  				turnSourceAccountId: normalizeOptionalString(p.turnSourceAccountId) ?? null,
 diff --git a/dist/exec-approvals-bouecjdj.d.ts b/dist/exec-approvals-bouecjdj.d.ts
-index c0a416851d957f1edd9e675fb74d69c4f3d1fdbb..30e33fc6fe5f31ee393ad25d0f2b24990ae0b5fe 100644
+index c0a416851d957f1edd9e675fb74d69c4f3d1fdbb..71e438fee1fe9f9323ae38c7dde3fdb50b78d48e 100644
 --- a/dist/exec-approvals-bouecjdj.d.ts
 +++ b/dist/exec-approvals-bouecjdj.d.ts
 @@ -382,6 +382,10 @@ type ExecApprovalRequestPayload = {
@@ -485,32 +606,8 @@ index ba698afb03ca7043d475948afcbb18643719a011..5c976a1d0f5fc9b85e76f65684eaba2c
  		};
  		if (deliveryContext) {
  			agentParams.channel = deliveryContext.channel;
-diff --git a/dist/cron-tool-C9qaFGtt.js b/dist/cron-tool-C9qaFGtt.js
---- a/dist/cron-tool-C9qaFGtt.js
-+++ b/dist/cron-tool-C9qaFGtt.js
-@@ -403,8 +403,7 @@ function createCronTriggerSchema(params) {
- 	const trigger = Type.Object({
- 		script: Type.String({
--			minLength: 1,
--			maxLength: 65536
-+			minLength: 1
- 		}),
- 		once: Type.Optional(Type.Boolean())
- 	}, { additionalProperties: false });
- 	return Type.Optional(params.nullableClears ? Type.Union([trigger, Type.Null()]) : trigger);
-@@ -471,9 +471,9 @@ function createCronJobObjectSchema() {
- 		name: Type.Optional(Type.String({ description: "Job name" })),
- 		declarationKey: Type.Optional(Type.String({
- 			description: "Idempotent declaration identity key",
- 			minLength: 1,
- 			maxLength: 200,
--			pattern: "\\S"
-+			pattern: "^(.|\\n|\\r|\\u2028|\\u2029)*[^\\u0009-\\u000D\\u0020\\u00A0\\u1680\\u2000-\\u200A\\u2028\\u2029\\u202F\\u205F\\u3000\\uFEFF](.|\\n|\\r|\\u2028|\\u2029)*$"
- 		})),
- 		displayName: Type.Optional(Type.String({
- 			description: "Human-readable declarative job label",
 diff --git a/dist/schema-BuOFpc7K.js b/dist/schema-BuOFpc7K.js
-index 50b16b4a3f159b698c6485e079e1c38ea41fda78..03ee242b547c3b841cc6a5819a4d0349a300228e 100644
+index 50b16b4a3f159b698c6485e079e1c38ea41fda78..04cc5c31a351bdf40f42e6a61f21fc0a64056fd8 100644
 --- a/dist/schema-BuOFpc7K.js
 +++ b/dist/schema-BuOFpc7K.js
 @@ -138,6 +138,7 @@ const AgentInternalEventSchema = Type.Object({
@@ -529,7 +626,7 @@ index 50b16b4a3f159b698c6485e079e1c38ea41fda78..03ee242b547c3b841cc6a5819a4d0349
  	execApprovalFollowupExpectedSessionId: Type.Optional(NonEmptyString),
  	internalEvents: Type.Optional(Type.Array(AgentInternalEventSchema)),
  	inputProvenance: Type.Optional(InputProvenanceSchema),
-@@ -2213,16 +2215,16 @@ const CronDeliveryStatusSchema = Type.Union([
+@@ -2211,17 +2213,17 @@ const CronDeliveryStatusSchema = Type.Union([
  ]);
  const NonBlankString = Type.String({
  	minLength: 1,
@@ -549,7 +646,8 @@ index 50b16b4a3f159b698c6485e079e1c38ea41fda78..03ee242b547c3b841cc6a5819a4d0349
 +	pattern: "^(.|\\n|\\r|\\u2028|\\u2029)*[^\\u0009-\\u000D\\u0020\\u00A0\\u1680\\u2000-\\u200A\\u2028\\u2029\\u202F\\u205F\\u3000\\uFEFF](.|\\n|\\r|\\u2028|\\u2029)*$"
  });
  const CronOwnerSchema = Type.Object({
-@@ -2320,8 +2322,7 @@ const ExecHostSchema = Type.Union([
+ 	agentId: Type.Optional(NonEmptyString),
+@@ -2318,8 +2320,7 @@ const CronScheduleSchema = Type.Union([
  /** Headless condition script evaluated before a recurring cron payload runs. */
  const CronTriggerSchema = Type.Object({
  	script: Type.String({
@@ -559,11 +657,17 @@ index 50b16b4a3f159b698c6485e079e1c38ea41fda78..03ee242b547c3b841cc6a5819a4d0349
  	}),
  	once: Type.Optional(Type.Boolean())
  }, { additionalProperties: false });
-@@ -2910,0 +2913,3 @@ const ExecApprovalRequestParamsSchema = Type.Object({
+@@ -2907,6 +2908,9 @@ const ExecApprovalRequestParamsSchema = Type.Object({
+ 	agentId: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+ 	resolvedPath: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+ 	sessionKey: Type.Optional(Type.Union([Type.String(), Type.Null()])),
 +	sessionId: Type.Optional(Type.Union([Type.String(), Type.Null()])),
 +	runId: Type.Optional(Type.Union([Type.String(), Type.Null()])),
 +	toolCallId: Type.Optional(Type.Union([Type.String(), Type.Null()])),
-@@ -3304,6 +3309,7 @@ const ChatInjectParamsSchema = Type.Object({
+ 	turnSourceChannel: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+ 	turnSourceTo: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+ 	turnSourceAccountId: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+@@ -3304,6 +3308,7 @@ const ChatInjectParamsSchema = Type.Object({
  /** Shared event fields preserve stream ordering and route events to the right session. */
  const ChatEventBaseSchema = {
  	runId: NonEmptyString,
@@ -572,7 +676,7 @@ index 50b16b4a3f159b698c6485e079e1c38ea41fda78..03ee242b547c3b841cc6a5819a4d0349
  	agentId: Type.Optional(NonEmptyString),
  	spawnedBy: Type.Optional(NonEmptyString),
 diff --git a/dist/schema-DtyqV_v0.d.ts b/dist/schema-DtyqV_v0.d.ts
-index ff8cd2829dc9f64d7fc8ec2bf77bb5f05947459d..f2f08299de269d42714b491343006250be0db4aa 100644
+index ff8cd2829dc9f64d7fc8ec2bf77bb5f05947459d..6292fc9aad228b4faa0fdca83f40a0546c106d55 100644
 --- a/dist/schema-DtyqV_v0.d.ts
 +++ b/dist/schema-DtyqV_v0.d.ts
 @@ -4,6 +4,7 @@ import { Static, TSchema, Type } from "typebox";

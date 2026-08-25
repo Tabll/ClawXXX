@@ -1,0 +1,61 @@
+{
+  "recordedAt": "2026-08-23T23:25:00.000+08:00",
+  "scope": "deterministic base-app candidate input tree; installer container overhead is platform-dependent and gated separately in CI",
+  "source": "docs/zh-CN/architecture/m0-runtime-baseline.json",
+  "before": {
+    "description": "base app candidate plus bundled OpenClaw candidate",
+    "compressedBytes": 109666327,
+    "unpackedBytes": 369673913,
+    "fileCount": 34007
+  },
+  "after": {
+    "description": "base app candidate with no kernel runtime payload",
+    "compressedBytes": 7675448,
+    "unpackedBytes": 29686500,
+    "fileCount": 478
+  },
+  "removedFromBase": {
+    "compressedBytes": 101990879,
+    "unpackedBytes": 339987413,
+    "fileCount": 33529,
+    "compressedReductionPercent": 92.999
+  },
+  "staticGate": {
+    "electronBuilderHasOpenClawExtraResource": false,
+    "baseBuildInvokesOpenClawBundler": false,
+    "afterPackCopiesOpenClaw": false,
+    "installerKillsGenericOpenClawGateway": false,
+    "test": "tests/unit/kernel-runtime-build.test.ts"
+  },
+  "releaseMeasurement": {
+    "workflow": ".github/workflows/multi-kernel-runtime-smoke.yml",
+    "budgetCompressedBytes": 157286400,
+    "note": "Every signed platform installer records its actual compressed size; production promotion fails if the budget or zero-runtime-payload scan fails.",
+    "localMacArm64Audit": {
+      "recordedAt": "2026-08-24T11:00:00.000+08:00",
+      "mode": "unsigned structural audit; ad-hoc app signature; notarization disabled; not release evidence",
+      "baselineVersion": "0.5.4",
+      "candidateVersion": "0.6.0",
+      "dmg": {
+        "baselineBytes": 237432522,
+        "candidateBytes": 133942864,
+        "reductionBytes": 103489658,
+        "reductionPercent": 43.587,
+        "candidateSha256": "ea516777e48ef3729dac2dbddda11b42a3cb6bbb0cdee17fd896a35b50f03ea7"
+      },
+      "zip": {
+        "baselineBytes": 270894730,
+        "candidateBytes": 142374698,
+        "reductionBytes": 128520032,
+        "reductionPercent": 47.443,
+        "candidateSha256": "4b6895e390021a2aabd0d1f530a6787e29c93f6ceb6edcf157bf6eac44ea01fd"
+      },
+      "checks": {
+        "afterPackZeroRuntimePayload": true,
+        "resourceTreeZeroRuntimePayload": true,
+        "asarZeroRuntimeEntrypoints": true,
+        "codesignStrictAdHocVerification": true
+      }
+    }
+  }
+}

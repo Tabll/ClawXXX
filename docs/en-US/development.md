@@ -2,6 +2,24 @@
 
 This document provides the detailed version of the Development section in the README.
 
+### Multi-kernel development boundary
+
+ClawX 0.6 separates host code from downloadable runtime code. Canonical contracts live under `shared/{kernels,conversations,domains,data}`; Main-owned implementation is under `electron/{kernels,conversations,domains,data,scheduler,channels,security}`. Renderer code must use `src/lib/host-api.ts`/`api-client.ts` and cannot call a Gateway, DSH endpoint, runtime filesystem or SQLite directly. Kernel-specific logic belongs behind a `KernelDriver` or projection adapter, never in pages.
+
+Frozen upstream inputs, patches and overlays live under `kernels/<kernelId>/`. `scripts/kernel-runtime/` verifies sources, audits licenses, downloads the independent Node runtime, signs platform executables, builds deterministic `tar.zst`, creates SBOM/provenance, promotes catalogs and drills both mirrors. The base package's `afterPack` gate fails if any optional kernel payload or symlink is present.
+
+Useful checks:
+
+```bash
+pnpm run kernel:sources:verify
+pnpm run data:electron-smoke
+pnpm run test:multi-kernel:chaos
+pnpm run release:multi-kernel:validate
+pnpm harness validate --spec harness/specs/tasks/implement-multi-kernel-m16-release-gate.md
+```
+
+The protected `kernel-runtime-build.yml` matrix builds two kernels for five targets. `kernel-runtime-promote.yml` verifies the complete signed set, publishes immutable assets/catalog in the correct order, and runs the two-mirror Range drill. Platform certificates, private metadata keys, notarization credentials and legal approval are release-environment inputs; local builds must not fabricate their evidence. See [runtime security/support](runtime-security-support.md) and [data recovery/retention](data-security-retention.md).
+
 ### Prerequisites
 
 - **Node.js**: 22.22.3+, 24.15.0+, or 25.9.0+ within the corresponding supported major line (Node 24 LTS recommended)

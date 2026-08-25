@@ -70,6 +70,13 @@ type AcpChildProcess = ChildProcess & {
   stderr: NonNullable<ChildProcess['stderr']>;
 };
 
+export type AcpSessionUpdateObserver = (
+  envelope: AcpSessionUpdateEnvelope,
+) => void | Promise<void>;
+export type AcpPermissionRequestObserver = (
+  envelope: AcpPermissionRequestEnvelope,
+) => void | Promise<void>;
+
 function ok(generation?: number, sessionUpdates?: AcpSessionUpdateEnvelope[]): AcpChatOperationResult {
   return {
     success: true,
@@ -154,6 +161,8 @@ export class AcpChatService {
   private readonly livePrompts = new Map<string, AcpLivePromptContext>();
   private permissionSeq = 0;
   private readonly permissionWaiters = new Map<string, PermissionWaiter>();
+  private readonly sessionUpdateObservers = new Set<AcpSessionUpdateObserver>();
+  private readonly permissionRequestObservers = new Set<AcpPermissionRequestObserver>();
   readonly client: Client;
 
   constructor(
@@ -167,6 +176,16 @@ export class AcpChatService {
       sessionUpdate: async (notification) => this.emitSessionUpdate(notification),
       requestPermission: async (request) => this.requestPermission(request),
     };
+  }
+
+  observeSessionUpdates(observer: AcpSessionUpdateObserver): () => void {
+    this.sessionUpdateObservers.add(observer);
+    return () => this.sessionUpdateObservers.delete(observer);
+  }
+
+  observePermissionRequests(observer: AcpPermissionRequestObserver): () => void {
+    this.permissionRequestObservers.add(observer);
+    return () => this.permissionRequestObservers.delete(observer);
   }
 
   private trace(
@@ -674,7 +693,7 @@ export class AcpChatService {
     this.livePrompts.clear();
   }
 
-  private emitSessionUpdate(notification: SessionNotification): void {
+  private async emitSessionUpdate(notification: SessionNotification): Promise<void> {
     const acpSessionId = notification.sessionId;
     const livePrompt = [...this.livePrompts.values()].find((context) => context.acpSessionId === acpSessionId);
     const sessionKey = livePrompt?.sessionKey ?? this.activeSessionKey;
@@ -720,6 +739,7 @@ export class AcpChatService {
       });
       return;
     }
+    await this.notifyObservers(this.sessionUpdateObservers, envelope, 'session update');
     this.mainWindow.webContents.send(HOST_EVENT_CHANNELS.chat.acpSessionUpdate, envelope);
     this.trace('session-update:forwarded', {
       direction: 'downstream',
@@ -728,7 +748,7 @@ export class AcpChatService {
     });
   }
 
-  private requestPermission(request: RequestPermissionRequest): Promise<RequestPermissionResponse> {
+  private async requestPermission(request: RequestPermissionRequest): Promise<RequestPermissionResponse> {
     const acpSessionId = request.sessionId;
     const livePrompt = [...this.livePrompts.values()].find((context) => context.acpSessionId === acpSessionId);
     const sessionKey = livePrompt?.sessionKey ?? this.activeSessionKey;
@@ -769,16 +789,36 @@ export class AcpChatService {
       requestId,
       request: { ...request, sessionId: sessionKey },
     };
+    const response = new Promise<RequestPermissionResponse>((resolve) => {
+      this.permissionWaiters.set(requestId, { sessionKey, generation, resolve });
+    });
+    const observerNotification = this.notifyObservers(
+      this.permissionRequestObservers,
+      envelope,
+      'permission request',
+    );
     this.mainWindow.webContents.send(HOST_EVENT_CHANNELS.chat.acpPermissionRequest, envelope);
     this.trace('permission:forwarded', {
       direction: 'downstream',
       sessionKey,
       details: { requestId, acpSessionId, optionCount: request.options.length },
     });
+    await observerNotification;
 
-    return new Promise((resolve) => {
-      this.permissionWaiters.set(requestId, { sessionKey, generation, resolve });
-    });
+    return response;
+  }
+
+  private async notifyObservers<T>(
+    observers: ReadonlySet<(value: T) => void | Promise<void>>,
+    value: T,
+    kind: string,
+  ): Promise<void> {
+    const results = await Promise.allSettled([...observers].map(observer => observer(value)));
+    for (const result of results) {
+      if (result.status === 'rejected') {
+        logger.error(`[acp-chat] ${kind} observer failed: ${String(result.reason)}`);
+      }
+    }
   }
 
   private resolvePermissionWaitersForSession(sessionKey: string, response: RequestPermissionResponse): void {
@@ -794,6 +834,32 @@ export class AcpChatService {
       waiter.resolve(response);
       this.permissionWaiters.delete(requestId);
     }
+  }
+
+  async shutdown(): Promise<void> {
+    this.resolveAllPermissionWaiters(cancelledPermissionResponse());
+    this.livePrompts.clear();
+    this.permissionsEnabled = false;
+    const child = this.child;
+    if (!child) {
+      this.connection = null;
+      this.initialized = false;
+      return;
+    }
+    await new Promise<void>((resolve) => {
+      const timeout = setTimeout(resolve, 2_000);
+      child.once('exit', () => {
+        clearTimeout(timeout);
+        resolve();
+      });
+      try {
+        child.kill('SIGTERM');
+      } catch {
+        clearTimeout(timeout);
+        resolve();
+      }
+    });
+    this.dropConnectionForChild(child);
   }
 
   private async buildPromptBlocks(payload: AcpChatPromptPayload): Promise<ContentBlock[]> {

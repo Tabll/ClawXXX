@@ -60,23 +60,23 @@ const CLAWX_DESKTOP_TOOL_DENY = [
 ];
 
 async function writeOpenClawJson(config: unknown): Promise<void> {
-  const openclawDir = join(testHome, '.openclaw');
+  const openclawDir = join(testHome, '.clawx', 'kernel-config', 'openclaw');
   await mkdir(openclawDir, { recursive: true });
   await writeFile(join(openclawDir, 'openclaw.json'), JSON.stringify(config, null, 2), 'utf8');
 }
 
 async function readOpenClawJson(): Promise<Record<string, unknown>> {
-  const content = await readFile(join(testHome, '.openclaw', 'openclaw.json'), 'utf8');
+  const content = await readFile(join(testHome, '.clawx', 'kernel-config', 'openclaw', 'openclaw.json'), 'utf8');
   return JSON.parse(content) as Record<string, unknown>;
 }
 
 async function readAuthProfiles(agentId: string): Promise<Record<string, unknown>> {
-  const content = await readFile(join(testHome, '.openclaw', 'agents', agentId, 'agent', 'auth-profiles.json'), 'utf8');
+  const content = await readFile(join(testHome, '.clawx', 'kernel-config', 'openclaw', 'agents', agentId, 'agent', 'auth-profiles.json'), 'utf8');
   return JSON.parse(content) as Record<string, unknown>;
 }
 
 async function writeAgentAuthProfiles(agentId: string, store: Record<string, unknown>): Promise<void> {
-  const agentDir = join(testHome, '.openclaw', 'agents', agentId, 'agent');
+  const agentDir = join(testHome, '.clawx', 'kernel-config', 'openclaw', 'agents', agentId, 'agent');
   await mkdir(agentDir, { recursive: true });
   await writeFile(join(agentDir, 'auth-profiles.json'), JSON.stringify(store, null, 2), 'utf8');
 }
@@ -110,9 +110,9 @@ describe('saveProviderKeyToOpenClaw', () => {
       },
     });
 
-    await mkdir(join(testHome, '.openclaw', 'agents', 'test2', 'agent'), { recursive: true });
+    await mkdir(join(testHome, '.clawx', 'kernel-config', 'openclaw', 'agents', 'test2', 'agent'), { recursive: true });
     await writeFile(
-      join(testHome, '.openclaw', 'agents', 'test2', 'agent', 'auth-profiles.json'),
+      join(testHome, '.clawx', 'kernel-config', 'openclaw', 'agents', 'test2', 'agent', 'auth-profiles.json'),
       JSON.stringify({
         version: 1,
         profiles: {
@@ -368,7 +368,7 @@ describe('sanitizeOpenClawConfig', () => {
     // Should not throw and should not create the file
     await expect(sanitizeOpenClawConfig()).resolves.toBeUndefined();
 
-    const configPath = join(testHome, '.openclaw', 'openclaw.json');
+    const configPath = join(testHome, '.clawx', 'kernel-config', 'openclaw', 'openclaw.json');
     await expect(readFile(configPath, 'utf8')).rejects.toThrow();
 
     logSpy.mockRestore();
@@ -376,7 +376,7 @@ describe('sanitizeOpenClawConfig', () => {
 
   it('skips sanitization when openclaw.json contains invalid JSON', async () => {
     // Simulate a corrupted file: readJsonFile returns null, sanitize must bail out
-    const openclawDir = join(testHome, '.openclaw');
+    const openclawDir = join(testHome, '.clawx', 'kernel-config', 'openclaw');
     await mkdir(openclawDir, { recursive: true });
     const configPath = join(openclawDir, 'openclaw.json');
     await writeFile(configPath, 'NOT VALID JSON {{{', 'utf8');
@@ -395,7 +395,7 @@ describe('sanitizeOpenClawConfig', () => {
   });
 
   it('sanitizes valid JSON5 instead of treating it as corrupt', async () => {
-    const openclawDir = join(testHome, '.openclaw');
+    const openclawDir = join(testHome, '.clawx', 'kernel-config', 'openclaw');
     await mkdir(openclawDir, { recursive: true });
     const configPath = join(openclawDir, 'openclaw.json');
     await writeFile(configPath, '{\n  // OpenClaw accepts comments\n  commands: { restart: false, },\n}\n', 'utf8');
@@ -449,7 +449,7 @@ describe('sanitizeOpenClawConfig', () => {
 
     await sanitizeOpenClawConfig();
 
-    const configPath = join(testHome, '.openclaw', 'openclaw.json');
+    const configPath = join(testHome, '.clawx', 'kernel-config', 'openclaw', 'openclaw.json');
     const result = JSON.parse(await readFile(configPath, 'utf8')) as Record<string, unknown>;
     // Fresh install should get tools settings enforced
     const tools = result.tools as Record<string, unknown>;
@@ -480,7 +480,7 @@ describe('sanitizeOpenClawConfig', () => {
 
     await sanitizeOpenClawConfig();
 
-    const configPath = join(testHome, '.openclaw', 'openclaw.json');
+    const configPath = join(testHome, '.clawx', 'kernel-config', 'openclaw', 'openclaw.json');
     const result = JSON.parse(await readFile(configPath, 'utf8')) as Record<string, unknown>;
 
     // User-owned sections must survive the sanitize pass
@@ -727,7 +727,7 @@ describe('sanitizeOpenClawConfig', () => {
       },
     });
 
-    const legacyPluginDir = join(testHome, '.openclaw', 'extensions', 'openclaw-lark');
+    const legacyPluginDir = join(testHome, '.clawx', 'kernel-config', 'openclaw', 'extensions', 'openclaw-lark');
     await mkdir(legacyPluginDir, { recursive: true });
     await writeFile(
       join(legacyPluginDir, 'openclaw.plugin.json'),
@@ -916,7 +916,7 @@ describe('sanitizeOpenClawConfig', () => {
   });
 
   it('removes missing external plugin ids from plugins.allow while preserving installed and configured plugins', async () => {
-    const installedPluginDir = join(testHome, '.openclaw', 'extensions', 'custom-installed');
+    const installedPluginDir = join(testHome, '.clawx', 'kernel-config', 'openclaw', 'extensions', 'custom-installed');
     await mkdir(installedPluginDir, { recursive: true });
     await writeFile(
       join(installedPluginDir, 'openclaw.plugin.json'),
@@ -2165,7 +2165,7 @@ describe('anthropic-messages maxTokens', () => {
       models: [{ id: 'MiniMax-M2.7', name: 'MiniMax-M2.7', cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } }],
     });
 
-    const content = await readFile(join(testHome, '.openclaw', 'agents', 'main', 'agent', 'models.json'), 'utf8');
+    const content = await readFile(join(testHome, '.clawx', 'kernel-config', 'openclaw', 'agents', 'main', 'agent', 'models.json'), 'utf8');
     const result = JSON.parse(content) as Record<string, unknown>;
     const providers = result.providers as Record<string, Record<string, unknown>>;
     const entry = providers['minimax-portal'];
@@ -2178,7 +2178,7 @@ describe('anthropic-messages maxTokens', () => {
 
   it('repairs legacy agent models.json anthropic-messages entries during update', async () => {
     await writeOpenClawJson({ agents: { list: [{ id: 'main', name: 'Main' }] } });
-    const agentDir = join(testHome, '.openclaw', 'agents', 'main', 'agent');
+    const agentDir = join(testHome, '.clawx', 'kernel-config', 'openclaw', 'agents', 'main', 'agent');
     await mkdir(agentDir, { recursive: true });
     await writeFile(join(agentDir, 'models.json'), JSON.stringify({
       providers: {

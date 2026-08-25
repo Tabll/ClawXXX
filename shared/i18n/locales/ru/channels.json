@@ -9,6 +9,12 @@
         "disconnected": "Отключено"
     },
     "gatewayWarning": "Служба шлюза не запущена. Каналы не могут подключиться.",
+    "kernel": { "openclaw": "OpenClaw", "deepseek-harness": "DeepSeek Harness" },
+    "kernelHealth": {
+        "title": "Ядро канала недоступно",
+        "description": "Учётные записи и привязки сохранены. Запустите или перезапустите соответствующее ядро, чтобы возобновить доставку.",
+        "restart": "Перезапустить ядро"
+    },
     "availableChannels": "Доступные каналы",
     "supportedChannels": "Поддерживаемые каналы",
     "available": "Доступные каналы",
@@ -32,7 +38,8 @@
         "bindingUpdated": "Привязка учётной записи обновлена",
         "defaultUpdated": "Учётная запись по умолчанию обновлена",
         "accountDeleted": "Учётная запись удалена",
-        "channelDeleted": "Канал удалён"
+        "channelDeleted": "Канал удалён",
+        "noCompatibleAgent": "Нет агента с поддержкой {{kernel}}"
     },
     "account": {
         "add": "Добавить учётную запись",
@@ -43,6 +50,8 @@
         "default": "Текущая по умолчанию",
         "setDefault": "Установить как канал по умолчанию",
         "bindAgentLabel": "Связанный агент",
+        "bindKernelLabel": "Ядро",
+        "deliveryDiagnostics": "Повтор: {{retrying}} · Недоставлено: {{deadLetter}}",
         "unassigned": "Не назначено",
         "mainAccount": "Основная учётная запись",
         "customIdLabel": "ID учётной записи",
@@ -98,6 +107,7 @@
         "generateQRCode": "Сгенерировать QR-код",
         "updateAndReconnect": "Обновить и переподключить",
         "saveAndConnect": "Сохранить и подключить",
+        "secretConfiguredPlaceholder": "Сохранено безопасно — оставьте поле пустым, чтобы сохранить текущие данные",
         "envVar": "Переменная окружения: {{var}}"
     },
     "health": {

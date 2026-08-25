@@ -22,6 +22,7 @@ vi.mock('@electron/services/providers/provider-migration', () => ({
 }));
 
 vi.mock('@electron/services/providers/provider-store', () => ({
+  isCanonicalProviderStoreConfigured: vi.fn(() => false),
   listProviderAccounts: mocks.listProviderAccounts,
   deleteProviderAccount: mocks.deleteProviderAccount,
   getProviderAccount: vi.fn(),
@@ -682,7 +683,7 @@ describe('ProviderService.listAccountsKeyInfo', () => {
     service = new ProviderService();
   });
 
-  it('prefers OpenClaw runtime auth when reporting account key status', async () => {
+  it('does not treat a runtime projection as canonical credential status', async () => {
     mocks.listProviderAccounts.mockResolvedValue([
       makeAccount({
         id: 'custom-ui-account-id',
@@ -699,13 +700,13 @@ describe('ProviderService.listAccountsKeyInfo', () => {
 
     const result = await service.listAccountsKeyInfo();
 
-    expect(mocks.getProviderApiKeyFromOpenClaw).toHaveBeenCalledWith('custom-runtime');
-    expect(mocks.getApiKey).not.toHaveBeenCalled();
+    expect(mocks.getProviderApiKeyFromOpenClaw).not.toHaveBeenCalled();
+    expect(mocks.getApiKey).toHaveBeenCalledWith('custom-ui-account-id');
     expect(result).toEqual([
       {
         accountId: 'custom-ui-account-id',
-        hasKey: true,
-        keyMasked: 'sk-o***************-key',
+        hasKey: false,
+        keyMasked: null,
       },
     ]);
   });
@@ -729,11 +730,12 @@ describe('ProviderService.listAccountsKeyInfo', () => {
 
     const result = await service.listAccountsKeyInfo();
 
-    expect(mocks.getProviderApiKeyFromOpenClaw).toHaveBeenCalledWith('openrouter');
+    expect(mocks.getProviderApiKeyFromOpenClaw).not.toHaveBeenCalled();
     expect(mocks.getApiKey).toHaveBeenCalledWith('openrouter-ui-account-id');
     expect(result[0]).toMatchObject({
       accountId: 'openrouter-ui-account-id',
       hasKey: true,
+      keyMasked: '••••••••',
     });
   });
 });

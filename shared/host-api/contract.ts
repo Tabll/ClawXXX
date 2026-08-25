@@ -11,7 +11,20 @@ import type { AgentsSnapshot } from '../types/agent';
 import type { CronJob, CronJobCreateInput, CronJobUpdateInput } from '../types/cron';
 import type { GatewayHealth, GatewayStatus } from '../types/gateway';
 import type { MarketplaceSkill, QuickAccessSkill, Skill } from '../types/skill';
+import type { CanonicalSkill, SkillMutationResult, SkillMutationTarget } from '../domains/skills';
+import type { KernelId } from '../kernels/contracts';
 import type { WebBrowserNavigatePayload } from '../web-browser';
+import type { KernelHostApi } from './kernels';
+import type { DiagnosticsSnapshotResult } from '../domains/diagnostics';
+export type { DiagnosticsSnapshotResult } from '../domains/diagnostics';
+import type {
+  ConversationExport,
+  ConversationId,
+  ConversationPage,
+  ConversationQueryFilters,
+  ConversationSummary,
+  TurnId,
+} from '../conversations/contracts';
 
 export type JsonRecord = Record<string, unknown>;
 export type HostSuccess = { success: boolean; error?: string };
@@ -115,6 +128,7 @@ export type SettingsSnapshot = Partial<{
   themeColor: string;
   macOSNativeFontSmoothing: boolean;
   gatewayAutoStart: boolean;
+  kernelAutoStartPolicies: Record<string, boolean>;
   gatewayPort: number;
   proxyEnabled: boolean;
   proxyServer: string;
@@ -152,6 +166,11 @@ export type GatewayRpcPayload = {
   params?: unknown;
   timeoutMs?: number;
 };
+
+/** Host-owned surface for the optional OpenClaw Dreams legacy extension. */
+export type OpenClawDreamsAction = 'backfill' | 'dedupe' | 'repair' | 'resetDiary' | 'resetGrounded';
+export type OpenClawDreamsRunPayload = { action: OpenClawDreamsAction };
+export type OpenClawDreamsTogglePayload = { enabled: boolean };
 
 export type LogContentResult = { content: string };
 export type LogDirResult = { dir: string | null };
@@ -199,6 +218,8 @@ export type GatewayRecoverySnapshot = {
 
 export type ChannelRuntimeStatus = 'connected' | 'connecting' | 'degraded' | 'disconnected' | 'error';
 export type ChannelAccountItem = {
+  /** Globally unique canonical id (`channelType:nativeAccountId`). */
+  canonicalAccountId?: string;
   accountId: string;
   name: string;
   configured: boolean;
@@ -206,7 +227,21 @@ export type ChannelAccountItem = {
   statusReason?: string;
   lastError?: string;
   isDefault: boolean;
+  kernelId?: string;
   agentId?: string;
+  supportedKernels?: string[];
+  connectionOwner?: {
+    ownerId: string;
+    kernelId: string;
+    generation: number;
+    leaseExpiresAt: string;
+  };
+  delivery?: {
+    pending: number;
+    retrying: number;
+    deadLetter: number;
+    lastError?: string;
+  };
 };
 export type ChannelGroupItem = {
   channelType: string;
@@ -228,6 +263,8 @@ export type ChannelAccountsPayload = {
 export type ChannelAccountsResult = HostSuccess & {
   channels?: ChannelGroupItem[];
   gatewayHealth?: GatewayHealthSummary;
+  /** Main-owned adapter capabilities; the renderer must not hard-code kernel ids. */
+  adapters?: Array<{ kernelId: string; supportedChannels: string[] }>;
 };
 export type ChannelTargetsPayload = {
   channelType: string;
@@ -240,16 +277,24 @@ export type ChannelTargetsResult = HostSuccess & {
   targets?: ChannelTargetOption[];
 };
 export type ChannelTypePayload = { channelType: string };
-export type ChannelAccountPayload = ChannelTypePayload & { accountId?: string };
+export type ChannelAccountPayload = ChannelTypePayload & { accountId?: string; kernelId?: string };
 export type ChannelRequiredAccountPayload = ChannelTypePayload & { accountId: string };
-export type ChannelBindingSavePayload = ChannelRequiredAccountPayload & { agentId: string };
+export type ChannelBindingSavePayload = ChannelRequiredAccountPayload & {
+  kernelId: string;
+  agentId: string;
+  targetId?: string;
+  conversationPolicy?: 'reuse' | 'per-thread' | 'per-message';
+};
 export type ChannelBindingDeletePayload = ChannelAccountPayload;
-export type ChannelSetEnabledPayload = ChannelTypePayload & { enabled: boolean };
+export type ChannelSetEnabledPayload = ChannelAccountPayload & { enabled: boolean };
 export type ChannelFormValuesResult = HostSuccess & {
   values?: Record<string, string>;
+  configuredSecretFields?: string[];
 };
 export type ChannelCredentialValidationPayload = ChannelTypePayload & {
   config: Record<string, unknown>;
+  accountId?: string;
+  kernelId?: string;
 };
 export type ChannelCredentialValidationResult = HostSuccess & {
   valid: boolean;
@@ -264,6 +309,7 @@ export type ChannelCredentialValidationResult = HostSuccess & {
 export type ChannelSaveConfigPayload = ChannelTypePayload & {
   config: Record<string, unknown>;
   accountId?: string;
+  kernelId?: string;
 };
 export type ChannelSaveConfigResult = HostSuccess & {
   noChange?: boolean;
@@ -274,10 +320,30 @@ export type ChannelSaveConfigResult = HostSuccess & {
 export type ChannelConfiguredResult = HostSuccess & { channels?: Array<string | JsonRecord> };
 
 export type AgentSnapshotResult = AgentsSnapshot & OptionalHostSuccess;
-export type AgentCreatePayload = { name: string; inheritWorkspace?: boolean };
-export type AgentUpdatePayload = { id: string; name: string };
+export type AgentCreatePayload = {
+  name: string;
+  inheritWorkspace?: boolean;
+  kernelIds?: string[];
+  workspaceUri?: string;
+  description?: string;
+  persona?: string;
+  presetId?: string;
+  modelRef?: string | null;
+};
+export type AgentUpdatePayload = {
+  id: string;
+  name?: string;
+  kernelIds?: string[];
+  workspaceUri?: string;
+  description?: string;
+  persona?: string;
+  presetId?: string;
+};
 export type AgentUpdateModelPayload = { id: string; modelRef: string | null };
 export type AgentIdPayload = { id: string };
+export type AgentDeletePayload = AgentIdPayload & { preserveHistory: true };
+export type AgentSetDefaultPayload = AgentIdPayload & { kernelId: string };
+export type AgentReconcilePayload = AgentIdPayload & { kernelIds?: string[] };
 export type AgentChannelPayload = { id: string; channelType: string };
 
 export type AcpTraceSource = 'main' | 'renderer';
@@ -418,7 +484,24 @@ export type ProviderAccount = {
     resourceUrl?: string;
     customModels?: string[];
   };
+  supportedKernels?: string[];
+  projections?: ProviderKernelProjection[];
   createdAt: string;
+  updatedAt: string;
+};
+export type ProviderKernelProjection = {
+  kernelId: string;
+  status: 'pending' | 'applying' | 'ready' | 'partial' | 'failed' | 'unsupported';
+  desiredVersion: number;
+  appliedVersion?: number;
+  nativeId?: string;
+  error?: string;
+  updatedAt: string;
+};
+export type ProviderKernelDefault = {
+  kernelId: string;
+  accountId: string;
+  modelId?: string;
   updatedAt: string;
 };
 export type ProviderAccountKeyInfo = {
@@ -436,25 +519,38 @@ export type ProviderValidationPayload = {
   accountId?: string;
   vendorId?: string;
   providerId?: string;
-  apiKey: string;
+  credentialHandle: string;
+  kernelIds?: string[];
   options?: ProviderValidationOptions;
 };
-export type ProviderValidationResult = { valid: boolean; error?: string };
+export type ProviderKernelValidationResult = {
+  kernelId: string;
+  valid: boolean;
+  error?: string;
+};
+export type ProviderValidationResult = {
+  valid: boolean;
+  error?: string;
+  kernels?: ProviderKernelValidationResult[];
+};
 export type ProviderIdPayload = { providerId: string };
-export type ProviderApiKeyPayload = ProviderIdPayload & { apiKey: string };
-export type ProviderSavePayload = { config: ProviderConfig; apiKey?: string };
+export type ProviderCredentialPayload = ProviderIdPayload & { credentialHandle: string };
+export type ProviderSavePayload = { config: ProviderConfig; credentialHandle?: string };
 export type ProviderUpdateWithKeyPayload = {
   providerId: string;
   updates: Partial<ProviderConfig>;
-  apiKey?: string;
+  credentialHandle?: string;
 };
 export type ProviderAccountIdPayload = { accountId: string };
-export type ProviderCreateAccountPayload = { account: ProviderAccount; apiKey?: string };
+export type ProviderCreateAccountPayload = { account: ProviderAccount; credentialHandle?: string };
 export type ProviderUpdateAccountPayload = {
   accountId: string;
   updates: Partial<ProviderAccount>;
-  apiKey?: string;
+  credentialHandle?: string;
 };
+export type ProviderKernelDefaultPayload = { kernelId: string; accountId: string; modelId?: string };
+export type ProviderReconcilePayload = { accountId: string; kernelIds?: string[] };
+export type ProviderMutationResult = HostSuccess & { projections?: ProviderKernelProjection[] };
 export type ProviderOAuthRequestPayload = {
   provider: string;
   region?: 'global' | 'cn';
@@ -518,7 +614,7 @@ export type ResolveAttachmentResult =
       target:
         | {
             kind: 'local';
-            scope: 'workspace' | 'openclaw-media' | 'staging';
+            scope: 'workspace' | 'openclaw-media' | 'staging' | 'canonical-blob';
             entryKind: 'file' | 'directory';
             ref: AttachmentFileRef;
           }
@@ -931,6 +1027,22 @@ export type SessionDeletePayload = { id: string };
 export type SessionRenamePayload = { id: string; title: string };
 export type SessionPinPayload = { id: string; pinned: boolean };
 
+export type ConversationIdPayload = { id: ConversationId };
+export type ConversationListPayload = ConversationQueryFilters & { limit?: number; cursor?: string };
+export type ConversationSearchPayload = ConversationQueryFilters & { query: string; limit?: number };
+export type ConversationRenamePayload = ConversationIdPayload & { title: string };
+export type ConversationPinPayload = ConversationIdPayload & { pinned: boolean };
+export type ConversationDeletePayload = ConversationIdPayload & { hard?: boolean };
+export type ConversationBranchPayload = {
+  sourceConversationId: ConversationId;
+  sourceTurnId: TurnId;
+  branchConversationId?: ConversationId;
+  title?: string;
+};
+export type ConversationGetResult = ConversationExport | null;
+export type ConversationListResult = ConversationPage;
+export type ConversationSearchResult = ConversationSummary[];
+
 export type CronUpdatePayload = { id: string; input: CronJobUpdateInput };
 export type CronIdPayload = { id: string };
 export type CronTogglePayload = CronIdPayload & { enabled: boolean };
@@ -958,6 +1070,13 @@ export type SkillsStatusResult = {
   }[];
 };
 export type LocalSkillsResult = HostSuccess & { skills?: Skill[] };
+export type CanonicalSkillsResult = HostSuccess & { skills: CanonicalSkill[] };
+export type CanonicalSkillMutationPayload = {
+  skillId: string;
+  mutation: 'install' | 'uninstall' | 'update' | 'enable' | 'disable';
+  target: SkillMutationTarget;
+};
+export type CanonicalSkillRetryPayload = { skillId: string; kernelId: KernelId };
 export type SkillConfigsResult = Record<string, { enabled?: boolean; apiKey?: string; env?: Record<string, string> }>;
 export type SkillKeyPayload = { skillKey: string };
 export type SkillUpdateConfigPayload = SkillKeyPayload & {
@@ -982,8 +1101,9 @@ export type ClawHubSearchPayload = { query?: string };
 export type ClawHubSearchResult = HostSuccess & {
   results?: MarketplaceSkill[];
 };
-export type ClawHubInstallPayload = { slug: string; version?: string };
-export type ClawHubUninstallPayload = { slug: string };
+export type ClawHubInstallPayload = { slug: string; version?: string; target?: SkillMutationTarget };
+export type ClawHubUninstallPayload = { slug: string; target?: SkillMutationTarget };
+export type ClawHubMutationResult = HostSuccess & { mutation?: SkillMutationResult };
 export type ClawHubOpenPayload = {
   skillKey?: string;
   slug?: string;
@@ -1052,9 +1172,15 @@ export type UsageSessionMetadata = {
   toolUsage?: UsageToolUsage;
 };
 export type UsageHistoryEntry = {
+  id: string;
+  eventKey: string;
+  runId: string;
+  kernelId: KernelId;
   timestamp: string;
   sessionId: string;
   agentId: string;
+  requestId?: string;
+  source: 'runtime-event' | 'provider-response';
   model?: string;
   provider?: string;
   content?: string;
@@ -1062,18 +1188,28 @@ export type UsageHistoryEntry = {
   contextWeight?: UsageContextWeight;
   sessionMeta?: UsageSessionMetadata;
   usageStatus?: 'available' | 'missing' | 'error';
-  inputTokens: number;
-  outputTokens: number;
-  cacheReadTokens: number;
-  cacheWriteTokens: number;
-  totalTokens: number;
+  inputTokens?: number;
+  outputTokens?: number;
+  cacheReadTokens?: number;
+  cacheWriteTokens?: number;
+  totalTokens?: number;
+  cost?: number;
+  currency?: string;
   costUsd?: number;
   inputCostUsd?: number;
   outputCostUsd?: number;
   cacheReadCostUsd?: number;
   cacheWriteCostUsd?: number;
 };
-export type UsageHistoryPayload = { limit?: number };
+export type UsageHistoryPayload = {
+  limit?: number;
+  from?: string;
+  to?: string;
+  kernelIds?: KernelId[];
+  agentIds?: string[];
+  providerIds?: string[];
+  modelIds?: string[];
+};
 
 export type DeliveryChannelAccount = {
   accountId: string;
@@ -1090,12 +1226,14 @@ export type DeliveryTargetsResult = HostSuccess & { targets: DeliveryChannelGrou
 export type HostApiContract = {
   app: {
     openClawDoctor: (payload: OpenClawDoctorPayload) => Omit<OpenClawDoctorResult, 'mode'>;
+    relaunch: () => void;
   };
   openclaw: {
     status: () => OpenClawStatusResult;
     getSkillsDir: () => string;
     getCliCommand: () => OpenClawCliCommandResult;
   };
+  kernels: KernelHostApi;
   shell: {
     openExternal: (payload: ShellOpenExternalPayload) => void;
     showItemInFolder: (payload: ShellPathPayload) => void;
@@ -1145,6 +1283,13 @@ export type HostApiContract = {
     controlUi: (payload?: GatewayControlUiPayload) => GatewayControlUiResult;
     rpc: (payload: GatewayRpcPayload) => unknown;
   };
+  openClawDreams: {
+    status: () => unknown;
+    diary: () => unknown;
+    run: (payload: OpenClawDreamsRunPayload) => unknown;
+    setEnabled: (payload: OpenClawDreamsTogglePayload) => HostSuccess;
+    openFullUi: () => HostSuccess;
+  };
   logs: {
     recent: (payload?: LogRecentPayload) => LogContentResult;
     memory: (payload?: LogMemoryPayload) => string[];
@@ -1174,11 +1319,14 @@ export type HostApiContract = {
     create: (payload: AgentCreatePayload) => AgentSnapshotResult;
     update: (payload: AgentUpdatePayload) => AgentSnapshotResult;
     updateModel: (payload: AgentUpdateModelPayload) => AgentSnapshotResult;
-    delete: (payload: AgentIdPayload) => AgentSnapshotResult;
+    delete: (payload: AgentDeletePayload) => AgentSnapshotResult;
+    setDefault: (payload: AgentSetDefaultPayload) => AgentSnapshotResult;
+    reconcile: (payload: AgentReconcilePayload) => AgentSnapshotResult;
     assignChannel: (payload: AgentChannelPayload) => AgentSnapshotResult;
     removeChannel: (payload: AgentChannelPayload) => AgentSnapshotResult;
   };
   diagnostics: {
+    snapshot: () => DiagnosticsSnapshotResult;
     gatewaySnapshot: () => DiagnosticsGatewaySnapshotResult;
     acpTrace: () => AcpTraceSnapshot;
     recordAcpTrace: (payload: AcpTraceRecordPayload) => HostSuccess;
@@ -1188,11 +1336,10 @@ export type HostApiContract = {
     get: (payload: ProviderIdPayload) => ProviderConfig | null;
     getDefault: () => string | undefined;
     hasApiKey: (payload: ProviderIdPayload) => boolean;
-    getApiKey: (payload: ProviderIdPayload) => string | null;
     validateKey: (payload: ProviderValidationPayload) => ProviderValidationResult;
     save: (payload: ProviderSavePayload) => HostSuccess;
     delete: (payload: ProviderIdPayload) => HostSuccess;
-    setApiKey: (payload: ProviderApiKeyPayload) => HostSuccess;
+    setApiKey: (payload: ProviderCredentialPayload) => HostSuccess;
     updateWithKey: (payload: ProviderUpdateWithKeyPayload) => HostSuccess;
     deleteApiKey: (payload: ProviderIdPayload) => HostSuccess;
     setDefault: (payload: ProviderIdPayload) => HostSuccess;
@@ -1201,13 +1348,15 @@ export type HostApiContract = {
     accountKeyInfo: () => ProviderAccountKeyInfo[];
     getDefaultAccount: () => ProviderDefaultAccountResult;
     getAccount: (payload: ProviderAccountIdPayload) => ProviderAccount | null;
-    getAccountApiKey: (payload: ProviderAccountIdPayload) => string | null;
     hasAccountApiKey: (payload: ProviderAccountIdPayload) => boolean;
     createAccount: (payload: ProviderCreateAccountPayload) => HostSuccess;
     updateAccount: (payload: ProviderUpdateAccountPayload) => HostSuccess;
     deleteAccount: (payload: ProviderAccountIdPayload) => HostSuccess;
     deleteAccountApiKey: (payload: ProviderAccountIdPayload) => HostSuccess;
     setDefaultAccount: (payload: ProviderAccountIdPayload) => HostSuccess;
+    kernelDefaults: () => ProviderKernelDefault[];
+    setKernelDefault: (payload: ProviderKernelDefaultPayload) => HostSuccess;
+    reconcileAccount: (payload: ProviderReconcilePayload) => ProviderMutationResult;
     requestOAuth: (payload: ProviderOAuthRequestPayload) => HostSuccess;
     cancelOAuth: () => HostSuccess;
     submitOAuth: (payload: ProviderOAuthSubmitPayload) => HostSuccess;
@@ -1262,7 +1411,20 @@ export type HostApiContract = {
     history: (payload: SessionHistoryPayload) => SessionHistoryResult;
     turnTimings: (payload: SessionTurnTimingsPayload) => SessionTurnTimingsResult;
   };
+  conversations: {
+    list: (payload?: ConversationListPayload) => ConversationListResult;
+    search: (payload: ConversationSearchPayload) => ConversationSearchResult;
+    get: (payload: ConversationIdPayload) => ConversationGetResult;
+    rename: (payload: ConversationRenamePayload) => HostSuccess;
+    pin: (payload: ConversationPinPayload) => HostSuccess;
+    delete: (payload: ConversationDeletePayload) => HostSuccess;
+    branch: (payload: ConversationBranchPayload) => ConversationSummary;
+    export: (payload: ConversationIdPayload) => ConversationExport;
+  };
   chat: {
+    /** Selects the execution kernel for a Conversation; it never loads history from a runtime. */
+    selectConversationKernel: (payload: AcpChatLoadPayload) => AcpChatOperationResult;
+    /** @deprecated Compatibility alias for pre-multi-kernel callers. */
     loadAcpSession: (payload: AcpChatLoadPayload) => AcpChatOperationResult;
     sendAcpPrompt: (payload: AcpChatPromptPayload) => AcpChatOperationResult;
     cancelAcpSession: (payload: AcpChatCancelPayload) => AcpChatOperationResult;
@@ -1276,10 +1438,14 @@ export type HostApiContract = {
     delete: (payload: CronIdPayload) => HostSuccess;
     toggle: (payload: CronTogglePayload) => HostSuccess;
     trigger: (payload: CronIdPayload) => HostSuccess;
+    cancel: (payload: CronIdPayload) => HostSuccess;
     sessionHistory: (payload: CronSessionHistoryPayload) => CronSessionHistoryResult;
     deliveryTargets: () => DeliveryTargetsResult;
   };
   skills: {
+    catalog: () => CanonicalSkillsResult;
+    mutate: (payload: CanonicalSkillMutationPayload) => SkillMutationResult;
+    retry: (payload: CanonicalSkillRetryPayload) => SkillMutationResult;
     local: () => LocalSkillsResult;
     configs: () => SkillConfigsResult;
     allConfigs: () => SkillConfigsResult;
@@ -1292,13 +1458,14 @@ export type HostApiContract = {
     clawhubCapability: () => ClawHubCapabilityResult;
     clawhubList: () => ClawHubListResult;
     clawhubSearch: (payload: ClawHubSearchPayload) => ClawHubSearchResult;
-    clawhubInstall: (payload: ClawHubInstallPayload) => HostSuccess;
-    clawhubUninstall: (payload: ClawHubUninstallPayload) => HostSuccess;
+    clawhubInstall: (payload: ClawHubInstallPayload) => ClawHubMutationResult;
+    clawhubUninstall: (payload: ClawHubUninstallPayload) => ClawHubMutationResult;
     clawhubOpenSkillReadme: (payload: ClawHubOpenPayload) => HostSuccess;
     clawhubOpenSkillPath: (payload: ClawHubOpenPayload) => HostSuccess;
   };
   usage: {
     recentTokenHistory: (payload?: UsageHistoryPayload) => UsageHistoryEntry[];
+    query: (payload: UsageHistoryPayload & { from: string; to: string }) => UsageHistoryEntry[];
   };
 };
 

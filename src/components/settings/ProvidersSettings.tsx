@@ -7,8 +7,6 @@ import {
   Plus,
   Trash2,
   Edit,
-  Eye,
-  EyeOff,
   Check,
   X,
   Loader2,
@@ -24,6 +22,10 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
+import {
+  SecureSecretInput,
+  type SecureSecretInputHandle,
+} from '@/components/ui/secure-secret-input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { Separator } from '@/components/ui/separator';
@@ -31,6 +33,7 @@ import {
   useProviderStore,
   type ProviderAccount,
   type ProviderConfig,
+  type ProviderKernelDefault,
   type ProviderVendorInfo,
 } from '@/stores/providers';
 import {
@@ -38,8 +41,6 @@ import {
   getProviderDocsUrl,
   type ProviderType,
   getProviderIconUrl,
-  normalizeProviderApiKeyInput,
-  resolveProviderApiKeyForSave,
   resolveProviderModelForSave,
   shouldShowProviderModelId,
   shouldInvertInDark,
@@ -57,10 +58,21 @@ import { useSettingsStore } from '@/stores/settings';
 import { hostApi } from '@/lib/host-api';
 import { hostEvents } from '@/lib/host-events';
 import type { OAuthCodeEvent, OAuthErrorEvent, OAuthSuccessEvent } from '@shared/host-events/contract';
+import { kernelDisplayName, kernelOptionsFor, useKernelStore } from '@/stores/kernels';
 
 const inputClasses = 'h-[44px] rounded-xl font-mono text-meta bg-transparent border-black/10 dark:border-white/10 focus-visible:ring-2 focus-visible:ring-blue-500/50 focus-visible:border-blue-500 shadow-sm transition-all text-foreground placeholder:text-foreground/40';
 const labelClasses = 'text-sm text-foreground/80 font-bold';
 type CodePlanMode = 'apikey' | 'codeplan';
+function accountSupportsKernel(account: ProviderAccount, kernelId: string): boolean {
+  return !account.supportedKernels?.length || account.supportedKernels.includes(kernelId);
+}
+
+function providerModelIds(account: ProviderAccount): string[] {
+  return Array.from(new Set([
+    account.model,
+    ...(account.metadata?.customModels ?? []),
+  ].map(value => value?.trim()).filter((value): value is string => Boolean(value))));
+}
 
 function isZaiProviderType(type: string | undefined): boolean {
   return type === 'zai' || type === 'zai-global';
@@ -201,14 +213,27 @@ export function ProvidersSettings() {
     accounts,
     vendors,
     defaultAccountId,
+    kernelDefaults,
     loading,
     refreshProviderSnapshot,
     createAccount,
     removeAccount,
     updateAccount,
     setDefaultAccount,
+    setKernelDefault,
     validateAccountApiKey,
   } = useProviderStore();
+  const kernelCatalog = useKernelStore((state) => state.catalog);
+  const providerKernelIds = useMemo(() => kernelOptionsFor(
+    kernelCatalog,
+    [
+      ...kernelDefaults.map(entry => entry.kernelId),
+      ...accounts.flatMap(account => [
+        ...(account.supportedKernels ?? []),
+        ...(account.projections ?? []).map(projection => projection.kernelId),
+      ]),
+    ],
+  ).map(option => option.id), [accounts, kernelCatalog, kernelDefaults]);
 
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [editingProvider, setEditingProvider] = useState<string | null>(null);
@@ -227,7 +252,7 @@ export function ProvidersSettings() {
   const handleAddProvider = async (
     type: ProviderType,
     name: string,
-    apiKey: string,
+    credentialHandle: string | undefined,
     options?: {
       baseUrl?: string;
       model?: string;
@@ -239,7 +264,6 @@ export function ProvidersSettings() {
   ) => {
     const vendor = vendorMap.get(type);
     const id = buildProviderAccountId(type, null, vendors);
-    const effectiveApiKey = resolveProviderApiKeyForSave(type, apiKey);
     try {
       await createAccount({
         id,
@@ -255,7 +279,7 @@ export function ProvidersSettings() {
         isDefault: false,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
-      }, effectiveApiKey);
+      }, credentialHandle);
 
       // Auto-set as default if no default is currently configured
       if (!defaultAccountId) {
@@ -284,6 +308,15 @@ export function ProvidersSettings() {
       toast.success(t('aiProviders.toast.defaultUpdated'));
     } catch (error) {
       toast.error(`${t('aiProviders.toast.failedDefault')}: ${error}`);
+    }
+  };
+
+  const handleSetKernelDefault = async (kernelId: string, accountId: string, modelId?: string) => {
+    try {
+      await setKernelDefault(kernelId, accountId, modelId);
+      toast.success(t('aiProviders.toast.kernelDefaultUpdated'));
+    } catch (error) {
+      toast.error(`${t('aiProviders.toast.failedKernelDefault')}: ${error}`);
     }
   };
 
@@ -317,17 +350,28 @@ export function ProvidersSettings() {
         </div>
       ) : (
         <div className="space-y-3">
+          <KernelProviderDefaultsPanel
+            kernelIds={providerKernelIds}
+            accounts={accounts}
+            defaults={kernelDefaults}
+            onChange={handleSetKernelDefault}
+          />
           {displayProviders.map((item) => (
             <ProviderCard
+              kernelIds={providerKernelIds}
               key={item.account.id}
               item={item}
               allProviders={displayProviders}
               isDefault={item.account.id === defaultAccountId}
+              kernelDefaults={kernelDefaults}
               isEditing={editingProvider === item.account.id}
               onEdit={() => setEditingProvider(item.account.id)}
               onCancelEdit={() => setEditingProvider(null)}
               onDelete={() => handleDeleteProvider(item.account.id)}
               onSetDefault={() => handleSetDefault(item.account.id)}
+              onSetKernelDefault={(kernelId) => (
+                handleSetKernelDefault(kernelId, item.account.id, item.account.model)
+              )}
               onSaveEdits={async (payload) => {
                 const updates: Partial<ProviderAccount> = {};
                 if (payload.updates) {
@@ -346,11 +390,16 @@ export function ProvidersSettings() {
                 await updateAccount(
                   item.account.id,
                   updates,
-                  payload.newApiKey
+                  payload.credentialHandle
                 );
                 setEditingProvider(null);
               }}
-              onValidateKey={(key, options) => validateAccountApiKey(item.account.id, key, options)}
+              onValidateKey={(handle, options) => validateAccountApiKey(
+                item.account.id,
+                handle,
+                item.account.supportedKernels,
+                options,
+              )}
               devModeUnlocked={devModeUnlocked}
             />
           ))}
@@ -359,30 +408,122 @@ export function ProvidersSettings() {
 
       {/* Add Provider Dialog */}
       <AddProviderDialog
+        kernelIds={providerKernelIds}
         open={showAddDialog}
         existingVendorIds={existingVendorIds}
         vendors={vendors}
         onClose={() => setShowAddDialog(false)}
         onAdd={handleAddProvider}
-        onValidateKey={(type, key, options) => validateAccountApiKey(type, key, options)}
+        onValidateKey={(type, handle, kernelIds, options) => (
+          validateAccountApiKey(type, handle, kernelIds, options)
+        )}
         devModeUnlocked={devModeUnlocked}
       />
     </div>
   );
 }
 
+function KernelProviderDefaultsPanel({
+  kernelIds,
+  accounts,
+  defaults,
+  onChange,
+}: {
+  kernelIds: string[];
+  accounts: ProviderAccount[];
+  defaults: ProviderKernelDefault[];
+  onChange: (kernelId: string, accountId: string, modelId?: string) => Promise<void>;
+}) {
+  const { t } = useTranslation('settings');
+  const [savingKernelId, setSavingKernelId] = useState<string | null>(null);
+
+  return (
+    <div
+      data-testid="provider-kernel-defaults"
+      className="grid gap-3 rounded-2xl border border-black/5 bg-black/[0.025] p-4 dark:border-white/5 dark:bg-white/[0.035] md:grid-cols-2"
+    >
+      {kernelIds.map((kernelId) => {
+        const choices = accounts.flatMap(account => (
+          accountSupportsKernel(account, kernelId)
+            ? providerModelIds(account).map(modelId => ({ account, modelId }))
+            : []
+        ));
+        const current = defaults.find(entry => entry.kernelId === kernelId);
+        const currentAccount = current
+          ? accounts.find(account => account.id === current.accountId)
+          : undefined;
+        const currentModel = current?.modelId || currentAccount?.model || '';
+        const currentValue = current
+          ? `${encodeURIComponent(current.accountId)}:${encodeURIComponent(currentModel)}`
+          : '';
+
+        return (
+          <div key={kernelId} className="space-y-2">
+            <div className="flex items-center justify-between gap-2">
+              <Label className="text-sm font-bold text-foreground/80">
+                {kernelDisplayName(kernelId)}
+              </Label>
+              <span className="rounded-full bg-black/5 px-2 py-0.5 font-mono text-2xs text-foreground/60 dark:bg-white/10">
+                {t('aiProviders.kernels.defaultModel')}
+              </span>
+            </div>
+            <select
+              data-testid={`provider-kernel-default-${kernelId}`}
+              value={currentValue}
+              disabled={choices.length === 0 || savingKernelId === kernelId}
+              onChange={async event => {
+                const [encodedAccountId, encodedModelId = ''] = event.target.value.split(':');
+                if (!encodedAccountId) return;
+                setSavingKernelId(kernelId);
+                try {
+                  await onChange(
+                    kernelId,
+                    decodeURIComponent(encodedAccountId),
+                    decodeURIComponent(encodedModelId) || undefined,
+                  );
+                } finally {
+                  setSavingKernelId(null);
+                }
+              }}
+              className="h-10 w-full rounded-xl border border-black/10 bg-surface-input px-3 text-meta text-foreground outline-none focus:border-blue-500 dark:border-white/10"
+            >
+              <option value="">{t('aiProviders.kernels.selectDefault')}</option>
+              {choices.map(({ account, modelId }) => (
+                <option
+                  key={`${account.id}:${modelId}`}
+                  value={`${encodeURIComponent(account.id)}:${encodeURIComponent(modelId)}`}
+                >
+                  {account.label} · {modelId}
+                </option>
+              ))}
+            </select>
+            {choices.length === 0 && (
+              <p className="text-xs text-amber-700 dark:text-amber-400">
+                {t('aiProviders.kernels.noCompatibleModel')}
+              </p>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 interface ProviderCardProps {
+  kernelIds: string[];
   item: ProviderListItem;
   allProviders: ProviderListItem[];
   isDefault: boolean;
+  kernelDefaults: ProviderKernelDefault[];
   isEditing: boolean;
   onEdit: () => void;
   onCancelEdit: () => void;
   onDelete: () => void;
   onSetDefault: () => void;
-  onSaveEdits: (payload: { newApiKey?: string; updates?: Partial<ProviderConfig> }) => Promise<void>;
+  onSetKernelDefault: (kernelId: string) => Promise<void>;
+  onSaveEdits: (payload: { credentialHandle?: string; updates?: Partial<ProviderConfig> }) => Promise<void>;
   onValidateKey: (
-    key: string,
+    credentialHandle: string,
     options?: { baseUrl?: string; apiProtocol?: ProviderAccount['apiProtocol']; modelId?: string }
   ) => Promise<{ valid: boolean; error?: string }>;
   devModeUnlocked: boolean;
@@ -391,21 +532,25 @@ interface ProviderCardProps {
 
 
 function ProviderCard({
+  kernelIds,
   item,
   allProviders,
   isDefault,
+  kernelDefaults,
   isEditing,
   onEdit,
   onCancelEdit,
   onDelete,
   onSetDefault,
+  onSetKernelDefault,
   onSaveEdits,
   onValidateKey,
   devModeUnlocked,
 }: ProviderCardProps) {
   const { t, i18n } = useTranslation('settings');
   const { account, vendor, status } = item;
-  const [newKey, setNewKey] = useState('');
+  const secretInputRef = React.useRef<SecureSecretInputHandle>(null);
+  const [hasNewCredential, setHasNewCredential] = useState(false);
   const [baseUrl, setBaseUrl] = useState(account.baseUrl || '');
   const [apiProtocol, setApiProtocol] = useState<ProviderAccount['apiProtocol']>(account.apiProtocol || 'openai-completions');
   const [userAgent, setUserAgent] = useState(getUserAgentHeader(account.headers));
@@ -422,7 +567,6 @@ function ProviderCard({
   const [fallbackProviderIds, setFallbackProviderIds] = useState<string[]>(
     normalizeFallbackProviderIds(account.fallbackAccountIds)
   );
-  const [showKey, setShowKey] = useState(false);
   const [showFallback, setShowFallback] = useState(false);
   const [validating, setValidating] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -446,8 +590,8 @@ function ProviderCard({
 
   useEffect(() => {
     if (isEditing) {
-      setNewKey('');
-      setShowKey(false);
+      secretInputRef.current?.clear();
+      setHasNewCredential(false);
       setBaseUrl(account.baseUrl || '');
       setApiProtocol(account.apiProtocol || 'openai-completions');
       setUserAgent(getUserAgentHeader(account.headers));
@@ -483,13 +627,14 @@ function ProviderCard({
     setSaving(true);
     setValidationError(null);
     try {
-      const payload: { newApiKey?: string; updates?: Partial<ProviderConfig> } = {};
+      const payload: { credentialHandle?: string; updates?: Partial<ProviderConfig> } = {};
       const normalizedFallbackModels = normalizeFallbackModels(fallbackModelsText.split('\n'));
-      const normalizedNewKey = normalizeProviderApiKeyInput(newKey);
 
-      if (normalizedNewKey) {
+      if (hasNewCredential) {
+        const credentialHandle = await secretInputRef.current?.stage();
+        if (!credentialHandle) throw new Error('Secure credential staging failed');
         setValidating(true);
-        const result = await onValidateKey(normalizedNewKey, {
+        const result = await onValidateKey(credentialHandle, {
           baseUrl: baseUrl.trim() || undefined,
           apiProtocol: (account.vendorId === 'custom' || account.vendorId === 'ollama') ? apiProtocol : undefined,
           modelId: modelId.trim() || undefined,
@@ -500,7 +645,7 @@ function ProviderCard({
           setSaving(false);
           return;
         }
-        payload.newApiKey = normalizedNewKey;
+        payload.credentialHandle = credentialHandle;
       }
 
       {
@@ -532,20 +677,15 @@ function ProviderCard({
         }
       }
 
-      // Keep Ollama key optional in UI, but persist a placeholder when
-      // editing legacy configs that have no stored key.
-      if (account.vendorId === 'ollama' && !status?.hasKey && !payload.newApiKey) {
-        payload.newApiKey = resolveProviderApiKeyForSave(account.vendorId, '') as string;
-      }
-
-      if (!payload.newApiKey && !payload.updates) {
+      if (!payload.credentialHandle && !payload.updates) {
         onCancelEdit();
         setSaving(false);
         return;
       }
 
       await onSaveEdits(payload);
-      setNewKey('');
+      secretInputRef.current?.clear();
+      setHasNewCredential(false);
       toast.success(t('aiProviders.toast.updated'));
     } catch (error) {
       toast.error(`${t('aiProviders.toast.failedUpdate')}: ${error}`);
@@ -662,6 +802,56 @@ function ProviderCard({
             </Button>
           </div>
         )}
+      </div>
+
+      <div
+        data-testid={`provider-kernel-projections-${account.id}`}
+        className="mt-3 flex flex-wrap gap-2 pl-[58px]"
+      >
+        {kernelIds.map(kernelId => {
+          const supported = accountSupportsKernel(account, kernelId);
+          const projection = account.projections?.find(item => item.kernelId === kernelId);
+          const projectionStatus = supported ? (projection?.status ?? 'pending') : 'unsupported';
+          const isKernelDefault = kernelDefaults.some(entry => (
+            entry.kernelId === kernelId && entry.accountId === account.id
+          ));
+          const unhealthy = projectionStatus === 'failed' || projectionStatus === 'partial';
+          return (
+            <button
+              type="button"
+              key={kernelId}
+              data-testid={`provider-kernel-${account.id}-${kernelId}`}
+              disabled={!supported || isKernelDefault}
+              onClick={() => void onSetKernelDefault(kernelId)}
+              title={projection?.error || (
+                isKernelDefault
+                  ? t('aiProviders.kernels.currentDefault')
+                  : t('aiProviders.kernels.setDefault')
+              )}
+              className={cn(
+                'inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 font-mono text-2xs transition-colors',
+                !supported && 'cursor-not-allowed bg-black/5 text-foreground/35 dark:bg-white/5',
+                supported && !unhealthy && 'bg-blue-500/10 text-blue-700 hover:bg-blue-500/15 dark:text-blue-400',
+                unhealthy && 'bg-red-500/10 text-red-700 hover:bg-red-500/15 dark:text-red-400',
+                isKernelDefault && 'ring-1 ring-current',
+              )}
+            >
+              <span className={cn(
+                'h-1.5 w-1.5 rounded-full bg-current',
+                projectionStatus === 'applying' && 'animate-pulse',
+              )} />
+              {t(`aiProviders.kernels.${kernelId}.short`)}
+              <span>·</span>
+              <span>{t(`aiProviders.kernels.status.${projectionStatus}`)}</span>
+              {isKernelDefault && (
+                <>
+                  <span>·</span>
+                  <span>{t('aiProviders.kernels.default')}</span>
+                </>
+              )}
+            </button>
+          );
+        })}
       </div>
 
       {isEditing && (
@@ -925,25 +1115,18 @@ function ProviderCard({
             <div className="space-y-1.5 pt-1">
               <Label className={currentLabelClasses}>{t('aiProviders.dialog.replaceApiKey')}</Label>
               <div className="flex gap-2">
-                <div className="relative flex-1">
-                  <Input
+                <div className="flex-1">
+                  <SecureSecretInput
+                    ref={secretInputRef}
                     data-testid={`provider-edit-key-input-${account.id}`}
-                    type={showKey ? 'text' : 'password'}
+                    aria-label={t('aiProviders.dialog.replaceApiKey')}
                     placeholder={typeInfo?.requiresApiKey ? typeInfo?.placeholder : (typeInfo?.id === 'ollama' ? t('aiProviders.notRequired') : t('aiProviders.card.editKey'))}
-                    value={newKey}
-                    onChange={(e) => {
-                      setNewKey(e.target.value);
+                    onPresenceChange={(present) => {
+                      setHasNewCredential(present);
                       setValidationError(null);
                     }}
-                    className={cn(currentInputClasses, 'pr-10')}
+                    className={currentInputClasses}
                   />
-                  <button
-                    type="button"
-                    onClick={() => setShowKey(!showKey)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                  >
-                    {showKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                  </button>
                 </div>
                 <Button
                   data-testid={`provider-edit-save-${account.id}`}
@@ -959,7 +1142,7 @@ function ProviderCard({
                     validating
                     || saving
                     || (
-                      !newKey.trim()
+                      !hasNewCredential
                       && (baseUrl.trim() || undefined) === (account.baseUrl || undefined)
                       && apiProtocol === (account.apiProtocol || 'openai-completions')
                       && userAgent.trim() === getUserAgentHeader(account.headers).trim()
@@ -1014,6 +1197,7 @@ function ProviderCard({
 }
 
 interface AddProviderDialogProps {
+  kernelIds: string[];
   open: boolean;
   existingVendorIds: Set<string>;
   vendors: ProviderVendorInfo[];
@@ -1021,7 +1205,7 @@ interface AddProviderDialogProps {
   onAdd: (
     type: ProviderType,
     name: string,
-    apiKey: string,
+    credentialHandle: string | undefined,
     options?: {
       baseUrl?: string;
       model?: string;
@@ -1033,13 +1217,15 @@ interface AddProviderDialogProps {
   ) => Promise<void>;
   onValidateKey: (
     type: string,
-    apiKey: string,
+    credentialHandle: string,
+    kernelIds: string[],
     options?: { baseUrl?: string; apiProtocol?: ProviderAccount['apiProtocol']; modelId?: string }
   ) => Promise<{ valid: boolean; error?: string }>;
   devModeUnlocked: boolean;
 }
 
 function AddProviderDialog({
+  kernelIds,
   open,
   existingVendorIds,
   vendors,
@@ -1051,7 +1237,8 @@ function AddProviderDialog({
   const { t, i18n } = useTranslation('settings');
   const [selectedType, setSelectedType] = useState<ProviderType | null>(null);
   const [name, setName] = useState('');
-  const [apiKey, setApiKey] = useState('');
+  const secretInputRef = React.useRef<SecureSecretInputHandle>(null);
+  const [hasCredential, setHasCredential] = useState(false);
   const [baseUrl, setBaseUrl] = useState('');
   const [modelId, setModelId] = useState('');
   const [modelSupportsReasoning, setModelSupportsReasoning] = useState(false);
@@ -1061,7 +1248,6 @@ function AddProviderDialog({
   const [showAdvancedConfig, setShowAdvancedConfig] = useState(false);
   const [userAgent, setUserAgent] = useState('');
   const [codePlanMode, setCodePlanMode] = useState<CodePlanMode>('apikey');
-  const [showKey, setShowKey] = useState(false);
   const [saving, setSaving] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
 
@@ -1090,7 +1276,8 @@ function AddProviderDialog({
     if (open) {
       setSelectedType(null);
       setName('');
-      setApiKey('');
+      secretInputRef.current?.clear();
+      setHasCredential(false);
       setBaseUrl('');
       setModelId('');
       setModelSupportsReasoning(false);
@@ -1100,7 +1287,6 @@ function AddProviderDialog({
       setShowAdvancedConfig(false);
       setUserAgent('');
       setCodePlanMode('apikey');
-      setShowKey(false);
       setSaving(false);
       setValidationError(null);
       setOauthFlowing(false);
@@ -1338,16 +1524,20 @@ function AddProviderDialog({
     setValidationError(null);
 
     try {
-      // Validate key first if the provider requires one and a key was entered
+      // The isolated field stages directly to Main. React only receives this
+      // short-lived opaque handle and can reuse it for validation + save.
       const requiresKey = typeInfo?.requiresApiKey ?? false;
-      const normalizedApiKey = normalizeProviderApiKeyInput(apiKey);
-      if (requiresKey && !normalizedApiKey) {
+      if (requiresKey && !hasCredential) {
         setValidationError(t('aiProviders.toast.invalidKey')); // reusing invalid key msg or should add 'required' msg? null checks
         setSaving(false);
         return;
       }
-      if (requiresKey && normalizedApiKey) {
-        const result = await onValidateKey(selectedType, normalizedApiKey, {
+      const credentialHandle = hasCredential
+        ? await secretInputRef.current?.stage() ?? undefined
+        : undefined;
+      if (hasCredential && !credentialHandle) throw new Error('Secure credential staging failed');
+      if (credentialHandle) {
+        const result = await onValidateKey(selectedType, credentialHandle, kernelIds, {
           baseUrl: baseUrl.trim() || undefined,
           apiProtocol: (selectedType === 'custom' || selectedType === 'ollama') ? apiProtocol : undefined,
           modelId: modelId.trim() || undefined,
@@ -1369,7 +1559,7 @@ function AddProviderDialog({
       await onAdd(
         selectedType,
         name || (typeInfo?.id === 'custom' ? t('aiProviders.custom') : typeInfo?.name) || selectedType,
-        normalizedApiKey,
+        credentialHandle,
         {
           baseUrl: baseUrl.trim() || undefined,
           apiProtocol: (selectedType === 'custom' || selectedType === 'ollama') ? apiProtocol : undefined,
@@ -1548,27 +1738,17 @@ function AddProviderDialog({
                         </a>
                       )}
                     </div>
-                    <div className="relative">
-                      <Input
-                        data-testid="add-provider-api-key-input"
-                        id="apiKey"
-                        type={showKey ? 'text' : 'password'}
-                        placeholder={typeInfo?.id === 'ollama' ? t('aiProviders.notRequired') : typeInfo?.placeholder}
-                        value={apiKey}
-                        onChange={(e) => {
-                          setApiKey(e.target.value);
-                          setValidationError(null);
-                        }}
-                        className={inputClasses}
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowKey(!showKey)}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                      >
-                        {showKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                      </button>
-                    </div>
+                    <SecureSecretInput
+                      ref={secretInputRef}
+                      data-testid="add-provider-api-key-input"
+                      aria-label={t('aiProviders.dialog.apiKey')}
+                      placeholder={typeInfo?.id === 'ollama' ? t('aiProviders.notRequired') : typeInfo?.placeholder}
+                      onPresenceChange={(present) => {
+                        setHasCredential(present);
+                        setValidationError(null);
+                      }}
+                      className={inputClasses}
+                    />
                     {validationError && (
                       <p className="text-meta text-red-500 font-medium">{validationError}</p>
                     )}

@@ -310,12 +310,12 @@ describe('harness specs', () => {
 
     for (const anchor of [
       '`clawx.session-attention`',
-      '`sessions.changed`',
-      '`list.ts`',
-      '`event.ts`',
-      '`done`',
+      '`conversations:catalog-changed`',
+      '`ConversationRouter`',
+      '`ClawXDataStore.listConversations()`',
+      '`interrupted`',
       '`hasActiveRun`',
-      '`sessions.patch({ unread: false })`',
+      '`busy > unread > timeago`',
     ]) {
       expect(attentionReference).toContain(anchor);
     }

@@ -1,6 +1,7 @@
 import { access, lstat, readdir, readFile, realpath, stat } from 'node:fs/promises';
 import { constants } from 'node:fs';
 import { homedir } from 'node:os';
+import { getOpenClawConfigDir } from './paths';
 import { basename, join, relative, resolve } from 'node:path';
 import { expandPath, getOpenClawResolvedDir, getOpenClawSkillsDir, getResourcesDir } from './paths';
 
@@ -243,7 +244,7 @@ async function resolveLegacyRoots(explicitRoots?: string[]): Promise<string[]> {
 
   const openClawDir = getOpenClawResolvedDir();
   const extensionSkillRoots = await discoverExtensionSkillRoots([
-    join(homedir(), '.openclaw', 'extensions'),
+    join(getOpenClawConfigDir(), 'extensions'),
     join(openClawDir, 'extensions'),
     join(openClawDir, 'dist', 'extensions'),
   ]);

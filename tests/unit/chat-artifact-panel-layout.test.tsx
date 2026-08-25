@@ -9,12 +9,6 @@ vi.mock('react-i18next', () => ({
   }),
 }));
 
-vi.mock('@/stores/gateway', () => ({
-  useGatewayStore: (selector: (state: { status: { state: string; gatewayReady: boolean } }) => unknown) => selector({
-    status: { state: 'running', gatewayReady: true },
-  }),
-}));
-
 vi.mock('@/lib/host-api', () => ({
   hostApi: {
     files: {

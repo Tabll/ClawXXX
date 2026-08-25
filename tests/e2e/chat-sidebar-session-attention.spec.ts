@@ -1,12 +1,19 @@
 import type { ElectronApplication, Page } from '@playwright/test';
-import { closeElectronApp, expect, getStableWindow, installIpcMocks, test } from './fixtures/electron';
+import {
+  canonicalConversationHostApi,
+  canonicalConversationSummary,
+  closeElectronApp,
+  expect,
+  getStableWindow,
+  installIpcMocks,
+  readyKernelFixture,
+  test,
+} from './fixtures/electron';
 
 const CONTROL_SESSION_KEY = 'agent:main:main';
 const TARGET_SESSION_KEY = 'agent:main:attention-target';
 const WORKSPACE = '/workspace';
 const LIST_TS = 1_753_000_000_000;
-const GATEWAY_CONNECTED_AT = 1_752_999_000_000;
-const SESSIONS_LIST_PAYLOAD = { includeDerivedTitles: true, includeLastMessage: true };
 
 function stableStringify(value: unknown): string {
   if (value == null || typeof value !== 'object') return JSON.stringify(value);
@@ -17,19 +24,14 @@ function stableStringify(value: unknown): string {
   return `{${entries.join(',')}}`;
 }
 
-function acpLoadResponse(sessionKey: string) {
+function kernelSelectionResponse(sessionKey: string) {
   return {
-    [stableStringify(['chat', 'loadAcpSession', {
+    [stableStringify(['chat', 'selectConversationKernel', {
       sessionKey,
       workspaceRoot: WORKSPACE,
       cwd: WORKSPACE,
-    }])]: { success: true, generation: 1 },
-    [stableStringify(['chat', 'loadAcpSession', {
-      sessionKey,
-      workspaceRoot: WORKSPACE,
-      cwd: WORKSPACE,
-      createIfMissing: true,
-    }])]: { success: true, generation: 1 },
+      kernelId: 'openclaw',
+    }])]: { success: true, generation: 1, kernelId: 'openclaw' },
   };
 }
 
@@ -54,24 +56,30 @@ async function installSessionAttentionMocks(app: ElectronApplication): Promise<v
       hasActiveRun: false,
     },
   ];
-  const sessionsList = { success: true, result: { ts: LIST_TS, sessions } };
   const gatewayStatus = {
     state: 'running',
     gatewayReady: true,
     port: 18789,
     pid: 4242,
-    connectedAt: GATEWAY_CONNECTED_AT,
+    connectedAt: LIST_TS - 1_000_000,
   };
   const sessionKeys = sessions.map((session) => session.key);
+  const canonical = sessions.map(session => canonicalConversationSummary({
+    id: session.key,
+    title: session.displayName,
+    createdAt: session.updatedAt,
+    updatedAt: session.updatedAt,
+    workspaceUri: WORKSPACE,
+    lastKernelId: 'openclaw',
+    kernelIds: ['openclaw'],
+    lastAgentId: 'main',
+  }));
 
   await installIpcMocks(app, {
     gatewayStatus,
-    gatewayRpc: {
-      [stableStringify(['sessions.subscribe', {}])]: { success: true, result: {} },
-      [stableStringify(['sessions.list', SESSIONS_LIST_PAYLOAD])]: sessionsList,
-      [stableStringify(['sessions.list', {}])]: sessionsList,
-    },
+    kernelFixture: readyKernelFixture(),
     hostApi: {
+      ...canonicalConversationHostApi(canonical),
       [stableStringify(['settings', 'getAll', null])]: {
         language: 'en',
         setupComplete: true,
@@ -101,8 +109,8 @@ async function installSessionAttentionMocks(app: ElectronApplication): Promise<v
         workspaceRoot: WORKSPACE,
         executionCwd: WORKSPACE,
       }])]: { ok: true, workspaceRoot: WORKSPACE, executionCwd: WORKSPACE },
-      ...acpLoadResponse(CONTROL_SESSION_KEY),
-      ...acpLoadResponse(TARGET_SESSION_KEY),
+      ...kernelSelectionResponse(CONTROL_SESSION_KEY),
+      ...kernelSelectionResponse(TARGET_SESSION_KEY),
     },
   });
 }
@@ -118,32 +126,25 @@ async function reloadStableWindow(app: ElectronApplication): Promise<Page> {
   return page;
 }
 
-async function emitSessionSnapshot(
+async function emitCanonicalConversationState(
   app: ElectronApplication,
   input: { sessionKey: string; ts: number; status: 'running' | 'done'; hasActiveRun: boolean },
 ): Promise<void> {
   await app.evaluate(async ({ app: _app }, payload) => {
     const { BrowserWindow } = process.mainModule!.require('electron') as typeof import('electron');
     for (const win of BrowserWindow.getAllWindows()) {
-      win.webContents.send('gateway:notification', {
-        method: 'sessions.changed',
-        params: {
-          sessionKey: payload.sessionKey,
-          ts: payload.ts,
-          session: {
-            key: payload.sessionKey,
-            updatedAt: payload.ts,
-            status: payload.status,
-            hasActiveRun: payload.hasActiveRun,
-          },
-        },
+      win.webContents.send('conversations:catalog-changed', {
+        conversationId: payload.sessionKey,
+        kernelId: 'openclaw',
+        hasActiveRun: payload.hasActiveRun,
+        updatedAt: new Date(payload.ts).toISOString(),
       });
     }
   }, input);
 }
 
 test.describe('ClawX sidebar session attention', () => {
-  test('projects Gateway busy and unread state through Chat mount, key changes, and unmount', async ({ launchElectronApp }) => {
+  test('projects canonical run state through Chat mount, key changes, and unmount', async ({ launchElectronApp }) => {
     const app = await launchElectronApp({ skipSetup: true });
 
     try {
@@ -167,7 +168,7 @@ test.describe('ClawX sidebar session attention', () => {
       await expect(page.getByTestId('settings-page')).toBeVisible();
       await expect(page.getByTestId('chat-page')).toHaveCount(0);
 
-      await emitSessionSnapshot(app, {
+      await emitCanonicalConversationState(app, {
         sessionKey: TARGET_SESSION_KEY,
         ts: LIST_TS + 1_000,
         status: 'running',
@@ -177,7 +178,7 @@ test.describe('ClawX sidebar session attention', () => {
       await expect(targetBusy).toHaveAccessibleName('AI is replying');
       await expect(targetTime).toHaveCount(0);
 
-      await emitSessionSnapshot(app, {
+      await emitCanonicalConversationState(app, {
         sessionKey: TARGET_SESSION_KEY,
         ts: LIST_TS + 2_000,
         status: 'done',
@@ -199,7 +200,7 @@ test.describe('ClawX sidebar session attention', () => {
       await expect(controlRow).toHaveAttribute('aria-current', 'page');
       await expect(targetRow).not.toHaveAttribute('aria-current', 'page');
 
-      await emitSessionSnapshot(app, {
+      await emitCanonicalConversationState(app, {
         sessionKey: TARGET_SESSION_KEY,
         ts: LIST_TS + 3_000,
         status: 'running',
@@ -208,7 +209,7 @@ test.describe('ClawX sidebar session attention', () => {
       await expect(targetBusy).toBeVisible();
       await expect(targetBusy).toHaveAccessibleName('AI is replying');
 
-      await emitSessionSnapshot(app, {
+      await emitCanonicalConversationState(app, {
         sessionKey: TARGET_SESSION_KEY,
         ts: LIST_TS + 4_000,
         status: 'done',
@@ -224,7 +225,7 @@ test.describe('ClawX sidebar session attention', () => {
       await page.getByTestId('chat-page').hover();
       await expect(targetTime).toBeVisible();
 
-      await emitSessionSnapshot(app, {
+      await emitCanonicalConversationState(app, {
         sessionKey: TARGET_SESSION_KEY,
         ts: LIST_TS + 5_000,
         status: 'running',
@@ -233,7 +234,7 @@ test.describe('ClawX sidebar session attention', () => {
       await expect(targetBusy).toBeVisible();
       await expect(targetBusy).toHaveAccessibleName('AI is replying');
 
-      await emitSessionSnapshot(app, {
+      await emitCanonicalConversationState(app, {
         sessionKey: TARGET_SESSION_KEY,
         ts: LIST_TS + 6_000,
         status: 'done',

@@ -10,6 +10,17 @@
         "paused": "Приостановлено",
         "failed": "Ошибка"
     },
+    "kernels": { "openclaw": "OpenClaw", "deepseekHarness": "DeepSeek Harness" },
+    "kernelStates": {
+        "not-installed": "не установлен", "installed": "установлен", "starting": "запускается", "ready": "готов",
+        "stopping": "останавливается", "stopped": "остановлен", "degraded": "ограничен", "crash-loop": "цикл сбоев",
+        "failed": "ошибка", "incompatible": "несовместим"
+    },
+    "conversationPolicies": {
+        "reuse": "Использовать один диалог", "new-per-run": "Новый диалог на запуск", "new-per-day": "Новый диалог на день"
+    },
+    "misfirePolicies": { "run-once": "Запустить один раз", "catch-up": "Наверстать", "skip": "Пропустить" },
+    "overlapPolicies": { "queue": "В очередь", "skip": "Пропустить пересечение", "replace": "Заменить активный запуск" },
     "empty": {
         "title": "Нет запланированных задач",
         "description": "Создайте запланированные задачи для автоматизации AI-процессов. Задачи могут отправлять сообщения, выполнять запросы или выполнять действия в указанное время.",
@@ -19,7 +30,8 @@
         "runNow": "Запустить сейчас",
         "deleteConfirm": "Вы уверены, что хотите удалить эту задачу?",
         "last": "Последний",
-        "next": "Следующий"
+        "next": "Следующий",
+        "kernelUnavailable": "Ядро не назначено"
     },
     "dialog": {
         "createTitle": "Создать задачу",
@@ -35,7 +47,15 @@
         "skillSearchPlaceholder": "Поиск навыков",
         "skillLoading": "Загрузка навыков...",
         "skillEmpty": "Подходящие навыки не найдены",
+        "kernel": "Ядро",
         "agent": "Агент",
+        "noCompatibleAgents": "Нет совместимых агентов",
+        "executionPolicies": "Политики выполнения",
+        "executionPoliciesDesc": "Настройте историю, пропуски, пересечения и тайм-аут.",
+        "conversationPolicy": "История диалога",
+        "misfirePolicy": "После пропуска времени",
+        "overlapPolicy": "Параллельные запуски",
+        "timeoutSeconds": "Тайм-аут (секунды)",
         "schedule": "Расписание",
         "scheduleMode": {
             "recurring": "Повтор",
@@ -55,6 +75,8 @@
         "weekdayLabel": "День недели",
         "minuteLabel": "Минута каждого часа",
         "cronPlaceholder": "Cron-выражение (напр., 0 9 * * *)",
+        "timezone": "Часовой пояс",
+        "timezoneDesc": "Используйте часовой пояс IANA, например Europe/Moscow или Asia/Shanghai.",
         "usePresets": "Использовать пресеты",
         "useCustomCron": "Использовать свой cron",
         "deliveryTitle": "Доставка",
@@ -121,6 +143,8 @@
         "failedDelete": "Не удалось удалить задачу",
         "nameRequired": "Пожалуйста, введите название задачи",
         "messageRequired": "Пожалуйста, введите сообщение",
+        "kernelAgentRequired": "Выберите совместимые ядро и агента",
+        "timeoutInvalid": "Тайм-аут должен быть целым числом не менее одной секунды",
         "channelRequired": "Пожалуйста, выберите канал",
         "deliveryChannelUnsupported": "{{channel}} пока не поддерживает запланированную доставку",
         "deliveryTargetRequired": "Пожалуйста, введите цель доставки",

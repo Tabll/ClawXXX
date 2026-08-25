@@ -4,6 +4,8 @@ import type {
 } from '../acp-chat/types';
 import type { UpdateStatusSnapshot } from '../host-api/contract';
 import type { ChatRuntimeEvent } from '../chat-runtime-events';
+import type { KernelEventEnvelopeV1, KernelId, KernelRuntimeSnapshot } from '../kernels/contracts';
+import type { KernelPackageProgressEvent } from '../host-api/kernels';
 import type {
   GatewayNotification,
   GatewayRuntimePayload,
@@ -24,6 +26,13 @@ export type GatewayChannelStatusEvent = {
   status: string;
 };
 export type GatewayExitEvent = number | null | { code: number | null };
+
+export type ConversationCatalogChangedEvent = {
+  conversationId: string;
+  kernelId: KernelId;
+  hasActiveRun: boolean;
+  updatedAt: string;
+};
 
 export type OAuthCodeEvent =
   | {
@@ -66,6 +75,15 @@ export type UpdateAutoInstallCountdownEvent = {
 };
 
 export type HostEventContract = {
+  conversations: {
+    /** Main-owned SQLite catalog projection changed for one Conversation. */
+    catalogChanged: (payload: ConversationCatalogChangedEvent) => void;
+  };
+  kernels: {
+    statusChanged: (payload: KernelRuntimeSnapshot) => void;
+    packageProgress: (payload: KernelPackageProgressEvent) => void;
+    catalogChanged: () => void;
+  };
   gateway: {
     statusChanged: (payload: GatewayStatus) => void;
     message: (payload: unknown) => void;
@@ -81,6 +99,12 @@ export type HostEventContract = {
     runtimeEvent: (payload: ChatRuntimeEvent) => void;
     acpSessionUpdate: (payload: AcpSessionUpdateEnvelope) => void;
     acpPermissionRequest: (payload: AcpPermissionRequestEnvelope) => void;
+    /** Canonical multi-kernel live event; historical authority remains SQLite. */
+    kernelEvent: (payload: KernelEventEnvelopeV1) => void;
+  };
+  channels: {
+    /** Canonical channel projection changed; payload never exposes a runtime transport. */
+    statusChanged: (payload: GatewayChannelStatusEvent) => void;
   };
   oauth: {
     code: (payload: OAuthCodeEvent) => void;
@@ -115,6 +139,17 @@ export type HostEventArgs<
 > = HostEventHandler<M, E> extends (...args: infer Args) => void ? Args : never;
 
 export const HOST_EVENT_CHANNELS = {
+  conversations: {
+    catalogChanged: 'conversations:catalog-changed',
+  },
+  kernels: {
+    statusChanged: 'kernels:status-changed',
+    packageProgress: 'kernels:package-progress',
+    catalogChanged: 'kernels:catalog-changed',
+  },
+  channels: {
+    statusChanged: 'channels:status-changed',
+  },
   gateway: {
     statusChanged: 'gateway:status-changed',
     message: 'gateway:message',
@@ -130,6 +165,7 @@ export const HOST_EVENT_CHANNELS = {
     runtimeEvent: 'chat:runtime-event',
     acpSessionUpdate: 'chat:acp-session-update',
     acpPermissionRequest: 'chat:acp-permission-request',
+    kernelEvent: 'chat:kernel-event',
   },
   oauth: {
     code: 'oauth:code',

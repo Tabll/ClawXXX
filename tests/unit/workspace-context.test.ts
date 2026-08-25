@@ -11,11 +11,12 @@ import {
 
 describe('workspace context helpers', () => {
   it('recognizes default workspace spellings', () => {
-    expect(DEFAULT_WORKSPACE_CWD).toBe('~/.openclaw/workspace');
-    expect(isDefaultWorkspacePath('~/.openclaw/workspace')).toBe(true);
-    expect(isDefaultWorkspacePath('/Users/alex/.openclaw/workspace')).toBe(true);
-    expect(isDefaultWorkspacePath('/home/alex/.openclaw/workspace')).toBe(true);
-    expect(isDefaultWorkspacePath('C:/Users/alex/.openclaw/workspace')).toBe(true);
+    expect(DEFAULT_WORKSPACE_CWD).toBe('~/.clawx/workspace');
+    expect(isDefaultWorkspacePath('~/.clawx/workspace')).toBe(true);
+    expect(isDefaultWorkspacePath('/Users/alex/.clawx/workspace')).toBe(true);
+    expect(isDefaultWorkspacePath('/home/alex/.clawx/workspace')).toBe(true);
+    expect(isDefaultWorkspacePath('C:/Users/alex/.clawx/workspace')).toBe(true);
+    expect(isDefaultWorkspacePath('~/.openclaw/workspace')).toBe(false);
     expect(isDefaultWorkspacePath('/Users/alex/workspace/ClawX')).toBe(false);
   });
 
@@ -49,7 +50,7 @@ describe('workspace context helpers', () => {
   });
 
   it('formats labels for default and non-default workspaces', () => {
-    expect(getWorkspaceDisplayLabel('~/.openclaw/workspace', '默认工作空间')).toBe('默认工作空间');
+    expect(getWorkspaceDisplayLabel('~/.clawx/workspace', '默认工作空间')).toBe('默认工作空间');
     expect(getWorkspaceDisplayLabel('/Users/alex/workspace/ClawX', '默认工作空间')).toBe('ClawX');
     expect(getWorkspaceDisplayLabel(
       '/Users/alex/workspace/ClawX',

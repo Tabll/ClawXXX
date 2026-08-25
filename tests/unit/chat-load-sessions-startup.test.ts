@@ -1,90 +1,54 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { gatewayRpcMock, sessionDeleteMock, sessionRenameMock, sessionSummariesMock } = vi.hoisted(() => ({
-  gatewayRpcMock: vi.fn(),
-  sessionDeleteMock: vi.fn(),
-  sessionRenameMock: vi.fn(),
-  sessionSummariesMock: vi.fn(),
-}));
-
-vi.mock('@/stores/gateway', () => ({
-  useGatewayStore: {
-    getState: () => ({ rpc: gatewayRpcMock }),
-  },
+const conversationsMock = vi.hoisted(() => ({
+  list: vi.fn(),
+  delete: vi.fn(),
+  rename: vi.fn(),
+  pin: vi.fn(),
 }));
 
 vi.mock('@/lib/host-api', () => ({
-  hostApi: {
-    sessions: {
-      summaries: sessionSummariesMock,
-      delete: sessionDeleteMock,
-      rename: sessionRenameMock,
-    },
-  },
+  hostApi: { conversations: conversationsMock },
 }));
 
-type SummaryResponse = {
-  success: boolean;
-  summaries: Array<{
-    sessionKey: string;
-    firstUserText: string | null;
-    lastTimestamp: number | null;
-    workspacePath: string | null;
-    pinned?: boolean;
-  }>;
-};
+function row(input: {
+  id: string;
+  title?: string;
+  updatedAt?: string;
+  pinnedAt?: string;
+  workspaceUri?: string;
+  lastKernelId?: string;
+  hasActiveRun?: boolean;
+}) {
+  return {
+    createdAt: '2026-08-23T00:00:00.000Z',
+    updatedAt: input.updatedAt ?? '2026-08-23T00:00:00.000Z',
+    ...input,
+  };
+}
 
-function deferredSummary(): {
-  promise: Promise<SummaryResponse>;
-  resolve: (value: SummaryResponse) => void;
-} {
-  let resolve!: (value: SummaryResponse) => void;
-  const promise = new Promise<SummaryResponse>((resolver) => {
-    resolve = resolver;
-  });
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((resolver) => { resolve = resolver; });
   return { promise, resolve };
 }
 
-function deferredCatalog(): {
-  promise: Promise<Record<string, unknown>>;
-  resolve: (value: Record<string, unknown>) => void;
-} {
-  let resolve!: (value: Record<string, unknown>) => void;
-  const promise = new Promise<Record<string, unknown>>((resolver) => {
-    resolve = resolver;
-  });
-  return { promise, resolve };
-}
-
-function mockSessionLabelSummaries(response: SummaryResponse | Promise<SummaryResponse>): void {
-  sessionSummariesMock.mockImplementation((payload: { metadataOnly?: boolean }) => (
-    payload?.metadataOnly
-      ? Promise.resolve({ success: true, summaries: [] })
-      : Promise.resolve(response)
-  ));
-}
-
-describe('chat session catalog startup', () => {
+describe('canonical Conversation catalog startup', () => {
   beforeEach(() => {
     vi.resetModules();
-    gatewayRpcMock.mockReset();
-    sessionDeleteMock.mockReset().mockResolvedValue({ success: true });
-    sessionRenameMock.mockReset().mockResolvedValue({ success: true });
-    sessionSummariesMock.mockReset().mockResolvedValue({ success: true, summaries: [] });
+    conversationsMock.list.mockReset().mockResolvedValue({ items: [] });
+    conversationsMock.delete.mockReset().mockResolvedValue({ success: true });
+    conversationsMock.rename.mockReset().mockResolvedValue({ success: true });
+    conversationsMock.pin.mockReset().mockResolvedValue({ success: true });
   });
 
-  afterEach(() => {
-    vi.restoreAllMocks();
-  });
-
-  it('exposes only session catalog and selection state', async () => {
+  it('exposes only catalog and selection state', async () => {
     const { useChatStore } = await import('@/stores/chat');
     const state = useChatStore.getState();
 
     expect(state).not.toHaveProperty('messages');
     expect(state).not.toHaveProperty('loadHistory');
     expect(state).not.toHaveProperty('sendMessage');
-    expect(state).not.toHaveProperty('handleRuntimeEvent');
     expect(state).toMatchObject({
       sessions: expect.any(Array),
       currentSessionKey: expect.any(String),
@@ -94,581 +58,121 @@ describe('chat session catalog startup', () => {
     });
   });
 
-  it('opens the latest non-cron session instead of a cron heartbeat session', async () => {
-    gatewayRpcMock.mockResolvedValue({
-      ts: 1,
-      sessions: [
-        { key: 'agent:main:cron:heartbeat', label: 'Main Agent heartbeat', updatedAt: 9_000 },
-        { key: 'agent:main:session-a', displayName: 'PDF summary', updatedAt: 5_000 },
-      ],
-    });
-
-    const { useChatStore } = await import('@/stores/chat');
-    useChatStore.setState({
-      currentSessionKey: 'agent:main:main',
-      currentAgentId: 'main',
-      sessions: [],
-      sessionLabels: {},
-      sessionLastActivity: {},
-    });
-
-    await useChatStore.getState().loadSessions();
-
-    expect(useChatStore.getState().currentSessionKey).toBe('agent:main:session-a');
-    expect(gatewayRpcMock).toHaveBeenCalledTimes(1);
-    expect(gatewayRpcMock).toHaveBeenCalledWith('sessions.list', {
-      includeDerivedTitles: true,
-      includeLastMessage: true,
-    });
-  });
-
-  it('hydrates workspace identity and title activity from session summaries', async () => {
-    gatewayRpcMock.mockResolvedValue({
-      ts: 1,
-      sessions: [{ key: 'agent:main:session-a', displayName: 'Chat A', updatedAt: 5_000 }],
-    });
-    mockSessionLabelSummaries({
-      success: true,
-      summaries: [{
-        sessionKey: 'agent:main:session-a',
-        firstUserText: 'Summarize this workspace',
-        lastTimestamp: 1_700_000_000_000,
-        workspacePath: '/Users/alex/workspace/ClawX',
-      }],
-    });
-
-    const { useChatStore } = await import('@/stores/chat');
-    useChatStore.setState({
-      currentSessionKey: 'agent:main:main',
-      sessions: [],
-      sessionLabels: {},
-      sessionLastActivity: {},
-    });
-
-    await useChatStore.getState().loadSessions();
-    await vi.waitFor(() => {
-      expect(useChatStore.getState().sessionLabels['agent:main:session-a']).toBe('Summarize this workspace');
-    });
-
-    expect(useChatStore.getState().sessions[0]?.workspacePath).toBe('/Users/alex/workspace/ClawX');
-    expect(useChatStore.getState().sessionLastActivity['agent:main:session-a']).toBe(1_700_000_000_000);
-  });
-
-  it('does not publish a persisted fallback before its workspace summary resolves', async () => {
-    const summary = deferredSummary();
-    gatewayRpcMock.mockResolvedValue({
-      ts: 1,
-      sessions: [{ key: 'agent:main:session-a', displayName: 'Chat A', updatedAt: 5_000 }],
-    });
-    mockSessionLabelSummaries(summary.promise);
-
-    const { useChatStore } = await import('@/stores/chat');
-    useChatStore.setState({
-      currentSessionKey: 'agent:main:main',
-      currentAgentId: 'main',
-      sessions: [],
-      sessionLabels: {},
-      sessionLastActivity: {},
-    });
-
-    const loading = useChatStore.getState().loadSessions();
-    await vi.waitFor(() => expect(sessionSummariesMock).toHaveBeenCalledWith({
-      sessionKeys: ['agent:main:session-a'],
-    }));
-
-    expect(useChatStore.getState()).toMatchObject({
-      currentSessionKey: 'agent:main:main',
-      sessions: [],
-    });
-
-    summary.resolve({
-      success: true,
-      summaries: [{
-        sessionKey: 'agent:main:session-a',
-        firstUserText: 'Hydrated title',
-        lastTimestamp: 1_700_000_000_000,
-        workspacePath: '/workspace/hydrated',
-      }],
-    });
-    await loading;
-
-    expect(useChatStore.getState()).toMatchObject({
-      currentSessionKey: 'agent:main:session-a',
-      sessions: [expect.objectContaining({
-        key: 'agent:main:session-a',
-        workspacePath: '/workspace/hydrated',
+  it('loads titles, activity, workspace, kernel, pin and active-run state from SQLite summaries', async () => {
+    conversationsMock.list.mockResolvedValue({
+      items: [row({
+        id: 'conversation-a',
+        title: 'Summarize this workspace',
+        updatedAt: '2026-08-23T10:30:00.000Z',
+        pinnedAt: '2026-08-23T10:31:00.000Z',
+        workspaceUri: 'file:///Users/alex/workspace/ClawX',
+        lastKernelId: 'deepseek-harness',
+        hasActiveRun: true,
       })],
-      sessionLabels: { 'agent:main:session-a': 'Hydrated title' },
-      sessionLastActivity: { 'agent:main:session-a': 1_700_000_000_000 },
-    });
-  });
-
-  it('does not undo a session switch while selected workspace hydration is pending', async () => {
-    const selectedKey = 'agent:main:session-a';
-    const switchedKey = 'agent:main:session-b';
-    const summary = deferredSummary();
-    gatewayRpcMock.mockResolvedValue({
-      ts: 1,
-      sessions: [
-        { key: selectedKey, displayName: 'Chat A', updatedAt: 5_000 },
-        { key: switchedKey, label: 'Chat B', workspacePath: '/workspace/b', updatedAt: 4_000 },
-      ],
-    });
-    mockSessionLabelSummaries(summary.promise);
-
-    const { useChatStore } = await import('@/stores/chat');
-    useChatStore.setState({
-      currentSessionKey: selectedKey,
-      currentAgentId: 'main',
-      sessions: [
-        { key: selectedKey, displayName: 'Chat A', updatedAt: 5_000 },
-        { key: switchedKey, label: 'Chat B', workspacePath: '/workspace/b', updatedAt: 4_000 },
-      ],
-      sessionLabels: { [switchedKey]: 'Chat B' },
-      sessionLastActivity: {},
-    });
-
-    const loading = useChatStore.getState().loadSessions({ force: true, gatewayGeneration: 1 });
-    await vi.waitFor(() => expect(sessionSummariesMock).toHaveBeenCalledWith({
-      sessionKeys: [selectedKey],
-    }));
-    useChatStore.getState().switchSession(switchedKey);
-
-    summary.resolve({
-      success: true,
-      summaries: [{
-        sessionKey: selectedKey,
-        firstUserText: 'Stale A',
-        lastTimestamp: 1_700_000_000_000,
-        workspacePath: '/workspace/a',
-      }],
-    });
-    await loading;
-
-    expect(gatewayRpcMock).toHaveBeenCalledTimes(2);
-    expect(useChatStore.getState().currentSessionKey).toBe(switchedKey);
-    expect(useChatStore.getState().sessions.find((session) => session.key === switchedKey)).toMatchObject({
-      workspacePath: '/workspace/b',
-    });
-  });
-
-  it('does not undo a locally created and selected session while workspace hydration is pending', async () => {
-    const selectedKey = 'agent:main:session-a';
-    const localKey = 'agent:main:session-1711111111111';
-    const summary = deferredSummary();
-    vi.spyOn(Date, 'now').mockReturnValue(1_711_111_111_111);
-    gatewayRpcMock.mockResolvedValue({
-      ts: 1,
-      sessions: [{ key: selectedKey, displayName: 'Chat A', updatedAt: 5_000 }],
-    });
-    mockSessionLabelSummaries(summary.promise);
-
-    const { useChatStore } = await import('@/stores/chat');
-    useChatStore.setState({
-      currentSessionKey: selectedKey,
-      currentAgentId: 'main',
-      sessions: [{ key: selectedKey, displayName: 'Chat A', updatedAt: 5_000 }],
-      sessionLabels: {},
-      sessionLastActivity: {},
-    });
-
-    const loading = useChatStore.getState().loadSessions({ force: true, gatewayGeneration: 1 });
-    await vi.waitFor(() => expect(sessionSummariesMock).toHaveBeenCalledWith({
-      sessionKeys: [selectedKey],
-    }));
-    useChatStore.getState().newSession();
-    useChatStore.getState().selectAcpSession(localKey, '/workspace/local');
-
-    summary.resolve({
-      success: true,
-      summaries: [{
-        sessionKey: selectedKey,
-        firstUserText: 'Stale A',
-        lastTimestamp: 1_700_000_000_000,
-        workspacePath: '/workspace/a',
-      }],
-    });
-    await loading;
-
-    expect(gatewayRpcMock).toHaveBeenCalledTimes(2);
-    expect(useChatStore.getState().currentSessionKey).toBe(localKey);
-    expect(useChatStore.getState().sessions).toContainEqual(expect.objectContaining({
-      key: localKey,
-      createdLocally: true,
-      workspacePath: '/workspace/local',
-    }));
-  });
-
-  it('keeps the first canonical catalog when a local placeholder appears during pin hydration', async () => {
-    const firstKey = 'agent:main:session-a';
-    const secondKey = 'agent:main:session-b';
-    const localKey = 'agent:main:main';
-    const pinMetadata = deferredSummary();
-    let metadataCalls = 0;
-    gatewayRpcMock.mockResolvedValue({
-      ts: 1,
-      sessions: [
-        { key: firstKey, displayName: 'Chat A', workspacePath: '/workspace/a', updatedAt: 5_000 },
-        { key: secondKey, displayName: 'Chat B', workspacePath: '/workspace/b', updatedAt: 4_000 },
-      ],
-    });
-    sessionSummariesMock.mockImplementation((payload: { metadataOnly?: boolean }) => {
-      if (!payload?.metadataOnly) return Promise.resolve({ success: true, summaries: [] });
-      metadataCalls += 1;
-      if (metadataCalls === 1) return pinMetadata.promise;
-      return Promise.resolve({
-        success: true,
-        summaries: [
-          { sessionKey: firstKey, firstUserText: null, lastTimestamp: null, workspacePath: null, pinned: true },
-          { sessionKey: secondKey, firstUserText: null, lastTimestamp: null, workspacePath: null, pinned: false },
-        ],
-      });
     });
 
     const { useChatStore } = await import('@/stores/chat');
-    useChatStore.setState({
-      currentSessionKey: localKey,
-      currentAgentId: 'main',
-      sessions: [],
-      sessionLabels: {},
-      sessionLastActivity: {},
-    });
-
-    const loading = useChatStore.getState().loadSessions({ force: true, gatewayGeneration: 1 });
-    await vi.waitFor(() => expect(metadataCalls).toBe(1));
-    useChatStore.getState().selectAcpSession(localKey, '/workspace/local');
-    pinMetadata.resolve({
-      success: true,
-      summaries: [
-        { sessionKey: firstKey, firstUserText: null, lastTimestamp: null, workspacePath: null, pinned: true },
-        { sessionKey: secondKey, firstUserText: null, lastTimestamp: null, workspacePath: null, pinned: false },
-      ],
-    });
-    await loading;
-
-    expect(gatewayRpcMock).toHaveBeenCalledTimes(2);
-    expect(useChatStore.getState().sessions).toEqual(expect.arrayContaining([
-      expect.objectContaining({ key: firstKey, pinned: true }),
-      expect.objectContaining({ key: secondKey, pinned: false }),
-      expect.objectContaining({ key: localKey, createdLocally: true }),
-    ]));
-  });
-
-  it('does not resurrect a successfully deleted session after delayed workspace hydration', async () => {
-    const deletedKey = 'agent:main:session-a';
-    const survivorKey = 'agent:main:session-b';
-    const summary = deferredSummary();
-    gatewayRpcMock.mockResolvedValue({
-      ts: 1,
-      sessions: [
-        { key: deletedKey, displayName: 'Chat A', updatedAt: 5_000 },
-        { key: survivorKey, label: 'Chat B', workspacePath: '/workspace/b', updatedAt: 4_000 },
-      ],
-    });
-    mockSessionLabelSummaries(summary.promise);
-
-    const { useChatStore } = await import('@/stores/chat');
-    useChatStore.setState({
-      currentSessionKey: deletedKey,
-      currentAgentId: 'main',
-      sessions: [
-        { key: deletedKey, displayName: 'Chat A', updatedAt: 5_000 },
-        { key: survivorKey, label: 'Chat B', workspacePath: '/workspace/b', updatedAt: 4_000 },
-      ],
-      sessionLabels: { [deletedKey]: 'Chat A', [survivorKey]: 'Chat B' },
-      sessionLastActivity: {},
-    });
-
-    const loading = useChatStore.getState().loadSessions({ force: true, gatewayGeneration: 1 });
-    await vi.waitFor(() => expect(sessionSummariesMock).toHaveBeenCalledWith({
-      sessionKeys: [deletedKey],
-    }));
-    await expect(useChatStore.getState().deleteSession(deletedKey)).resolves.toEqual({ success: true });
-
-    summary.resolve({
-      success: true,
-      summaries: [{
-        sessionKey: deletedKey,
-        firstUserText: 'Stale A',
-        lastTimestamp: 1_700_000_000_000,
-        workspacePath: '/workspace/a',
-      }],
-    });
-    await loading;
-
-    expect(gatewayRpcMock).toHaveBeenCalledTimes(2);
-    expect(useChatStore.getState().currentSessionKey).toBe(survivorKey);
-    expect(useChatStore.getState().sessions.some((session) => session.key === deletedKey)).toBe(false);
-    expect(useChatStore.getState().sessionLabels[deletedKey]).toBeUndefined();
-  });
-
-  it('does not publish a stale sessions.list response after a local delete', async () => {
-    const deletedKey = 'agent:main:session-a';
-    const survivorKey = 'agent:main:session-b';
-    const staleCatalog = deferredCatalog();
-    const refreshedCatalog = deferredCatalog();
-    gatewayRpcMock
-      .mockReturnValueOnce(staleCatalog.promise)
-      .mockReturnValueOnce(refreshedCatalog.promise);
-
-    const { useChatStore } = await import('@/stores/chat');
-    useChatStore.setState({
-      currentSessionKey: deletedKey,
-      currentAgentId: 'main',
-      sessions: [
-        { key: deletedKey, label: 'Chat A', workspacePath: '/workspace/a', updatedAt: 5_000 },
-        { key: survivorKey, label: 'Chat B', workspacePath: '/workspace/b', updatedAt: 4_000 },
-      ],
-      sessionLabels: { [deletedKey]: 'Chat A', [survivorKey]: 'Chat B' },
-      sessionLastActivity: {},
-    });
-
-    const loading = useChatStore.getState().loadSessions({ force: true });
-    await vi.waitFor(() => expect(gatewayRpcMock).toHaveBeenCalledTimes(1));
-    await expect(useChatStore.getState().deleteSession(deletedKey)).resolves.toEqual({ success: true });
-
-    staleCatalog.resolve({
-      ts: 1,
-      sessions: [
-        { key: deletedKey, label: 'Chat A', workspacePath: '/workspace/a', updatedAt: 5_000 },
-        { key: survivorKey, label: 'Chat B', workspacePath: '/workspace/b', updatedAt: 4_000 },
-      ],
-    });
-    await vi.waitFor(() => expect(gatewayRpcMock).toHaveBeenCalledTimes(2));
-    expect(useChatStore.getState().sessions.some((session) => session.key === deletedKey)).toBe(false);
-    expect(useChatStore.getState().currentSessionKey).toBe(survivorKey);
-
-    refreshedCatalog.resolve({
-      ts: 2,
-      sessions: [{ key: survivorKey, label: 'Chat B', workspacePath: '/workspace/b', updatedAt: 4_000 }],
-    });
-    await loading;
-
-    expect(useChatStore.getState().sessions.some((session) => session.key === deletedKey)).toBe(false);
-    expect(useChatStore.getState().sessionLabels[deletedKey]).toBeUndefined();
-  });
-
-  it('does not publish a stale sessions.list label after a local rename', async () => {
-    const sessionKey = 'agent:main:session-a';
-    const staleCatalog = deferredCatalog();
-    const refreshedCatalog = deferredCatalog();
-    gatewayRpcMock
-      .mockReturnValueOnce(staleCatalog.promise)
-      .mockReturnValueOnce(refreshedCatalog.promise);
-
-    const { useChatStore } = await import('@/stores/chat');
-    useChatStore.setState({
-      currentSessionKey: sessionKey,
-      currentAgentId: 'main',
-      sessions: [{ key: sessionKey, label: 'Old title', workspacePath: '/workspace/a', updatedAt: 5_000 }],
-      sessionLabels: { [sessionKey]: 'Old title' },
-      sessionLastActivity: {},
-    });
-
-    const loading = useChatStore.getState().loadSessions({ force: true });
-    await vi.waitFor(() => expect(gatewayRpcMock).toHaveBeenCalledTimes(1));
-    await useChatStore.getState().renameSession(sessionKey, 'New title');
-
-    staleCatalog.resolve({
-      ts: 1,
-      sessions: [{ key: sessionKey, label: 'Old title', workspacePath: '/workspace/a', updatedAt: 5_000 }],
-    });
-    await vi.waitFor(() => expect(gatewayRpcMock).toHaveBeenCalledTimes(2));
-    expect(useChatStore.getState().sessionLabels[sessionKey]).toBe('New title');
-    expect(useChatStore.getState().sessions[0]?.label).toBe('New title');
-
-    refreshedCatalog.resolve({
-      ts: 2,
-      sessions: [{ key: sessionKey, label: 'New title', workspacePath: '/workspace/a', updatedAt: 5_000 }],
-    });
-    await loading;
-
-    expect(useChatStore.getState().sessionLabels[sessionKey]).toBe('New title');
-    expect(useChatStore.getState().sessions[0]?.label).toBe('New title');
-  });
-
-  it('preserves a local ACP placeholder and mirrored workspace across catalog refreshes', async () => {
-    const pendingKey = 'agent:main:session-1711111111111';
-    gatewayRpcMock.mockResolvedValue({
-      ts: 1,
-      sessions: [
-        { key: pendingKey, displayName: 'ACP', updatedAt: 6_000 },
-        { key: 'agent:main:session-a', displayName: 'Chat A', updatedAt: 5_000 },
-      ],
-    });
-
-    const { useChatStore } = await import('@/stores/chat');
-    useChatStore.setState({
-      currentSessionKey: 'agent:main:main',
-      sessions: [],
-      sessionLabels: {},
-      sessionLastActivity: {},
-    });
-    useChatStore.getState().selectAcpSession(pendingKey, '/Users/alex/workspace/ClawX');
-
     await useChatStore.getState().loadSessions();
 
-    expect(useChatStore.getState().currentSessionKey).toBe(pendingKey);
-    expect(useChatStore.getState().sessions.find((session) => session.key === pendingKey)).toMatchObject({
-      createdLocally: true,
+    expect(conversationsMock.list).toHaveBeenCalledWith({ limit: 100 });
+    expect(useChatStore.getState().sessions).toEqual([expect.objectContaining({
+      key: 'conversation-a',
+      displayName: 'Summarize this workspace',
+      label: 'Summarize this workspace',
       workspacePath: '/Users/alex/workspace/ClawX',
+      kernelId: 'deepseek-harness',
+      pinned: true,
+      hasActiveRun: true,
+      status: 'running',
+    })]);
+    expect(useChatStore.getState().sessionLabels).toEqual({
+      'conversation-a': 'Summarize this workspace',
     });
+    expect(useChatStore.getState().sessionLastActivity['conversation-a'])
+      .toBe(Date.parse('2026-08-23T10:30:00.000Z'));
+    expect(useChatStore.getState().currentSessionKey).toBe('conversation-a');
+    expect(useChatStore.getState().sessionCatalogReady).toBe(true);
   });
 
-  it('starts a fresh local session when the selected session is heartbeat-only', async () => {
-    vi.spyOn(Date, 'now').mockReturnValue(1711111111111);
-    gatewayRpcMock.mockResolvedValue({
-      ts: 1,
+  it('selects a pinned row before a more recently updated row', async () => {
+    conversationsMock.list.mockResolvedValue({
+      items: [
+        row({ id: 'conversation-new', updatedAt: '2026-08-23T12:00:00.000Z' }),
+        row({
+          id: 'conversation-pinned',
+          updatedAt: '2026-08-23T09:00:00.000Z',
+          pinnedAt: '2026-08-23T09:01:00.000Z',
+        }),
+      ],
+    });
+    const { useChatStore } = await import('@/stores/chat');
+    await useChatStore.getState().loadSessions();
+    expect(useChatStore.getState().currentSessionKey).toBe('conversation-pinned');
+  });
+
+  it('keeps the current canonical selection across catalog refreshes', async () => {
+    conversationsMock.list.mockResolvedValue({
+      items: [row({ id: 'conversation-a' }), row({ id: 'conversation-b' })],
+    });
+    const { useChatStore } = await import('@/stores/chat');
+    useChatStore.setState({ currentSessionKey: 'conversation-b' });
+    await useChatStore.getState().loadSessions();
+    expect(useChatStore.getState().currentSessionKey).toBe('conversation-b');
+  });
+
+  it('preserves an unsent local draft while replacing persisted rows from the canonical page', async () => {
+    conversationsMock.list.mockResolvedValue({ items: [row({ id: 'conversation-canonical' })] });
+    const { useChatStore } = await import('@/stores/chat');
+    useChatStore.setState({
+      currentSessionKey: 'conversation-local',
       sessions: [
-        {
-          key: 'agent:main:main',
-          displayName: 'ClawX',
-          lastMessagePreview: '[OpenClaw heartbeat poll]',
-          updatedAt: 9_000,
-        },
-        {
-          key: 'agent:main:session-a',
-          displayName: 'Visible desktop chat',
-          lastMessagePreview: 'Summarize the repository structure',
-          updatedAt: 5_000,
-        },
+        { key: 'conversation-stale', label: 'stale' },
+        { key: 'conversation-local', createdLocally: true, workspacePath: '/repo' },
       ],
     });
 
+    await useChatStore.getState().loadSessions();
+
+    expect(useChatStore.getState().sessions).toEqual(expect.arrayContaining([
+      expect.objectContaining({ key: 'conversation-canonical' }),
+      expect.objectContaining({ key: 'conversation-local', createdLocally: true }),
+    ]));
+    expect(useChatStore.getState().sessions.some((item) => item.key === 'conversation-stale')).toBe(false);
+    expect(useChatStore.getState().currentSessionKey).toBe('conversation-local');
+  });
+
+  it('queues exactly one forced reload behind an in-flight catalog read', async () => {
+    const first = deferred<{ items: ReturnType<typeof row>[] }>();
+    conversationsMock.list
+      .mockReturnValueOnce(first.promise)
+      .mockResolvedValueOnce({ items: [row({ id: 'conversation-new' })] });
     const { useChatStore } = await import('@/stores/chat');
-    useChatStore.setState({
-      currentSessionKey: 'agent:main:main',
-      sessions: [],
-      sessionLabels: {},
-      sessionLastActivity: {},
-    });
+
+    const initial = useChatStore.getState().loadSessions();
+    const forced = useChatStore.getState().loadSessions({ force: true });
+    expect(conversationsMock.list).toHaveBeenCalledTimes(1);
+    first.resolve({ items: [row({ id: 'conversation-old' })] });
+    await Promise.all([initial, forced]);
+
+    expect(conversationsMock.list).toHaveBeenCalledTimes(2);
+    expect(useChatStore.getState().sessions).toEqual([
+      expect.objectContaining({ key: 'conversation-new' }),
+    ]);
+  });
+
+  it('fails closed without publishing a runtime transcript catalog', async () => {
+    conversationsMock.list.mockRejectedValue(new Error('DataService unavailable'));
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const { useChatStore } = await import('@/stores/chat');
+    useChatStore.setState({ sessions: [{ key: 'local', createdLocally: true }] });
 
     await useChatStore.getState().loadSessions();
 
-    expect(useChatStore.getState().currentSessionKey).toBe('agent:main:session-1711111111111');
-    expect(useChatStore.getState().sessions).toContainEqual(expect.objectContaining({
-      key: 'agent:main:session-1711111111111',
-      createdLocally: true,
-    }));
-  });
-
-  it.each([
-    ['empty', []],
-    ['cron-only', [{ key: 'agent:main:cron:heartbeat', label: 'heartbeat', updatedAt: 9_000 }]],
-  ])('creates a local default placeholder for an %s catalog', async (_catalogType, sessions) => {
-    gatewayRpcMock.mockResolvedValue({
-      ts: 1,
-      sessions,
-    });
-
-    const { useChatStore } = await import('@/stores/chat');
-    useChatStore.setState({
-      currentSessionKey: 'agent:main:main',
-      sessions: [],
-      sessionLabels: {},
-      sessionLastActivity: {},
-    });
-
-    await useChatStore.getState().loadSessions();
-
-    expect(useChatStore.getState().currentSessionKey).toBe('agent:main:main');
-    expect(useChatStore.getState().sessions).toContainEqual(expect.objectContaining({
-      key: 'agent:main:main',
-      createdLocally: true,
-    }));
-  });
-
-  it('preserves an acknowledged ACP session across stale catalogs until canonical visibility', async () => {
-    const pendingKey = 'agent:main:session-created';
-    const survivorKey = 'agent:main:session-existing';
-    gatewayRpcMock
-      .mockResolvedValueOnce({
-        ts: 1,
-        sessions: [{ key: survivorKey, displayName: 'Existing', workspacePath: '/workspace/existing' }],
-      })
-      .mockResolvedValueOnce({
-        ts: 2,
-        sessions: [{ key: survivorKey, displayName: 'Existing', workspacePath: '/workspace/existing' }],
-      })
-      .mockResolvedValueOnce({
-        ts: 3,
-        sessions: [
-          { key: pendingKey, displayName: 'Created' },
-          { key: survivorKey, displayName: 'Existing', workspacePath: '/workspace/existing' },
-        ],
-      })
-      .mockResolvedValueOnce({
-        ts: 4,
-        sessions: [{ key: survivorKey, displayName: 'Existing', workspacePath: '/workspace/existing' }],
-      });
-
-    const { useChatStore } = await import('@/stores/chat');
-    useChatStore.setState({
-      currentSessionKey: pendingKey,
-      currentAgentId: 'main',
-      sessions: [{
-        key: pendingKey,
-        displayName: pendingKey,
-        createdLocally: true,
-        workspacePath: '/workspace/created',
-      }],
-      sessionLabels: {},
-      sessionLastActivity: {},
-    });
-    useChatStore.getState().acknowledgeAcpSessionCreated(pendingKey, '/workspace/created');
-
-    for (let staleSnapshot = 0; staleSnapshot < 2; staleSnapshot += 1) {
-      await useChatStore.getState().loadSessions({ force: true });
-      expect(useChatStore.getState().currentSessionKey).toBe(pendingKey);
-      expect(useChatStore.getState().sessions.find((session) => session.key === pendingKey)).toMatchObject({
-        key: pendingKey,
-        workspacePath: '/workspace/created',
-      });
-      expect(useChatStore.getState().sessions.find((session) => session.key === pendingKey)).not.toHaveProperty(
-        'createdLocally',
-        true,
-      );
-    }
-
-    await useChatStore.getState().loadSessions({ force: true });
-    expect(useChatStore.getState().currentSessionKey).toBe(pendingKey);
-    expect(useChatStore.getState().sessions.find((session) => session.key === pendingKey)).toMatchObject({
-      key: pendingKey,
-      displayName: 'Created',
-      workspacePath: '/workspace/created',
-    });
-
-    await useChatStore.getState().loadSessions({ force: true });
-    expect(useChatStore.getState().currentSessionKey).toBe(survivorKey);
-    expect(useChatStore.getState().sessions.some((session) => session.key === pendingKey)).toBe(false);
-  });
-
-  it('clears acknowledged-session protection when a canonical event observes the key', async () => {
-    const pendingKey = 'agent:main:session-event-created';
-    const survivorKey = 'agent:main:session-existing';
-    gatewayRpcMock.mockResolvedValue({
-      ts: 2,
-      sessions: [{ key: survivorKey, displayName: 'Existing', workspacePath: '/workspace/existing' }],
-    });
-
-    const { useChatStore } = await import('@/stores/chat');
-    useChatStore.setState({
-      currentSessionKey: pendingKey,
-      currentAgentId: 'main',
-      sessions: [{ key: pendingKey, createdLocally: true, workspacePath: '/workspace/created' }],
-      sessionLabels: {},
-      sessionLastActivity: {},
-    });
-    useChatStore.getState().acknowledgeAcpSessionCreated(pendingKey, '/workspace/created');
-    useChatStore.getState().handleSessionsChanged({
-      ts: 1,
-      sessionKey: pendingKey,
-      session: { key: pendingKey, displayName: 'Created by event' },
-    });
-
-    await useChatStore.getState().loadSessions({ force: true });
-
-    expect(useChatStore.getState().currentSessionKey).toBe(survivorKey);
-    expect(useChatStore.getState().sessions.some((session) => session.key === pendingKey)).toBe(false);
+    expect(useChatStore.getState().sessionCatalogReady).toBe(false);
+    expect(useChatStore.getState().sessions).toEqual([{ key: 'local', createdLocally: true }]);
+    expect(warn).toHaveBeenCalledWith(
+      'Failed to load canonical Conversation catalog:',
+      expect.any(Error),
+    );
   });
 });

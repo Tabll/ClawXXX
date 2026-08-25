@@ -65,6 +65,10 @@ requiredRules:
   - e2e-parallel-isolation
   - comms-regression
   - openai-compatible-tool-schema-compatibility
+  - kernel-runtime-distribution
+  - multi-kernel-isolation-and-routing
+  - kernel-capability-isomorphism
+  - unified-conversation-storage
   - docs-sync
 forbiddenPatterns:
   - window.electron.ipcRenderer.invoke in src/pages/**
@@ -81,6 +85,8 @@ forbiddenPatterns:
 
 Gateway backend communication covers all ClawX paths that move data between the visual desktop UI and OpenClaw runtime/backend services.
 
+The proposed multi-kernel evolution keeps this scenario authoritative for every Renderer/Main/Host API/runtime communication path. Conversation/run identity, runtime package lifecycle, concurrent-driver isolation, the single DataService/SQLite authority, and cross-kernel canonical projections are additionally governed by `harness/reference/multi-kernel-runtime.md`; introducing a second runtime must not create a Renderer-owned transport or persistence path or weaken the existing communication boundary.
+
 Coordinator-owned OpenClaw config mutations and their `config.get`/`config.set` transaction contract are documented in `harness/reference/openclaw-config-delivery.md`.
 
 Allowed flow:
@@ -92,16 +98,16 @@ Renderer code must not create direct Gateway WebSocket connections. Gateway fram
 
 The bundled OpenClaw tool catalog must remain valid for supported OpenAI-compatible runtimes. In particular, JSON Schema string patterns sent to LM Studio must be explicitly anchored, avoid constructs that produce invalid llama.cpp GBNF, retain their original validation semantics, and avoid finite bounds that expand beyond llama.cpp's grammar repetition limit; durable compatibility fixes belong in the registered pnpm patch and require installed-bundle regression coverage.
 
-Typed generic Gateway RPC requests are validated by `electron/services/gateway-api.ts` and delegated directly to `GatewayManager.rpc`, including an optional positive finite timeout. This path has no Renderer Chat history/send specialization, polling queue, coalescing, or backpressure layer. ACP `session/load`, `session/prompt`, and `session/cancel` own ordinary Chat history and composer behavior independently.
+Typed generic Gateway RPC requests are validated by `electron/services/gateway-api.ts` and delegated to `GatewayManager.rpc` only for allowlisted OpenClaw-specific capabilities. Chat history and delivery do not use that path: the Renderer selects a kernel through the typed Host API, `ConversationRouter` owns admission/send/cancel, and the DataService Conversation API is the sole UI history authority. ACP/runtime history is neither a durable source nor a fallback.
 
 Channel/plugin migration behavior is also part of this scenario when ClawX rewrites OpenClaw config before Gateway launch. Upgrades must preserve single-owner channel registration for migrated plugin-backed channels such as Feishu/Lark.
 
 ClawX's prelaunch config sanitizer also owns desktop tool policy. It must keep `web_search` in both the agent-level and Gateway-level deny lists without replacing existing deny entries or disabling managed browser automation and `web_fetch`. It must also deny the agent-facing `gateway`, `nodes`, `create_goal`, `get_goal`, and `update_goal` tools at both layers while preserving application-owned Gateway RPCs. Messaging, session orchestration, and agent discovery tools remain available unless another explicit policy denies them.
 
-Scheduled-task history is Main-owned backend data. Current OpenClaw versions must be queried through the Gateway `cron.runs` RPC; direct run-log file reads are allowed only as a compatibility fallback for older file-backed runtimes. When a run's bounded summary ends with OpenClaw's truncation ellipsis, Main may recover the complete final assistant reply from the run transcript identified by that `cron.runs` entry, but only when the transcript reply is longer and shares the entire summary prefix. When a cron base session has no ACP replay, Renderer may project that typed host result into a generation-scoped, in-memory historical ACP timeline, but must not replace or duplicate non-empty ACP replay.
+Scheduled tasks are canonical SQLite entities owned by the Main scheduler. Each trigger records an execution claim and routes through `ConversationRouter` into the selected kernel, so prompt, result, usage, retry, and terminal state live in the same Conversation/run tables as interactive work. Runtime cron lists, run-log files, and transcript recovery are never history authority.
 
 The local HTML Preview privileged bridge is also Main-owned: Renderer may load a validated local HTML file or open that current file externally through the typed Host API. The guest is an implementation detail of the existing `preview` tab; there is no `web-browser` artifact tab or general address navigation. The durable guest contract is `harness/reference/web-browser.md`.
 
-Gateway session-catalog subscription, normalization, ordered list/event replay, attention transitions, and reconnect recovery are documented in `harness/reference/sidebar-session-attention.md`. Electron test-process isolation and global-resource scheduling are documented in `harness/reference/e2e-parallelism.md`.
+Canonical Conversation lifecycle events, attention transitions, and DataService restart recovery are documented in `harness/reference/sidebar-session-attention.md`. Electron test-process isolation and global-resource scheduling are documented in `harness/reference/e2e-parallelism.md`.
 
 Gateway WebSocket heartbeat misses are diagnostic availability signals only and must never directly interrupt the socket or process. A pong, any incoming Gateway frame, or a successful Gateway RPC is trusted liveness evidence and resets the 180 seconds silence deadline. After one uninterrupted deadline, Main runs exactly one 5000ms `system-presence` verification. A successful probe records liveness and cancels recovery. A failed probe may request guarded restart only for a ClawX-owned process; for an externally managed Gateway, Main may reconnect its own transport and expose unavailable diagnostics but never stop, shut down, or restart the Gateway automatically. This path does not track chat, tool, cron, or other workloads. Process exit, ordinary socket close, code 1012, and explicit user restart retain their separate lifecycle behavior.

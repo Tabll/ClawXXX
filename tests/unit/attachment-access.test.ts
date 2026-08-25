@@ -434,6 +434,68 @@ describe('attachment access boundary', () => {
       .resolves.toMatchObject({ ok: false, error: 'tooLarge', size: 3 });
   });
 
+  it('reads canonical Conversation blobs without a runtime session or filesystem path', async () => {
+    const hash = 'a'.repeat(64);
+    const dataClient = {
+      call: vi.fn(async (method: string, input: unknown) => {
+        const request = input as { conversationId: string; blobHash: string };
+        if (request.conversationId !== 'conversation-canonical' || request.blobHash !== hash) {
+          return undefined;
+        }
+        if (method === 'getConversationBlobMetadata') {
+          return { mimeType: 'text/plain', size: 14 };
+        }
+        if (method === 'readConversationBlob') {
+          return {
+            data: new TextEncoder().encode('canonical data'),
+            mimeType: 'text/plain',
+            size: 14,
+          };
+        }
+        throw new Error(`Unexpected method: ${method}`);
+      }),
+    };
+    const access = createAttachmentAccess({
+      sessionAccessRegistry: new AcpSessionAccessRegistry(),
+      stagedAttachments: new StagedAttachmentRegistry(),
+      dataClient,
+      stateDir,
+      configDir,
+      shell: { openPath, openExternal, showItemInFolder },
+      openWith: {
+        platform: 'darwin',
+        list: listOpenHandlers,
+        open: openWithHandler,
+      },
+    });
+    const canonicalRef = {
+      sessionKey: 'conversation-canonical',
+      generation: 1,
+      uri: `clawx-blob://${hash}`,
+    };
+
+    const resolution = await access.resolveAttachment({ ref: canonicalRef, name: 'history.txt' });
+    expect(resolution).toMatchObject({
+      ok: true,
+      displayName: 'history.txt',
+      mimeType: 'text/plain',
+      size: 14,
+      target: { kind: 'local', scope: 'canonical-blob', ref: canonicalRef },
+    });
+    await expect(access.readAttachmentText(canonicalRef)).resolves.toEqual({
+      ok: true,
+      content: 'canonical data',
+      mimeType: 'text/plain',
+      size: 14,
+      readOnly: true,
+    });
+    expect(openPath).not.toHaveBeenCalled();
+
+    await expect(access.resolveAttachment({
+      ref: { ...canonicalRef, sessionKey: 'another-conversation' },
+    })).resolves.toMatchObject({ ok: false, error: 'unavailable' });
+  });
+
   it('delegates validated local and remote opens to the correct shell operation', async () => {
     const access = getAccess();
     const localPath = join(workspaceRoot, 'notes.txt');

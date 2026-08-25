@@ -1,0 +1,4 @@
+# Unified diff payloads are checked after application by the strict runtime pipeline.
+# Treating their literal `+ <tab>` lines as repository indentation creates false positives.
+patches/*.patch -whitespace
+kernels/*/patches/*.patch -whitespace

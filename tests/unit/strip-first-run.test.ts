@@ -225,13 +225,20 @@ describe('ensureClawXDefaultIdentity', () => {
   it('creates the default workspace and seeds IDENTITY.md for startup-owned workspaces', async () => {
     await ensureClawXDefaultIdentity();
 
-    await expect(readFile(join(testHome, '.openclaw', 'workspace', 'IDENTITY.md'), 'utf-8')).resolves.toContain('ClawX');
+    await expect(readFile(join(
+      testHome,
+      '.clawx',
+      'kernel-config',
+      'openclaw',
+      'workspace',
+      'IDENTITY.md',
+    ), 'utf-8')).resolves.toContain('ClawX');
   });
 });
 
 describe('ensureClawXContext', () => {
   it('does not wait for missing files in non-default agent workspaces', async () => {
-    const openclawDir = join(testHome, '.openclaw');
+    const openclawDir = join(testHome, '.clawx', 'kernel-config', 'openclaw');
     const defaultWorkspace = join(openclawDir, 'workspace-main');
     const agentWorkspace = join(openclawDir, 'workspace-agent');
     await mkdir(defaultWorkspace, { recursive: true });
@@ -262,7 +269,7 @@ describe('ensureClawXContext', () => {
   });
 
   it('does not wait for missing external default workspaces', async () => {
-    const openclawDir = join(testHome, '.openclaw');
+    const openclawDir = join(testHome, '.clawx', 'kernel-config', 'openclaw');
     const externalWorkspace = join(testHome, '..', `external-missing-${Date.now()}`);
     await mkdir(openclawDir, { recursive: true });
     await writeFile(

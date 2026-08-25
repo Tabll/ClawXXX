@@ -13,9 +13,9 @@ function sortByUpdatedAtDesc(sessions: ChatSession[]): ChatSession[] {
 }
 
 /**
- * When the current session key is missing from `sessions.list`, pick a safer
+ * When the current session key is missing from the canonical Conversation catalog, pick a safer
  * replacement than `sessions[0]`. Cron/heartbeat sessions must never become
- * the implicit startup target just because they sort first in the gateway list.
+ * the implicit startup target just because they sort first in the catalog.
  */
 export function pickStartupSessionFallback(
   currentSessionKey: string,

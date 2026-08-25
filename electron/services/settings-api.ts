@@ -12,6 +12,7 @@ import {
   setSetting,
 } from '../utils/store';
 import { isRecord } from './payload-utils';
+import { synchronizeLegacyGatewayAutoStart } from '../kernels/auto-start-policy';
 
 type KeyPayload = {
   key?: unknown;
@@ -87,6 +88,13 @@ async function runSettingsSideEffects(
   gatewayManager: GatewayManager,
   patch: Partial<AppSettings>,
 ): Promise<void> {
+  if (
+    Object.prototype.hasOwnProperty.call(patch, 'gatewayAutoStart')
+    && !Object.prototype.hasOwnProperty.call(patch, 'kernelAutoStartPolicies')
+    && typeof patch.gatewayAutoStart === 'boolean'
+  ) {
+    await synchronizeLegacyGatewayAutoStart(patch.gatewayAutoStart);
+  }
   if (patchTouchesProxy(patch)) {
     await handleProxySettingsChange(gatewayManager);
   }

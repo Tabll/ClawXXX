@@ -48,7 +48,6 @@ import {
   type DeliveryChannelGroup,
 } from '@/lib/host-api';
 import { useCronStore } from '@/stores/cron';
-import { useGatewayStore } from '@/stores/gateway';
 import { useAgentsStore } from '@/stores/agents';
 import { useChatStore } from '@/stores/chat';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
@@ -60,7 +59,8 @@ import type { QuickAccessSkill } from '@/types/skill';
 import { CHANNEL_ICONS, CHANNEL_NAMES, type ChannelType } from '@/types/channel';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
-import { isGatewayStopped } from '@/lib/gateway-status';
+import type { KernelRuntimeSnapshot } from '@shared/kernels/contracts';
+import { kernelDisplayName, useKernelStore } from '@/stores/kernels';
 
 // Common cron schedule presets
 const schedulePresets: { key: string; value: string; type: ScheduleType }[] = [
@@ -160,7 +160,7 @@ function parseCronSchedule(schedule: unknown, t: TFunction<'cron'>): string {
   if (schedule && typeof schedule === 'object') {
     const s = schedule as { kind?: string; expr?: string; tz?: string; everyMs?: number; at?: string };
     if (s.kind === 'cron' && typeof s.expr === 'string') {
-      return parseCronExpr(s.expr, t);
+      return `${parseCronExpr(s.expr, t)} · ${s.tz || 'UTC'}`;
     }
     if (s.kind === 'every' && typeof s.everyMs === 'number') {
       const ms = s.everyMs;
@@ -327,6 +327,7 @@ interface TaskDialogProps {
   open: boolean;
   job?: CronJob;
   configuredChannels: DeliveryChannelGroup[];
+  kernels: KernelRuntimeSnapshot[];
   onClose: () => void;
   onSave: (input: CronJobCreateInput) => Promise<void>;
 }
@@ -349,6 +350,7 @@ interface ScheduleFormState {
   customCron: string;
   onceDate: string; // YYYY-MM-DD
   onceTime: string; // HH:MM
+  timezone: string;
 }
 
 function pad2(value: number): string {
@@ -374,6 +376,7 @@ function defaultScheduleForm(): ScheduleFormState {
     customCron: '',
     onceDate: toDateInputValue(now),
     onceTime: '09:00',
+    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
   };
 }
 
@@ -420,7 +423,10 @@ function parseScheduleToForm(job?: CronJob): ScheduleFormState {
       return { ...base, mode: 'once' };
     }
     if (schedule.kind === 'cron' && typeof schedule.expr === 'string') {
-      return parseCronExprToForm(schedule.expr, base);
+      return {
+        ...parseCronExprToForm(schedule.expr, base),
+        timezone: schedule.tz?.trim() || 'UTC',
+      };
     }
     // 'every' (interval) schedules are not editable through this builder.
     return base;
@@ -436,19 +442,26 @@ function buildScheduleFromForm(form: ScheduleFormState): string | CronSchedule {
   const [hourRaw, minuteRaw] = (form.timeOfDay || '09:00').split(':');
   const hour = Number(hourRaw);
   const minute = Number(minuteRaw);
+  let expression: string;
   switch (form.recurrence) {
     case 'hourly':
-      return `${form.hourlyMinute} * * * *`;
+      expression = `${form.hourlyMinute} * * * *`;
+      break;
     case 'daily':
-      return `${minute} ${hour} * * *`;
+      expression = `${minute} ${hour} * * *`;
+      break;
     case 'weekdays':
-      return `${minute} ${hour} * * 1-5`;
+      expression = `${minute} ${hour} * * 1-5`;
+      break;
     case 'weekly':
-      return `${minute} ${hour} * * ${form.weekday}`;
+      expression = `${minute} ${hour} * * ${form.weekday}`;
+      break;
     case 'custom':
     default:
-      return form.customCron.trim();
+      expression = form.customCron.trim();
+      break;
   }
+  return { kind: 'cron', expr: expression, tz: form.timezone.trim() || 'UTC' };
 }
 
 function computeNextRunPreviewFromForm(form: ScheduleFormState): string | null {
@@ -595,14 +608,26 @@ function ScheduleTimePicker({ id, value, onChange, 'data-testid': testId }: Sche
   );
 }
 
-function TaskDialog({ open, job, configuredChannels, onClose, onSave }: TaskDialogProps) {
+function TaskDialog({ open, job, configuredChannels, kernels, onClose, onSave }: TaskDialogProps) {
   const { t } = useTranslation('cron');
   const [saving, setSaving] = useState(false);
   const agents = useAgentsStore((s) => s.agents);
+  const kernelDefaults = useAgentsStore((s) => s.kernelDefaults);
 
   const [name, setName] = useState(job?.name || '');
   const [message, setMessage] = useState(job?.message || '');
   const [selectedAgentId, setSelectedAgentId] = useState(job?.agentId || useChatStore.getState().currentAgentId);
+  const initialKernelId = job?.kernelId
+    || kernels.find(kernel => kernel.state === 'ready')?.kernelId
+    || kernels[0]?.kernelId
+    || '';
+  const [selectedKernelId, setSelectedKernelId] = useState(initialKernelId);
+  const [conversationPolicy, setConversationPolicy] = useState<CronJob['conversationPolicy']>(
+    job?.conversationPolicy ?? 'new-per-run',
+  );
+  const [misfirePolicy, setMisfirePolicy] = useState<CronJob['misfirePolicy']>(job?.misfirePolicy ?? 'run-once');
+  const [overlapPolicy, setOverlapPolicy] = useState<CronJob['overlapPolicy']>(job?.overlapPolicy ?? 'queue');
+  const [timeoutSeconds, setTimeoutSeconds] = useState(Math.max(1, Math.round((job?.timeoutMs ?? 1_800_000) / 1_000)));
   const [scheduleForm, setScheduleForm] = useState<ScheduleFormState>(() => parseScheduleToForm(job));
   const [enabled, setEnabled] = useState(job?.enabled ?? true);
   const [deliveryMode, setDeliveryMode] = useState<'none' | 'announce'>(
@@ -630,6 +655,16 @@ function TaskDialog({ open, job, configuredChannels, onClose, onSave }: TaskDial
       setName(job?.name || '');
       setMessage(job?.message || '');
       setSelectedAgentId(job?.agentId || useChatStore.getState().currentAgentId);
+      setSelectedKernelId(
+        job?.kernelId
+        || kernels.find(kernel => kernel.state === 'ready')?.kernelId
+        || kernels[0]?.kernelId
+        || '',
+      );
+      setConversationPolicy(job?.conversationPolicy ?? 'new-per-run');
+      setMisfirePolicy(job?.misfirePolicy ?? 'run-once');
+      setOverlapPolicy(job?.overlapPolicy ?? 'queue');
+      setTimeoutSeconds(Math.max(1, Math.round((job?.timeoutMs ?? 1_800_000) / 1_000)));
       setScheduleForm(parseScheduleToForm(job));
       setEnabled(job?.enabled ?? true);
       setDeliveryMode(job?.delivery?.mode === 'announce' ? 'announce' : 'none');
@@ -646,10 +681,27 @@ function TaskDialog({ open, job, configuredChannels, onClose, onSave }: TaskDial
     }
   }
 
-  const selectedAgent = useMemo(
-    () => agents.find((agent) => agent.id === selectedAgentId) ?? null,
-    [agents, selectedAgentId],
+  const compatibleAgents = useMemo(
+    () => agents.filter((agent) => (
+      !agent.supportedKernels?.length || agent.supportedKernels.includes(selectedKernelId)
+    )),
+    [agents, selectedKernelId],
   );
+  const selectedAgent = useMemo(
+    () => compatibleAgents.find((agent) => agent.id === selectedAgentId) ?? null,
+    [compatibleAgents, selectedAgentId],
+  );
+  const kernelOptions = useMemo(() => {
+    if (!job?.kernelId || kernels.some((kernel) => kernel.kernelId === job.kernelId)) return kernels;
+    return [{ kernelId: job.kernelId, state: 'not-installed' as const, generation: 0 }, ...kernels];
+  }, [job?.kernelId, kernels]);
+
+  useEffect(() => {
+    if (compatibleAgents.some((agent) => agent.id === selectedAgentId)) return;
+    const defaultAgentId = kernelDefaults.find((entry) => entry.kernelId === selectedKernelId)?.agentId;
+    const fallback = compatibleAgents.find((agent) => agent.id === defaultAgentId) ?? compatibleAgents[0];
+    setSelectedAgentId(fallback?.id ?? '');
+  }, [compatibleAgents, kernelDefaults, selectedAgentId, selectedKernelId]);
   const skillTokenRanges = useMemo(() => findSkillTokenRanges(message), [message]);
   const filteredQuickSkills = useMemo(() => {
     const query = skillQuery.trim().toLowerCase();
@@ -960,6 +1012,14 @@ function TaskDialog({ open, job, configuredChannels, onClose, onSave }: TaskDial
       toast.error(t('toast.messageRequired'));
       return;
     }
+    if (!selectedKernelId || !selectedAgentId) {
+      toast.error(t('toast.kernelAgentRequired'));
+      return;
+    }
+    if (!Number.isSafeInteger(timeoutSeconds) || timeoutSeconds < 1) {
+      toast.error(t('toast.timeoutInvalid'));
+      return;
+    }
 
     if (scheduleForm.mode === 'once') {
       const onceDateTime = new Date(`${scheduleForm.onceDate}T${scheduleForm.onceTime || '00:00'}`);
@@ -1011,6 +1071,11 @@ function TaskDialog({ open, job, configuredChannels, onClose, onSave }: TaskDial
         delivery: finalDelivery,
         enabled,
         agentId: selectedAgentId,
+        kernelId: selectedKernelId,
+        conversationPolicy,
+        misfirePolicy,
+        overlapPolicy,
+        timeoutMs: timeoutSeconds * 1_000,
       });
       onClose();
       toast.success(job ? t('toast.updated') : t('toast.created'));
@@ -1172,25 +1237,115 @@ function TaskDialog({ open, job, configuredChannels, onClose, onSave }: TaskDial
               </div>
             </div>
 
-            {/* Agent */}
-            <div className="space-y-2.5">
-              <Label htmlFor="agent" className="text-sm text-foreground/80 font-bold">
-                {t('dialog.agent')}
-              </Label>
-              <SelectField
-                id="agent"
-                value={selectedAgentId}
-                onChange={(e) => {
-                  setSelectedAgentId(e.target.value);
-                }}
-                className="h-[44px] rounded-xl border-black/10 dark:border-white/10 bg-transparent text-meta"
-              >
-                {agents.map((agent) => (
-                  <option key={agent.id} value={agent.id}>
-                    {agent.name}
-                  </option>
-                ))}
-              </SelectField>
+            {/* Runtime routing */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2.5">
+                <Label htmlFor="cron-kernel" className="text-sm text-foreground/80 font-bold">
+                  {t('dialog.kernel')}
+                </Label>
+                <SelectField
+                  id="cron-kernel"
+                  data-testid="cron-kernel-select"
+                  value={selectedKernelId}
+                  onChange={(event) => setSelectedKernelId(event.target.value)}
+                >
+                  {kernelOptions.map((kernel) => (
+                    <option key={kernel.kernelId} value={kernel.kernelId}>
+                      {kernelDisplayName(kernel.kernelId)}
+                      {' · '}{t(`kernelStates.${kernel.state}` as const)}
+                    </option>
+                  ))}
+                </SelectField>
+              </div>
+              <div className="space-y-2.5">
+                <Label htmlFor="agent" className="text-sm text-foreground/80 font-bold">
+                  {t('dialog.agent')}
+                </Label>
+                <SelectField
+                  id="agent"
+                  data-testid="cron-agent-select"
+                  value={selectedAgentId}
+                  onChange={(event) => setSelectedAgentId(event.target.value)}
+                  disabled={compatibleAgents.length === 0}
+                >
+                  {compatibleAgents.length === 0 && <option value="">{t('dialog.noCompatibleAgents')}</option>}
+                  {compatibleAgents.map((agent) => (
+                    <option key={agent.id} value={agent.id}>
+                      {agent.name}
+                    </option>
+                  ))}
+                </SelectField>
+              </div>
+            </div>
+
+            {/* Execution policies */}
+            <div className="space-y-3 rounded-2xl border border-black/5 dark:border-white/5 p-4">
+              <div>
+                <Label className="text-sm text-foreground/80 font-bold">{t('dialog.executionPolicies')}</Label>
+                <p className="mt-0.5 text-xs text-muted-foreground">{t('dialog.executionPoliciesDesc')}</p>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label htmlFor="cron-conversation-policy" className="text-meta text-foreground/70 font-medium">
+                    {t('dialog.conversationPolicy')}
+                  </Label>
+                  <SelectField
+                    id="cron-conversation-policy"
+                    data-testid="cron-conversation-policy-select"
+                    value={conversationPolicy}
+                    onChange={(event) => setConversationPolicy(event.target.value as CronJob['conversationPolicy'])}
+                  >
+                    {(['reuse', 'new-per-run', 'new-per-day'] as const).map((policy) => (
+                      <option key={policy} value={policy}>{t(`conversationPolicies.${policy}` as const)}</option>
+                    ))}
+                  </SelectField>
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="cron-overlap-policy" className="text-meta text-foreground/70 font-medium">
+                    {t('dialog.overlapPolicy')}
+                  </Label>
+                  <SelectField
+                    id="cron-overlap-policy"
+                    data-testid="cron-overlap-policy-select"
+                    value={overlapPolicy}
+                    onChange={(event) => setOverlapPolicy(event.target.value as CronJob['overlapPolicy'])}
+                  >
+                    {(['queue', 'skip', 'replace'] as const).map((policy) => (
+                      <option key={policy} value={policy}>{t(`overlapPolicies.${policy}` as const)}</option>
+                    ))}
+                  </SelectField>
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="cron-misfire-policy" className="text-meta text-foreground/70 font-medium">
+                    {t('dialog.misfirePolicy')}
+                  </Label>
+                  <SelectField
+                    id="cron-misfire-policy"
+                    data-testid="cron-misfire-policy-select"
+                    value={misfirePolicy}
+                    onChange={(event) => setMisfirePolicy(event.target.value as CronJob['misfirePolicy'])}
+                  >
+                    {(['run-once', 'catch-up', 'skip'] as const).map((policy) => (
+                      <option key={policy} value={policy}>{t(`misfirePolicies.${policy}` as const)}</option>
+                    ))}
+                  </SelectField>
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="cron-timeout" className="text-meta text-foreground/70 font-medium">
+                    {t('dialog.timeoutSeconds')}
+                  </Label>
+                  <Input
+                    id="cron-timeout"
+                    data-testid="cron-timeout-input"
+                    type="number"
+                    min={1}
+                    max={86_400}
+                    value={timeoutSeconds}
+                    onChange={(event) => setTimeoutSeconds(Math.floor(Number(event.target.value)))}
+                    className="h-[44px] rounded-xl font-mono text-meta bg-transparent border-black/10 dark:border-white/10"
+                  />
+                </div>
+              </div>
             </div>
 
             {/* Schedule */}
@@ -1339,6 +1494,22 @@ function TaskDialog({ open, job, configuredChannels, onClose, onSave }: TaskDial
               <p className="mt-2 text-xs text-muted-foreground/80 font-medium">
                 {schedulePreview ? `${t('card.next')}: ${schedulePreview}` : t('dialog.cronPlaceholder')}
               </p>
+              {scheduleForm.mode === 'recurring' && (
+                <div className="space-y-1.5 pt-1">
+                  <Label htmlFor="cron-timezone" className="text-meta text-foreground/70 font-medium">
+                    {t('dialog.timezone')}
+                  </Label>
+                  <Input
+                    id="cron-timezone"
+                    data-testid="cron-timezone-input"
+                    value={scheduleForm.timezone}
+                    onChange={(event) => updateSchedule({ timezone: event.target.value })}
+                    placeholder="Asia/Shanghai"
+                    className="h-[44px] rounded-xl font-mono text-meta bg-transparent border-black/10 dark:border-white/10"
+                  />
+                  <p className="text-xs text-muted-foreground">{t('dialog.timezoneDesc')}</p>
+                </div>
+              )}
             </div>
 
             {/* Delivery */}
@@ -1645,7 +1816,16 @@ function CronJobCard({ job, deliveryAccountName, onToggle, onEdit, onDelete, onT
 
           <span className="flex items-center gap-1.5">
             <Bot className="h-3.5 w-3.5" />
+            {job.kernelId ? kernelDisplayName(job.kernelId) : t('card.kernelUnavailable')}
+            <span>·</span>
             {agentName}
+          </span>
+
+          <span className="flex items-center gap-1.5" data-testid={`cron-job-policy-${job.id}`}>
+            <Timer className="h-3.5 w-3.5" />
+            {t(`overlapPolicies.${job.overlapPolicy ?? 'queue'}` as const)}
+            <span>·</span>
+            {t(`conversationPolicies.${job.conversationPolicy ?? 'new-per-run'}` as const)}
           </span>
         </div>
 
@@ -1691,14 +1871,21 @@ function CronJobCard({ job, deliveryAccountName, onToggle, onEdit, onDelete, onT
 export function Cron() {
   const { t } = useTranslation('cron');
   const { jobs, loading, error, fetchJobs, createJob, updateJob, toggleJob, deleteJob, triggerJob } = useCronStore();
-  const gatewayStatus = useGatewayStore((state) => state.status);
+  const fetchAgents = useAgentsStore((state) => state.fetchAgents);
   const [showDialog, setShowDialog] = useState(false);
   const [editingJob, setEditingJob] = useState<CronJob | undefined>();
   const [jobToDelete, setJobToDelete] = useState<{ id: string } | null>(null);
   const [configuredChannels, setConfiguredChannels] = useState<DeliveryChannelGroup[]>([]);
-
-  const isGatewayRunning = gatewayStatus.state === 'running';
-  const showGatewayUnavailableWarning = isGatewayStopped(gatewayStatus);
+  const kernelCatalog = useKernelStore((state) => state.catalog);
+  const kernelRuntimes = useKernelStore((state) => state.runtimes);
+  const refreshKernels = useKernelStore((state) => state.refresh);
+  const kernels = useMemo<KernelRuntimeSnapshot[]>(() => {
+    const ids = new Set(kernelCatalog?.entries.map(entry => entry.kernelId) ?? Object.keys(kernelRuntimes));
+    jobs.forEach(job => { if (job.kernelId) ids.add(job.kernelId); });
+    return [...ids].map(kernelId => kernelRuntimes[kernelId]
+      ?? kernelCatalog?.entries.find(entry => entry.kernelId === kernelId)?.runtime
+      ?? { kernelId, state: 'not-installed', generation: 0, diagnostics: [] });
+  }, [jobs, kernelCatalog, kernelRuntimes]);
 
   const fetchConfiguredChannels = useCallback(async () => {
     try {
@@ -1713,12 +1900,13 @@ export function Cron() {
     }
   }, []);
 
-  // Fetch jobs on mount
+  // Canonical jobs are Main/SQLite-owned and remain manageable even when no
+  // optional runtime (including OpenClaw Gateway) is running.
   useEffect(() => {
-    if (isGatewayRunning) {
-      fetchJobs();
-    }
-  }, [fetchJobs, isGatewayRunning]);
+    void fetchJobs();
+    void fetchAgents();
+    void refreshKernels(false);
+  }, [fetchAgents, fetchJobs, refreshKernels]);
 
   useEffect(() => {
     void fetchConfiguredChannels();
@@ -1783,9 +1971,9 @@ export function Cron() {
               variant="outline"
               onClick={() => {
                 void fetchJobs();
+                void refreshKernels(false);
                 void fetchConfiguredChannels();
               }}
-              disabled={!isGatewayRunning}
               className="h-9 text-meta font-medium rounded-full px-4 border-black/10 dark:border-white/10 bg-transparent hover:bg-black/5 dark:hover:bg-white/5 shadow-none text-foreground/80 hover:text-foreground transition-colors"
             >
               <RefreshCw className="h-3.5 w-3.5 mr-2" />
@@ -1797,7 +1985,6 @@ export function Cron() {
                 setEditingJob(undefined);
                 setShowDialog(true);
               }}
-              disabled={!isGatewayRunning}
               className="h-9 text-meta font-medium rounded-full px-4 shadow-none"
             >
               <Plus className="h-3.5 w-3.5 mr-2" />
@@ -1808,14 +1995,6 @@ export function Cron() {
 
         {/* Content Area */}
         <div className="flex-1 overflow-y-auto pr-2 pb-10 min-h-0 -mr-2">
-          {/* Gateway Warning */}
-          {showGatewayUnavailableWarning && (
-            <div className="mb-8 p-4 rounded-xl border border-yellow-500/50 bg-yellow-500/10 flex items-center gap-3">
-              <AlertCircle className="h-5 w-5 text-yellow-600 dark:text-yellow-400" />
-              <span className="text-yellow-700 dark:text-yellow-400 text-sm font-medium">{t('gatewayWarning')}</span>
-            </div>
-          )}
-
           {/* Error Display */}
           {error && (
             <div className="mb-8 p-4 rounded-xl border border-destructive/50 bg-destructive/10 flex items-center gap-3">
@@ -1886,7 +2065,6 @@ export function Cron() {
                   setEditingJob(undefined);
                   setShowDialog(true);
                 }}
-                disabled={!isGatewayRunning}
                 className="rounded-full px-6 h-10"
               >
                 <Plus className="h-4 w-4 mr-2" />
@@ -1924,6 +2102,7 @@ export function Cron() {
         open={showDialog}
         job={editingJob}
         configuredChannels={configuredChannels}
+        kernels={kernels}
         onClose={() => {
           setShowDialog(false);
         }}

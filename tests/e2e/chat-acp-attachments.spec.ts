@@ -31,12 +31,14 @@ function workbookBytes(): Uint8Array {
   return XLSX.write(workbook, { bookType: 'xlsx', type: 'buffer' });
 }
 
-function reportedFlowUpdates(): AcpSessionUpdate[] {
-  return [{
-    sessionUpdate: 'agent_message',
+function reportedFlowUpdates(uri: string): AcpSessionUpdate[] {
+  return [resourceUpdate({
     messageId: 'budget-reply',
-    content: [{ type: 'text', text: REPLY }],
-  }];
+    uri,
+    name: 'budget_sample.xlsx',
+    mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    text: REPLY,
+  })];
 }
 
 function userUpdate(messageId: string, text: string): AcpSessionUpdate {
@@ -117,7 +119,6 @@ test.describe('ACP media attachments', () => {
           },
         ],
       }]);
-      await fixture.setTranscriptResponses(MAIN_SESSION_KEY, [[]]);
 
       const page = await openChat(app);
       const attachment = page.getByRole('button', { name: 'Open 高铁发票', exact: true });
@@ -160,7 +161,6 @@ test.describe('ACP media attachments', () => {
           text: 'The HTML page is ready.',
         }),
       ]);
-      await fixture.setTranscriptResponses(MAIN_SESSION_KEY, [[]]);
 
       const page = await openChat(app);
       const attachment = page.getByRole('button', { name: 'Preview browser demo.html', exact: true });
@@ -217,7 +217,6 @@ test.describe('ACP media attachments', () => {
           text: 'The open-with budget is ready.',
         }),
       ]);
-      await fixture.setTranscriptResponses(MAIN_SESSION_KEY, [[]]);
 
       const page = await openChat(app);
       const preview = page.getByRole('button', { name: 'Preview Open with budget.xlsx', exact: true });
@@ -334,7 +333,6 @@ test.describe('ACP media attachments', () => {
           mimeType: 'text/html',
         }),
       ]);
-      await fixture.setTranscriptResponses(MAIN_SESSION_KEY, [[]]);
 
       const page = await openChat(app);
       const attachment = page.getByRole('button', { name: 'Preview inline-preview.html', exact: true });
@@ -409,7 +407,6 @@ test.describe('ACP media attachments', () => {
           mimeType: 'application/pdf',
         }),
       ]);
-      await fixture.setTranscriptResponses(MAIN_SESSION_KEY, [[]]);
 
       const page = await openChat(app);
       const trigger = page.getByRole('button', { name: 'Open Discovery failure.pdf with', exact: true });
@@ -474,7 +471,6 @@ test.describe('ACP media attachments', () => {
           ],
         },
       ]);
-      await fixture.setTranscriptResponses(MAIN_SESSION_KEY, [[]]);
 
       const page = await openChat(app);
       await expect(page.getByText('User report.pdf')).toBeVisible({ timeout: 30_000 });
@@ -534,7 +530,6 @@ test.describe('ACP media attachments', () => {
           },
         ],
       }]);
-      await fixture.setTranscriptResponses(MAIN_SESSION_KEY, [[]]);
 
       const page = await openChat(app);
       const userMessage = page.getByTestId('acp-user-message');
@@ -571,7 +566,7 @@ test.describe('ACP media attachments', () => {
     }
   });
 
-  test('recovers assistant MEDIA for a user turn with a resource attachment', async ({ launchElectronApp }) => {
+  test('restores canonical assistant resources beside user resources', async ({ launchElectronApp }) => {
     const app = await launchElectronApp({ skipSetup: true });
     const prompt = 'Create the attached-source report';
     const reply = 'The attached-source report is ready.';
@@ -602,40 +597,35 @@ test.describe('ACP media attachments', () => {
         {
           sessionUpdate: 'agent_message',
           messageId: 'attached-source-reply',
-          content: [{ type: 'text', text: reply }],
+          content: [
+            { type: 'text', text: reply },
+            {
+              type: 'resource_link',
+              uri: outputPath,
+              name: 'attached-output.xlsx',
+              mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            },
+          ],
         },
       ]);
-      const transcript = [
-        {
-          role: 'user',
-          id: 'attached-source-transcript-user',
-          content: `[Working directory: ${fixture.workspaceDir}]\n\n${prompt}\n[Resource link] ${sourcePath}`,
-        },
-        {
-          role: 'assistant',
-          id: 'attached-source-transcript-assistant',
-          content: `${reply}\nMEDIA:${outputPath}`,
-        },
-      ];
-      await fixture.setTranscriptResponses(MAIN_SESSION_KEY, [[]]);
 
       const page = await openChat(app);
       await expect(page.getByText(prompt)).toBeVisible({ timeout: 30_000 });
-      await fixture.waitForHistoryRequestCount(MAIN_SESSION_KEY, 1);
-      await fixture.setTranscriptResponses(MAIN_SESSION_KEY, [transcript]);
+      await expect(page.getByRole('button', { name: 'Preview attached-source.xlsx', exact: true })).toBeEnabled();
+      await expect(page.getByRole('button', { name: 'Preview attached-output.xlsx', exact: true })).toBeEnabled();
 
       await page.getByTestId(`sidebar-session-${OTHER_SESSION_KEY}`).click();
       await expect(page.getByTestId('acp-chat-empty-state')).toBeVisible();
       await page.getByTestId(`sidebar-session-${MAIN_SESSION_KEY}`).click();
 
-      await expect(page.getByRole('button').filter({ hasText: 'attached-output.xlsx' })).toHaveCount(1, { timeout: 30_000 });
+      await expect(page.getByRole('button', { name: 'Preview attached-output.xlsx', exact: true })).toHaveCount(1, { timeout: 30_000 });
       await expect(page.getByText(/MEDIA:/)).toHaveCount(0);
     } finally {
       await closeElectronApp(app);
     }
   });
 
-  test('renders canonical OpenClaw transcript media when assistant prose only names the path', async ({ launchElectronApp }) => {
+  test('renders a canonical resource when assistant prose also names its path', async ({ launchElectronApp }) => {
     const app = await launchElectronApp({ skipSetup: true });
     const prompt = 'Create the Markdown market report';
     const reply = 'Markdown 文件在这里：';
@@ -650,37 +640,17 @@ test.describe('ACP media attachments', () => {
       const reportPath = await fixture.createWorkspaceFile('market-report.md', '# Market report\n');
       await fixture.setSessionReplay(MAIN_SESSION_KEY, [
         userUpdate('structured-media-user', prompt),
-        {
-          sessionUpdate: 'agent_message',
+        resourceUpdate({
           messageId: 'structured-media-reply',
-          content: [{ type: 'text', text: `${reply}\n${reportPath}` }],
-        },
+          uri: reportPath,
+          name: 'market-report.md',
+          mimeType: 'text/markdown',
+          text: `${reply}\n${reportPath}`,
+        }),
       ]);
-      const transcript = [
-        { role: 'user', id: 'structured-transcript-user', content: prompt },
-        {
-          role: 'assistant',
-          id: 'structured-transcript-assistant',
-          content: `${reply}\n${reportPath}`,
-          __openclaw: {
-            media: [{
-              path: reportPath,
-              fileName: 'market-report.md',
-              contentType: 'text/markdown',
-              sizeBytes: 16,
-            }],
-          },
-        },
-      ];
-      await fixture.setTranscriptResponses(MAIN_SESSION_KEY, [[]]);
 
       const page = await openChat(app);
       await expect(page.getByText(reply)).toBeVisible({ timeout: 30_000 });
-      await fixture.waitForHistoryRequestCount(MAIN_SESSION_KEY, 1);
-      await fixture.setTranscriptResponses(MAIN_SESSION_KEY, [transcript]);
-      await page.getByTestId(`sidebar-session-${OTHER_SESSION_KEY}`).click();
-      await expect(page.getByTestId('acp-chat-empty-state')).toBeVisible();
-      await page.getByTestId(`sidebar-session-${MAIN_SESSION_KEY}`).click();
 
       const attachment = page.getByRole('button', { name: 'Preview market-report.md', exact: true });
       await expect(attachment).toBeEnabled();
@@ -690,8 +660,8 @@ test.describe('ACP media attachments', () => {
         && call.payload?.name === 'market-report.md'
         && call.payload?.mimeType === 'text/markdown'
         && (call.payload?.ref as Record<string, unknown> | undefined)?.uri === reportPath
-        && (call.payload?.ref as Record<string, unknown> | undefined)?.transcriptMessageId
-          === 'structured-transcript-assistant'
+        && (call.payload?.ref as Record<string, unknown> | undefined)?.sessionKey === MAIN_SESSION_KEY
+        && (call.payload?.ref as Record<string, unknown> | undefined)?.generation === 1
       ))).toBe(true);
     } finally {
       await closeElectronApp(app);
@@ -709,20 +679,9 @@ test.describe('ACP media attachments', () => {
         ],
       });
       const spreadsheetPath = await fixture.createWorkspaceFile('budget_sample.xlsx', workbookBytes());
-      await fixture.setTranscriptResponses(MAIN_SESSION_KEY, [[]]);
-      await fixture.setPromptUpdates(PROMPT, reportedFlowUpdates());
+      await fixture.setPromptUpdates(PROMPT, reportedFlowUpdates(spreadsheetPath));
 
       const page = await openChat(app);
-      await fixture.waitForHistoryRequestCount(MAIN_SESSION_KEY, 1);
-      await fixture.setTranscriptResponses(MAIN_SESSION_KEY, [[
-        { role: 'user', id: 'transcript-user-budget', content: PROMPT },
-        {
-          role: 'assistant',
-          id: 'transcript-assistant-budget',
-          content: `MEDIA:${spreadsheetPath}\n${REPLY}`,
-        },
-      ]]);
-
       await page.getByTestId('chat-composer-input').fill(PROMPT);
       await page.getByTestId('chat-composer-send').click();
 
@@ -730,7 +689,6 @@ test.describe('ACP media attachments', () => {
       const prose = turn.getByText(REPLY);
       const attachment = turn.getByRole('button').filter({ hasText: 'budget_sample.xlsx' });
       await expect(prose).toBeVisible({ timeout: 30_000 });
-      await fixture.waitForHistoryRequestCount(MAIN_SESSION_KEY, 2);
       await expect(attachment).toBeVisible();
       await expect(page.getByText(/MEDIA:/)).toHaveCount(0);
       await expect.poll(async () => prose.evaluate((node, card) => (
@@ -752,7 +710,7 @@ test.describe('ACP media attachments', () => {
 
       await fixture.setSessionReplay(MAIN_SESSION_KEY, [
         { sessionUpdate: 'user_message', messageId: 'history-user-budget', content: [{ type: 'text', text: PROMPT }] },
-        ...reportedFlowUpdates(),
+        ...reportedFlowUpdates(spreadsheetPath),
       ]);
       await page.getByTestId(`sidebar-session-${OTHER_SESSION_KEY}`).click();
       await expect(page.getByTestId('acp-chat-empty-state')).toBeVisible();
@@ -765,7 +723,7 @@ test.describe('ACP media attachments', () => {
     }
   });
 
-  test('renders native ACP resources without transcript evidence and prefers them over duplicate MEDIA evidence', async ({ launchElectronApp }) => {
+  test('renders native ACP resources without runtime-history evidence and keeps them deduplicated after reload', async ({ launchElectronApp }) => {
     const app = await launchElectronApp({ skipSetup: true });
 
     try {
@@ -787,20 +745,11 @@ test.describe('ACP media attachments', () => {
         }),
       ];
       await fixture.setSessionReplay(MAIN_SESSION_KEY, replay);
-      await fixture.setTranscriptResponses(MAIN_SESSION_KEY, [[]]);
 
       const page = await openChat(app);
       const nativeCard = page.getByRole('button', { name: 'Preview Native budget.xlsx', exact: true });
       await expect(nativeCard).toBeEnabled({ timeout: 30_000 });
 
-      await fixture.setTranscriptResponses(MAIN_SESSION_KEY, [[
-        { role: 'user', id: 'native-transcript-user', content: 'Show the native budget' },
-        {
-          role: 'assistant',
-          id: 'native-transcript-assistant',
-          content: `MEDIA:${spreadsheetPath}\nThe native ACP resource is ready.`,
-        },
-      ]]);
       await page.getByTestId(`sidebar-session-${OTHER_SESSION_KEY}`).click();
       await expect(page.getByTestId('acp-chat-empty-state')).toBeVisible();
       await page.getByTestId(`sidebar-session-${MAIN_SESSION_KEY}`).click();
@@ -834,7 +783,6 @@ test.describe('ACP media attachments', () => {
           ],
         },
       ]);
-      await fixture.setTranscriptResponses(MAIN_SESSION_KEY, [[]]);
 
       const page = await openChat(app);
       const localCard = page.getByRole('button').filter({ hasText: 'budget-archive.zip' });
@@ -877,7 +825,6 @@ test.describe('ACP media attachments', () => {
           text: 'The requested path is not in the workspace.',
         }),
       ]);
-      await fixture.setTranscriptResponses(MAIN_SESSION_KEY, [[]]);
 
       const page = await openChat(app);
       const outsideCard = page.getByRole('button', { name: 'Preview private.txt', exact: true });
@@ -913,7 +860,7 @@ test.describe('ACP media attachments', () => {
     }
   });
 
-  test('drops a delayed 1500 ms transcript retry after switching sessions', async ({ launchElectronApp }) => {
+  test('drops a late kernel resource event after switching sessions', async ({ launchElectronApp }) => {
     const app = await launchElectronApp({ skipSetup: true });
     const retryPrompt = 'Prepare the delayed attachment';
 
@@ -925,47 +872,25 @@ test.describe('ACP media attachments', () => {
         ],
       });
       const delayedPath = await fixture.createWorkspaceFile('delayed.txt', 'delayed attachment');
-      await fixture.setTranscriptResponses(MAIN_SESSION_KEY, [[]]);
-      await fixture.setPromptUpdates(retryPrompt, [{
-        sessionUpdate: 'agent_message',
-        messageId: 'delayed-reply',
-        content: [{ type: 'text', text: 'The attachment will arrive shortly.' }],
-      }]);
+      await fixture.setPromptUpdates(retryPrompt, []);
 
       const page = await openChat(app);
-      await fixture.waitForHistoryRequestCount(MAIN_SESSION_KEY, 1);
-      // Drain duplicate startup transcript fetches (Strict Mode / remount) before
-      // arming the deferred live retry response, otherwise an extra historical
-      // read can consume the deferred slot and make the 1500ms gap look ~0ms.
-      await fixture.waitForHistoryQuiet(MAIN_SESSION_KEY);
-      await fixture.setTranscriptResponses(MAIN_SESSION_KEY, [
-        [],
-        {
-          deferId: 'delayed-retry',
-          messages: [
-            { role: 'user', id: 'delayed-transcript-user', content: retryPrompt },
-            {
-              role: 'assistant',
-              id: 'delayed-transcript-assistant',
-              content: `MEDIA:${delayedPath}\nThe attachment will arrive shortly.`,
-            },
-          ],
-        },
-      ]);
-      await fixture.clearHistoryRequestTimes(MAIN_SESSION_KEY);
-      await expect(fixture.releaseTranscriptResponse('delayed-retry')).rejects.toThrow(
-        'Deferred transcript response is not ready: delayed-retry',
-      );
       await page.getByTestId('chat-composer-input').fill(retryPrompt);
       await page.getByTestId('chat-composer-send').click();
-
-      const requestTimes = await fixture.waitForHistoryRequestCount(MAIN_SESSION_KEY, 2, 6_000);
-      expect(requestTimes[1]! - requestTimes[0]!).toBeGreaterThanOrEqual(1_400);
-      await fixture.waitForDeferredTranscriptReady('delayed-retry');
+      await expect(page.getByText(retryPrompt)).toBeVisible();
       await page.getByTestId(`sidebar-session-${OTHER_SESSION_KEY}`).click();
       await expect(page.getByTestId('acp-chat-empty-state')).toBeVisible();
-      await fixture.releaseTranscriptResponse('delayed-retry');
-      await fixture.waitForDeferredTranscriptCompleted('delayed-retry');
+      await fixture.emitAcpSessionUpdates({
+        sessionKey: MAIN_SESSION_KEY,
+        updates: [resourceUpdate({
+          messageId: 'delayed-reply',
+          uri: delayedPath,
+          name: 'delayed.txt',
+          mimeType: 'text/plain',
+          text: 'The attachment will arrive shortly.',
+        })],
+      });
+      await page.waitForTimeout(100);
 
       await expect(page.getByRole('button').filter({ hasText: 'delayed.txt' })).toHaveCount(0);
       await expect(page.getByText('The attachment will arrive shortly.')).toHaveCount(0);
@@ -1017,7 +942,6 @@ test.describe('ACP media attachments', () => {
           content: [{ type: 'text', text: 'The ordered output is complete.' }],
         },
       ]);
-      await fixture.setTranscriptResponses(MAIN_SESSION_KEY, [[]]);
 
       const page = await openChat(app);
       const turn = page.getByTestId('acp-assistant-turn');

@@ -21,7 +21,7 @@ import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { hostApi } from '@/lib/host-api';
 import { cn } from '@/lib/utils';
-import { useGatewayStore } from '@/stores/gateway';
+import { useKernelStore } from '@/stores/kernels';
 
 type DreamPhaseName = 'light' | 'rem' | 'deep';
 type DreamTabKey = 'scene' | 'diary' | 'advanced';
@@ -86,10 +86,6 @@ interface DreamDiaryEntry {
   lines: string[];
 }
 
-interface ConfigSnapshot {
-  hash?: string;
-}
-
 type DreamActionKey = 'backfill' | 'dedupe' | 'repair' | 'resetDiary' | 'resetGrounded';
 type DreamToggleKey = 'enable' | 'disable';
 
@@ -103,14 +99,6 @@ interface PendingConfirmation {
   message: string;
   destructive?: boolean;
 }
-
-const DREAM_ACTION_METHODS: Record<DreamActionKey, string> = {
-  backfill: 'doctor.memory.backfillDreamDiary',
-  dedupe: 'doctor.memory.dedupeDreamDiary',
-  repair: 'doctor.memory.repairDreamingArtifacts',
-  resetDiary: 'doctor.memory.resetDreamDiary',
-  resetGrounded: 'doctor.memory.resetGroundedShortTerm',
-};
 
 const DIARY_START_MARKER = '<!-- openclaw:dreaming:diary:start -->';
 const DIARY_END_MARKER = '<!-- openclaw:dreaming:diary:end -->';
@@ -129,22 +117,6 @@ const DREAM_PHRASE_KEYS = [
   'phrases.indexingDay',
   'phrases.nurturingInsights',
 ] as const;
-
-function buildDreamingEnabledPatchRaw(enabled: boolean): string {
-  return JSON.stringify({
-    plugins: {
-      entries: {
-        'memory-core': {
-          config: {
-            dreaming: {
-              enabled,
-            },
-          },
-        },
-      },
-    },
-  });
-}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value != null && typeof value === 'object' && !Array.isArray(value);
@@ -259,8 +231,7 @@ function buildSignalSource(entry: DreamMemoryEntry, unknownSource: string): stri
 
 export function Dreams() {
   const { t } = useTranslation(['dreams', 'common']);
-  const gatewayStatus = useGatewayStore((state) => state.status);
-  const rpc = useGatewayStore((state) => state.rpc);
+  const openClawRuntime = useKernelStore((state) => state.runtimes.openclaw);
 
   const [dreaming, setDreaming] = useState<DreamingStatus | null>(null);
   const [diary, setDiary] = useState<DreamDiaryResponse | null>(null);
@@ -276,9 +247,7 @@ export function Dreams() {
   const [dreamPhraseIndex, setDreamPhraseIndex] = useState(() => Math.floor(Math.random() * DREAM_PHRASE_KEYS.length));
   const refreshInFlightRef = useRef<Promise<void> | null>(null);
 
-  const gatewayRunning = gatewayStatus.state === 'running';
-  const gatewayReady = gatewayStatus.gatewayReady !== false;
-  const dreamsReady = gatewayRunning && gatewayReady;
+  const dreamsReady = openClawRuntime?.state === 'ready';
   const busy = runningAction != null || runningToggle != null;
   const actionsDisabled = !dreamsReady || busy;
   const dreamsActive = dreamsReady && dreaming?.enabled === true;
@@ -330,8 +299,8 @@ export function Dreams() {
       setError(null);
       try {
         const [statusResponse, diaryResponse] = await Promise.all([
-          rpc<unknown>('doctor.memory.status', {}, 12_000),
-          rpc<DreamDiaryResponse>('doctor.memory.dreamDiary', {}, 12_000),
+          hostApi.openClawDreams.status(),
+          hostApi.openClawDreams.diary() as Promise<DreamDiaryResponse>,
         ]);
         setDreaming(normalizeDreamingStatus(statusResponse));
         setDiary(diaryResponse);
@@ -348,7 +317,7 @@ export function Dreams() {
 
     refreshInFlightRef.current = refreshPromise;
     return refreshPromise;
-  }, [dreamsReady, rpc, t]);
+  }, [dreamsReady, t]);
 
   useEffect(() => {
     void refreshAll();
@@ -380,7 +349,7 @@ export function Dreams() {
     setError(null);
     setLastActionMessage(null);
     try {
-      const result = await rpc<unknown>(DREAM_ACTION_METHODS[action], {}, 120_000);
+      const result = await hostApi.openClawDreams.run(action);
       const message = buildActionMessage(action, result);
       setLastActionMessage(message);
       toast.success(message);
@@ -393,7 +362,7 @@ export function Dreams() {
       setRunningAction(null);
       setPendingConfirmation(null);
     }
-  }, [buildActionMessage, refreshAll, rpc]);
+  }, [buildActionMessage, refreshAll]);
 
   const setDreamingEnabled = useCallback(async (enabled: boolean) => {
     const toggleKey: DreamToggleKey = enabled ? 'enable' : 'disable';
@@ -401,15 +370,7 @@ export function Dreams() {
     setError(null);
     setLastActionMessage(null);
     try {
-      const snapshot = await rpc<ConfigSnapshot>('config.get', {}, 12_000);
-      if (!snapshot.hash) {
-        throw new Error(t('errors.configHashMissing'));
-      }
-      await rpc<unknown>('config.patch', {
-        raw: buildDreamingEnabledPatchRaw(enabled),
-        baseHash: snapshot.hash,
-        note: enabled ? 'Enable memory dreaming from ClawX Dreams.' : 'Disable memory dreaming from ClawX Dreams.',
-      }, 30_000);
+      await hostApi.openClawDreams.setEnabled(enabled);
       const message = enabled ? t('actions.enableSuccess') : t('actions.disableSuccess');
       setDreaming((current) => ({ ...(current ?? {}), enabled }));
       setLastActionMessage(message);
@@ -421,7 +382,7 @@ export function Dreams() {
     } finally {
       setRunningToggle(null);
     }
-  }, [rpc, t]);
+  }, [t]);
 
   const requestConfirmation = useCallback((action: DreamActionKey) => {
     setPendingConfirmation({
@@ -436,12 +397,8 @@ export function Dreams() {
     setOpeningFullUi(true);
     setError(null);
     try {
-      const result = await hostApi.gateway.controlUi('dreams');
-      if (result.success && result.url) {
-        await hostApi.shell.openExternal(result.url);
-      } else {
-        throw new Error(result.error || t('errors.openFullUi'));
-      }
+      const result = await hostApi.openClawDreams.openFullUi();
+      if (!result.success) throw new Error(result.error || t('errors.openFullUi'));
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       setError(message);
@@ -812,7 +769,7 @@ export function Dreams() {
               data-testid="dreams-open-full-ui"
               variant="outline"
               onClick={() => void openFullDreams()}
-              disabled={openingFullUi || !gatewayRunning}
+              disabled={openingFullUi || !dreamsReady}
               className="clawx-toolbar-button h-9"
             >
               {openingFullUi ? <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" /> : <ExternalLink className="mr-2 h-3.5 w-3.5" />}
@@ -824,7 +781,7 @@ export function Dreams() {
         <main className="clawx-page-content clawx-dreams-workspace">
           {!dreamsReady && (
             <div className="rounded-lg border border-border/70 bg-surface-input/70 px-4 py-3 text-sm text-muted-foreground">
-              {t('gatewayNotReady')}
+              {t('runtimeNotReady')}
             </div>
           )}
 

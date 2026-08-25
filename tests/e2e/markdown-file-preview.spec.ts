@@ -82,7 +82,6 @@ test.describe('Markdown file preview', { tag: E2E_EXCLUSIVE_TAG }, () => {
       });
       await fixture.createWorkspaceFile(FILE_NAME, MARKDOWN_FIXTURE);
       await fixture.setSessionReplay(MAIN_SESSION_KEY, []);
-      await fixture.setTranscriptResponses(MAIN_SESSION_KEY, [[]]);
 
       const page = await openChat(app);
       await page.getByTestId('chat-toolbar-workspace').click();

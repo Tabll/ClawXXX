@@ -36,8 +36,8 @@ export function isDefaultWorkspacePath(value: string | null | undefined): boolea
   if (!normalized) return false;
   const slashed = slashPath(normalized);
   return slashed === DEFAULT_WORKSPACE_CWD
-    || /^\/(?:Users|home)\/[^/]+\/\.openclaw\/workspace$/i.test(slashed)
-    || /^[A-Za-z]:\/Users\/[^/]+\/\.openclaw\/workspace$/i.test(slashed);
+    || /^\/(?:Users|home)\/[^/]+\/\.clawx\/workspace$/i.test(slashed)
+    || /^[A-Za-z]:\/Users\/[^/]+\/\.clawx\/workspace$/i.test(slashed);
 }
 
 export function formatWorkspacePath(workspace: string): string {

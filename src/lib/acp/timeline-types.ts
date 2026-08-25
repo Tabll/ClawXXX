@@ -10,7 +10,7 @@ export type AttachmentUnavailableReason = AttachmentAccessError;
 export type AttachmentAccessTarget =
   | {
       kind: 'local';
-      scope: 'workspace' | 'openclaw-media' | 'staging';
+      scope: 'workspace' | 'openclaw-media' | 'staging' | 'canonical-blob';
       entryKind: 'file' | 'directory';
       ref: AttachmentFileRef;
     }
@@ -52,6 +52,12 @@ export type AssistantMessageMetadata = {
   timestamp?: number;
   model?: string;
   provider?: string;
+  kernelId?: string;
+  kernelVersion?: string;
+  agentId?: string;
+  agentName?: string;
+  agentDeleted?: boolean;
+  runId?: string;
   usage?: {
     inputTokens?: number;
     outputTokens?: number;

@@ -22,7 +22,7 @@ vi.mock('node:os', async (importOriginal) => {
 });
 
 vi.mock('electron', () => ({
-  app: { getPath: vi.fn(() => '/tmp/clawx-user-data') },
+  app: { getPath: vi.fn(() => join(mocks.home, 'user-data')) },
   nativeImage: { createFromPath: vi.fn() },
   shell: {
     openPath: mocks.openPath,

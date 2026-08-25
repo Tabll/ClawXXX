@@ -24,6 +24,16 @@
         "disableVisible": "Выключить видимые",
         "installSkill": "Установить навыки"
     },
+    "kernel": {
+        "title": "Состояние ядра",
+        "targetLabel": "Цель операции",
+        "installTarget": "Установить в",
+        "target": { "openclaw": "OpenClaw", "deepseek-harness": "DeepSeek Harness", "all-installed": "Оба" },
+        "enabled": "Включено",
+        "disabled": "Отключено",
+        "retry": "Повторить",
+        "state": { "ready": "Готово", "partial": "Частично", "pending": "Ожидание", "applying": "Применение", "failed": "Ошибка", "unsupported": "Несовместимо", "notInstalled": "Не установлено" }
+    },
     "noSkills": "Навыки не найдены",
     "noSkillsSearch": "Попробуйте другой поисковый запрос",
     "noSkillsAvailable": "Навыки недоступны",
@@ -82,6 +92,9 @@
             "plugin": "Каталог плагина",
             "agentsPersonal": "Личные .agents",
             "agentsProject": "Проектные .agents",
+            "canonicalBundled": "Единый встроенный",
+            "canonicalMarketplace": "Единый маркетплейс",
+            "canonicalLocal": "Единый локальный",
             "unknown": "Неизвестный источник"
         }
     },
@@ -110,7 +123,10 @@
         "noBatchDisableTargets": "Все видимые навыки уже выключены.",
         "batchEnabled": "{{count}} навыков включено.",
         "batchDisabled": "{{count}} навыков выключено.",
-        "batchPartial": "Обновлено {{success}} / {{total}} навыков. Некоторые элементы не удались."
+        "batchPartial": "Обновлено {{success}} / {{total}} навыков. Некоторые элементы не удались.",
+        "kernelPartial": "Операция выполнена только для части ядер. Откройте навык для диагностики и повтора.",
+        "retrySucceeded": "Проекция ядра восстановлена",
+        "retryFailed": "Повтор не удался: {{error}}"
     },
     "marketplace": {
         "title": "Маркетплейс",

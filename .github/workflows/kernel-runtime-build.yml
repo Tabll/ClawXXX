@@ -1,0 +1,418 @@
+name: Build signed kernel runtimes
+
+on:
+  workflow_dispatch:
+    inputs:
+      kernel:
+        description: Kernel to build
+        type: choice
+        options: [all, openclaw, deepseek-harness]
+        default: all
+      artifact-base-url:
+        description: Immutable staging object prefix
+        required: true
+        default: https://oss.intelli-spectrum.com/kernels
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: kernel-runtime-staging-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    environment: kernel-staging
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        kernel: ${{ fromJSON(inputs.kernel == 'all' && '["openclaw","deepseek-harness"]' || format('["{0}"]', inputs.kernel)) }}
+        target:
+          - { os: macos-14, platform: darwin, arch: arm64 }
+          - { os: macos-15-intel, platform: darwin, arch: x64 }
+          - { os: windows-2025, platform: win32, arch: x64 }
+          - { os: ubuntu-24.04, platform: linux, arch: x64 }
+          - { os: ubuntu-24.04-arm, platform: linux, arch: arm64 }
+    runs-on: ${{ matrix.target.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          run_install: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.15.0
+          cache: pnpm
+      - name: Install frozen CI tooling
+        run: pnpm install --frozen-lockfile
+      - name: Verify all frozen source, lock, patch, overlay and Node inputs
+        run: pnpm run kernel:sources:verify
+      - name: Fetch exact OpenClaw npm patch base
+        if: matrix.kernel == 'openclaw'
+        run: node scripts/kernel-runtime/download-npm-source.mjs --kernel openclaw --destination temp/kernel-source
+      - name: Fetch exact DeepSeek Harness Git patch base
+        if: matrix.kernel == 'deepseek-harness'
+        run: node scripts/kernel-runtime/checkout-git-source.mjs --kernel deepseek-harness --destination temp/kernel-source
+      - name: Apply strict patch series and recorded overlays
+        run: node scripts/kernel-runtime/prepare-source.mjs --kernel ${{ matrix.kernel }} --checkout temp/kernel-source
+      - name: Build and test OpenClaw runtime closure
+        if: matrix.kernel == 'openclaw'
+        run: >-
+          pnpm exec vitest run
+          tests/unit/openclaw-restart-recovery-patch.test.ts
+          tests/unit/openclaw-lm-studio-tool-schema-patch.test.ts
+          tests/contract/kernels/openclaw-conversation-store.test.ts
+      - name: Materialize OpenClaw payload
+        if: matrix.kernel == 'openclaw'
+        run: >-
+          pnpm exec zx scripts/bundle-openclaw.mjs
+      - name: Build reviewed OpenClaw plugin mirrors
+        if: matrix.kernel == 'openclaw'
+        run: pnpm exec zx scripts/bundle-openclaw-plugins.mjs
+      - name: Add reviewed OpenClaw runtime overlay
+        if: matrix.kernel == 'openclaw'
+        run: node scripts/kernel-runtime/materialize-overlay.mjs --kernel openclaw --payload build/openclaw
+      - name: Add OpenClaw plugins to the optional runtime only
+        if: matrix.kernel == 'openclaw'
+        run: node scripts/kernel-runtime/materialize-openclaw-plugins.mjs --payload build/openclaw
+      - name: Install, build and test DeepSeek Harness overlay workspace
+        if: matrix.kernel == 'deepseek-harness'
+        working-directory: temp/kernel-source
+        env:
+          CLAWX_DSH_RUN_SANDBOX_SMOKE: '1'
+        run: >-
+          pnpm install --frozen-lockfile &&
+          pnpm run build:lib:host &&
+          pnpm exec vitest run
+          packages/acp/clawx-rich-events/tests
+          packages/acp/clawx-acp-bridge/tests
+          packages/control/clawx-control-bridge/tests
+          packages/runtime/clawx-runtime-host/tests
+          packages/sandbox/sandbox/tests/roots.spec.ts
+          packages/session/session-persistence-clawx/tests
+      - name: Deploy DeepSeek Harness runtime-host production closure
+        if: matrix.kernel == 'deepseek-harness'
+        working-directory: temp/kernel-source
+        run: pnpm --config.node-linker=hoisted --filter @clawx/dsh-runtime-host deploy --prod --legacy ../kernel-payload
+      - name: Materialize DeepSeek Harness deploy links as reviewed regular files
+        if: matrix.kernel == 'deepseek-harness'
+        run: >-
+          node scripts/kernel-runtime/materialize-deploy-tree.mjs
+          --payload temp/kernel-payload
+          --workspace temp/kernel-source
+          --platform ${{ matrix.target.platform }}
+      - name: Select payload path
+        shell: bash
+        run: |
+          if [ "${{ matrix.kernel }}" = "openclaw" ]; then
+            echo "CLAWX_PAYLOAD=$GITHUB_WORKSPACE/build/openclaw" >> "$GITHUB_ENV"
+          else
+            echo "CLAWX_PAYLOAD=$GITHUB_WORKSPACE/temp/kernel-payload" >> "$GITHUB_ENV"
+          fi
+      - name: Prune non-target native payloads
+        run: node scripts/kernel-runtime/prune-native-payload.mjs --payload "${{ env.CLAWX_PAYLOAD }}" --platform ${{ matrix.target.platform }} --arch ${{ matrix.target.arch }}
+      - name: Audit exact runtime licenses and redistribution obligations
+        run: >-
+          node scripts/kernel-runtime/audit-licenses.mjs
+          --payload "${{ env.CLAWX_PAYLOAD }}"
+          --kernel ${{ matrix.kernel }}
+          --report temp/reports/licenses.json
+      - name: Download and verify independent Node 24 runtime
+        run: node scripts/kernel-runtime/download-node-runtime.mjs --platform ${{ matrix.target.platform }} --arch ${{ matrix.target.arch }} --destination temp/node-runtime
+      - name: Import macOS runtime signing certificate
+        if: matrix.target.platform == 'darwin'
+        uses: apple-actions/import-codesign-certs@v3
+        with:
+          p12-file-base64: ${{ secrets.CLAWX_MAC_RUNTIME_CERT_P12_B64 }}
+          p12-password: ${{ secrets.CLAWX_MAC_RUNTIME_CERT_PASSWORD }}
+      - name: Sign and strictly verify every macOS runtime executable
+        if: matrix.target.platform == 'darwin'
+        run: >-
+          node scripts/kernel-runtime/sign-macos-runtime.mjs
+          --kernel "${{ env.CLAWX_PAYLOAD }}"
+          --node temp/node-runtime
+          --identity "${{ secrets.CLAWX_MAC_RUNTIME_SIGNING_IDENTITY }}"
+          --report temp/reports/platform-signing.json
+      - name: Notarize the signed macOS runtime closure
+        if: matrix.target.platform == 'darwin'
+        shell: bash
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+        run: |
+          set -euo pipefail
+          profile="clawx-runtime-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          mkdir -p temp/notarization/runtime
+          ditto "${CLAWX_PAYLOAD}" temp/notarization/runtime/kernel
+          ditto temp/node-runtime temp/notarization/runtime/node
+          ditto -c -k --sequesterRsrc --keepParent temp/notarization/runtime temp/notarization.zip
+          xcrun notarytool store-credentials "$profile" --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_SPECIFIC_PASSWORD"
+          xcrun notarytool submit temp/notarization.zip --keychain-profile "$profile" --wait --output-format json > temp/reports/notarization.json
+          node scripts/kernel-runtime/write-platform-security-report.mjs --platform darwin --arch ${{ matrix.target.arch }} --signing temp/reports/platform-signing.json --notarization temp/reports/notarization.json --output temp/reports/platform-security.json
+      - name: Materialize Windows runtime signing certificate
+        if: matrix.target.platform == 'win32'
+        shell: pwsh
+        env:
+          CLAWX_WINDOWS_SIGNING_CERT_PFX_B64: ${{ secrets.CLAWX_WINDOWS_SIGNING_CERT_PFX_B64 }}
+        run: |
+          if (-not $env:CLAWX_WINDOWS_SIGNING_CERT_PFX_B64) { throw "Missing Windows signing certificate" }
+          [IO.File]::WriteAllBytes("temp/runtime-signing.pfx", [Convert]::FromBase64String($env:CLAWX_WINDOWS_SIGNING_CERT_PFX_B64))
+      - name: Sign and strictly verify every Windows runtime executable
+        if: matrix.target.platform == 'win32'
+        shell: pwsh
+        env:
+          CLAWX_WINDOWS_RUNTIME_CERT_PASSWORD: ${{ secrets.CLAWX_WINDOWS_SIGNING_CERT_PASSWORD }}
+        run: >-
+          ./scripts/kernel-runtime/sign-windows-runtime.ps1
+          -KernelRoot "${{ env.CLAWX_PAYLOAD }}"
+          -NodeRoot temp/node-runtime
+          -CertificatePath temp/runtime-signing.pfx
+          -ReportPath temp/reports/platform-signing.json
+      - name: Finalize Windows platform security evidence
+        if: matrix.target.platform == 'win32'
+        run: >-
+          node scripts/kernel-runtime/write-platform-security-report.mjs
+          --platform win32 --arch ${{ matrix.target.arch }}
+          --signing temp/reports/platform-signing.json
+          --output temp/reports/platform-security.json
+      - name: Remove Windows runtime certificate material
+        if: always() && matrix.target.platform == 'win32'
+        shell: pwsh
+        run: Remove-Item -LiteralPath temp/runtime-signing.pfx -Force -ErrorAction SilentlyContinue
+      - name: Record Linux ABI and sandbox support evidence
+        if: matrix.target.platform == 'linux'
+        run: >-
+          node scripts/kernel-runtime/write-platform-security-report.mjs
+          --platform linux --arch ${{ matrix.target.arch }}
+          --output temp/reports/platform-security.json
+      - name: Run canonical storage and runtime build contract suites
+        shell: bash
+        run: |
+          suites=(
+            tests/unit/kernel-runtime-build.test.ts
+            tests/contract/data/blob-and-conversation-store.test.ts
+            tests/contract/domains/channels-runtime.test.ts
+            tests/contract/domains/scheduler.test.ts
+            tests/contract/kernels/conversation-router.test.ts
+            tests/contract/kernels/data-service-spike.test.ts
+            tests/contract/kernels/history-cutover.test.ts
+            tests/contract/kernels/kernel-driver-contract.test.ts
+          )
+          if [ "${{ matrix.kernel }}" = "openclaw" ]; then
+            suites+=(tests/contract/kernels/openclaw-conversation-store.test.ts tests/contract/kernels/openclaw-runtime-dir.test.ts)
+          else
+            suites+=(tests/contract/kernels/deepseek-harness-driver.test.ts)
+          fi
+          mkdir -p temp/reports
+          pnpm exec vitest run "${suites[@]}" --reporter=default --reporter=json --outputFile.json=temp/reports/vitest-storage-contracts.json
+          printf 'CLAWX_STORAGE_SUITES=%s\n' "$(IFS=,; echo "${suites[*]}")" >> "$GITHUB_ENV"
+      - name: Record test and no-native-history evidence
+        shell: bash
+        run: |
+          mkdir -p temp/runtime-data temp/reports
+          node scripts/kernel-runtime/write-build-report.mjs --type tests --kernel "${{ matrix.kernel }}" --output temp/reports/tests.json --suites "$CLAWX_STORAGE_SUITES" --vitest-report temp/reports/vitest-storage-contracts.json
+          node scripts/kernel-runtime/write-build-report.mjs --type scenarios --kernel "${{ matrix.kernel }}" --output temp/reports/scenarios.json --suites "$CLAWX_STORAGE_SUITES" --vitest-report temp/reports/vitest-storage-contracts.json --completed new,prompt,cancel,compact,branch,restart,cron,channel
+          node scripts/kernel-runtime/storage-contract-scan.mjs --data-dir temp/runtime-data --scenarios temp/reports/scenarios.json --report temp/reports/storage.json
+        env:
+          SOURCE_DATE_EPOCH: '1787428800'
+      - name: Build deterministic tar.zst and signed descriptor
+        run: >-
+          node scripts/kernel-runtime/build-runtime.mjs
+          --kernel ${{ matrix.kernel }}
+          --platform ${{ matrix.target.platform }}
+          --arch ${{ matrix.target.arch }}
+          --payload "${{ env.CLAWX_PAYLOAD }}"
+          --node temp/node-runtime
+          --tests temp/reports/tests.json
+          --storage temp/reports/storage.json
+          --licenses temp/reports/licenses.json
+          --platform-security temp/reports/platform-security.json
+          --output temp/artifacts
+          --base-url "${{ inputs['artifact-base-url'] }}"
+          --source-checkout temp/kernel-source
+        env:
+          CLAWX_ARTIFACT_SIGNING_KEY_ID: ${{ secrets.CLAWX_ARTIFACT_SIGNING_KEY_ID }}
+          CLAWX_ARTIFACT_SIGNING_PRIVATE_KEY_B64: ${{ secrets.CLAWX_ARTIFACT_SIGNING_PRIVATE_KEY_B64 }}
+      - name: Emit artifact-only staging trust for the clean-machine install test
+        run: >-
+          node scripts/kernel-runtime/write-staging-artifact-trust.mjs
+          --artifact-dir temp/artifacts
+          --output temp/artifacts/staging-artifact-trust.json
+        env:
+          CLAWX_ARTIFACT_SIGNING_KEY_ID: ${{ secrets.CLAWX_ARTIFACT_SIGNING_KEY_ID }}
+          CLAWX_ARTIFACT_SIGNING_PRIVATE_KEY_B64: ${{ secrets.CLAWX_ARTIFACT_SIGNING_PRIVATE_KEY_B64 }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: kernel-runtime-${{ matrix.kernel }}-${{ matrix.target.platform }}-${{ matrix.target.arch }}
+          path: temp/artifacts/*
+          if-no-files-found: error
+          retention-days: 14
+
+  clean-machine-smoke:
+    needs: build
+    timeout-minutes: 30
+    env:
+      CLAWX_E2E_WORKERS: '1'
+      ELECTRON_DISABLE_SANDBOX: '1'
+    strategy:
+      fail-fast: false
+      matrix:
+        kernel: ${{ fromJSON(inputs.kernel == 'all' && '["openclaw","deepseek-harness"]' || format('["{0}"]', inputs.kernel)) }}
+        target:
+          - { os: macos-14, platform: darwin, arch: arm64 }
+          - { os: macos-15-intel, platform: darwin, arch: x64 }
+          - { os: windows-2025, platform: win32, arch: x64 }
+          - { os: ubuntu-24.04, platform: linux, arch: x64 }
+          - { os: ubuntu-24.04-arm, platform: linux, arch: arm64 }
+    runs-on: ${{ matrix.target.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          run_install: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.15.0
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - uses: actions/download-artifact@v4
+        with:
+          name: kernel-runtime-${{ matrix.kernel }}-${{ matrix.target.platform }}-${{ matrix.target.arch }}
+          path: temp/artifact
+      - name: Verify extraction, identity, managed entrypoint, budgets, storage paths and platform security
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p temp/reports
+          node scripts/kernel-runtime/runtime-artifact-smoke.mjs --artifact-dir temp/artifact | tee temp/reports/runtime-artifact-smoke.json
+      - name: Install the real signed runtime through the production package-manager path
+        env:
+          CLAWX_REAL_ARTIFACT_REQUIRED: '1'
+          CLAWX_REAL_ARTIFACT_DIR: temp/artifact
+          CLAWX_REAL_ARTIFACT_TRUST: temp/artifact/staging-artifact-trust.json
+          CLAWX_REAL_ARTIFACT_EVIDENCE: temp/reports/package-manager-artifact-install.json
+        run: >-
+          pnpm exec vitest run
+          tests/contract/kernels/real-runtime-artifact-install.test.ts
+          --reporter=default --reporter=json
+          --outputFile.json=temp/reports/package-manager-artifact-install.vitest.json
+      - name: Run OpenClaw patch, driver, portable-context and no-native-history suites after artifact smoke
+        if: matrix.kernel == 'openclaw'
+        run: >-
+          pnpm exec vitest run
+          tests/unit/openclaw-restart-recovery-patch.test.ts
+          tests/unit/openclaw-lm-studio-tool-schema-patch.test.ts
+          tests/unit/openclaw-self-import-patch.test.ts
+          tests/unit/openclaw-sdk-optional.test.ts
+          tests/contract/kernels/openclaw-conversation-store.test.ts
+          tests/contract/kernels/openclaw-acp-adapter.test.ts
+          tests/contract/kernels/openclaw-driver.test.ts
+          tests/contract/kernels/openclaw-runtime-dir.test.ts
+          tests/contract/kernels/history-cutover.test.ts
+      - name: Build the shared ClawX UI after the real runtime artifact smoke
+        run: pnpm run build:vite
+      - name: Run focused shared-UI Electron regression on Linux
+        if: matrix.target.platform == 'linux'
+        shell: bash
+        run: |
+          specs=(
+            tests/e2e/kernel-catalog-lifecycle.spec.ts
+            tests/e2e/chat-acp-session-controls.spec.ts
+            tests/e2e/agents-multi-kernel.spec.ts
+            tests/e2e/channels-multi-kernel.spec.ts
+            tests/e2e/cron-multi-kernel.spec.ts
+            tests/e2e/skills-multi-kernel.spec.ts
+          )
+          if [ "${{ matrix.kernel }}" = "openclaw" ]; then specs+=(tests/e2e/openclaw-dreams.spec.ts); fi
+          xvfb-run -a pnpm exec playwright test "${specs[@]}" --project=parallel --no-deps --workers=1
+      - name: Run focused shared-UI Electron regression on macOS and Windows
+        if: matrix.target.platform != 'linux'
+        shell: bash
+        run: |
+          specs=(
+            tests/e2e/kernel-catalog-lifecycle.spec.ts
+            tests/e2e/chat-acp-session-controls.spec.ts
+            tests/e2e/agents-multi-kernel.spec.ts
+            tests/e2e/channels-multi-kernel.spec.ts
+            tests/e2e/cron-multi-kernel.spec.ts
+            tests/e2e/skills-multi-kernel.spec.ts
+          )
+          if [ "${{ matrix.kernel }}" = "openclaw" ]; then specs+=(tests/e2e/openclaw-dreams.spec.ts); fi
+          pnpm exec playwright test "${specs[@]}" --project=parallel --no-deps --workers=1
+      - name: Run communication replay and regression comparison after artifact smoke
+        run: pnpm run comms:replay && pnpm run comms:compare
+      - name: Upload clean-machine runtime and shared-UI evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: kernel-evidence-${{ matrix.kernel }}-clean-machine-${{ matrix.target.platform }}-${{ matrix.target.arch }}
+          path: |
+            temp/reports/runtime-artifact-smoke.json
+            temp/reports/package-manager-artifact-install.json
+            temp/reports/package-manager-artifact-install.vitest.json
+            playwright-report
+            test-results
+            artifacts/comms
+          if-no-files-found: warn
+          retention-days: 14
+
+  clean-machine-dual-runtime:
+    if: inputs.kernel == 'all'
+    needs: build
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - { os: macos-14, platform: darwin, arch: arm64 }
+          - { os: macos-15-intel, platform: darwin, arch: x64 }
+          - { os: windows-2025, platform: win32, arch: x64 }
+          - { os: ubuntu-24.04, platform: linux, arch: x64 }
+          - { os: ubuntu-24.04-arm, platform: linux, arch: arm64 }
+    runs-on: ${{ matrix.target.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          run_install: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.15.0
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - uses: actions/download-artifact@v4
+        with:
+          name: kernel-runtime-openclaw-${{ matrix.target.platform }}-${{ matrix.target.arch }}
+          path: temp/artifacts/openclaw
+      - uses: actions/download-artifact@v4
+        with:
+          name: kernel-runtime-deepseek-harness-${{ matrix.target.platform }}-${{ matrix.target.arch }}
+          path: temp/artifacts/deepseek-harness
+      - name: Prepare dual-runtime evidence directory
+        run: >-
+          node -e "require('node:fs').mkdirSync('temp/reports', { recursive: true })"
+      - name: Install and concurrently smoke both real signed runtime artifacts
+        env:
+          CLAWX_REAL_DUAL_ARTIFACT_REQUIRED: '1'
+          CLAWX_REAL_OPENCLAW_ARTIFACT_DIR: temp/artifacts/openclaw
+          CLAWX_REAL_DSH_ARTIFACT_DIR: temp/artifacts/deepseek-harness
+          CLAWX_REAL_DUAL_ARTIFACT_TRUST: temp/artifacts/openclaw/staging-artifact-trust.json
+          CLAWX_REAL_DUAL_ARTIFACT_EVIDENCE: temp/reports/dual-runtime-artifact-smoke.json
+        run: >-
+          pnpm exec vitest run
+          tests/contract/kernels/real-dual-runtime-artifacts.test.ts
+          --reporter=default --reporter=json
+          --outputFile.json=temp/reports/dual-runtime-artifact-smoke.vitest.json
+      - name: Upload real dual-runtime evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: kernel-evidence-dual-runtime-${{ matrix.target.platform }}-${{ matrix.target.arch }}
+          path: |
+            temp/reports/dual-runtime-artifact-smoke.json
+            temp/reports/dual-runtime-artifact-smoke.vitest.json
+          if-no-files-found: warn
+          retention-days: 14

@@ -6,7 +6,7 @@
 <h1 align="center">ClawX</h1>
 
 <p align="center">
-  <strong>OpenClaw AI 智能体的桌面客户端</strong>
+  <strong>多个 AI 智能体内核共用的桌面界面</strong>
 </p>
 
 <p align="center">
@@ -24,7 +24,7 @@
   <a href="https://discord.com/invite/84Kex3GGAh" target="_blank">
   <img src="https://img.shields.io/discord/1399603591471435907?logo=discord&labelColor=%20%235462eb&logoColor=%20%23f5f5f5&color=%20%235462eb" alt="chat on Discord" />
   </a>
-  <img src="https://img.shields.io/github/downloads/ValueCell-ai/ClawX/total?color=%23027DEB" alt="Downloads" />
+  <img src="https://img.shields.io/github/downloads/Tabll/ClawXXX/total?color=%23027DEB" alt="Downloads" />
   <img src="https://img.shields.io/badge/license-MIT-green" alt="License" />
 </p>
 
@@ -36,7 +36,7 @@
 
 ## 概述
 
-**ClawX** 是连接强大 AI 智能体与普通用户之间的桥梁。基于 [OpenClaw](https://github.com/OpenClaw) 构建，它将命令行式的 AI 编排转变为易用、美观的桌面体验——无需使用终端。
+**ClawX** 是连接强大 AI 智能体与普通用户之间的桥梁。它把可选的 [OpenClaw](https://github.com/openclaw/openclaw) 与 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 运行时托管在同一套易用桌面体验中——无需使用终端。
 
 无论是自动化工作流、连接通讯软件，还是调度智能定时任务，ClawX 都能提供高效易用的图形界面，帮助你充分发挥 AI 智能体的能力。
 
@@ -62,19 +62,20 @@ ClawX 预置了最佳实践的模型供应商配置，原生支持 Windows 平�
 </table>
 ## 为什么选择 ClawX
 
-构建 AI 智能体不应该需要精通命令行。ClawX 的设计理念很简单：**强大的技术值得拥有一个尊重用户时间的界面**。ClawX 直接基于官方 OpenClaw 核心构建。无需单独安装，我们将运行时嵌入应用内部，提供开箱即用的无缝体验，并致力于与上游 OpenClaw 项目保持严格同步，确保你始终可以使用官方发布的最新功能、稳定性改进和生态兼容性。
+构建 AI 智能体不应该需要精通命令行。ClawX 的设计理念很简单：**强大的技术值得拥有一个尊重用户时间的界面**。轻量主程序不再包含任何 Agent 内核；首次使用可分别下载 OpenClaw、DeepSeek Harness、两者或都不安装。两个内核独立签名、独立更新，却完全共用 ClawX UI 与一套本地历史。
 
 | 痛点 | ClawX 解决方案 |
 |------|----------------|
 | 复杂的命令行配置 | 一键安装，配合引导式设置向导 |
 | 手动编辑配置文件 | 可视化设置界面，实时校验 |
-| 进程管理繁琐 | 自动管理网关生命周期 |
+| 进程管理繁琐 | 独立管理每个内核的生命周期、健康、修复与回滚 |
 | 应用更新 | 启动时检查新版本，并在下载或安装前提示确认 |
 | 多 AI 供应商切换 | 统一的供应商配置面板 |
 | 技能/插件安装复杂 | 内置技能市场与管理界面 |
 
 ### 功能特性
 
+- **🧠 可选多内核**：OpenClaw 与 DeepSeek Harness 可分别下载并同时运行，一个内核的崩溃、更新或回滚不影响另一个；Chat、Agents、Channels、Cron、Skills 与历史完全共用当前 UI。
 - **🎯 零配置门槛**：从安装到第一次 AI 对话，全程指引式图形界面，无需终端命令、YAML 配置或环境变量。
 - **💬 智能聊天界面**：多会话上下文与历史记录，支持按工作区分组、置顶、搜索和批量操作；提供 ACP 原生的会话级模型/推理设置、上下文用量与手动压缩、可见且有上限的跟进消息队列，以及悬停查看消息模型和 Token 用量；同时支持流式 Markdown、`@agent` 直接路由、`/技能` 内联卡片和文档只读预览。
 - **📡 多频道管理**：同时配置和监控多个 AI 频道，每个频道独立运行并支持多账号；内置腾讯官方个人微信渠道插件。
@@ -99,21 +100,23 @@ ClawX 预置了最佳实践的模型供应商配置，原生支持 Windows 平�
 
 ### 系统要求
 
-- **操作系统**：macOS 11+、Windows 10+ 或 Linux（Ubuntu 20.04+）
+- **可选内核操作系统**：macOS 13.5+、Windows 10 x64，或兼容 Ubuntu 24.04 的 Linux（x64/arm64；glibc 2.39+、kernel 6.8+）
 - **内存**：最低 4GB RAM（推荐 8GB）
-- **存储空间**：1GB 可用磁盘空间
+- **存储空间**：ClawX 约需 1GB，另为每个所选运行时预留空间（建议总计 3GB 可用）
+
+0.6.0 不支持 Linux musl/Alpine 与 Windows arm64 运行时，详见[支持矩阵](docs/zh-CN/runtime-security-support.md)。
 
 ### 安装方式
 
 #### 预构建版本（推荐）
 
-从 [Releases](https://github.com/ValueCell-ai/ClawX/releases) 页面下载适用于你平台的最新版本。
+从 [Releases](https://github.com/Tabll/ClawXXX/releases) 页面下载适用于你平台的最新版本。
 
 #### 从源码开始
 
 ```bash
 # 克隆仓库
-git clone https://github.com/ValueCell-ai/ClawX.git
+git clone https://github.com/Tabll/ClawXXX.git
 cd ClawX
 
 # 初始化项目
@@ -127,9 +130,10 @@ pnpm dev
 首次启动 ClawX 时，**设置向导** 将引导你完成以下步骤：
 
 1. **语言与区域** – 配置你的首选语言和地区
-2. **AI 供应商** – 通过 API 密钥或 OAuth（支持浏览器/设备登录的供应商）添加账号
-3. **技能包** – 选择适用于常见场景的预配置技能
-4. **验证** – 在进入主界面前测试你的配置
+2. **内核目录** – 安装 OpenClaw、DeepSeek Harness、两者或暂不安装
+3. **AI 供应商** – 通过 API 密钥或 OAuth（支持浏览器/设备登录的供应商）添加账号
+4. **技能包** – 选择适用于常见场景的预配置技能
+5. **验证** – 在进入主界面前测试你的配置
 
 > Web search 说明：ClawX 会在 Agent 和 Gateway 两层策略中禁用 OpenClaw 的通用 `web_search` 工具。
 > 这也包括 Moonshot（Kimi）搜索；受管浏览器自动化和 `web_fetch` 仍然可用。
@@ -138,7 +142,7 @@ pnpm dev
 
 ### 代理设置
 
-ClawX 内置了代理设置，适用于需要通过本地代理客户端访问外网的场景，包括 Electron 本身、OpenClaw Gateway，以及 Telegram 这类频道的联网请求。
+ClawX 内置了代理设置，覆盖 Electron、可下载 runtime 与 Telegram 等频道的联网请求。启动环境变化只会重启受影响且已安装的内核，不会启动缺失 runtime，也不会重启另一个内核。
 
 打开 **设置 → 网关 → 代理**，配置以下内容：
 
@@ -150,11 +154,18 @@ ClawX 内置了代理设置，适用于需要通过本地代理客户端访问�
 
 ## 系统架构
 
-ClawX 采用 **双进程 + Host API 统一接入架构**：React 渲染进程只通过统一的 host-api/api-client 抽象与后端交互，协议选择、Gateway 生命周期与 ACP Chat stdio bridge 全部由 Electron 主进程统一管理。
+ClawX 采用 **Main-owned 多内核 + Host API 统一接入架构**：React Renderer 只调用 canonical 客户端抽象，DataService、协议选择、包验证、逐内核 supervisor、Scheduler、Channels 与 Credential Broker 全由 Electron Main 管理。
 
-- **进程模型**：Electron 主进程负责窗口、网关进程监控、系统集成与自动更新；OpenClaw Gateway 作为独立运行时进程提供 AI 编排、频道和技能能力；渲染层不直接访问本地端点。
+> ClawX 0.6 已实现可选 CI 预制 OpenClaw 与 DeepSeek Harness，并以 Main 独占 SQLite/Blob 为统一数据权威；公开发布仍会在受保护的跨平台签名、晋级与 packaged-test 证据不足时 fail closed。参见[多内核设计](docs/zh-CN/multi-kernel-design.md)、[实施清单](TODO.md)、[运行时安全/支持](docs/zh-CN/runtime-security-support.md)和[数据策略](docs/zh-CN/data-security-retention.md)。
+
+- **进程模型**：Electron Main 管理系统集成、唯一 DataService、Package Manager 和逐内核独立 Supervisor；OpenClaw 与 DSH 可并行运行，Renderer 和 runtime 都不能直接打开 SQLite 或互相直连。
 - **配置交付**：Gateway 运行时由 Main 使用 `config.get` / `config.set`，停止或启动中则更新解析后的 JSON5 配置；普通 Provider/Agent/Skill/模型修改不会替换进程，凭据通过 `secrets.reload` 热更新。连续三分钟没有已验证的 Gateway 活动后，ClawX 会验证核心 RPC，并且只重启其自身拥有且不可用的 Gateway 进程；外部管理的 Gateway 保留给用户手动恢复。
-- **ACP Chat**：Chat UI 基于 ACP ([Agent Client Protocol](https://agentclientprotocol.com)) 与 OpenClaw 交互，从而在高速迭代的 OpenClaw 前找到相对稳定的聊天协议面。ACP 走 Main 持有的 stdio bridge，支持配置热重载后的历史回放认证、跨页面持续流式输出、会话声明的模型/推理设置、上下文用量与手动压缩、顺序发送的跟进队列，以及由 Main 验证和加载的媒体/附件/文件活动（Changes）展示。会话 transcript 只用于有界补充悬停元数据和 ACP 尚未提供的资源，不会成为第二套聊天历史来源。当受保护的 Gateway 重启中断已接收的对话轮次时，补丁后的 OpenClaw 运行时会将恢复 run 显式关联到原 ACP prompt，使后续文本和工具活动继续进入同一个内存轮次；之后的历史回放也会以原生 ACP 更新恢复持久化的工具边界。
+- **统一 Provider**：Provider 元数据、模型选择、每内核默认项和独立 projection 状态都由 SQLite 统一记录。密钥保留在 OS 安全存储，只从 preload 持有的 closed-shadow 输入框以一次性句柄交给 Main；经过身份认证的内核进程只能按已选账号和授权用途向 Credential Broker 请求。单个内核投影失败不会回滚另一个已 ready 的投影。
+- **统一 Skills**：一个 Skills catalog 统一保存不可变 package metadata、逐内核安装/启用意图、兼容性、projection 诊断和重试状态。OpenClaw 与 DeepSeek Harness 使用相互独立的物理副本，禁止交叉软链接；Both 操作保留并展示 partial success。DSH 只通过隔离的 `ctx.skills` adapter 注册兼容 instruction body，含未支持辅助文件的包会显示明确原因。
+- **统一 Channels**：一个 SQLite catalog 统一保存账号、kernel/agent binding、owner lease、消息到 Conversation 的映射、附件、重试及投递历史，凭据只进 OS 安全存储。OpenClaw 使用带认证的 native handoff adapter，DeepSeek Harness 使用 Main-owned 的八类 connector Relay；不同账号可并发运行，同一账号不会被双重消费，也不会生成 connector-native 历史。
+- **统一 Cron**：Main-owned ClawXScheduler 在 SQLite 统一保存 job、唯一 due admission、run 诊断、Conversation 目标和 Channel delivery 关联。OpenClaw 与 DeepSeek Harness 任务可并行执行，并明确选择 kernel/agent、时区、misfire、overlap、timeout 与 Conversation policy；managed runtime 的原生 scheduler/history 已禁用。
+- **统一 Chat**：Chat 历史、run events、权限、Usage 和附件引用全部读取 Main 独占的 SQLite Conversation Store；ACP 与未来 runtime bridge 只负责实时执行。每个实时事件都携带 conversation/run/kernel/generation/sequence 完整身份，因此页面导航可保留后台流，同一 Conversation 也可在 turn 边界切换内核，不再依赖 runtime transcript fallback。
+- **统一 Usage 与诊断**：OpenClaw provider response 和 DeepSeek Harness SessionEvent 以逐调用、幂等记录写入同一 SQLite；Dashboard 可比较全部/OpenClaw/DSH，缺失 Token 或费用保持未知而不是伪装成 0。逐内核诊断可定位精确 artifact、补丁修订、协议、进程 generation、健康与能力；持久化和导出日志使用隔离目录及统一的密钥/路径脱敏。
 - **Dreams**：开发者专用的原生 Dreams 页只通过类型化 Host API 调用 OpenClaw `doctor.memory.*` 和受保护的 `config.patch`；带认证的 Control UI URL 由 Electron Main 构造并将 Dreams 视图映射到 `/dreaming`，渲染层不直连 Gateway。
 - **设计原则**：前端调用单一入口、Main 掌控传输策略、优雅恢复（重连/超时/退避）、安全存储与 CORS 安全。
 
@@ -171,7 +182,7 @@ ClawX 采用 **双进程 + Host API 统一接入架构**：React 渲染进程只
 ### 常用命令
 
 ```bash
-pnpm run init        # 初始化开发环境（安装依赖并下载捆绑运行时）
+pnpm run init        # 初始化宿主开发环境并下载宿主工具
 pnpm dev             # 以热重载模式启动
 pnpm lint            # ESLint 检查
 pnpm typecheck       # TypeScript 类型检查
@@ -233,7 +244,7 @@ ClawX 构建于以下优秀的开源项目之上：
 ## Stars 历史
 
 <p align="center">
-  <img src="https://api.star-history.com/svg?repos=ValueCell-ai/ClawX&type=Date" alt="Stars 历史图表" />
+  <img src="https://api.star-history.com/svg?repos=Tabll/ClawXXX&type=Date" alt="Stars 历史图表" />
 </p>
 
 

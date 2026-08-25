@@ -1,870 +1,327 @@
-/**
- * Setup Wizard Page
- * First-time setup experience for new users
- */
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { motion, AnimatePresence } from 'framer-motion';
 import {
+  AlertCircle,
   Check,
+  CheckCircle2,
   ChevronLeft,
   ChevronRight,
+  Cpu,
+  Download,
   Loader2,
-  AlertCircle,
   RefreshCw,
-  CheckCircle2,
-  XCircle,
-  ExternalLink,
+  RotateCw,
 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
+import type { KernelCatalogEntry } from '@shared/host-api/kernels';
 import { TitleBar } from '@/components/layout/TitleBar';
 import { Button } from '@/components/ui/button';
-import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
+import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
-import { useGatewayStore } from '@/stores/gateway';
-import { useSettingsStore } from '@/stores/settings';
-import { useTranslation } from 'react-i18next';
-import type { TFunction } from 'i18next';
 import { SUPPORTED_LANGUAGES } from '@/i18n';
-import { toast } from 'sonner';
+import { useKernelStore } from '@/stores/kernels';
+import { useSettingsStore } from '@/stores/settings';
 import { hostApi } from '@/lib/host-api';
-
-interface SetupStep {
-  id: string;
-  title: string;
-  description: string;
-}
-
-const STEP = {
-  WELCOME: 0,
-  RUNTIME: 1,
-  INSTALLING: 2,
-  COMPLETE: 3,
-} as const;
-
-const getSteps = (t: TFunction): SetupStep[] => [
-  {
-    id: 'welcome',
-    title: t('steps.welcome.title'),
-    description: t('steps.welcome.description'),
-  },
-  {
-    id: 'runtime',
-    title: t('steps.runtime.title'),
-    description: t('steps.runtime.description'),
-  },
-  {
-    id: 'installing',
-    title: t('steps.installing.title'),
-    description: t('steps.installing.description'),
-  },
-  {
-    id: 'complete',
-    title: t('steps.complete.title'),
-    description: t('steps.complete.description'),
-  },
-];
-
-// Default skills to auto-install (no additional API keys required)
-interface DefaultSkill {
-  id: string;
-  name: string;
-  description: string;
-}
-
-const getDefaultSkills = (t: TFunction): DefaultSkill[] => [
-  { id: 'opencode', name: t('defaultSkills.opencode.name'), description: t('defaultSkills.opencode.description') },
-  { id: 'python-env', name: t('defaultSkills.python-env.name'), description: t('defaultSkills.python-env.description') },
-  { id: 'code-assist', name: t('defaultSkills.code-assist.name'), description: t('defaultSkills.code-assist.description') },
-  { id: 'file-tools', name: t('defaultSkills.file-tools.name'), description: t('defaultSkills.file-tools.description') },
-  { id: 'terminal', name: t('defaultSkills.terminal.name'), description: t('defaultSkills.terminal.description') },
-];
-
 import clawxIcon from '@/assets/logo.svg';
 
-// NOTE: Channel types moved to Settings > Channels page
-// NOTE: Skill bundles moved to Settings > Skills page - auto-install essential skills during setup
+const STEP = { WELCOME: 0, CATALOG: 1, COMPLETE: 2 } as const;
 
 export function Setup() {
-  const { t } = useTranslation(['setup', 'channels']);
+  const { t } = useTranslation('setup');
   const navigate = useNavigate();
-  const [currentStep, setCurrentStep] = useState<number>(STEP.WELCOME);
+  const [step, setStep] = useState<number>(STEP.WELCOME);
+  const [skipped, setSkipped] = useState<Record<string, boolean>>({});
+  const markSetupComplete = useSettingsStore(state => state.markSetupComplete);
+  const initKernels = useKernelStore(state => state.init);
+  const refresh = useKernelStore(state => state.refresh);
+  const catalog = useKernelStore(state => state.catalog);
+  const pending = useKernelStore(state => state.pending);
+  const errors = useKernelStore(state => state.errors);
+  const progress = useKernelStore(state => state.progress);
+  const restartRequired = useKernelStore(state => state.restartRequired);
+  const install = useKernelStore(state => state.install);
 
-  // Setup state
-  // Installation state for the Installing step
-  const [installedSkills, setInstalledSkills] = useState<string[]>([]);
-  // Runtime check status
-  const [runtimeChecksPassed, setRuntimeChecksPassed] = useState(false);
+  useEffect(() => { void initKernels(); }, [initKernels]);
 
-  const steps = getSteps(t);
-  const safeStepIndex = Number.isInteger(currentStep)
-    ? Math.min(Math.max(currentStep, STEP.WELCOME), steps.length - 1)
-    : STEP.WELCOME;
-  const step = steps[safeStepIndex] ?? steps[STEP.WELCOME];
-  const isFirstStep = safeStepIndex === STEP.WELCOME;
-  const isLastStep = safeStepIndex === steps.length - 1;
+  const entries = catalog?.entries ?? [];
+  const anyPending = Object.values(pending).some(Boolean);
+  const installedNames = entries
+    .filter(entry => entry.installation.state === 'installed')
+    .map(entry => entry.displayName);
+  const needsRestart = Object.values(restartRequired).some(Boolean);
 
-  const markSetupComplete = useSettingsStore((state) => state.markSetupComplete);
-
-  // Derive canProceed based on current step - computed directly to avoid useEffect
-  const canProceed = useMemo(() => {
-    switch (safeStepIndex) {
-      case STEP.WELCOME:
-        return true;
-      case STEP.RUNTIME:
-        return runtimeChecksPassed;
-      case STEP.INSTALLING:
-        return false; // Cannot manually proceed, auto-proceeds when done
-      case STEP.COMPLETE:
-        return true;
-      default:
-        return true;
-    }
-  }, [safeStepIndex, runtimeChecksPassed]);
-
-  const handleNext = async () => {
-    if (isLastStep) {
-      // Complete setup
-      markSetupComplete();
-      toast.success(t('complete.title'));
-      navigate('/');
-    } else {
-      setCurrentStep((i) => i + 1);
-    }
-  };
-
-  const handleBack = () => {
-    setCurrentStep((i) => Math.max(i - 1, 0));
-  };
-
-  const handleSkip = () => {
+  const finish = () => {
     markSetupComplete();
     navigate('/');
   };
 
-  // Auto-proceed when installation is complete
-  const handleInstallationComplete = useCallback((skills: string[]) => {
-    setInstalledSkills(skills);
-    // Auto-proceed to next step after a short delay
-    setTimeout(() => {
-      setCurrentStep((i) => i + 1);
-    }, 1000);
-  }, []);
-
+  const steps = useMemo(() => [
+    t('steps.welcome.title'),
+    t('steps.catalog.title'),
+    t('steps.complete.title'),
+  ], [t]);
 
   return (
     <div data-testid="setup-page" className="flex h-screen flex-col overflow-hidden bg-background text-foreground">
       <TitleBar />
       <div className="flex-1 overflow-auto">
-        {/* Progress Indicator */}
-        <div className="flex justify-center pt-8">
-          <div className="flex items-center gap-2">
-            {steps.map((s, i) => (
-              <div key={s.id} className="flex items-center">
+        <div className="mx-auto flex max-w-3xl flex-col px-8 py-8">
+          <div className="mb-8 flex justify-center gap-2" aria-label={t('progressLabel')}>
+            {steps.map((label, index) => (
+              <div key={label} className="flex items-center">
                 <div
+                  aria-current={index === step ? 'step' : undefined}
                   className={cn(
-                    'flex h-8 w-8 items-center justify-center rounded-full border-2 transition-colors',
-                    i < safeStepIndex
-                      ? 'border-primary bg-primary text-primary-foreground'
-                      : i === safeStepIndex
-                        ? 'border-primary text-primary'
-                        : 'border-muted-foreground/30 text-muted-foreground'
+                    'flex h-8 w-8 items-center justify-center rounded-full border-2 text-sm transition-colors',
+                    index < step && 'border-primary bg-primary text-primary-foreground',
+                    index === step && 'border-primary text-primary',
+                    index > step && 'border-muted-foreground/30 text-muted-foreground',
                   )}
+                  title={label}
                 >
-                  {i < safeStepIndex ? (
-                    <Check className="h-4 w-4" />
-                  ) : (
-                    <span className="text-sm">{i + 1}</span>
-                  )}
+                  {index < step ? <Check className="h-4 w-4" /> : index + 1}
                 </div>
-                {i < steps.length - 1 && (
-                  <div
-                    className={cn(
-                      'h-0.5 w-8 transition-colors',
-                      i < safeStepIndex ? 'bg-primary' : 'bg-muted-foreground/30'
-                    )}
-                  />
+                {index < steps.length - 1 && (
+                  <div className={cn('h-0.5 w-12', index < step ? 'bg-primary' : 'bg-muted-foreground/30')} />
                 )}
               </div>
             ))}
           </div>
-        </div>
 
-        {/* Step Content */}
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={step.id}
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -20 }}
-            className="mx-auto max-w-2xl p-8"
-          >
-            <div className="text-center mb-8">
-              <h1 className="text-3xl font-serif font-normal tracking-tight mb-2">{t(`steps.${step.id}.title`)}</h1>
-              <p className="text-muted-foreground">{t(`steps.${step.id}.description`)}</p>
-            </div>
+          <section className="mb-8 text-center">
+            <h1 className="mb-2 font-serif text-3xl font-normal tracking-tight">{steps[step]}</h1>
+            <p className="text-muted-foreground">
+              {step === STEP.WELCOME && t('steps.welcome.description')}
+              {step === STEP.CATALOG && t('steps.catalog.description')}
+              {step === STEP.COMPLETE && t('steps.complete.description')}
+            </p>
+          </section>
 
-            {/* Step-specific content */}
-            <div className="rounded-xl bg-card text-card-foreground border shadow-sm p-8 mb-8">
-              {safeStepIndex === STEP.WELCOME && <WelcomeContent />}
-              {safeStepIndex === STEP.RUNTIME && <RuntimeContent onStatusChange={setRuntimeChecksPassed} />}
-              {safeStepIndex === STEP.INSTALLING && (
-                <InstallingContent
-                  skills={getDefaultSkills(t)}
-                  onComplete={handleInstallationComplete}
-                  onSkip={() => setCurrentStep((i) => i + 1)}
-                />
-              )}
-              {safeStepIndex === STEP.COMPLETE && (
-                <CompleteContent
-                  installedSkills={installedSkills}
-                />
-              )}
-            </div>
-
-            {/* Navigation - hidden during installation step */}
-            {safeStepIndex !== STEP.INSTALLING && (
-              <div className="flex justify-between">
-                <div>
-                  {!isFirstStep && (
-                    <Button variant="ghost" onClick={handleBack}>
-                      <ChevronLeft className="h-4 w-4 mr-2" />
-                      {t('nav.back')}
-                    </Button>
-                  )}
-                </div>
-                <div className="flex gap-2">
-                  {!isLastStep && safeStepIndex !== STEP.RUNTIME && (
-                    <Button data-testid="setup-skip-button" variant="ghost" onClick={handleSkip}>
-                      {t('nav.skipSetup')}
-                    </Button>
-                  )}
-                  <Button data-testid="setup-next-button" onClick={handleNext} disabled={!canProceed}>
-                    {isLastStep ? (
-                      t('nav.getStarted')
-                    ) : (
-                      <>
-                        {t('nav.next')}
-                        <ChevronRight className="h-4 w-4 ml-2" />
-                      </>
-                    )}
+          <div className="mb-8 rounded-xl border bg-card p-8 text-card-foreground shadow-sm">
+            {step === STEP.WELCOME && <Welcome />}
+            {step === STEP.CATALOG && (
+              <div data-testid="setup-kernel-catalog" className="space-y-5">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <h2 className="font-serif text-xl font-normal tracking-tight">{t('catalog.title')}</h2>
+                    <p className="mt-1 text-sm text-muted-foreground">{t('catalog.subtitle')}</p>
+                  </div>
+                  <Button variant="ghost" size="sm" disabled={anyPending} onClick={() => void refresh(true)}>
+                    <RefreshCw className="mr-2 h-4 w-4" />{t('catalog.refresh')}
                   </Button>
                 </div>
+
+                {catalog?.warning && (
+                  <div className="flex gap-2 rounded-lg border border-yellow-500/20 bg-yellow-500/10 p-3 text-sm text-yellow-700 dark:text-yellow-400">
+                    <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                    <span>{catalog.warning}</span>
+                  </div>
+                )}
+
+                <div className="grid gap-4 md:grid-cols-2">
+                  {entries.map(entry => (
+                    <KernelCard
+                      key={entry.kernelId}
+                      entry={entry}
+                      skipped={skipped[entry.kernelId] === true}
+                      pending={pending[entry.kernelId]}
+                      error={errors[entry.kernelId]}
+                      progress={progress[entry.kernelId]}
+                      onInstall={() => void install(entry.kernelId)}
+                      onSkip={() => setSkipped(current => ({
+                        ...current,
+                        [entry.kernelId]: !current[entry.kernelId],
+                      }))}
+                    />
+                  ))}
+                </div>
+
+                <p className="text-xs leading-5 text-muted-foreground">{t('catalog.sharedData')}</p>
               </div>
             )}
-          </motion.div>
-        </AnimatePresence>
-      </div>
-    </div>
-  );
-}
-
-// ==================== Step Content Components ====================
-
-function WelcomeContent() {
-  const { t } = useTranslation(['setup', 'settings']);
-  const { language, setLanguage } = useSettingsStore();
-
-  return (
-    <div data-testid="setup-welcome-step" className="text-center space-y-4">
-      <div className="mb-4 flex justify-center">
-        <img src={clawxIcon} alt="ClawX" className="h-16 w-16" />
-      </div>
-      <h2 className="text-xl font-serif font-normal tracking-tight">{t('welcome.title')}</h2>
-      <p className="text-muted-foreground">
-        {t('welcome.description')}
-      </p>
-
-      {/* Language Selector */}
-      <div className="flex justify-center gap-2 py-2">
-        {SUPPORTED_LANGUAGES.map((lang) => (
-          <Button
-            key={lang.code}
-            variant={language === lang.code ? 'secondary' : 'ghost'}
-            size="sm"
-            onClick={() => setLanguage(lang.code)}
-            className={cn(
-              'h-7 text-xs',
-              language === lang.code
-                ? 'bg-black/5 dark:bg-white/10 text-foreground'
-                : 'text-muted-foreground hover:bg-black/5 dark:hover:bg-white/5',
-            )}
-          >
-            {lang.label}
-          </Button>
-        ))}
-      </div>
-
-      <ul className="text-left space-y-2 text-muted-foreground pt-2">
-        <li className="flex items-center gap-2">
-          <CheckCircle2 className="h-5 w-5 text-green-600 dark:text-green-400" />
-          {t('welcome.features.noCommand')}
-        </li>
-        <li className="flex items-center gap-2">
-          <CheckCircle2 className="h-5 w-5 text-green-600 dark:text-green-400" />
-          {t('welcome.features.modernUI')}
-        </li>
-        <li className="flex items-center gap-2">
-          <CheckCircle2 className="h-5 w-5 text-green-600 dark:text-green-400" />
-          {t('welcome.features.bundles')}
-        </li>
-        <li className="flex items-center gap-2">
-          <CheckCircle2 className="h-5 w-5 text-green-600 dark:text-green-400" />
-          {t('welcome.features.crossPlatform')}
-        </li>
-      </ul>
-    </div>
-  );
-}
-
-interface RuntimeContentProps {
-  onStatusChange: (canProceed: boolean) => void;
-}
-
-function RuntimeContent({ onStatusChange }: RuntimeContentProps) {
-  const { t } = useTranslation('setup');
-  const gatewayStatus = useGatewayStore((state) => state.status);
-  const startGateway = useGatewayStore((state) => state.start);
-
-  const [checks, setChecks] = useState({
-    nodejs: { status: 'checking' as 'checking' | 'success' | 'error', message: '' },
-    openclaw: { status: 'checking' as 'checking' | 'success' | 'error', message: '' },
-    gateway: { status: 'checking' as 'checking' | 'success' | 'error', message: '' },
-  });
-  const [showLogs, setShowLogs] = useState(false);
-  const [logContent, setLogContent] = useState('');
-  const [openclawDir, setOpenclawDir] = useState('');
-  const gatewayTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-
-  const runChecks = useCallback(async () => {
-    // Reset checks
-    setChecks({
-      nodejs: { status: 'checking', message: '' },
-      openclaw: { status: 'checking', message: '' },
-      gateway: { status: 'checking', message: '' },
-    });
-
-    // Check Node.js — always available in Electron
-    setChecks((prev) => ({
-      ...prev,
-      nodejs: { status: 'success', message: t('runtime.status.success') },
-    }));
-
-    // Check OpenClaw package status
-    try {
-      const openclawStatus = await hostApi.openclaw.status();
-
-      setOpenclawDir(openclawStatus.dir);
-
-      if (!openclawStatus.packageExists) {
-        setChecks((prev) => ({
-          ...prev,
-          openclaw: {
-            status: 'error',
-            message: `OpenClaw package not found at: ${openclawStatus.dir}`
-          },
-        }));
-      } else if (!openclawStatus.isBuilt) {
-        setChecks((prev) => ({
-          ...prev,
-          openclaw: {
-            status: 'error',
-            message: 'OpenClaw package found but dist is missing'
-          },
-        }));
-      } else {
-        const versionLabel = openclawStatus.version ? ` v${openclawStatus.version}` : '';
-        setChecks((prev) => ({
-          ...prev,
-          openclaw: {
-            status: 'success',
-            message: `OpenClaw package ready${versionLabel}`
-          },
-        }));
-      }
-    } catch (error) {
-      setChecks((prev) => ({
-        ...prev,
-        openclaw: { status: 'error', message: `Check failed: ${error}` },
-      }));
-    }
-
-    // Check Gateway — read directly from store to avoid stale closure
-    // Don't immediately report error; gateway may still be initializing
-    const currentGateway = useGatewayStore.getState().status;
-    if (currentGateway.state === 'running') {
-      setChecks((prev) => ({
-        ...prev,
-        gateway: { status: 'success', message: `Running on port ${currentGateway.port}` },
-      }));
-    } else if (currentGateway.state === 'error') {
-      setChecks((prev) => ({
-        ...prev,
-        gateway: { status: 'error', message: currentGateway.error || t('runtime.status.error') },
-      }));
-    } else {
-      // Gateway is 'stopped', 'starting', or 'reconnecting'
-      // Keep as 'checking' — the dedicated useEffect will update when status changes
-      setChecks((prev) => ({
-        ...prev,
-        gateway: {
-          status: 'checking',
-          message: currentGateway.state === 'starting' ? t('runtime.status.checking') : 'Waiting for gateway...'
-        },
-      }));
-    }
-  }, [t]);
-
-  useEffect(() => {
-    runChecks();
-  }, [runChecks]);
-
-  // Update canProceed when gateway status changes
-  useEffect(() => {
-    const allPassed = checks.nodejs.status === 'success'
-      && checks.openclaw.status === 'success'
-      && (checks.gateway.status === 'success' || gatewayStatus.state === 'running');
-    onStatusChange(allPassed);
-  }, [checks, gatewayStatus, onStatusChange]);
-
-  // Update gateway check when gateway status changes
-  useEffect(() => {
-    if (gatewayStatus.state === 'running') {
-      setChecks((prev) => ({
-        ...prev,
-        gateway: { status: 'success', message: t('runtime.status.gatewayRunning', { port: gatewayStatus.port }) },
-      }));
-    } else if (gatewayStatus.state === 'error') {
-      setChecks((prev) => ({
-        ...prev,
-        gateway: { status: 'error', message: gatewayStatus.error || 'Failed to start' },
-      }));
-    } else if (gatewayStatus.state === 'starting' || gatewayStatus.state === 'reconnecting') {
-      setChecks((prev) => ({
-        ...prev,
-        gateway: { status: 'checking', message: 'Starting...' },
-      }));
-    }
-    // 'stopped' state: keep current check status (likely 'checking') to allow startup time
-  }, [gatewayStatus, t]);
-
-  // Gateway startup timeout — show error only after giving enough time to initialize
-  useEffect(() => {
-    if (gatewayTimeoutRef.current) {
-      clearTimeout(gatewayTimeoutRef.current);
-      gatewayTimeoutRef.current = null;
-    }
-
-    // If gateway is already in a terminal state, no timeout needed
-    if (gatewayStatus.state === 'running' || gatewayStatus.state === 'error') {
-      return;
-    }
-
-    // Set timeout for non-terminal states (stopped, starting, reconnecting)
-    gatewayTimeoutRef.current = setTimeout(() => {
-      setChecks((prev) => {
-        if (prev.gateway.status === 'checking') {
-          return {
-            ...prev,
-            gateway: { status: 'error', message: 'Gateway startup timed out' },
-          };
-        }
-        return prev;
-      });
-    }, 600 * 1000); // 600 seconds — enough for gateway to fully initialize
-
-    return () => {
-      if (gatewayTimeoutRef.current) {
-        clearTimeout(gatewayTimeoutRef.current);
-        gatewayTimeoutRef.current = null;
-      }
-    };
-  }, [gatewayStatus.state]);
-
-  const handleStartGateway = async () => {
-    setChecks((prev) => ({
-      ...prev,
-      gateway: { status: 'checking', message: 'Starting...' },
-    }));
-    await startGateway();
-  };
-
-  const handleShowLogs = async () => {
-    try {
-      const logs = await hostApi.logs.recent(100);
-      setLogContent(logs.content);
-      setShowLogs(true);
-    } catch {
-      setLogContent('(Failed to load logs)');
-      setShowLogs(true);
-    }
-  };
-
-  const handleOpenLogDir = async () => {
-    try {
-      const { dir: logDir } = await hostApi.logs.dir();
-      if (logDir) {
-        await hostApi.shell.showItemInFolder(logDir);
-      }
-    } catch {
-      // ignore
-    }
-  };
-
-  const ERROR_TRUNCATE_LEN = 30;
-
-  const renderStatus = (status: 'checking' | 'success' | 'error', message: string) => {
-    if (status === 'checking') {
-      return (
-        <span className="flex items-center gap-2 text-yellow-700 dark:text-yellow-400 whitespace-nowrap">
-          <Loader2 className="h-5 w-5 flex-shrink-0 animate-spin" />
-          {message || 'Checking...'}
-        </span>
-      );
-    }
-    if (status === 'success') {
-      return (
-        <span className="flex items-center gap-2 text-green-700 dark:text-green-400 whitespace-nowrap">
-          <CheckCircle2 className="h-5 w-5 flex-shrink-0" />
-          {message}
-        </span>
-      );
-    }
-
-    const isLong = message.length > ERROR_TRUNCATE_LEN;
-    const displayMsg = isLong ? message.slice(0, ERROR_TRUNCATE_LEN) : message;
-
-    return (
-      <span className="flex items-center gap-2 text-red-700 dark:text-red-400 whitespace-nowrap">
-        <XCircle className="h-5 w-5 flex-shrink-0" />
-        <span>{displayMsg}</span>
-        {isLong && (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <span className="cursor-pointer text-red-700 dark:text-red-300 hover:text-red-800 dark:hover:text-red-200 font-medium">...</span>
-            </TooltipTrigger>
-            <TooltipContent side="top" className="max-w-sm whitespace-normal break-words text-xs">
-              {message}
-            </TooltipContent>
-          </Tooltip>
-        )}
-      </span>
-    );
-  };
-
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between mb-4">
-        <h2 className="text-xl font-serif font-normal tracking-tight">{t('runtime.title')}</h2>
-        <div className="flex gap-2">
-          <Button variant="ghost" size="sm" onClick={handleShowLogs}>
-            {t('runtime.viewLogs')}
-          </Button>
-          <Button variant="ghost" size="sm" onClick={runChecks}>
-            <RefreshCw className="h-4 w-4 mr-2" />
-            {t('runtime.recheck')}
-          </Button>
-        </div>
-      </div>
-      <div className="space-y-3">
-        <div className="grid grid-cols-[1fr_auto] items-center gap-4 p-3 rounded-lg bg-surface-input/50">
-          <span className="text-left">{t('runtime.nodejs')}</span>
-          <div className="flex justify-end">
-            {renderStatus(checks.nodejs.status, checks.nodejs.message)}
-          </div>
-        </div>
-        <div className="grid grid-cols-[1fr_auto] items-center gap-4 p-3 rounded-lg bg-surface-input/50">
-          <div className="text-left min-w-0">
-            <span>{t('runtime.openclaw')}</span>
-            {openclawDir && (
-              <p className="text-xs text-muted-foreground mt-0.5 font-mono break-all">
-                {openclawDir}
-              </p>
+            {step === STEP.COMPLETE && (
+              <div data-testid="setup-complete-step" className="space-y-5 text-center">
+                <CheckCircle2 className="mx-auto h-14 w-14 text-green-700 dark:text-green-400" />
+                <div>
+                  <h2 className="font-serif text-xl font-normal tracking-tight">{t('complete.title')}</h2>
+                  <p className="mt-2 text-muted-foreground">{t('complete.subtitle')}</p>
+                </div>
+                <div className="rounded-lg bg-black/[0.04] p-4 text-left text-sm dark:bg-white/[0.08]">
+                  <p className="font-medium">{t('complete.installed')}</p>
+                  <p className="mt-1 text-muted-foreground">
+                    {installedNames.length > 0 ? installedNames.join(', ') : t('complete.noneInstalled')}
+                  </p>
+                </div>
+                {needsRestart && (
+                  <div className="rounded-lg border border-blue-500/20 bg-blue-500/10 p-4 text-left text-sm text-blue-700 dark:text-blue-400">
+                    {t('complete.restartRequired')}
+                  </div>
+                )}
+              </div>
             )}
           </div>
-          <div className="flex justify-end self-start mt-0.5">
-            {renderStatus(checks.openclaw.status, checks.openclaw.message)}
-          </div>
-        </div>
-        <div className="grid grid-cols-[1fr_auto] items-center gap-4 p-3 rounded-lg bg-surface-input/50">
-          <div className="flex items-center gap-2 text-left">
-            <span>{t('runtime.gateway')}</span>
-            {checks.gateway.status === 'error' && (
-              <Button variant="outline" size="sm" onClick={handleStartGateway}>
-                {t('runtime.startGateway')}
-              </Button>
-            )}
-          </div>
-          <div className="flex justify-end">
-            {renderStatus(checks.gateway.status, checks.gateway.message)}
-          </div>
-        </div>
-      </div>
 
-      {(checks.nodejs.status === 'error' || checks.openclaw.status === 'error') && (
-        <div className="mt-4 p-4 rounded-lg bg-red-500/10 border border-red-500/20">
-          <div className="flex items-start gap-2">
-            <AlertCircle className="h-5 w-5 text-red-700 dark:text-red-400 mt-0.5" />
+          <div className="flex justify-between">
             <div>
-              <p className="font-medium text-red-700 dark:text-red-400">{t('runtime.issue.title')}</p>
-              <p className="text-sm text-muted-foreground mt-1">
-                {t('runtime.issue.desc')}
-              </p>
+              {step > STEP.WELCOME && step < STEP.COMPLETE && (
+                <Button variant="ghost" onClick={() => setStep(current => current - 1)} disabled={anyPending}>
+                  <ChevronLeft className="mr-2 h-4 w-4" />{t('nav.back')}
+                </Button>
+              )}
             </div>
-          </div>
-        </div>
-      )}
-
-      {/* Log viewer panel */}
-      {showLogs && (
-        <div className="mt-4 p-4 rounded-lg bg-black/40 border border-border">
-          <div className="flex items-center justify-between mb-2">
-            <p className="font-medium text-foreground text-sm">{t('runtime.logs.title')}</p>
             <div className="flex gap-2">
-              <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={handleOpenLogDir}>
-                <ExternalLink className="h-3 w-3 mr-1" />
-                {t('runtime.logs.openFolder')}
-              </Button>
-              <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setShowLogs(false)}>
-                {t('runtime.logs.close')}
-              </Button>
+              {step < STEP.COMPLETE && (
+                <Button data-testid="setup-skip-button" variant="ghost" onClick={finish} disabled={anyPending}>
+                  {t('nav.skipSetup')}
+                </Button>
+              )}
+              {step === STEP.WELCOME && (
+                <Button data-testid="setup-next-button" onClick={() => setStep(STEP.CATALOG)}>
+                  {t('nav.next')}<ChevronRight className="ml-2 h-4 w-4" />
+                </Button>
+              )}
+              {step === STEP.CATALOG && (
+                <Button data-testid="setup-next-button" onClick={() => setStep(STEP.COMPLETE)} disabled={anyPending}>
+                  {t('catalog.continue')}<ChevronRight className="ml-2 h-4 w-4" />
+                </Button>
+              )}
+              {step === STEP.COMPLETE && (
+                needsRestart ? (
+                  <Button data-testid="setup-relaunch-button" onClick={() => void hostApi.app.relaunch()}>
+                    <RotateCw className="mr-2 h-4 w-4" />{t('complete.restartNow')}
+                  </Button>
+                ) : (
+                  <Button data-testid="setup-next-button" onClick={finish}>{t('nav.getStarted')}</Button>
+                )
+              )}
             </div>
           </div>
-          <pre className="text-xs text-foreground/80 bg-black/5 dark:bg-white/10 p-3 rounded max-h-60 overflow-auto whitespace-pre-wrap font-mono">
-            {logContent || t('runtime.logs.noLogs')}
-          </pre>
         </div>
-      )}
+      </div>
     </div>
   );
 }
 
-// NOTE: ProviderContent component removed - configure providers via Settings > AI Providers
-
-
-// Installation status for each skill
-type InstallStatus = 'pending' | 'installing' | 'completed' | 'failed';
-
-interface SkillInstallState {
-  id: string;
-  name: string;
-  description: string;
-  status: InstallStatus;
-}
-
-interface InstallingContentProps {
-  skills: DefaultSkill[];
-  onComplete: (installedSkills: string[]) => void;
-  onSkip: () => void;
-}
-
-function InstallingContent({ skills, onComplete, onSkip }: InstallingContentProps) {
+function Welcome() {
   const { t } = useTranslation('setup');
-  const [skillStates, setSkillStates] = useState<SkillInstallState[]>(
-    skills.map((s) => ({ ...s, status: 'pending' as InstallStatus }))
-  );
-  const [overallProgress, setOverallProgress] = useState(0);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const installStarted = useRef(false);
-
-  // Real installation process
-  useEffect(() => {
-    if (installStarted.current) return;
-    installStarted.current = true;
-
-    const runRealInstall = async () => {
-      try {
-        // Step 1: Initialize all skills to 'installing' state for UI
-        setSkillStates(prev => prev.map(s => ({ ...s, status: 'installing' })));
-        setOverallProgress(10);
-
-        // Step 2: Call the backend to install uv and setup Python
-        const result = await hostApi.uv.installAll();
-
-        if (result.success) {
-          setSkillStates(prev => prev.map(s => ({ ...s, status: 'completed' })));
-          setOverallProgress(100);
-
-          await new Promise((resolve) => setTimeout(resolve, 800));
-          onComplete(skills.map(s => s.id));
-        } else {
-          setSkillStates(prev => prev.map(s => ({ ...s, status: 'failed' })));
-          setErrorMessage(result.error || 'Unknown error during installation');
-          toast.error('Environment setup failed');
-        }
-      } catch (err) {
-        setSkillStates(prev => prev.map(s => ({ ...s, status: 'failed' })));
-        setErrorMessage(String(err));
-        toast.error('Installation error');
-      }
-    };
-
-    runRealInstall();
-  }, [skills, onComplete]);
-
-  const getStatusIcon = (status: InstallStatus) => {
-    switch (status) {
-      case 'pending':
-        return <div className="h-5 w-5 rounded-full border-2 border-muted-foreground/30" />;
-      case 'installing':
-        return <Loader2 className="h-5 w-5 text-primary animate-spin" />;
-      case 'completed':
-        return <CheckCircle2 className="h-5 w-5 text-green-700 dark:text-green-400" />;
-      case 'failed':
-        return <XCircle className="h-5 w-5 text-red-700 dark:text-red-400" />;
-    }
-  };
-
-  const getStatusText = (skill: SkillInstallState) => {
-    switch (skill.status) {
-      case 'pending':
-        return <span className="text-muted-foreground">{t('installing.status.pending')}</span>;
-      case 'installing':
-        return <span className="text-primary">{t('installing.status.installing')}</span>;
-      case 'completed':
-        return <span className="text-green-700 dark:text-green-400">{t('installing.status.installed')}</span>;
-      case 'failed':
-        return <span className="text-red-700 dark:text-red-400">{t('installing.status.failed')}</span>;
-    }
-  };
-
+  const language = useSettingsStore(state => state.language);
+  const setLanguage = useSettingsStore(state => state.setLanguage);
   return (
-    <div className="space-y-6">
-      <div className="text-center">
-        <div className="text-4xl mb-4">⚙️</div>
-        <h2 className="text-xl font-serif font-normal tracking-tight mb-2">{t('installing.title')}</h2>
-        <p className="text-muted-foreground">
-          {t('installing.subtitle')}
-        </p>
+    <div data-testid="setup-welcome-step" className="space-y-5 text-center">
+      <img src={clawxIcon} alt="ClawX" className="mx-auto h-16 w-16" />
+      <div>
+        <h2 className="font-serif text-xl font-normal tracking-tight">{t('welcome.title')}</h2>
+        <p className="mt-2 text-muted-foreground">{t('welcome.description')}</p>
       </div>
-
-      {/* Progress bar */}
-      <div className="space-y-2">
-        <div className="flex justify-between text-sm">
-          <span className="text-muted-foreground">{t('installing.progress')}</span>
-          <span className="text-primary">{overallProgress}%</span>
-        </div>
-        <div className="h-2 bg-secondary rounded-full overflow-hidden">
-          <motion.div
-            className="h-full bg-primary"
-            initial={{ width: 0 }}
-            animate={{ width: `${overallProgress}%` }}
-            transition={{ duration: 0.3 }}
-          />
-        </div>
-      </div>
-
-      {/* Skill list */}
-      <div className="space-y-2 max-h-48 overflow-y-auto">
-        {skillStates.map((skill) => (
-          <motion.div
-            key={skill.id}
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            className={cn(
-              'flex items-center justify-between p-3 rounded-lg',
-              skill.status === 'installing' ? 'bg-surface-input' : 'bg-surface-input/50'
-            )}
+      <div className="flex flex-wrap justify-center gap-2">
+        {SUPPORTED_LANGUAGES.map(item => (
+          <Button
+            key={item.code}
+            variant={language === item.code ? 'secondary' : 'ghost'}
+            size="sm"
+            className={cn(language === item.code && 'bg-black/5 dark:bg-white/10')}
+            onClick={() => setLanguage(item.code)}
           >
-            <div className="flex items-center gap-3">
-              {getStatusIcon(skill.status)}
-              <div>
-                <p className="font-medium">{skill.name}</p>
-                <p className="text-xs text-muted-foreground">{skill.description}</p>
-              </div>
-            </div>
-            {getStatusText(skill)}
-          </motion.div>
+            {item.label}
+          </Button>
         ))}
       </div>
-
-      {/* Error Message Display */}
-      {errorMessage && (
-        <motion.div
-          initial={{ opacity: 0, scale: 0.95 }}
-          animate={{ opacity: 1, scale: 1 }}
-          className="p-4 rounded-lg bg-red-500/10 border border-red-500/30 text-red-700 dark:text-red-300 text-sm"
-        >
-          <div className="flex items-start gap-2">
-            <AlertCircle className="h-5 w-5 text-red-700 dark:text-red-400 shrink-0 mt-0.5" />
-            <div className="space-y-1">
-              <p className="font-semibold">{t('installing.error')}</p>
-              <pre className="text-xs bg-black/5 dark:bg-white/5 p-2 rounded overflow-x-auto whitespace-pre-wrap font-mono">
-                {errorMessage}
-              </pre>
-              <Button
-                variant="link"
-                className="text-red-700 dark:text-red-400 p-0 h-auto text-xs underline"
-                onClick={() => window.location.reload()}
-              >
-                {t('installing.restart')}
-              </Button>
-            </div>
+      <div className="grid gap-3 pt-2 text-left sm:grid-cols-2">
+        {(['optional', 'sharedUi', 'concurrent', 'offlineHistory'] as const).map(key => (
+          <div key={key} className="flex gap-2 rounded-lg bg-black/[0.04] p-3 text-sm dark:bg-white/[0.08]">
+            <CheckCircle2 className="h-5 w-5 shrink-0 text-green-700 dark:text-green-400" />
+            {t(`welcome.features.${key}`)}
           </div>
-        </motion.div>
-      )}
+        ))}
+      </div>
+    </div>
+  );
+}
 
-      {!errorMessage && (
-        <p className="text-sm text-muted-foreground text-center">
-          {t('installing.wait')}
+function KernelCard({
+  entry,
+  skipped,
+  pending,
+  error,
+  progress,
+  onInstall,
+  onSkip,
+}: {
+  entry: KernelCatalogEntry;
+  skipped: boolean;
+  pending?: string;
+  error?: string;
+  progress?: { phase: string; receivedBytes: number; totalBytes: number };
+  onInstall(): void;
+  onSkip(): void;
+}) {
+  const { t } = useTranslation('setup');
+  const installed = entry.installation.state === 'installed';
+  const percent = progress?.totalBytes
+    ? Math.min(100, Math.round((progress.receivedBytes / progress.totalBytes) * 100))
+    : undefined;
+  return (
+    <article
+      data-testid={`setup-kernel-card-${entry.kernelId}`}
+      className={cn('flex min-h-64 flex-col rounded-xl border p-4', skipped && 'opacity-70')}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex gap-3">
+          <div className="rounded-lg bg-primary/10 p-2 text-primary"><Cpu className="h-5 w-5" /></div>
+          <div>
+            <h3 className="font-medium">{entry.displayName}</h3>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              {t(`catalog.kernels.${entry.kernelId}.description`, { defaultValue: t('catalog.genericDescription') })}
+            </p>
+          </div>
+        </div>
+        <Badge variant="outline">{t('catalog.optional')}</Badge>
+      </div>
+
+      <dl className="mt-4 space-y-1 text-xs text-muted-foreground">
+        <div className="flex justify-between gap-2"><dt>{t('catalog.installedVersion')}</dt><dd>{entry.installation.activeVersion ?? '—'}</dd></div>
+        <div className="flex justify-between gap-2"><dt>{t('catalog.availableVersion')}</dt><dd>{entry.availableVersion ?? '—'}</dd></div>
+      </dl>
+
+      {progress && pending && (
+        <div className="mt-4" data-testid={`setup-kernel-progress-${entry.kernelId}`}>
+          <div className="mb-1 flex justify-between text-xs text-muted-foreground"><span>{t(`catalog.phases.${progress.phase}`)}</span><span>{percent ?? 0}%</span></div>
+          <div className="h-1.5 overflow-hidden rounded-full bg-muted"><div className="h-full bg-primary transition-all" style={{ width: `${percent ?? 5}%` }} /></div>
+        </div>
+      )}
+      {error && <p role="alert" className="mt-3 text-xs text-red-700 dark:text-red-400">{error}</p>}
+      {entry.compatibilityFailures.length > 0 && (
+        <p className="mt-3 text-xs text-yellow-700 dark:text-yellow-400">
+          {t('catalog.incompatible', { reasons: entry.compatibilityFailures.join(', ') })}
         </p>
       )}
-      <div className="flex justify-end">
-        <Button
-          variant="ghost"
-          className="text-muted-foreground"
-          onClick={onSkip}
-        >
-          {t('installing.skip')}
-        </Button>
+
+      <div className="mt-auto flex gap-2 pt-5">
+        {installed ? (
+          <Button className="flex-1" variant="secondary" disabled>
+            <Check className="mr-2 h-4 w-4" />{t('catalog.installed')}
+          </Button>
+        ) : skipped ? (
+          <Button data-testid={`setup-kernel-skip-${entry.kernelId}`} className="flex-1" variant="outline" onClick={onSkip}>
+            {t('catalog.undoSkip')}
+          </Button>
+        ) : (
+          <>
+            <Button
+              data-testid={`setup-kernel-install-${entry.kernelId}`}
+              className="flex-1"
+              disabled={!entry.installAllowed || Boolean(pending)}
+              onClick={onInstall}
+            >
+              {pending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
+              {pending ? t('catalog.installing') : t('catalog.install')}
+            </Button>
+            <Button data-testid={`setup-kernel-skip-${entry.kernelId}`} variant="ghost" disabled={Boolean(pending)} onClick={onSkip}>
+              {t('catalog.skip')}
+            </Button>
+          </>
+        )}
       </div>
-    </div>
+    </article>
   );
 }
-interface CompleteContentProps {
-  installedSkills: string[];
-}
-
-function CompleteContent({ installedSkills }: CompleteContentProps) {
-  const { t } = useTranslation(['setup', 'settings']);
-  const gatewayStatus = useGatewayStore((state) => state.status);
-
-  const installedSkillNames = getDefaultSkills(t)
-    .filter((s: DefaultSkill) => installedSkills.includes(s.id))
-    .map((s: DefaultSkill) => s.name)
-    .join(', ');
-
-  return (
-    <div className="text-center space-y-6">
-      <div className="text-6xl mb-4">🎉</div>
-      <h2 className="text-xl font-serif font-normal tracking-tight">{t('complete.title')}</h2>
-      <p className="text-muted-foreground">
-        {t('complete.subtitle')}
-      </p>
-
-      <div className="space-y-3 text-left max-w-md mx-auto">
-        <div className="flex items-center justify-between p-3 rounded-lg bg-surface-input/50">
-          <span>{t('complete.components')}</span>
-          <span className="text-green-700 dark:text-green-400">
-            {installedSkillNames || `${installedSkills.length} ${t('installing.status.installed')}`}
-          </span>
-        </div>
-        <div className="flex items-center justify-between p-3 rounded-lg bg-surface-input/50">
-          <span>{t('complete.gateway')}</span>
-          <span className={gatewayStatus.state === 'running' && gatewayStatus.gatewayReady !== false ? 'text-green-700 dark:text-green-400' : gatewayStatus.state === 'running' ? 'text-red-700 dark:text-red-400' : 'text-yellow-700 dark:text-yellow-400'}>
-            {gatewayStatus.state === 'running'
-              ? gatewayStatus.gatewayReady !== false
-                ? `✓ ${t('complete.running')}`
-                : 'starting'
-              : gatewayStatus.state}
-          </span>
-        </div>
-      </div>
-
-      <p className="text-sm text-muted-foreground">
-        {t('complete.footer')}
-      </p>
-    </div>
-  );
-}
-
-export default Setup;

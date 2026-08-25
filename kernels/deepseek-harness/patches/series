@@ -1,0 +1,3 @@
+# Repository-relative paths, applied in this exact order.
+kernels/deepseek-harness/patches/0001-clawx-overlay-lockfile.patch
+kernels/deepseek-harness/patches/0002-clawx-windows-sandbox-temp-parity.patch

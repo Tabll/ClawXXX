@@ -1,10 +1,13 @@
 import type { ElectronApplication } from '@playwright/test';
 import {
+  canonicalConversationHostApi,
+  canonicalConversationSummary,
   closeElectronApp,
   expect,
   getRecordedHostInvocations,
   getStableWindow,
   installIpcMocks,
+  readyKernelFixture,
   test,
 } from './fixtures/electron';
 
@@ -14,10 +17,6 @@ const SESSION_WORKSPACE_LABEL = 'ClawX';
 const GLOBAL_WORKSPACE = '/Users/e2e/workspace/GlobalProject';
 const DEFAULT_WORKSPACE = '~/.openclaw/workspace';
 const AUTO_TITLE_WITH_CWD = `[Working directory: ${DEFAULT_WORKSPACE}]\n\nWorkspace chat`;
-const SESSIONS_LIST_PAYLOAD = {
-  includeDerivedTitles: true,
-  includeLastMessage: true,
-};
 
 function stableStringify(value: unknown): string {
   if (value == null || typeof value !== 'object') return JSON.stringify(value);
@@ -96,7 +95,6 @@ type WorkspaceMockOptions = {
   recentWorkspacePaths?: string[];
   workspaceLabels?: Record<string, string>;
   unavailableWorkspacePath?: string;
-  sessionId?: string;
   sessionLabel?: string;
   sessionDerivedTitle?: string | null;
   sessionSummaryFirstUserText?: string | null;
@@ -121,23 +119,21 @@ async function installWorkspaceMocks(app: ElectronApplication, options: Workspac
     recentWorkspacePaths,
     workspaceLabels: options.workspaceLabels ?? {},
   };
-  const sessionRow = {
-    key: SESSION_KEY,
-    displayName: options.sessionLabel ?? 'Gateway session display name',
+  const canonicalTitle = options.sessionSummaryFirstUserText
+    ?? options.sessionDerivedTitle
+    ?? options.sessionLabel
+    ?? 'Workspace chat';
+  const conversation = canonicalConversationSummary({
+    id: SESSION_KEY,
+    title: canonicalTitle.replace(/^\[Working directory: .*?\]\n\n/s, ''),
+    createdAt: nowMs,
     updatedAt: nowMs,
-    ...(options.sessionId ? { sessionId: options.sessionId } : {}),
-    ...(options.sessionLabel ? { label: options.sessionLabel } : {}),
-    ...(typeof options.sessionDerivedTitle === 'string' ? { derivedTitle: options.sessionDerivedTitle } : {}),
-  };
-  const sessionSummaries = {
-    summaries: [{
-      sessionKey: SESSION_KEY,
-      firstUserText: options.sessionSummaryFirstUserText ?? null,
-      lastTimestamp: nowMs,
-      workspacePath: SESSION_WORKSPACE,
-    }],
-  };
-  const acpLoadResult = { success: true, generation: 1 };
+    workspaceUri: SESSION_WORKSPACE,
+    lastKernelId: 'openclaw',
+    kernelIds: ['openclaw'],
+    lastAgentId: 'main',
+  });
+  const kernelSelectionResult = { success: true, generation: 1, kernelId: 'openclaw' };
   const workspaceContextResult = (workspacePath: string) => (
     options.unavailableWorkspacePath === workspacePath
       ? { ok: false, error: 'notFound' }
@@ -146,21 +142,9 @@ async function installWorkspaceMocks(app: ElectronApplication, options: Workspac
 
   await installIpcMocks(app, {
     gatewayStatus,
-    gatewayRpc: {
-      [stableStringify(['sessions.list', SESSIONS_LIST_PAYLOAD])]: {
-        success: true,
-        result: {
-          sessions: [sessionRow],
-        },
-      },
-      [stableStringify(['sessions.list', {}])]: {
-        success: true,
-        result: {
-          sessions: [sessionRow],
-        },
-      },
-    },
+    kernelFixture: readyKernelFixture(),
     hostApi: {
+      ...canonicalConversationHostApi([conversation]),
       [stableStringify(['settings', 'getAll', null])]: settingsSnapshot,
       [stableStringify(['settings', 'setMany', {
         patch: { workspaceLabels: { [SESSION_WORKSPACE]: 'Renamed workspace' } },
@@ -196,8 +180,6 @@ async function installWorkspaceMocks(app: ElectronApplication, options: Workspac
         }],
         defaultAgentId: 'main',
       }),
-      [stableStringify(['sessions', 'summaries', { sessionKeys: [SESSION_KEY] }])]: sessionSummaries,
-      [stableStringify(['/api/sessions/summaries', 'POST'])]: hostJson(sessionSummaries),
       [stableStringify(['files', 'resolveWorkspaceContext', {
         workspaceRoot: DEFAULT_WORKSPACE,
         executionCwd: DEFAULT_WORKSPACE,
@@ -210,13 +192,55 @@ async function installWorkspaceMocks(app: ElectronApplication, options: Workspac
         workspaceRoot: GLOBAL_WORKSPACE,
         executionCwd: GLOBAL_WORKSPACE,
       }])]: workspaceContextResult(GLOBAL_WORKSPACE),
-      [stableStringify(['chat', 'loadAcpSession', { sessionKey: SESSION_KEY, workspaceRoot: DEFAULT_WORKSPACE, cwd: DEFAULT_WORKSPACE }])]: acpLoadResult,
-      [stableStringify(['chat', 'loadAcpSession', { sessionKey: SESSION_KEY, workspaceRoot: SESSION_WORKSPACE, cwd: SESSION_WORKSPACE }])]: acpLoadResult,
-      [stableStringify(['sessions', 'delete', { id: SESSION_KEY }])]: { success: true },
-      [stableStringify(['sessions', 'rename', { id: SESSION_KEY, title: 'Renamed conversation' }])]: { success: true },
+      [stableStringify(['chat', 'selectConversationKernel', {
+        sessionKey: SESSION_KEY,
+        workspaceRoot: DEFAULT_WORKSPACE,
+        cwd: DEFAULT_WORKSPACE,
+        kernelId: 'openclaw',
+      }])]: kernelSelectionResult,
+      [stableStringify(['chat', 'selectConversationKernel', {
+        sessionKey: SESSION_KEY,
+        workspaceRoot: SESSION_WORKSPACE,
+        cwd: SESSION_WORKSPACE,
+        kernelId: 'openclaw',
+      }])]: kernelSelectionResult,
+      [stableStringify(['conversations', 'delete', { id: SESSION_KEY, hard: true }])]: { success: true },
+      [stableStringify(['conversations', 'rename', { id: SESSION_KEY, title: 'Renamed conversation' }])]: { success: true },
     },
     recordHostInvocations: true,
   });
+
+  // Keep the canonical catalog mutation-aware. A static list response would
+  // resurrect a deleted row if Chat performs a legitimate post-delete reload.
+  await app.evaluate(async ({ app: _app }, { conversationId }) => {
+    const { ipcMain } = process.mainModule!.require('electron') as typeof import('electron');
+    type HostRequest = {
+      id?: string;
+      module?: string;
+      action?: string;
+      payload?: Record<string, unknown>;
+    };
+    type HostHandler = (event: unknown, request: HostRequest) => Promise<unknown>;
+    const handlers = (ipcMain as unknown as { _invokeHandlers?: Map<string, HostHandler> })._invokeHandlers;
+    const original = handlers?.get('host:invoke');
+    if (!original) throw new Error('Host API fixture is not installed');
+    let deleted = false;
+    ipcMain.removeHandler('host:invoke');
+    ipcMain.handle('host:invoke', async (event: unknown, request: HostRequest) => {
+      if (deleted && request.module === 'conversations' && request.action === 'list') {
+        return { id: request.id, ok: true, data: { items: [] } };
+      }
+      const response = await original(event, request);
+      if (
+        request.module === 'conversations'
+        && request.action === 'delete'
+        && request.payload?.id === conversationId
+      ) {
+        deleted = true;
+      }
+      return response;
+    });
+  }, { conversationId: SESSION_KEY });
 
   await installWorkspaceTreeMock(app);
 }
@@ -452,13 +476,12 @@ test.describe('ClawX chat workspace context', () => {
     }
   });
 
-  test('UUID-date fallback title is replaced by the first user prompt', async ({ launchElectronApp }) => {
+  test('canonical title is the sidebar authority even when a runtime exposes a fallback label', async ({ launchElectronApp }) => {
     const app = await launchElectronApp({ skipSetup: true });
     const fallbackTitle = '72e4b28b (2026-07-22)';
 
     try {
       await installWorkspaceMocks(app, {
-        sessionId: '72e4b28b-8477-4e29-b57e-e14448fd42d0',
         sessionLabel: fallbackTitle,
         sessionDerivedTitle: fallbackTitle,
         sessionSummaryFirstUserText: '用浏览器打开B站',
@@ -481,7 +504,7 @@ test.describe('ClawX chat workspace context', () => {
     }
   });
 
-  test('host summary title stays clean when a derived title is unavailable', async ({ launchElectronApp }) => {
+  test('canonical title stays clean without consulting runtime transcript summaries', async ({ launchElectronApp }) => {
     const app = await launchElectronApp({ skipSetup: true });
 
     try {
@@ -535,7 +558,7 @@ test.describe('ClawX chat workspace context', () => {
 
       await expect(async () => {
         await page.getByTestId('sidebar-new-chat').click();
-        await expect(selectedWorkspaceGroup.getByText(/agent:main:session-/)).toHaveCount(0, { timeout: 500 });
+        await expect(selectedWorkspaceGroup.getByText(/agent:main:conversation-/)).toHaveCount(0, { timeout: 500 });
       }).toPass({ timeout: 30_000 });
 
       await expect(page.getByTestId('acp-chat-empty-state')).toBeVisible();
@@ -545,7 +568,7 @@ test.describe('ClawX chat workspace context', () => {
       await expect(workspaceSelector).not.toHaveAttribute('aria-disabled', 'true');
 
       const defaultWorkspaceGroupWithPendingSession = sidebar.getByTestId(workspaceSessionGroupTestId(DEFAULT_WORKSPACE))
-        .filter({ hasText: /agent:main:session-/ });
+        .filter({ hasText: /agent:main:conversation-/ });
       await expect(defaultWorkspaceGroupWithPendingSession).toHaveCount(0);
     } finally {
       await closeElectronApp(app);
@@ -589,7 +612,7 @@ test.describe('ClawX chat workspace context', () => {
         const invocations = await getRecordedHostInvocations(app);
         return invocations.filter((entry) => (
           entry.module === 'chat'
-          && entry.action === 'loadAcpSession'
+          && entry.action === 'selectConversationKernel'
           && entry.payload?.cwd === SESSION_WORKSPACE
         )).length;
       }).toBe(0);
@@ -630,17 +653,19 @@ test.describe('ClawX chat workspace context', () => {
       await page.getByTestId('confirm-dialog-cancel-button').click();
       await expect(workspaceGroup).toBeVisible();
       expect((await getRecordedHostInvocations(app)).some((entry) => (
-        entry.module === 'sessions' && entry.action === 'delete'
+        entry.module === 'conversations' && entry.action === 'delete'
       ))).toBe(false);
 
       await deleteButton.click();
       await page.getByTestId('confirm-dialog-confirm-button').click();
 
-      await expect(workspaceGroup).toHaveCount(0);
+      // The workspace itself may remain as a recent/selected location, but the
+      // canonical Conversation row must disappear immediately.
+      await expect(page.getByTestId(`sidebar-session-${SESSION_KEY}`)).toHaveCount(0);
       await expect.poll(async () => {
         const invocations = await getRecordedHostInvocations(app);
         return invocations.some((entry) => (
-          entry.module === 'sessions'
+          entry.module === 'conversations'
           && entry.action === 'delete'
           && entry.payload?.id === SESSION_KEY
         ));

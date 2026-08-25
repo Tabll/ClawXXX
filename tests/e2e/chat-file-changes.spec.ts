@@ -1,38 +1,20 @@
 import type { ElectronApplication, Page } from '@playwright/test';
+import { pathToFileURL } from 'node:url';
 import {
-  clearRecordedFileAccessInvocations,
   closeElectronApp,
   expect,
-  getRecordedHostInvocations,
   getRecordedLegacyIpcInvocations,
   getStableWindow,
-  installIpcMocks,
+  installAttachmentHostFixture,
   test,
+  type AttachmentHostFixture,
 } from './fixtures/electron';
 import { expectVisibleToolCallCards } from './fixtures/acp-timeline';
 
 const MAIN_SESSION_KEY = 'agent:main:main';
 const OTHER_SESSION_KEY = 'agent:main:other';
-const WORKSPACE = '/workspace';
-const SESSIONS_LIST_PAYLOAD = { includeDerivedTitles: true, includeLastMessage: true };
-
 type AcpSessionUpdate = Record<string, unknown> & { sessionUpdate: string };
 type SessionFixture = { key: string; title: string; updates?: AcpSessionUpdate[] };
-type AcpEventRecord = {
-  sessionKey: string;
-  generation: number;
-  historical: boolean;
-  update: AcpSessionUpdate;
-};
-
-function stableStringify(value: unknown): string {
-  if (value == null || typeof value !== 'object') return JSON.stringify(value);
-  if (Array.isArray(value)) return `[${value.map((item) => stableStringify(item)).join(',')}]`;
-  const entries = Object.entries(value as Record<string, unknown>)
-    .sort(([left], [right]) => left.localeCompare(right))
-    .map(([key, entryValue]) => `${JSON.stringify(key)}:${stableStringify(entryValue)}`);
-  return `{${entries.join(',')}}`;
-}
 
 function user(messageId: string, text: string): AcpSessionUpdate {
   return { sessionUpdate: 'user_message', messageId, content: [{ type: 'text', text }] };
@@ -77,95 +59,27 @@ function patchSequence(id: string, patch: string): AcpSessionUpdate[] {
 async function installFileActivityMocks(app: ElectronApplication, options: {
   sessions?: SessionFixture[];
   liveByPrompt?: Record<string, AcpSessionUpdate[]>;
-  liveDelayMs?: number;
   scopedRead?: Record<string, unknown>;
   scopedReadError?: string;
-}) {
-  const now = Date.now();
+}): Promise<AttachmentHostFixture> {
   const sessions = options.sessions ?? [{ key: MAIN_SESSION_KEY, title: 'Main session' }];
-  const settings = {
-    language: 'en',
-    setupComplete: true,
-    chatWorkspacePath: WORKSPACE,
-    recentWorkspacePaths: [WORKSPACE],
-  };
-  const hostApi: Record<string, unknown> = {
-    [stableStringify(['settings', 'getAll', null])]: settings,
-    [stableStringify(['agents', 'list', null])]: {
-      success: true,
-      agents: [{ id: 'main', name: 'main', workspace: WORKSPACE, mainSessionKey: MAIN_SESSION_KEY }],
-    },
-    [stableStringify(['files', 'resolveWorkspaceContext', {
-      workspaceRoot: WORKSPACE,
-      executionCwd: WORKSPACE,
-    }])]: { ok: true, workspaceRoot: WORKSPACE, executionCwd: WORKSPACE },
-    [stableStringify(['sessions', 'summaries', { sessionKeys: sessions.map((session) => session.key) }])]: {
-      summaries: sessions.map((session, index) => ({
-        sessionKey: session.key,
-        firstUserText: session.title,
-        lastTimestamp: now - index,
-        workspacePath: WORKSPACE,
-      })),
-    },
-  };
-  for (const [relativePath, response] of Object.entries(options.scopedRead ?? {})) {
-    hostApi[stableStringify(['files', 'readWorkspaceText', { workspaceRoot: WORKSPACE, relativePath }])] = response;
-  }
-  const nativePlatform = process.platform === 'win32' ? 'win32' : process.platform === 'darwin' ? 'darwin' : 'linux';
-  const liveFileRef = { workspaceRoot: WORKSPACE, relativePath: 'src/live.ts' };
-  hostApi[stableStringify(['files', 'listWorkspaceOpenHandlers', liveFileRef])] = {
-    ok: true,
-    platform: nativePlatform,
-    handlers: nativePlatform === 'linux'
-      ? []
-      : [{ handlerId: 'opaque-test-reader', name: 'Test Reader', isDefault: true }],
-  };
-  hostApi[stableStringify(['files', 'openWorkspaceWith', {
-    ref: liveFileRef,
-    handlerId: 'opaque-test-reader',
-  }])] = { ok: true };
-  hostApi[stableStringify(['files', 'revealWorkspaceFile', liveFileRef])] = { ok: true };
-  const scopedReadKey = stableStringify(['files', 'readWorkspaceText', {
-    workspaceRoot: WORKSPACE,
-    relativePath: 'blocked.ts',
-  }]);
-
-  await installIpcMocks(app, {
-    gatewayStatus: { state: 'running', gatewayReady: true, port: 18789, pid: 12345, connectedAt: now },
-    gatewayRpc: {
-      [stableStringify(['sessions.list', SESSIONS_LIST_PAYLOAD])]: {
-        success: true,
-        result: {
-          sessions: sessions.map((session, index) => ({
-            key: session.key,
-            displayName: session.title,
-            derivedTitle: session.title,
-            workspacePath: WORKSPACE,
-            updatedAt: new Date(now - index).toISOString(),
-          })),
-        },
-      },
-      [stableStringify(['sessions.list', {}])]: {
-        success: true,
-        result: {
-          sessions: sessions.map((session, index) => ({
-            key: session.key,
-            displayName: session.title,
-            derivedTitle: session.title,
-            workspacePath: WORKSPACE,
-            updatedAt: new Date(now - index).toISOString(),
-          })),
-        },
-      },
-    },
-    hostApi,
-    hostApiErrors: options.scopedReadError ? { [scopedReadKey]: options.scopedReadError } : undefined,
-    recordHostInvocations: true,
-    recordLegacyIpcInvocations: true,
+  const fixture = await installAttachmentHostFixture(app, {
+    sessions: sessions.map(({ key, title }) => ({ key, title })),
   });
+  await Promise.all(sessions.map(session => fixture.setSessionReplay(session.key, session.updates ?? [])));
+  await Promise.all(Object.entries(options.liveByPrompt ?? {}).map(([prompt, updates]) => (
+    fixture.setPromptUpdates(prompt, updates)
+  )));
+  await Promise.all(Object.entries(options.scopedRead ?? {}).flatMap(([relativePath, response]) => {
+    const content = response && typeof response === 'object'
+      && typeof (response as Record<string, unknown>).content === 'string'
+      ? String((response as Record<string, unknown>).content)
+      : undefined;
+    return content === undefined ? [] : [fixture.createWorkspaceFile(relativePath, content)];
+  }));
 
   await app.evaluate(async ({ app: _app }, payload) => {
-    const { BrowserWindow, ipcMain } = process.mainModule!.require('electron') as typeof import('electron');
+    const { ipcMain } = process.mainModule!.require('electron') as typeof import('electron');
     type HostRequest = {
       id?: string;
       module?: string;
@@ -174,53 +88,56 @@ async function installFileActivityMocks(app: ElectronApplication, options: {
     };
     type Handler = (event: unknown, request: HostRequest) => Promise<unknown>;
     const original = (ipcMain as unknown as { _invokeHandlers?: Map<string, Handler> })._invokeHandlers?.get('host:invoke');
-    const globals = globalThis as unknown as { __fileActivityAcpEvents?: AcpEventRecord[] };
-    globals.__fileActivityAcpEvents = [];
-    let generation = 0;
-    let activeSessionKey = '';
-    const replayBySession = new Map((payload.sessions as SessionFixture[]).map((session) => [session.key, session.updates ?? []]));
-    const sendUpdates = (sessionKey: string, generation: number, historical: boolean, updates: AcpSessionUpdate[]) => {
-      for (const update of updates) {
-        globals.__fileActivityAcpEvents?.push({ sessionKey, generation, historical, update });
-        for (const window of BrowserWindow.getAllWindows()) {
-          window.webContents.send('chat:acp-session-update', {
-            sessionKey,
-            generation,
-            historical,
-            notification: { sessionId: sessionKey, update },
-          });
-        }
-      }
+    if (!original) throw new Error('Canonical attachment fixture host handler is unavailable');
+    const respond = (id: string | undefined, data: unknown) => ({ id, ok: true, data });
+    const fail = (id: string | undefined, message: string) => ({
+      id,
+      ok: false,
+      error: { code: 'E2E_SCOPED_READ_REJECTED', message },
+    });
+    const record = (request: HostRequest) => {
+      const state = (globalThis as unknown as {
+        __e2eAttachmentFixture?: {
+          hostInvocations: Array<{ module?: string; action?: string; payload?: Record<string, unknown> }>;
+        };
+      }).__e2eAttachmentFixture;
+      state?.hostInvocations.push({ module: request.module, action: request.action, payload: request.payload });
     };
 
     ipcMain.removeHandler('host:invoke');
     ipcMain.handle('host:invoke', async (event: unknown, request: HostRequest) => {
-      if (request.module === 'chat' && request.action === 'loadAcpSession') {
-        const sessionKey = String(request.payload?.sessionKey ?? '');
-        generation += 1;
-        activeSessionKey = sessionKey;
-        sendUpdates(sessionKey, generation, true, replayBySession.get(sessionKey) ?? []);
-        return { id: request.id, ok: true, data: { success: true, generation } };
+      if (request.module === 'files' && request.action === 'listWorkspaceOpenHandlers') {
+        record(request);
+        return respond(request.id, {
+          ok: true,
+          platform: payload.nativePlatform,
+          handlers: payload.nativePlatform === 'linux'
+            ? []
+            : [{ handlerId: 'opaque-test-reader', name: 'Test Reader', isDefault: true }],
+        });
       }
-      if (request.module === 'chat' && request.action === 'sendAcpPrompt') {
-        const sessionKey = String(request.payload?.sessionKey ?? '');
-        const promptGeneration = generation;
-        const message = String(request.payload?.message ?? '');
-        const updates = (payload.liveByPrompt as Record<string, AcpSessionUpdate[]>)[message] ?? [];
-        if (sessionKey === activeSessionKey) {
-          setTimeout(() => sendUpdates(sessionKey, promptGeneration, false, updates), payload.liveDelayMs);
-        }
-        return { id: request.id, ok: true, data: { success: true, generation: promptGeneration } };
+      if (request.module === 'files' && (
+        request.action === 'openWorkspaceWith' || request.action === 'revealWorkspaceFile'
+      )) {
+        record(request);
+        return respond(request.id, { ok: true });
       }
-      return original?.(event, request) ?? { id: request.id, ok: true, data: {} };
+      if (
+        request.module === 'files'
+        && request.action === 'readWorkspaceText'
+        && request.payload?.relativePath === 'blocked.ts'
+        && payload.scopedReadError
+      ) {
+        record(request);
+        return fail(request.id, payload.scopedReadError);
+      }
+      return original(event, request);
     });
-  }, { sessions, liveByPrompt: options.liveByPrompt ?? {}, liveDelayMs: options.liveDelayMs ?? 0 });
-}
-
-async function getRecordedAcpEvents(app: ElectronApplication): Promise<AcpEventRecord[]> {
-  return await app.evaluate(async ({ app: _app }) => (
-    (globalThis as unknown as { __fileActivityAcpEvents?: AcpEventRecord[] }).__fileActivityAcpEvents ?? []
-  ));
+  }, {
+    nativePlatform: process.platform === 'win32' ? 'win32' : process.platform === 'darwin' ? 'darwin' : 'linux',
+    scopedReadError: options.scopedReadError,
+  });
+  return fixture;
 }
 
 async function openChat(app: ElectronApplication): Promise<Page> {
@@ -252,7 +169,7 @@ test.describe('ClawX chat file changes', () => {
   test('opens HTML file activity in the Preview tab from its primary action', async ({ launchElectronApp }) => {
     const app = await launchElectronApp({ skipSetup: true });
     try {
-      await installFileActivityMocks(app, {
+      const fixture = await installFileActivityMocks(app, {
         liveByPrompt: {
           'Create HTML': writeSequence('write-html', 'site/demo.html', '<h1>Demo</h1>'),
         },
@@ -278,10 +195,10 @@ test.describe('ClawX chat file changes', () => {
       await expect(panel.getByTestId('artifact-panel-tab-preview')).toHaveClass(/bg-foreground\/10/);
       await expect(panel.getByTestId('artifact-panel-tab-web-browser')).toHaveCount(0);
       await expect(page.getByTestId('html-preview-host')).toHaveAttribute('aria-hidden', 'false');
-      await expect.poll(async () => (await getRecordedHostInvocations(app)).some((request) => (
+      await expect.poll(async () => (await fixture.getHostInvocations()).some((request) => (
         request.module === 'webBrowser'
         && request.action === 'navigate'
-        && request.payload?.url === 'file:///workspace/site/demo.html'
+        && request.payload?.url === pathToFileURL(`${fixture.workspaceDir}/site/demo.html`).href
       ))).toBe(true);
     } finally {
       await closeElectronApp(app);
@@ -291,7 +208,7 @@ test.describe('ClawX chat file changes', () => {
   test('renders a live completed Write with counts, scoped Preview, and a session record', async ({ launchElectronApp }) => {
     const app = await launchElectronApp({ skipSetup: true });
     try {
-      await installFileActivityMocks(app, {
+      const fixture = await installFileActivityMocks(app, {
         liveByPrompt: { 'Create the file': writeSequence('write-live', 'src/live.ts', 'one\ntwo\n') },
         scopedRead: {
           'src/live.ts': { ok: true, content: 'one\ntwo\n', size: 8, mimeType: 'text/typescript', readOnly: true },
@@ -300,6 +217,8 @@ test.describe('ClawX chat file changes', () => {
       const page = await openChat(app);
       await sendPrompt(page, 'Create the file');
 
+      await expectVisibleToolCallCards(page, 1);
+      await expect(page.getByTestId('acp-tool-call-card')).toContainText('Completed');
       await expect(page.getByTestId('acp-file-button')).toHaveCount(1, { timeout: 30_000 });
       await expect(page.getByTestId('acp-file-button')).toHaveAccessibleName('Created src/live.ts');
       await expect(page.getByTestId('acp-file-summary-row')).toContainText('+2');
@@ -310,7 +229,7 @@ test.describe('ClawX chat file changes', () => {
       await expect(page.getByTestId('acp-attachment-open-with-menu')).toBeVisible();
       if (process.platform !== 'linux') {
         await page.getByRole('menuitem', { name: 'Test Reader' }).click();
-        await expect.poll(async () => (await getRecordedHostInvocations(app)).some((request) => (
+        await expect.poll(async () => (await fixture.getHostInvocations()).some((request) => (
           request.module === 'files'
           && request.action === 'openWorkspaceWith'
           && request.payload?.handlerId === 'opaque-test-reader'
@@ -325,7 +244,7 @@ test.describe('ClawX chat file changes', () => {
           ? 'Show in File Explorer'
           : 'Show in file manager';
       await page.getByRole('menuitem', { name: revealLabel }).click();
-      await expect.poll(async () => (await getRecordedHostInvocations(app)).some((request) => (
+      await expect.poll(async () => (await fixture.getHostInvocations()).some((request) => (
         request.module === 'files'
         && request.action === 'revealWorkspaceFile'
         && request.payload?.relativePath === 'src/live.ts'
@@ -336,7 +255,7 @@ test.describe('ClawX chat file changes', () => {
       const panel = page.getByTestId('artifact-panel');
       await expect(panel.getByRole('heading', { name: 'live.ts' })).toBeVisible();
       await expect(panel.getByText('File changes (1)')).not.toBeVisible();
-      await expect.poll(async () => (await getRecordedHostInvocations(app)).some((request) => (
+      await expect.poll(async () => (await fixture.getHostInvocations()).some((request) => (
         request.module === 'files'
         && request.action === 'readWorkspaceText'
         && request.payload?.relativePath === 'src/live.ts'
@@ -496,16 +415,13 @@ test.describe('ClawX chat file changes', () => {
       ...editSequence('replay-second', 'src/replayed.ts', 'two old', 'two new'),
     ];
     try {
-      await installFileActivityMocks(app, {
+      const fixture = await installFileActivityMocks(app, {
         sessions: [
           { key: MAIN_SESSION_KEY, title: 'Ledger session', updates: replay },
           { key: OTHER_SESSION_KEY, title: 'Other session', updates: [user('other-user', 'Other history')] },
         ],
-        liveByPrompt: {
-          'Delayed generation check': writeSequence('delayed-generation', 'src/delayed.ts', 'delayed'),
-        },
-        liveDelayMs: 1_000,
       });
+      await fixture.deferPromptResponse('Delayed generation check');
       const page = await openChat(app);
       await page.getByTestId(`sidebar-session-${MAIN_SESSION_KEY}`).click();
       await expect(page.getByTestId('acp-file-button')).toHaveCount(2, { timeout: 30_000 });
@@ -513,13 +429,12 @@ test.describe('ClawX chat file changes', () => {
       await page.getByTestId(`sidebar-session-${OTHER_SESSION_KEY}`).click();
       await expect(page.getByText('Other history', { exact: true })).toBeVisible({ timeout: 30_000 });
       await expect(page.getByTestId('acp-file-button')).toHaveCount(0, { timeout: 30_000 });
-      await expect.poll(async () => (await getRecordedAcpEvents(app)).filter(
-        (event) => !event.historical && event.sessionKey === MAIN_SESSION_KEY,
-      ).length).toBe(2);
-      const events = await getRecordedAcpEvents(app);
-      const liveGeneration = events.find((event) => !event.historical)?.generation;
-      const otherGeneration = events.find((event) => event.historical && event.sessionKey === OTHER_SESSION_KEY)?.generation;
-      expect(liveGeneration).toBeLessThan(otherGeneration as number);
+      await fixture.emitAcpSessionUpdates({
+        sessionKey: MAIN_SESSION_KEY,
+        updates: writeSequence('delayed-generation', 'src/delayed.ts', 'delayed'),
+      });
+      await fixture.releasePromptResponse('Delayed generation check');
+      await expect(page.getByTestId('acp-file-button')).toHaveCount(0);
       await page.getByTestId(`sidebar-session-${MAIN_SESSION_KEY}`).click();
       await expect(page.getByTestId('acp-file-button')).toHaveCount(2, { timeout: 30_000 });
 
@@ -582,7 +497,7 @@ test.describe('ClawX chat file changes', () => {
   test('shows scoped read rejection without invoking unscoped file or shell actions', async ({ launchElectronApp }) => {
     const app = await launchElectronApp({ skipSetup: true });
     try {
-      await installFileActivityMocks(app, {
+      const fixture = await installFileActivityMocks(app, {
         liveByPrompt: { 'Write blocked file': writeSequence('blocked-write', 'blocked.ts', 'blocked') },
         scopedReadError: 'Scoped file access unavailable',
       });
@@ -591,24 +506,24 @@ test.describe('ClawX chat file changes', () => {
       await expect(page.getByTestId('acp-file-button')).toBeVisible({ timeout: 30_000 });
       await page.getByTestId('chat-toolbar-workspace').click();
       await expect(page.getByTestId('artifact-panel')).toBeVisible();
-      await expect.poll(async () => (await getRecordedHostInvocations(app)).some((request) => (
+      await expect.poll(async () => (await fixture.getHostInvocations()).some((request) => (
         request.module === 'files'
         && request.action === 'listTree'
-        && request.payload?.path === WORKSPACE
+        && request.payload?.path === fixture.workspaceDir
         && (request.payload?.opts as { includeHidden?: boolean } | undefined)?.includeHidden === true
       ))).toBe(true);
-      await clearRecordedFileAccessInvocations(app);
+      await fixture.clearInvocations();
       await page.getByTestId('acp-file-button').click();
 
       const panel = page.getByTestId('artifact-panel');
       await expect(panel.getByText(/Load failed:.*Scoped file access unavailable/i)).toBeVisible({ timeout: 30_000 });
       await expect(panel.getByRole('button', { name: 'Show in file manager' })).toHaveCount(0);
       await expect(panel.getByRole('button', { name: 'Open directly' })).toHaveCount(0);
-      const invocations = await getRecordedHostInvocations(app);
+      const invocations = await fixture.getHostInvocations();
       expect(invocations).toEqual(expect.arrayContaining([expect.objectContaining({
         module: 'files',
         action: 'readWorkspaceText',
-        payload: { workspaceRoot: WORKSPACE, relativePath: 'blocked.ts' },
+        payload: { workspaceRoot: fixture.workspaceDir, relativePath: 'blocked.ts' },
       })]));
       expect(invocations.filter((request) => (
         (request.module === 'files' && request.action !== 'readWorkspaceText')

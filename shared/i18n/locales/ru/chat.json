@@ -11,6 +11,13 @@
         "brainstorming": "Параллельные агенты"
     },
     "noLogs": "(Журналы ещё недоступны)",
+    "kernelSelector": {
+        "label": "Ядро для следующего запуска",
+        "noneInstalled": "Ядра не установлены",
+        "boundary": "Следующий запуск переключится с {{previous}} на {{next}}. История останется в этом разговоре.",
+        "notReady": "{{kernel}} не готово. История остаётся доступной офлайн.",
+        "start": "Запустить ядро"
+    },
     "scrollToLatest": "Вернуться вниз",
     "toolbar": {
         "refresh": "Обновить чат",
@@ -73,6 +80,9 @@
         "turnDuration": "Заняло {{duration}}",
         "turnElapsed": "Прошло {{duration}}",
         "metadata": {
+            "kernel": "Ядро {{kernel}}",
+            "agent": "Агент {{agent}}",
+            "agentDeleted": "удалён",
             "input": "Ввод {{count}}",
             "output": "Вывод {{count}}",
             "cache": "Кэш {{count}}"
@@ -242,12 +252,15 @@
         "targetChip": "@{{agent}}",
         "agentPickerTitle": "Направить следующее сообщение другому агенту",
         "gatewayDisconnectedPlaceholder": "Шлюз не подключён...",
+        "kernelUnavailablePlaceholder": "Выбранное ядро не готово...",
         "send": "Отправить",
         "stop": "Остановить",
         "thinking": "Думаю…",
         "gatewayConnected": "подключён",
         "gatewayStarting": "запуск",
         "gatewayStatus": "шлюз {{state}}",
+        "kernelStatus": "{{kernel}} · {{state}}",
+        "noKernelSelected": "Ядро не выбрано",
         "retryFailedAttachments": "Повторить неудавшиеся вложения",
         "workspacePrefix": "{{workspace}}",
         "workspacePickerTitle": "Выберите папку рабочей области",

@@ -1,0 +1,66 @@
+{
+  "recordedAt": "2026-08-23T13:15:00.000Z",
+  "host": {
+    "platform": "darwin",
+    "arch": "arm64",
+    "kernel": "Darwin 25.6.0",
+    "measurementNode": "25.8.1",
+    "runtimeNodeTarget": "24.x"
+  },
+  "method": {
+    "phase": "M0 feasibility spike",
+    "compression": "deterministic input tree captured with gzip level 6; release artifacts switch to tar.zst in M3",
+    "baseScope": ["dist", "dist-electron"],
+    "openclawScope": ["build/openclaw"],
+    "deepseekHarnessScope": ["pinned upstream packages tree plus ClawX bridge overlay"],
+    "caveat": "These are M0 candidate-input baselines. Node 24, native allowlists, SBOM and final runtime closure are measured and gated again by M3."
+  },
+  "artifacts": [
+    {
+      "id": "base-app-candidate",
+      "unpackedBytes": 29686500,
+      "compressedBytes": 7675448,
+      "fileCount": 478,
+      "startupProbe": "Electron E2E smoke owns base-app launch; M3 records packaged cold launch",
+      "rssBytes": null
+    },
+    {
+      "id": "openclaw-candidate",
+      "upstreamVersion": "2026.7.1-2",
+      "unpackedBytes": 339987413,
+      "compressedBytes": 101990879,
+      "fileCount": 33529,
+      "moduleColdStartMs": 245,
+      "moduleRssBytes": 237486080,
+      "probe": "Node 24-compatible Electron utility runtime imported build/openclaw/dist/index.js"
+    },
+    {
+      "id": "deepseek-harness-candidate",
+      "upstreamVersion": "0.1.1-rc.2",
+      "unpackedBytes": 29822868,
+      "compressedBytes": 8628224,
+      "fileCount": 4477,
+      "moduleColdStartMs": 207,
+      "moduleRssBytes": 100843520,
+      "probe": "Pinned upstream AgentLoop and Session modules loaded through the upstream TypeScript loader"
+    }
+  ],
+  "bridgeProcessControl": {
+    "hostObservedReadyMs": {
+      "openclaw": 43.63,
+      "deepseekHarness": 42.47
+    },
+    "idleRssBytes": {
+      "openclaw": 48234496,
+      "deepseekHarness": 48201728
+    },
+    "note": "Protocol-host overhead only; it is not substituted for the module/runtime RSS figures above."
+  },
+  "m3Budgets": {
+    "baseInstallerCompressedBytes": 157286400,
+    "runtimeArtifactCompressedBytesPerKernel": 314572800,
+    "runtimeUnpackedBytesPerKernel": 1073741824,
+    "coldReadyMs": 30000,
+    "idleRssBytesPerKernel": 536870912
+  }
+}

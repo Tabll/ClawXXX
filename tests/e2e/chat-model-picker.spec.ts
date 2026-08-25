@@ -8,6 +8,10 @@ test.describe('ClawX chat model picker', () => {
     const app = await launchElectronApp({ skipSetup: true });
 
     try {
+      // Wait for Main initialization before replacing its Host API handler. The
+      // canonical DataService/scheduler registration is asynchronous; replacing
+      // the handler earlier races startup and can prevent the first window.
+      const page = await getStableWindow(app);
       await app.evaluate(async ({ app: _app }, refs) => {
         const { ipcMain } = process.mainModule!.require('electron') as typeof import('electron');
 
@@ -56,9 +60,6 @@ test.describe('ClawX chat model picker', () => {
         ipcMain.removeHandler('gateway:rpc');
         ipcMain.handle('gateway:rpc', async (_event: unknown, method: string, params: unknown) => {
           hostRequests.push({ path: `gateway:${method}`, method: 'RPC', body: params ?? null });
-          if (method === 'sessions.list') {
-            return { success: true, result: { sessions: [{ key: 'agent:main:main', displayName: 'main' }] } };
-          }
           return { success: true, result: {} };
         });
 
@@ -95,16 +96,87 @@ test.describe('ClawX chat model picker', () => {
             }
             return makeResponse(request.id, { ok: true, workspaceRoot, executionCwd });
           }
-          if (request?.module === 'chat' && request.action === 'loadAcpSession') {
-            return makeResponse(request.id, { success: true, generation: 1 });
+          if (request?.module === 'kernels' && request.action === 'catalog') {
+            const runtime = {
+              kernelId: 'openclaw',
+              state: 'ready',
+              generation: 1,
+              artifactVersion: '2026.8.1-clawx.1',
+              diagnostics: [],
+            };
+            return makeResponse(request.id, {
+              source: 'network',
+              stale: false,
+              refreshedAt: now,
+              entries: [{
+                kernelId: 'openclaw',
+                displayName: 'OpenClaw',
+                installation: {
+                  kernelId: 'openclaw',
+                  state: 'installed',
+                  activeVersion: runtime.artifactVersion,
+                  updatedAt: now,
+                },
+                runtime,
+                updateAvailable: false,
+                installAllowed: true,
+                compatibilityFailures: [],
+              }],
+            });
+          }
+          if (request?.module === 'kernels' && request.action === 'list') {
+            return makeResponse(request.id, [{
+              kernelId: 'openclaw',
+              state: 'ready',
+              generation: 1,
+              artifactVersion: '2026.8.1-clawx.1',
+              diagnostics: [],
+            }]);
+          }
+          if (request?.module === 'conversations' && request.action === 'list') {
+            return makeResponse(request.id, {
+              items: [{
+                id: 'agent:main:main',
+                title: 'main',
+                createdAt: now,
+                updatedAt: now,
+                workspaceUri: workspacePath,
+                lastKernelId: 'openclaw',
+                kernelIds: ['openclaw'],
+                lastAgentId: 'main',
+              }],
+            });
+          }
+          if (request?.module === 'conversations' && request.action === 'get') {
+            const summary = {
+              id: 'agent:main:main',
+              title: 'main',
+              createdAt: now,
+              updatedAt: now,
+              workspaceUri: workspacePath,
+              lastKernelId: 'openclaw',
+              kernelIds: ['openclaw'],
+              lastAgentId: 'main',
+            };
+            return makeResponse(request.id, {
+              schema: 'clawx.conversation-export/v1',
+              conversation: summary,
+              turns: [],
+              runs: [],
+              usage: [],
+            });
+          }
+          if (request?.module === 'chat' && request.action === 'selectConversationKernel') {
+            return makeResponse(request.id, {
+              success: true,
+              generation: 1,
+              kernelId: 'openclaw',
+            });
           }
           if (request?.module === 'gateway' && request.action === 'rpc') {
             const method = typeof body?.method === 'string' ? body.method : '';
             const params = body?.params ?? null;
             hostRequests.push({ path: `gateway:${method}`, method: 'RPC', body: params });
-            if (method === 'sessions.list') {
-              return makeResponse(request.id, { success: true, result: { sessions: [{ key: 'agent:main:main', displayName: 'main' }] } });
-            }
             return makeResponse(request.id, { success: true, result: {} });
           }
           if (request?.module === 'agents' && request.action === 'list') {
@@ -194,6 +266,11 @@ test.describe('ClawX chat model picker', () => {
           if (request?.module === 'providers' && request.action === 'getDefaultAccount') {
             return makeResponse(request.id, { accountId: 'alpha1234' });
           }
+          if (request?.module === 'providers' && request.action === 'kernelDefaults') {
+            return makeResponse(request.id, [
+              { kernelId: 'openclaw', accountId: 'alpha1234', modelId: refs.alphaModelRef },
+            ]);
+          }
 
           return originalHostInvoke?.(event, request) ?? makeResponse(request?.id, {});
         });
@@ -204,7 +281,6 @@ test.describe('ClawX chat model picker', () => {
         }).__releaseChatModelProviders = releaseProviderAccounts;
       }, { alphaModelRef, betaModelRef });
 
-      const page = await getStableWindow(app);
       await page.reload();
       await expect(page.getByTestId('main-layout')).toBeVisible();
       await expect.poll(async () => app.evaluate(() => (

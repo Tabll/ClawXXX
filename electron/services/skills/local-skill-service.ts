@@ -361,6 +361,19 @@ async function buildDescriptors(): Promise<SourceDescriptor[]> {
       .filter(Boolean),
   );
 
+  let bundledDescriptor: SourceDescriptor[] = [];
+  try {
+    bundledDescriptor = [{
+      root: join(getOpenClawResolvedDir(), 'skills'),
+      source: 'openclaw-bundled',
+      priority: 4,
+      allowedSkillSlugs: BUNDLED_OPENCLAW_SKILL_ALLOWLIST,
+    }];
+  } catch {
+    // OpenClaw is an optional download. Its package root does not exist before
+    // installation, while canonical/DSH Skills must remain usable.
+  }
+
   return [
     ...workspaces.map((workspace) => ({
       root: join(workspace, 'skills'),
@@ -382,12 +395,7 @@ async function buildDescriptors(): Promise<SourceDescriptor[]> {
       source: 'openclaw-managed',
       priority: 3,
     },
-    {
-      root: join(getOpenClawResolvedDir(), 'skills'),
-      source: 'openclaw-bundled',
-      priority: 4,
-      allowedSkillSlugs: BUNDLED_OPENCLAW_SKILL_ALLOWLIST,
-    },
+    ...bundledDescriptor,
   ];
 }
 

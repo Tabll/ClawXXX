@@ -7,8 +7,34 @@ import { hostApi } from '@/lib/host-api';
 import type { SkillsStatusResult } from '@/lib/host-api';
 import { AppError, normalizeAppError } from '@/lib/error-model';
 import type { Skill, MarketplaceSkill } from '../types/skill';
+import type { CanonicalSkill, SkillMutationResult, SkillMutationTarget } from '@shared/domains/skills';
+import type { KernelId } from '@shared/kernels/contracts';
 
 type GatewaySkillStatus = NonNullable<SkillsStatusResult['skills']>[number];
+
+function mapCanonicalSkill(skill: CanonicalSkill): Skill {
+  return {
+    id: skill.id,
+    slug: skill.slug,
+    name: skill.displayName,
+    description: skill.description,
+    enabled: skill.enabledForKernels.length > 0,
+    icon: skill.icon ?? '📦',
+    version: skill.version,
+    author: skill.author,
+    config: skill.config,
+    isCore: skill.isCore,
+    isBundled: skill.source.kind === 'bundled',
+    source: `canonical-${skill.source.kind}`,
+    baseDir: skill.source.locator,
+    filePath: `${skill.source.locator}/SKILL.md`,
+    revision: skill.revision,
+    installedForKernels: skill.installedForKernels,
+    enabledForKernels: skill.enabledForKernels,
+    compatibility: skill.compatibility,
+    projections: skill.projections,
+  };
+}
 
 const BUNDLED_OPENCLAW_SKILL_ALLOWLIST = new Set(['skill-creator']);
 const GATEWAY_ONLY_APPENDABLE_SOURCES = new Set(['openclaw-plugin', 'openclaw-extra']);
@@ -154,14 +180,16 @@ interface SkillsState {
   searchError: string | null;
   installing: Record<string, boolean>;
   error: string | null;
+  lastMutation: SkillMutationResult | null;
 
   fetchSkills: () => Promise<boolean>;
   searchSkills: (query: string) => Promise<void>;
-  installSkill: (slug: string, version?: string) => Promise<void>;
-  uninstallSkill: (slug: string) => Promise<void>;
-  enableSkill: (skillId: string) => Promise<void>;
-  disableSkill: (skillId: string) => Promise<void>;
-  setSkillsEnabled: (skillIds: string[], enabled: boolean) => Promise<void>;
+  installSkill: (slug: string, version?: string, target?: SkillMutationTarget) => Promise<SkillMutationResult | undefined>;
+  uninstallSkill: (slug: string, target?: SkillMutationTarget) => Promise<SkillMutationResult | undefined>;
+  enableSkill: (skillId: string, target?: SkillMutationTarget) => Promise<SkillMutationResult[]>;
+  disableSkill: (skillId: string, target?: SkillMutationTarget) => Promise<SkillMutationResult[]>;
+  setSkillsEnabled: (skillIds: string[], enabled: boolean, target?: SkillMutationTarget) => Promise<SkillMutationResult[]>;
+  retryProjection: (skillId: string, kernelId: KernelId) => Promise<SkillMutationResult>;
   setSkills: (skills: Skill[]) => void;
   updateSkill: (skillId: string, updates: Partial<Skill>) => void;
 }
@@ -174,10 +202,25 @@ export const useSkillsStore = create<SkillsState>((set, get) => ({
   searchError: null,
   installing: {},
   error: null,
+  lastMutation: null,
 
   fetchSkills: async () => {
     if (get().skills.length === 0) {
       set({ loading: true, error: null });
+    }
+
+    const catalog = (hostApi.skills as typeof hostApi.skills & {
+      catalog?: () => Promise<{ success: boolean; error?: string; skills: CanonicalSkill[] }>;
+    }).catalog;
+    if (typeof catalog === 'function') {
+      try {
+        const result = await catalog();
+        if (!result.success) throw new Error(result.error || 'Failed to fetch canonical Skills');
+        set({ skills: result.skills.map(mapCanonicalSkill), loading: false, error: null });
+        return true;
+      } catch (error) {
+        console.warn('Canonical Skills catalog unavailable; using legacy compatibility path:', error);
+      }
     }
 
     const gatewayDataPromise = hostApi.skills.status()
@@ -242,10 +285,14 @@ export const useSkillsStore = create<SkillsState>((set, get) => ({
     }
   },
 
-  installSkill: async (slug: string, version?: string) => {
+  installSkill: async (slug: string, version?: string, target: SkillMutationTarget = 'all-installed') => {
     set((state) => ({ installing: { ...state.installing, [slug]: true } }));
     try {
-      const result = await hostApi.skills.clawhubInstall({ slug, version });
+      const result = await hostApi.skills.clawhubInstall({
+        slug,
+        version,
+        target,
+      });
       if (!result.success) {
         const appError = normalizeAppError(new Error(result.error || 'Install failed'), {
           module: 'skills',
@@ -254,8 +301,9 @@ export const useSkillsStore = create<SkillsState>((set, get) => ({
         const errorKey = mapErrorCodeToSkillErrorKey(appError.code, 'install');
         throw new Error(errorKey ?? appError.message);
       }
-      await get().setSkillsEnabled([slug], true);
       await get().fetchSkills();
+      set({ lastMutation: result.mutation ?? null });
+      return result.mutation;
     } catch (error) {
       console.error('Install error:', error);
       throw error;
@@ -268,14 +316,19 @@ export const useSkillsStore = create<SkillsState>((set, get) => ({
     }
   },
 
-  uninstallSkill: async (slug: string) => {
+  uninstallSkill: async (slug: string, target: SkillMutationTarget = 'all-installed') => {
     set((state) => ({ installing: { ...state.installing, [slug]: true } }));
     try {
-      const result = await hostApi.skills.clawhubUninstall({ slug });
+      const result = await hostApi.skills.clawhubUninstall({
+        slug,
+        target,
+      });
       if (!result.success) {
         throw new Error(result.error || 'Uninstall failed');
       }
       await get().fetchSkills();
+      set({ lastMutation: result.mutation ?? null });
+      return result.mutation;
     } catch (error) {
       console.error('Uninstall error:', error);
       throw error;
@@ -288,8 +341,8 @@ export const useSkillsStore = create<SkillsState>((set, get) => ({
     }
   },
 
-  setSkillsEnabled: async (skillIds, enabled) => {
-    if (skillIds.length === 0) return;
+  setSkillsEnabled: async (skillIds, enabled, target: SkillMutationTarget = 'all-installed') => {
+    if (skillIds.length === 0) return [];
 
     const { skills, updateSkill } = get();
     if (!enabled) {
@@ -299,32 +352,53 @@ export const useSkillsStore = create<SkillsState>((set, get) => ({
       }
     }
 
-    const result = await hostApi.skills.updateConfigs(
-      skillIds.map((skillKey) => ({ skillKey, enabled })),
-    );
-    if (!result.success) {
-      throw new Error(result.error || 'Failed to update skill config');
+    const mutate = (hostApi.skills as typeof hostApi.skills & {
+      mutate?: typeof hostApi.skills.mutate;
+    }).mutate;
+    if (typeof mutate === 'function') {
+      const mutations: SkillMutationResult[] = [];
+      for (const skillId of skillIds) {
+        mutations.push(await mutate({
+          skillId,
+          mutation: enabled ? 'enable' : 'disable',
+          target,
+        }));
+      }
+      await get().fetchSkills();
+      set({ lastMutation: mutations.at(-1) ?? null });
+      return mutations;
     }
 
+    const result = await hostApi.skills.updateConfigs(skillIds.map((skillKey) => ({ skillKey, enabled })));
+    if (!result.success) throw new Error(result.error || 'Failed to update skill config');
+
     skillIds.forEach((skillId) => updateSkill(skillId, { enabled }));
+    return [];
   },
 
-  enableSkill: async (skillId) => {
+  enableSkill: async (skillId, target) => {
     try {
-      await get().setSkillsEnabled([skillId], true);
+      return await get().setSkillsEnabled([skillId], true, target);
     } catch (error) {
       console.error('Failed to enable skill:', error);
       throw error;
     }
   },
 
-  disableSkill: async (skillId) => {
+  disableSkill: async (skillId, target) => {
     try {
-      await get().setSkillsEnabled([skillId], false);
+      return await get().setSkillsEnabled([skillId], false, target);
     } catch (error) {
       console.error('Failed to disable skill:', error);
       throw error;
     }
+  },
+
+  retryProjection: async (skillId, kernelId) => {
+    const result = await hostApi.skills.retry({ skillId, kernelId });
+    await get().fetchSkills();
+    set({ lastMutation: result });
+    return result;
   },
 
   setSkills: (skills) => set({ skills }),

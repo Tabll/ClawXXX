@@ -7,11 +7,15 @@ import { getOpenClawConfigDir } from '../utils/paths';
 import { buildGatewayHealthSummary } from '../utils/gateway-health';
 import { buildChannelAccountsView, getChannelStatusDiagnostics } from './channels-api';
 import { getAcpTraceSnapshot, recordRendererAcpTrace } from './acp-trace';
+import { redactDiagnosticText } from '../kernels/log-redaction';
+import type { ExtensionHostKernelApi } from '@shared/extensions/kernel-api';
+import type { DiagnosticsSnapshotResult, KernelDiagnosticsSnapshot } from '@shared/domains/diagnostics';
 
 const DEFAULT_TAIL_LINES = 200;
 
 type DiagnosticsApiContext = {
   gatewayManager: GatewayManager;
+  kernels?: ExtensionHostKernelApi;
 };
 
 function sanitizeGatewayRecovery(
@@ -54,7 +58,9 @@ async function readTail(filePath: string, tailLines = DEFAULT_TAIL_LINES): Promi
       }
 
       const lines = content.split('\n');
-      return lines.length <= safeTailLines ? content : lines.slice(-safeTailLines).join('\n');
+      return redactDiagnosticText(
+        lines.length <= safeTailLines ? content : lines.slice(-safeTailLines).join('\n'),
+      );
     } finally {
       await file.close();
     }
@@ -63,8 +69,88 @@ async function readTail(filePath: string, tailLines = DEFAULT_TAIL_LINES): Promi
   }
 }
 
+async function buildKernelDiagnostics(
+  kernels: ExtensionHostKernelApi | undefined,
+): Promise<DiagnosticsSnapshotResult> {
+  const capturedAt = new Date().toISOString();
+  if (!kernels) {
+    return { capturedAt, platform: process.platform, arch: process.arch, kernels: [] };
+  }
+  const snapshots = await kernels.list();
+  const results = await Promise.all(snapshots.map(async (snapshot): Promise<KernelDiagnosticsSnapshot> => {
+    const diagnostics = kernels.diagnostics(snapshot.kernelId);
+    const installation = await kernels.getInstallation(snapshot.kernelId).catch(() => undefined);
+    const runtimeVersion = snapshot.artifactVersion
+      ? await kernels.getRuntimeVersion(snapshot.kernelId, snapshot.artifactVersion).catch(() => undefined)
+      : undefined;
+    const installedManifest = installation?.manifest;
+    const manifest = runtimeVersion?.manifest
+      ?? (installedManifest?.artifactVersion === snapshot.artifactVersion
+        ? installedManifest
+        : undefined);
+    const capabilities = snapshot.capabilities ?? kernels.getDriver(snapshot.kernelId)?.definition.capabilities;
+    const lastSequence = diagnostics.logs.at(-1)?.sequence;
+    return {
+      capturedAt,
+      kernelId: snapshot.kernelId,
+      artifact: {
+        installationState: installation?.state ?? 'unknown',
+        activeVersion: installation?.activeVersion,
+        desiredVersion: installation?.desiredVersion,
+        lastKnownGoodVersion: installation?.lastKnownGoodVersion,
+        artifactVersion: snapshot.artifactVersion ?? manifest?.artifactVersion,
+        upstreamVersion: manifest?.upstreamVersion,
+        upstreamCommit: manifest?.upstreamCommit,
+        patchRevision: manifest?.patchRevision,
+        platform: manifest?.platform,
+        arch: manifest?.arch,
+        archiveSha256: manifest?.archive.sha256,
+        fileManifestSha256: manifest?.supplyChain.fileManifestSha256,
+        patchSeriesSha256: manifest?.supplyChain.patchSeriesSha256,
+        licenseReportSha256: manifest?.supplyChain.licenseReportSha256,
+        platformSecurityReportSha256: manifest?.supplyChain.platformSecurityReportSha256,
+      },
+      protocol: {
+        kernelContract: 'clawx.kernel/v1',
+        runtimeTransport: snapshot.runtimeTransport,
+        chat: manifest?.protocols.chat,
+        control: manifest?.protocols.control,
+        conversationStore: manifest?.protocols.conversationStore,
+      },
+      process: {
+        state: snapshot.state,
+        generation: snapshot.generation,
+        pid: snapshot.pid,
+        ownership: snapshot.ownership,
+        runtimeVersion: snapshot.version,
+        artifactVersion: snapshot.artifactVersion,
+        startedAt: snapshot.startedAt,
+        startupDurationMs: snapshot.startupDurationMs,
+        rssBytes: snapshot.rssBytes,
+      },
+      health: {
+        state: snapshot.state,
+        lastHealthAt: snapshot.lastHealthAt,
+        lastError: snapshot.lastError ? redactDiagnosticText(snapshot.lastError) : undefined,
+        crashCount: diagnostics.crashes.length,
+        restartCount: snapshot.restartCount ?? 0,
+        restartBudget: snapshot.restartBudget,
+        rollbackSuggested: Boolean(snapshot.rollbackSuggested),
+      },
+      capabilities,
+      logs: {
+        directory: diagnostics.logDirectory,
+        entryCount: diagnostics.logs.length,
+        lastSequence,
+      },
+    };
+  }));
+  return { capturedAt, platform: process.platform, arch: process.arch, kernels: results };
+}
+
 export function createDiagnosticsApi(ctx: DiagnosticsApiContext): CompleteHostServiceRegistry['diagnostics'] {
   return {
+    snapshot: async () => buildKernelDiagnostics(ctx.kernels),
     gatewaySnapshot: async () => {
       const { channels } = await buildChannelAccountsView(ctx, { probe: false });
       const diagnostics = ctx.gatewayManager.getDiagnostics?.() ?? {
@@ -94,7 +180,7 @@ export function createDiagnosticsApi(ctx: DiagnosticsApiContext): CompleteHostSe
         platform: process.platform,
         gateway,
         channels,
-        clawxLogTail: await logger.readLogFile(DEFAULT_TAIL_LINES),
+        clawxLogTail: redactDiagnosticText(await logger.readLogFile(DEFAULT_TAIL_LINES)),
         gatewayLogTail: await readTail(join(openClawDir, 'logs', 'gateway.log')),
         gatewayErrLogTail: await readTail(join(openClawDir, 'logs', 'gateway.err.log')),
       };

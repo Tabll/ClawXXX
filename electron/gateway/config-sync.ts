@@ -1,7 +1,6 @@
 import { app } from 'electron';
 import path from 'path';
 import { existsSync, readFileSync, mkdirSync, readdirSync, symlinkSync } from 'fs';
-import { homedir } from 'os';
 import { join } from 'path';
 
 function fsPath(filePath: string): string {
@@ -41,6 +40,7 @@ import {
   quarantineLegacyUpdateCheckState,
 } from '../utils/openclaw-upgrade-snapshot';
 import { stripSystemdSupervisorEnv } from './config-sync-env';
+import { buildManagedOpenClawEnvironment } from '../kernels/openclaw/runtime-location';
 import { cleanupAgentsSymlinkedSkills, cleanupStalePluginRuntimeDeps } from './skills-symlink-cleanup';
 import {
   buildPrelaunchMaintenanceCacheKey,
@@ -120,7 +120,7 @@ function listBundledOpenClawExtensionPluginIds(): string[] {
 
 function cleanupStaleBuiltInExtensions(): void {
   for (const ext of listBundledOpenClawExtensionPluginIds()) {
-    const extDir = join(homedir(), '.openclaw', 'extensions', ext);
+    const extDir = join(getOpenClawConfigDir(), 'extensions', ext);
     if (existsSync(fsPath(extDir))) {
       logger.info(`[plugin] Removing stale built-in extension copy: ${ext}`);
       try {
@@ -180,7 +180,7 @@ function ensureConfiguredPluginsUpgraded(configuredChannels: string[]): boolean 
     if (!pluginInfo) continue;
     const { dirName, npmName } = pluginInfo;
 
-    const targetDir = join(homedir(), '.openclaw', 'extensions', dirName);
+    const targetDir = join(getOpenClawConfigDir(), 'extensions', dirName);
     const targetManifest = join(targetDir, 'openclaw.plugin.json');
     const isInstalled = existsSync(fsPath(targetManifest));
     const installedVersion = isInstalled ? readPluginVersion(join(targetDir, 'package.json')) : null;
@@ -195,7 +195,7 @@ function ensureConfiguredPluginsUpgraded(configuredChannels: string[]): boolean 
       if (!isInstalled || (sourceVersion && installedVersion && sourceVersion !== installedVersion)) {
         logger.info(`[plugin] ${isInstalled ? 'Auto-upgrading' : 'Installing'} ${channelType} plugin${isInstalled ? `: ${installedVersion} → ${sourceVersion}` : `: ${sourceVersion}`} (bundled)`);
         try {
-          mkdirSync(fsPath(join(homedir(), '.openclaw', 'extensions')), { recursive: true });
+          mkdirSync(fsPath(join(getOpenClawConfigDir(), 'extensions')), { recursive: true });
           safeRmSync(fsPath(targetDir));
           cpSyncSafe(bundledDir, targetDir);
           fixupPluginManifest(targetDir);
@@ -226,7 +226,7 @@ function ensureConfiguredPluginsUpgraded(configuredChannels: string[]): boolean 
         logger.info(`[plugin] ${isInstalled ? 'Auto-upgrading' : 'Installing'} ${channelType} plugin${isInstalled ? `: ${installedVersion} → ${sourceVersion}` : `: ${sourceVersion}`} (dev/node_modules)`);
 
         try {
-          mkdirSync(fsPath(join(homedir(), '.openclaw', 'extensions')), { recursive: true });
+          mkdirSync(fsPath(join(getOpenClawConfigDir(), 'extensions')), { recursive: true });
           copyPluginFromNodeModules(npmPkgPath, targetDir, npmName);
           fixupPluginManifest(targetDir);
         } catch (err) {
@@ -253,7 +253,7 @@ function cleanupUnconfiguredChannelPlugins(configuredChannels: string[]): boolea
     if (configuredSet.has(channelType)) continue;
 
     const { dirName } = pluginInfo;
-    const targetDir = join(homedir(), '.openclaw', 'extensions', dirName);
+    const targetDir = join(getOpenClawConfigDir(), 'extensions', dirName);
     if (!existsSync(fsPath(targetDir))) continue;
 
     logger.info(`[plugin] Removing unconfigured channel plugin: ${channelType} (${dirName})`);
@@ -331,7 +331,7 @@ function buildPluginMaintenanceCacheKey(openclawDir: string, configuredChannels:
     openclawDir,
     cwd: process.cwd(),
     configuredChannels: [...configuredChannels].sort(),
-    extensionsDir: directoryChildrenSignature(join(homedir(), '.openclaw', 'extensions')),
+    extensionsDir: directoryChildrenSignature(join(getOpenClawConfigDir(), 'extensions')),
     sourceSignatures: buildPluginSourceSignatures(configuredChannels),
   });
 }
@@ -706,7 +706,7 @@ export async function prepareGatewayLaunchContext(port: number): Promise<Gateway
     ? prependPathEntry(baseEnvRecord, binPath).env
     : baseEnvRecord;
   const forkEnv: Record<string, string | undefined> = {
-    ...stripSystemdSupervisorEnv(baseEnvPatched),
+    ...stripSystemdSupervisorEnv(buildManagedOpenClawEnvironment(undefined, baseEnvPatched)),
     ...providerEnv,
     ...uvEnv,
     ...proxyEnv,

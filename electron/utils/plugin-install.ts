@@ -9,10 +9,9 @@ import { app } from 'electron';
 import path from 'node:path';
 import { existsSync, cpSync, copyFileSync, statSync, lstatSync, mkdirSync, readFileSync, readlinkSync, writeFileSync, readdirSync, realpathSync, symlinkSync, unlinkSync } from 'node:fs';
 import { readdir, stat, copyFile, mkdir } from 'node:fs/promises';
-import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { logger } from './logger';
-import { getOpenClawResolvedDir } from './paths';
+import { getOpenClawConfigDir, getOpenClawResolvedDir } from './paths';
 import { safeRmSync } from './safe-fs';
 import {
   upsertPluginInstallRecordsIntoSqlite,
@@ -20,6 +19,7 @@ import {
   ensureOpenClawStateDirExists,
 } from './plugin-install-index';
 import { mutateOpenClawConfig } from '../gateway/config-delivery';
+import { getOpenClawRuntimeLocation } from '../kernels/openclaw/runtime-location';
 
 function normalizeFsPathForWindows(filePath: string): string {
   if (process.platform !== 'win32') return filePath;
@@ -605,7 +605,7 @@ export async function removeTrustedOfficialPluginInstallRecord(pluginDirName: st
 /** Repair managed install metadata and host peer links for all mirrors on disk. */
 export async function repairTrustedOfficialPluginInstallRecords(): Promise<void> {
   for (const pluginDirName of Object.keys(TRUSTED_OFFICIAL_EXTENSION_PLUGINS)) {
-    const targetDir = join(homedir(), '.openclaw', 'extensions', pluginDirName);
+    const targetDir = join(getOpenClawConfigDir(), 'extensions', pluginDirName);
     if (!existsSync(fsPath(join(targetDir, 'openclaw.plugin.json')))) {
       continue;
     }
@@ -759,7 +759,7 @@ export async function ensurePluginInstalled(
   candidateSources: string[],
   pluginLabel: string,
 ): Promise<PluginInstallResult> {
-  const targetDir = join(homedir(), '.openclaw', 'extensions', pluginDirName);
+  const targetDir = join(getOpenClawConfigDir(), 'extensions', pluginDirName);
   const targetManifest = join(targetDir, 'openclaw.plugin.json');
   const targetPkgJson = join(targetDir, 'package.json');
 
@@ -788,7 +788,7 @@ export async function ensurePluginInstalled(
 
   // Fresh install or upgrade — try bundled/build sources first
   if (sourceDir) {
-    const extensionsRoot = join(homedir(), '.openclaw', 'extensions');
+    const extensionsRoot = join(getOpenClawConfigDir(), 'extensions');
     const attempts: Array<{ attempt: number; code?: string; name?: string; message: string }> = [];
     const maxAttempts = process.platform === 'win32' ? 2 : 1;
 
@@ -846,7 +846,7 @@ export async function ensurePluginInstalled(
             `${installedVersion ? `: ${installedVersion} → ${sourceVersion}` : `: ${sourceVersion}`} (dev/node_modules)`,
           );
           try {
-            mkdirSync(fsPath(join(homedir(), '.openclaw', 'extensions')), { recursive: true });
+            mkdirSync(fsPath(join(getOpenClawConfigDir(), 'extensions')), { recursive: true });
             copyPluginFromNodeModules(npmPkgPath, targetDir, npmName);
             fixupPluginManifest(targetDir);
             if (existsSync(fsPath(join(targetDir, 'openclaw.plugin.json')))) {
@@ -882,22 +882,27 @@ export async function ensurePluginInstalled(
 // ── Candidate source path builder ────────────────────────────────────────────
 
 export function buildCandidateSources(pluginDirName: string): string[] {
-  return app.isPackaged
-    ? [
+  if (app.isPackaged) {
+    const runtime = getOpenClawRuntimeLocation();
+    return [
+      ...(runtime ? [join(runtime.packageDir, 'clawx-plugins', pluginDirName)] : []),
+      // Legacy paths remain read-only compatibility probes for development and
+      // old private builds; the base installer gate prevents them in releases.
       join(process.resourcesPath, 'openclaw-plugins', pluginDirName),
       join(process.resourcesPath, 'resources', 'openclaw-plugins', pluginDirName),
       join(process.resourcesPath, 'app.asar.unpacked', 'build', 'openclaw-plugins', pluginDirName),
       join(process.resourcesPath, 'app.asar.unpacked', 'resources', 'openclaw-plugins', pluginDirName),
       join(process.resourcesPath, 'app.asar.unpacked', 'openclaw-plugins', pluginDirName),
-    ]
-    : [
-      join(app.getAppPath(), 'build', 'openclaw-plugins', pluginDirName),
-      join(app.getAppPath(), 'resources', 'openclaw-plugins', pluginDirName),
-      join(process.cwd(), 'build', 'openclaw-plugins', pluginDirName),
-      join(process.cwd(), 'resources', 'openclaw-plugins', pluginDirName),
-      join(__dirname, '../../build/openclaw-plugins', pluginDirName),
-      join(__dirname, '../../resources/openclaw-plugins', pluginDirName),
     ];
+  }
+  return [
+    join(app.getAppPath(), 'build', 'openclaw-plugins', pluginDirName),
+    join(app.getAppPath(), 'resources', 'openclaw-plugins', pluginDirName),
+    join(process.cwd(), 'build', 'openclaw-plugins', pluginDirName),
+    join(process.cwd(), 'resources', 'openclaw-plugins', pluginDirName),
+    join(__dirname, '../../build/openclaw-plugins', pluginDirName),
+    join(__dirname, '../../resources/openclaw-plugins', pluginDirName),
+  ];
 }
 
 // ── Per-channel plugin helpers ───────────────────────────────────────────────

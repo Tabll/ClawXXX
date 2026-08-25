@@ -20,9 +20,7 @@ function logValidationStatus(provider: string, status: number): void {
 }
 
 function maskSecret(secret: string): string {
-  if (!secret) return '';
-  if (secret.length <= 8) return `${secret.slice(0, 2)}***`;
-  return `${secret.slice(0, 4)}***${secret.slice(-4)}`;
+  return secret ? '[REDACTED]' : '';
 }
 
 function sanitizeValidationUrl(rawUrl: string): string {

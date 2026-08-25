@@ -85,6 +85,21 @@ export default defineConfig({
           },
         },
       },
+      {
+        // Single-owner SQLite/Blob utility process. Keeping this as a separate
+        // bundle prevents Renderer, Main services and kernel runtimes from
+        // importing node:sqlite directly.
+        entry: 'electron/data/utility-process-entry.ts',
+        vite: {
+          resolve: { alias },
+          build: {
+            outDir: 'dist-electron/data',
+            rollupOptions: {
+              external: isMainProcessExternal,
+            },
+          },
+        },
+      },
     ]),
     renderer(),
   ],

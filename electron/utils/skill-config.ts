@@ -5,8 +5,7 @@
 import { readFile, writeFile, mkdir, readdir, rm } from 'fs/promises';
 import { existsSync } from 'fs';
 import { join } from 'path';
-import { homedir } from 'os';
-import { getOpenClawDir, getOpenClawResolvedDir, getResourcesDir } from './paths';
+import { getOpenClawConfigDir, getOpenClawDir, getOpenClawResolvedDir, getResourcesDir } from './paths';
 import { logger } from './logger';
 import { cpAsyncSafe } from './plugin-install';
 import { mutateOpenClawConfig, readOpenClawConfigSnapshot } from '../gateway/config-delivery';
@@ -305,7 +304,7 @@ const BUILTIN_SKILLS = [] as const;
  * block the normal startup flow.
  */
 export async function ensureBuiltinSkillsInstalled(): Promise<void> {
-    const skillsRoot = join(homedir(), '.openclaw', 'skills');
+    const skillsRoot = join(getOpenClawConfigDir(), 'skills');
 
     for (const { slug, sourceExtension } of BUILTIN_SKILLS) {
         const targetDir = join(skillsRoot, slug);
@@ -433,7 +432,7 @@ export async function ensurePreinstalledSkillsInstalled(): Promise<void> {
     }
     const lockVersions = await readPreinstalledLockVersions(sourceRoot);
 
-    const targetRoot = join(homedir(), '.openclaw', 'skills');
+    const targetRoot = join(getOpenClawConfigDir(), 'skills');
     await mkdir(targetRoot, { recursive: true });
     const toEnable: string[] = [];
 

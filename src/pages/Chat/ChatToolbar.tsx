@@ -13,12 +13,17 @@ import { useArtifactPanel } from '@/stores/artifact-panel';
 import { cn } from '@/lib/utils';
 import { useTranslation } from 'react-i18next';
 import { WORKSPACE_BROWSER_ENABLED } from '@/components/file-preview/workspace-browser-config';
+import type { KernelId } from '@shared/kernels/contracts';
+import { kernelDisplayName, useKernelStore } from '@/stores/kernels';
 
 export type ChatToolbarProps = {
   questionDirectoryOpen?: boolean;
   questionDirectoryCount?: number;
   onToggleQuestionDirectory?: () => void;
   workspaceAvailable?: boolean;
+  selectedKernelId?: KernelId;
+  onSelectKernel?: (kernelId: KernelId) => void;
+  kernelSelectionDisabled?: boolean;
 };
 
 export function ChatToolbar({
@@ -26,6 +31,9 @@ export function ChatToolbar({
   questionDirectoryCount = 0,
   onToggleQuestionDirectory,
   workspaceAvailable = false,
+  selectedKernelId,
+  onSelectKernel,
+  kernelSelectionDisabled = false,
 }: ChatToolbarProps = {}) {
   const currentAgentId = useChatStore((s) => s.currentAgentId);
   const agents = useAgentsStore((s) => s.agents);
@@ -34,6 +42,11 @@ export function ChatToolbar({
   const panelTab = useArtifactPanel((s) => s.tab);
   const closePanel = useArtifactPanel((s) => s.close);
   const { t } = useTranslation('chat');
+  const catalog = useKernelStore(state => state.catalog);
+  const runtimes = useKernelStore(state => state.runtimes);
+  const selectableKernels = (catalog?.entries ?? []).filter(entry => (
+    entry.installation.state === 'installed' || runtimes[entry.kernelId]?.state !== 'not-installed'
+  ));
   const currentAgent = useMemo(
     () => (agents ?? []).find((agent) => agent.id === currentAgentId) ?? null,
     [agents, currentAgentId],
@@ -45,6 +58,28 @@ export function ChatToolbar({
 
   return (
     <div className="flex items-center gap-2">
+      <label className="no-drag flex items-center gap-1.5 rounded-full border border-black/10 bg-white/70 px-2 py-1 text-xs font-medium text-foreground/80 dark:border-white/10 dark:bg-white/5">
+        <span className="sr-only">{t('kernelSelector.label')}</span>
+        <span aria-hidden="true" className={cn(
+          'h-2 w-2 rounded-full',
+          selectedKernelId && runtimes[selectedKernelId]?.state === 'ready'
+            ? 'bg-green-600 dark:bg-green-400'
+            : 'bg-muted-foreground/40',
+        )} />
+        <select
+          data-testid="chat-kernel-selector"
+          aria-label={t('kernelSelector.label')}
+          value={selectedKernelId ?? ''}
+          disabled={kernelSelectionDisabled || selectableKernels.length === 0}
+          onChange={event => onSelectKernel?.(event.target.value as KernelId)}
+          className="max-w-40 cursor-pointer appearance-none bg-transparent pr-1 text-xs outline-none disabled:cursor-not-allowed"
+        >
+          {selectableKernels.length === 0 && <option value="">{t('kernelSelector.noneInstalled')}</option>}
+          {selectableKernels.map(entry => (
+            <option key={entry.kernelId} value={entry.kernelId}>{kernelDisplayName(entry.kernelId)}</option>
+          ))}
+        </select>
+      </label>
       <div className="hidden sm:flex items-center gap-1.5 rounded-full border border-black/10 bg-white/70 px-3 py-1.5 text-xs font-medium text-foreground/80 dark:border-white/10 dark:bg-white/5">
         <Bot className="h-3.5 w-3.5 text-primary" />
         <span>{t('toolbar.currentAgent', { agent: currentAgentName })}</span>

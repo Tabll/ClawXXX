@@ -2,6 +2,9 @@
  * Skill Type Definitions
  * Types for skills/plugins
  */
+import type { SkillCompatibility } from '../domains/skills';
+import type { KernelEntityProjection } from '../domains/identity';
+import type { KernelId } from '../kernels/contracts';
 
 /**
  * Skill data structure
@@ -30,6 +33,12 @@ export interface Skill {
     manifestPath?: string;
     originPath?: string;
   };
+  /** Canonical multi-kernel fields; absent only on legacy compatibility data. */
+  revision?: number;
+  installedForKernels?: KernelId[];
+  enabledForKernels?: KernelId[];
+  compatibility?: SkillCompatibility[];
+  projections?: KernelEntityProjection[];
 }
 
 export interface QuickAccessSkill {

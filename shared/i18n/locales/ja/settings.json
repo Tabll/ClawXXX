@@ -1,6 +1,18 @@
 {
   "title": "設定",
   "subtitle": "ClawX の体験をカスタマイズ",
+  "kernels": {
+    "title": "AI カーネル",
+    "description": "独立したランタイムをインストール・実行・保守します。ClawX の正規データはすべて共有されます。",
+    "install": "インストール", "update": "更新", "updateAvailable": "更新あり",
+    "start": "起動", "stop": "停止", "restart": "再起動", "autoStart": "ClawX と同時に起動",
+    "repair": "修復", "rollback": "ロールバック", "uninstall": "アンインストール",
+    "openData": "データを開く", "openLogs": "ログを開く", "exportLogs": "ログを書き出す",
+    "activeVersion": "有効バージョン", "availableVersion": "利用可能バージョン",
+    "generation": "世代", "memory": "メモリ",
+    "uninstallTitle": "{{name}} をアンインストールしますか？",
+    "uninstallMessage": "ランタイムとキャッシュ版を削除します。共有の会話、スケジュール、エージェント、スキル、チャンネル、使用量データは保持されます。"
+  },
   "appearance": {
     "title": "通用",
     "description": "外観とスタイルをカスタマイズ",
@@ -33,6 +45,24 @@
       "noModelSelected": "モデル未選択",
       "multiAccountReady": "複数アカウント対応",
       "singletonVendor": "単一アカウントのプロバイダー"
+    },
+    "kernels": {
+      "openclaw": { "name": "OpenClaw", "short": "OpenClaw" },
+      "deepseek-harness": { "name": "DeepSeek Harness", "short": "DSH" },
+      "defaultModel": "カーネルのデフォルト",
+      "selectDefault": "プロバイダーとモデルを選択",
+      "noCompatibleModel": "互換性のあるプロバイダーモデルが設定されていません。",
+      "default": "デフォルト",
+      "currentDefault": "このカーネルの現在のデフォルト",
+      "setDefault": "このカーネルのデフォルトに設定",
+      "status": {
+        "pending": "待機中",
+        "applying": "適用中",
+        "ready": "準備完了",
+        "partial": "一部のみ",
+        "failed": "失敗",
+        "unsupported": "非対応"
+      }
     },
     "authModes": {
       "apiKey": "API キー",
@@ -115,6 +145,8 @@
       "failedDelete": "プロバイダーの削除に失敗しました",
       "defaultUpdated": "デフォルトプロバイダーが更新されました",
       "failedDefault": "デフォルトの設定に失敗しました",
+      "kernelDefaultUpdated": "カーネルのデフォルトモデルを更新しました",
+      "failedKernelDefault": "カーネルのデフォルトモデルを設定できませんでした",
       "updated": "プロバイダーが更新されました",
       "failedUpdate": "プロバイダーの更新に失敗しました",
       "invalidKey": "無効な API キー",
@@ -284,7 +316,8 @@
   },
   "tokenUsage": {
     "title": "Token 使用量",
-    "description": "ローカル OpenClaw transcript から、モデル、プロバイダー、Agent、Token 種別、コスト、セッション別の使用量を確認します。",
+    "description": "インストール済みの全カーネルがライブ報告し、統一ストレージに保存したモデル、プロバイダー、Agent、Token、コスト、会話の使用量を確認します。",
+    "costSemantics": "コストはランタイムまたはプロバイダーの報告値のみです。合計は報告済みの USD のみを集計し、他通貨は呼び出し単位で表示して換算しません。不明な項目は不明のままなので、合計は部分値の場合があります。",
     "refresh": "更新",
     "refreshing": "更新中...",
     "exportJson": "JSON を書き出す",
@@ -294,13 +327,18 @@
     "unknown": "不明",
     "searchPlaceholder": "モデル、プロバイダー、Agent、セッション、内容を検索",
     "emptyTitle": "Token 使用履歴はまだありません",
-    "emptyDescription": "構造化された usage データを含むアシスタントメッセージがローカル transcript に書き込まれると、ここに表示されます。",
+    "emptyDescription": "管理対象カーネルがライブのモデル呼び出しを ClawX SQLite に記録すると、ここに使用量が表示されます。",
     "emptyFilteredTitle": "一致する使用記録はありません",
     "emptyFilteredDescription": "期間を広げるか、別の検索語を試してください。",
     "windows": {
       "7d": "7 日",
       "30d": "30 日",
       "all": "全期間"
+    },
+    "kernels": {
+      "all": "すべてのカーネル",
+      "openclaw": "OpenClaw",
+      "deepseek-harness": "DeepSeek Harness"
     },
     "groupBy": {
       "model": "モデル",

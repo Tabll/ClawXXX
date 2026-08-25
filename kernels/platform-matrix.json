@@ -1,0 +1,21 @@
+{
+  "$schema": "./platform-matrix.schema.json",
+  "version": 1,
+  "frozenAt": "2026-08-23",
+  "nodeRuntime": "24.x",
+  "targets": [
+    { "platform": "darwin", "arch": "arm64", "formats": ["tar.zst"], "release": "required" },
+    { "platform": "darwin", "arch": "x64", "formats": ["tar.zst"], "release": "required" },
+    { "platform": "win32", "arch": "x64", "formats": ["tar.zst"], "release": "required" },
+    { "platform": "linux", "arch": "x64", "formats": ["tar.zst"], "release": "required" },
+    { "platform": "linux", "arch": "arm64", "formats": ["tar.zst"], "release": "required", "packageNotes": ["deb/tar supported", "rpm arm64 deferred"] }
+  ],
+  "deferred": [
+    {
+      "platform": "linux",
+      "arch": "arm64",
+      "format": "rpm",
+      "reason": "Deferred until a clean aarch64 RPM packaged-runtime smoke runner is available; the tar.zst kernel runtime remains required."
+    }
+  ]
+}

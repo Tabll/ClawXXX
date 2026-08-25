@@ -1,0 +1,10 @@
+extends: ./electron-builder.yml
+
+# Protected release CI materializes CSC_LINK from its encrypted environment.
+# Signing during packaging covers the installed app, native helpers and NSIS
+# installer, and lets electron-builder embed the exact publisher identity used
+# by electron-updater's Authenticode verification.
+forceCodeSigning: true
+
+win:
+  verifyUpdateCodeSignature: true

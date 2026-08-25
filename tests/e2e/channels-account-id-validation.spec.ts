@@ -1,4 +1,5 @@
 import { completeSetup, expect, test } from './fixtures/electron';
+import { fillSecureSecret } from './helpers/secure-secret';
 
 const testConfigResponses = {
   channelsAccounts: {
@@ -83,7 +84,7 @@ test.describe('Channels account ID validation', () => {
 
     await page.locator('#account-id').fill('测试账号');
     await page.locator('#appId').fill('cli_test');
-    await page.locator('#appSecret').fill('secret_test');
+    await fillSecureSecret(page, 'channel-secret-appSecret', 'secret_test');
 
     await page.getByRole('button', { name: /Save & Connect|dialog\.saveAndConnect/ }).click();
     await expect(page.getByText(/account\.invalidCanonicalId|must use lowercase letters/i).first()).toBeVisible();

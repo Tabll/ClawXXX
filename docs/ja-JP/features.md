@@ -2,6 +2,14 @@
 
 このドキュメントは、READMEの「機能」セクションの詳細版です。
 
+### Optional Multi-Kernel Catalog
+
+Base installerはAI kernelを含みません。初回利用時にKernel CatalogからOpenClaw、DeepSeek Harness、両方、または未installを選択できます。Platform別署名CI artifactはprogress、cancel/resume、repair、独立update/rollback、diagnosticsを備えます。両kernelは同時にready/streamingでき、一方のfailure/updateは他方を止めません。
+
+同じChat、Providers/Models、Agents、Channels、Cron、Skills、Usage、Diagnostics UIとcanonical contractsを共有します。Both操作はpartial successを保持します。Conversationはkernel非依存で、次turnのkernelを変更でき、UIはprovenanceを表示しportable/redacted historyだけを渡します。DSH Web UIは埋め込みません。
+
+新historyはClawX SQLite/Blobに一度だけ保存します。Kernel uninstall後も検索、rename、export、deleteでき、Cron/Channelも同じConversation/Runを使います。旧upstream historyは移行・fallbackしません。[Data policy](data-security-retention.md)を参照してください。
+
 ### ゼロ設定バリア
 
 インストールから最初のAI会話まで、直感的なグラフィカルインターフェースですべてのセットアップを完了できます。ターミナルコマンド、YAMLファイル、環境変数の探索は不要です。
@@ -44,15 +52,15 @@ AIタスクを自動的に実行するようスケジュール設定できます
 
 Cronページでは、送信アカウントと受信先ターゲットを別々に選択して、タスクフォームから外部配信を直接設定できます。対応チャネルでは、受信先ターゲットがチャネルディレクトリまたは既知のセッション履歴から自動検出されるため、`jobs.json`を手動編集する必要はありません。タスクメッセージ欄では、メインのチャットコンポーザーと同じインライン `/skill` トークン構文で、選択したエージェントのスキルを挿入できます。これにより、スケジュール済みプロンプトからスキルを直接起動できます。
 
-スケジュール選択は**繰り返し**と**1回のみ**のタブに分かれています。繰り返しでは毎時、毎日、平日、毎週、カスタム（生のcron）を時刻・曜日コントロール付きで選択できます。1回のみでは、曜日が表示された指定日と時刻に一度だけ実行します。1回のみのタスクは未来の時刻を指定する必要があり、完了後はランタイムによって自動削除されます。
+スケジュール選択は**繰り返し**と**1回のみ**のタブに分かれています。繰り返しでは毎時、毎日、平日、毎週、カスタム（生のcron）を時刻・曜日コントロール付きで選択できます。1回のみでは、曜日が表示された指定日と時刻に一度だけ実行します。1回のみのタスクは未来の時刻を指定し、canonical completionのcommit後にMain-owned ClawXSchedulerがlifecycleを完了します。
 
 ### 拡張可能なスキルシステム
 
 事前構築されたスキルでAIエージェントを拡張できます。統合Skillsページはローカル優先で、管理ディレクトリとworkspaceのスキルディレクトリをスキャンし、Gatewayに依存せずスキルを有効化・無効化できます。エンタープライズ拡張では、拡張機能が提供するマーケットプレイスを表示することもできます。
 
-ClawXはドキュメント処理スキル（`pdf`、`xlsx`、`docx`、`pptx`）を完全な形で同梱し、起動時に管理スキルディレクトリ（既定は`~/.openclaw/skills`）へ自動配備し、初回インストール時に既定で有効化します。
+ClawXはdocument processing skill（`pdf`、`xlsx`、`docx`、`pptx`）をhost skill packageとして同梱します。Canonical Skills catalogがdesired stateを所有し、compatibleでinstalledな各kernelへ独立したphysical copyをprojectします。OpenClawのmanaged copyはOpenClaw activation時だけ作成され、kernelなしでbase appを起動してもOpenClaw directoryを書きません。
 
-Skillsページでは、管理ディレクトリ、workspace、追加スキルディレクトリなど、複数のOpenClawソースから検出されたスキルを表示できます。各スキルの実際の場所も表示されるため、実フォルダーを直接開けます。OpenClaw同梱のbundled skillについて、コミュニティ版では`skill-creator`だけをパッケージと画面に残します。許可リストにないbundled skillは開発時とパッケージ版の起動時に物理的に削除され、削除済みスキルに対応する古い`openclaw.json`エントリも整理されます。
+同じSkillsページにcanonical package、workspace source、kernel別projection stateを表示します。OpenClaw固有sourceはoptional runtimeが存在するときだけscanします。そのruntime artifactではallowlist済みbundled `skill-creator`だけを残し、他のupstream bundled skillはartifact build時に除去します。古いmanaged projectionはDSH copyへ影響せずreconcileされます。
 
 ### セキュアなプロバイダー統合
 

@@ -185,6 +185,20 @@ export function AcpAssistantHoverBar({ text, metadata }: { text: string; metadat
       {metadata && (
         <div data-testid="acp-assistant-metadata" className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
           {timestamp && <span title={timestamp}>{timestamp}</span>}
+          {metadata.kernelId && (
+            <span
+              data-testid="acp-assistant-kernel-provenance"
+              title={[metadata.kernelId, metadata.kernelVersion].filter(Boolean).join(' · ')}
+            >
+              {t('acp.metadata.kernel', { kernel: metadata.kernelId })}
+            </span>
+          )}
+          {metadata.agentId && (
+            <span title={metadata.runId}>
+              {t('acp.metadata.agent', { agent: metadata.agentName || metadata.agentId })}
+              {metadata.agentDeleted ? ` (${t('acp.metadata.agentDeleted')})` : ''}
+            </span>
+          )}
           {model && <span className="max-w-56 truncate" title={model}>{model}</span>}
           {usage?.inputTokens !== undefined && (
             <span>{t('acp.metadata.input', { count: numberFormatter.format(usage.inputTokens) })}</span>

@@ -1,6 +1,7 @@
 import { hostApi } from '@/lib/host-api';
 import type {
   ProviderAccount,
+  ProviderKernelDefault,
   ProviderType,
   ProviderVendorInfo,
   ProviderWithKeyInfo,
@@ -11,6 +12,7 @@ export interface ProviderSnapshot {
   statuses: ProviderWithKeyInfo[];
   vendors: ProviderVendorInfo[];
   defaultAccountId: string | null;
+  kernelDefaults: ProviderKernelDefault[];
 }
 
 export interface ProviderListItem {
@@ -85,11 +87,12 @@ function fallbackStatusToAccount(status: ProviderWithKeyInfo): ProviderAccount {
 }
 
 export async function fetchProviderSnapshot(): Promise<ProviderSnapshot> {
-  const [accountsResult, keyInfoResult, vendors, defaultInfo] = await Promise.all([
+  const [accountsResult, keyInfoResult, vendors, defaultInfo, kernelDefaults] = await Promise.all([
     hostApi.providers.accounts(),
     hostApi.providers.accountKeyInfo(),
     hostApi.providers.vendors(),
     hostApi.providers.getDefaultAccount(),
+    hostApi.providers.kernelDefaults(),
   ]);
 
   let accounts = accountsResult ?? [];
@@ -109,6 +112,7 @@ export async function fetchProviderSnapshot(): Promise<ProviderSnapshot> {
     statuses,
     vendors,
     defaultAccountId: defaultInfo?.accountId ?? null,
+    kernelDefaults: kernelDefaults ?? [],
   };
 }
 

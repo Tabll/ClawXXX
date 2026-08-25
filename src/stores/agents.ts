@@ -1,11 +1,30 @@
 import { create } from 'zustand';
 import { hostApi } from '@/lib/host-api';
 import type { ChannelType } from '@/types/channel';
-import type { AgentSummary, AgentsSnapshot } from '@/types/agent';
+import type { AgentKernelDefault, AgentSummary, AgentsSnapshot } from '@/types/agent';
+
+export type AgentCreateOptions = {
+  inheritWorkspace?: boolean;
+  kernelIds?: string[];
+  workspaceUri?: string;
+  description?: string;
+  persona?: string;
+  presetId?: string;
+  modelRef?: string | null;
+};
+
+export type AgentUpdateOptions = {
+  name?: string;
+  kernelIds?: string[];
+  workspaceUri?: string;
+  description?: string;
+  persona?: string;
+  presetId?: string;
+};
 
 interface AgentsState {
   agents: AgentSummary[];
-  defaultAgentId: string;
+  kernelDefaults: AgentKernelDefault[];
   defaultModelRef: string | null;
   configuredChannelTypes: string[];
   channelOwners: Record<string, string>;
@@ -13,10 +32,12 @@ interface AgentsState {
   loading: boolean;
   error: string | null;
   fetchAgents: () => Promise<void>;
-  createAgent: (name: string, options?: { inheritWorkspace?: boolean }) => Promise<void>;
-  updateAgent: (agentId: string, name: string) => Promise<void>;
+  createAgent: (name: string, options?: AgentCreateOptions) => Promise<void>;
+  updateAgent: (agentId: string, input: AgentUpdateOptions) => Promise<void>;
   updateAgentModel: (agentId: string, modelRef: string | null) => Promise<void>;
   deleteAgent: (agentId: string) => Promise<void>;
+  setKernelDefault: (agentId: string, kernelId: string) => Promise<void>;
+  reconcileAgent: (agentId: string, kernelIds?: string[]) => Promise<void>;
   assignChannel: (agentId: string, channelType: ChannelType) => Promise<void>;
   removeChannel: (agentId: string, channelType: ChannelType) => Promise<void>;
   clearError: () => void;
@@ -25,7 +46,7 @@ interface AgentsState {
 function applySnapshot(snapshot: AgentsSnapshot | undefined) {
   return snapshot ? {
     agents: snapshot.agents ?? [],
-    defaultAgentId: snapshot.defaultAgentId ?? 'main',
+    kernelDefaults: snapshot.kernelDefaults ?? [],
     defaultModelRef: snapshot.defaultModelRef ?? null,
     configuredChannelTypes: snapshot.configuredChannelTypes ?? [],
     channelOwners: snapshot.channelOwners ?? {},
@@ -35,7 +56,7 @@ function applySnapshot(snapshot: AgentsSnapshot | undefined) {
 
 export const useAgentsStore = create<AgentsState>((set) => ({
   agents: [],
-  defaultAgentId: 'main',
+  kernelDefaults: [],
   defaultModelRef: null,
   configuredChannelTypes: [],
   channelOwners: {},
@@ -56,12 +77,18 @@ export const useAgentsStore = create<AgentsState>((set) => ({
     }
   },
 
-  createAgent: async (name: string, options?: { inheritWorkspace?: boolean }) => {
+  createAgent: async (name: string, options?: AgentCreateOptions) => {
     set({ error: null });
     try {
       const snapshot = await hostApi.agents.create({
         name,
         inheritWorkspace: options?.inheritWorkspace,
+        kernelIds: options?.kernelIds,
+        workspaceUri: options?.workspaceUri,
+        description: options?.description,
+        persona: options?.persona,
+        presetId: options?.presetId,
+        modelRef: options?.modelRef,
       });
       set(applySnapshot(snapshot));
     } catch (error) {
@@ -70,10 +97,10 @@ export const useAgentsStore = create<AgentsState>((set) => ({
     }
   },
 
-  updateAgent: async (agentId: string, name: string) => {
+  updateAgent: async (agentId: string, input: AgentUpdateOptions) => {
     set({ error: null });
     try {
-      const snapshot = await hostApi.agents.update(agentId, { name });
+      const snapshot = await hostApi.agents.update(agentId, input);
       set(applySnapshot(snapshot));
     } catch (error) {
       set({ error: String(error) });
@@ -96,6 +123,28 @@ export const useAgentsStore = create<AgentsState>((set) => ({
     set({ error: null });
     try {
       const snapshot = await hostApi.agents.delete(agentId);
+      set(applySnapshot(snapshot));
+    } catch (error) {
+      set({ error: String(error) });
+      throw error;
+    }
+  },
+
+  setKernelDefault: async (agentId: string, kernelId: string) => {
+    set({ error: null });
+    try {
+      const snapshot = await hostApi.agents.setDefault(agentId, kernelId);
+      set(applySnapshot(snapshot));
+    } catch (error) {
+      set({ error: String(error) });
+      throw error;
+    }
+  },
+
+  reconcileAgent: async (agentId: string, kernelIds?: string[]) => {
+    set({ error: null });
+    try {
+      const snapshot = await hostApi.agents.reconcile(agentId, kernelIds);
       set(applySnapshot(snapshot));
     } catch (error) {
       set({ error: String(error) });

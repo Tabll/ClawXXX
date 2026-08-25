@@ -9,6 +9,12 @@
         "disconnected": "未连接"
     },
     "gatewayWarning": "网关未运行。未启用网关时无法管理频道。",
+    "kernel": { "openclaw": "OpenClaw", "deepseek-harness": "DeepSeek Harness" },
+    "kernelHealth": {
+        "title": "渠道所用内核当前不可用",
+        "description": "账号和绑定已保留；启动或重启对应内核后即可恢复收发。",
+        "restart": "重启内核"
+    },
     "availableChannels": "可用频道",
     "supportedChannels": "支持的频道",
     "pluginBadge": "插件",
@@ -32,7 +38,8 @@
         "bindingUpdated": "账号绑定已更新",
         "defaultUpdated": "默认账号已更新",
         "accountDeleted": "账号已删除",
-        "channelDeleted": "频道已删除"
+        "channelDeleted": "频道已删除",
+        "noCompatibleAgent": "没有 Agent 支持 {{kernel}}"
     },
     "account": {
         "add": "添加账号",
@@ -43,6 +50,8 @@
         "default": "当前默认",
         "setDefault": "设为频道默认账号",
         "bindAgentLabel": "绑定 Agent",
+        "bindKernelLabel": "内核",
+        "deliveryDiagnostics": "重试中：{{retrying}} · 死信：{{deadLetter}}",
         "unassigned": "未绑定",
         "mainAccount": "主账号",
         "customIdLabel": "账号 ID",
@@ -98,6 +107,7 @@
         "generateQRCode": "生成二维码",
         "updateAndReconnect": "更新并重新连接",
         "saveAndConnect": "保存并连接",
+        "secretConfiguredPlaceholder": "已安全保存；留空可保留现有凭据",
         "envVar": "环境变量: {{var}}"
     },
     "health": {

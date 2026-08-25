@@ -10,21 +10,21 @@ Related tasks: `chat-workspace-context`, `sidebar-session-attention`, `office-do
 
 ## Workspace Authority
 
-OpenClaw's persisted ACP `cwd` is authoritative for a bound session. The global workspace is only the default for a new or not-yet-bound session. Resolution is:
+The canonical Conversation `workspaceUri` is authoritative for a bound Conversation. The global workspace is only the default for a new Renderer-local placeholder. Resolution is:
 
-1. Recoverable session `workspacePath` projected from OpenClaw ACP metadata.
-2. Global workspace for a new or local unbound session.
-3. `~/.openclaw/workspace` when a historical session has no recoverable cwd.
+1. `ConversationSummary.workspaceUri` from SQLite.
+2. The selected global workspace for an unbound local Conversation.
+3. The application default workspace when neither is set.
 
-The effective workspace is shared by ACP load/prompt, the composer, sidebar grouping, the right-side workspace browser, and tool-derived file activity. A bound session is read-only in the composer and is not moved when the global selection changes. Missing or unreadable bound paths show unavailable/error state instead of silently changing roots.
+The same resolved workspace is passed to `ConversationRouter`, captured in the immutable run/Agent snapshot, and used by the composer, sidebar grouping, right-side browser, and attachment grants. A bound Conversation is read-only in the composer and is not moved when the global selection changes. Missing or unreadable paths show unavailable state instead of silently changing roots. A runtime-reported `cwd` may be diagnostic metadata but can never replace the canonical URI.
 
-ClawX persists global and recent workspace selections plus custom display labels through Main-owned settings APIs. On editable new or unbound chats, the composer menu shows the canonical default once, followed by deduplicated non-default workspaces from the most-recent list and known session paths, then the native folder picker. Recent entries stay first; all entries use custom display labels when available, keep the full path as hover text, and update only the global selection until first send binds the session. Custom labels are keyed by canonical path and never replace path identity or ACP cwd authority. Renderer session state may mirror the bound path for UI coordination, but must not become a competing persistent session-to-path authority. Targeted `@agent` sends intentionally use the target agent workspace and remain an explicit branch. Navigation records that workspace on the target session placeholder before reactive loading; a newly targeted agent's first send creates its main ACP session and shares one load identity with the prompt so navigation cannot supersede delivery.
+ClawX persists global/recent workspace selections and custom display labels through Main-owned settings APIs. On a new Conversation, the menu shows the default once, then deduplicated recent and known canonical paths, then the native folder picker. Custom labels never replace path identity. Targeted `@agent` sends use the canonical Agent workspace snapshot and create or select a Conversation through the same router boundary.
 
 ## First Send And Titles
 
-First send initializes the ACP session with the selected cwd and then marks the local session as created/bound. A fresh session generated at cold start to replace hidden heartbeat history is marked as the same kind of local placeholder; it cannot appear as a normal empty session or bypass first-send creation. Gateway event and canonical-list reconciliation preserve the local `createdLocally` marker until acknowledgement, even when OpenClaw already reports the same key with the ACP bridge display name. The acknowledgement atomically restores a raced-away placeholder when necessary, clears the marker, and seeds a missing automatic sidebar title from the raw first prompt. The newly visible row therefore never falls back to the bridge client identity while transcript title hydration catches up. Existing explicit or cached labels win. ACP keeps `_meta.prefixCwd: true`; disabling cwd injection would break OpenClaw context. Automatic titles instead normalize away one leading `[Working directory: ...]` envelope and subsequent whitespace.
+First send submits the local Conversation ID, selected kernel, Agent, workspace, and raw prompt to `ConversationRouter`. Admission creates the canonical Conversation/turn/run atomically and derives the initial SQLite title from the user prompt. Only after acknowledgement does the Renderer clear `createdLocally` and allow the row into the sidebar.
 
-Normalization applies to automatic sources such as Gateway-derived title and Main transcript summary. It never changes an explicit user label, never removes a non-leading marker, and treats the exact truncated envelope form as a missing title so a better summary can replace it. OpenClaw's synthetic `<first 8 session UUID characters> (YYYY-MM-DD)` fallback is also treated as missing only when it matches the row's full session id; Main's transcript summary then supplies the first user prompt. Opening and closing rename mode without changing the value must not persist any displayed fallback as an explicit label.
+Explicit rename writes `conversations.rename`. Runtime display names, ACP bridge identities, heartbeat metadata, transcript summaries, and UUID/date fallback labels never retitle a canonical Conversation. Context compilation may add kernel-specific working-directory instructions after persistence, but those envelopes are not title sources.
 
 ## Sidebar Navigation
 
@@ -43,15 +43,15 @@ Sidebar validates distinct non-default group paths through Main. A confirmed una
 
 ## Sidebar Session Attention
 
-OpenClaw Gateway session rows are the sole authority for sidebar run state. ClawX subscribes to `sessions.changed`, reconciles exact session keys into the existing session catalog, and uses canonical `sessions.list` snapshots for startup and reconnect recovery. ACP prompts, ACP timeline events, and Gateway agent runtime events do not provide a second status source.
+SQLite Conversation rows are the sole authority for sidebar run state. `ConversationRouter` emits post-admission and post-terminal `conversations:catalog-changed` events, and unknown IDs force `conversations.list` recovery. ACP replay, runtime session lists, transcript files, local sending state, and global Gateway events do not provide a second status source.
 
-The trailing row content has strict `busy > unread > timeago` precedence. A Gateway-active row shows the localized busy indicator. An observed busy-to-idle transition shows the localized unread indicator until the conversation is opened, after which the relative activity time returns.
+The trailing row content has strict `busy > unread > timeago` precedence. A canonical active run shows the localized busy indicator. An observed busy-to-idle transition shows unread until the Conversation is opened.
 
 Read state follows visible Chat integration rather than the retained current-session key. Chat marks its session visible on mount and on each session-key change, clears visibility on unmount, and treats completion for that visible session as read. Routes such as Settings may retain the current key, but completion there remains unread. The sidebar click path also marks the session read synchronously before navigating to Chat.
 
-The versioned attention store persists only exact-key `observedBusy` and `unread` state. This allows a later idle canonical snapshot to recover completion when ClawX previously observed the run as busy, including across an app restart. A run that starts and finishes while ClawX is fully offline cannot be inferred and must not create unread state. Run-scoped cron keys also cannot drive base-row attention because the bundled Gateway does not expose a recoverable canonical relationship.
+The versioned attention store persists only exact-ID `observedBusy` and `unread`. DataService marks interrupted runs terminal before startup catalog reads. A run ClawX never observed cannot create unread state. Cron and channel-triggered work use the same canonical lifecycle as interactive work.
 
-The complete projection, persistence, list/event ordering, failure recovery, and future `sessions.patch({ unread: false })` migration are documented in `harness/reference/sidebar-session-attention.md`.
+The complete projection, commit ordering, persistence, and restart recovery are documented in `harness/reference/sidebar-session-attention.md`.
 
 ## Workspace Browser And Local HTML Preview
 

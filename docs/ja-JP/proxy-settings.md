@@ -4,7 +4,7 @@
 
 - `host:port` だけの値はHTTPプロキシとして扱われます。
 - 高度なプロキシ項目が空の場合、ClawXは **プロキシサーバー** にフォールバックします。
-- プロキシ設定を保存すると、Electronのネットワーク設定が即座に再適用され、Gatewayが自動的に再起動します。
+- プロキシ設定の保存後、Electron networkingは直ちに再適用されます。Optional OpenClawがinstalledでlaunch environmentが変化した場合だけ、そのowned Gatewayをrestartします。DeepSeek Harnessと将来のkernelはrestartせず、未install runtimeも起動しません。
 - Telegramが有効な場合、ClawXはプロキシをOpenClawのTelegramチャネル設定にも同期します。
 - ClawXのプロキシが無効な状態で通常のGateway再起動が行われても、既存のTelegramチャネルプロキシは保持されます。
 - OpenClaw設定からTelegramプロキシを明示的に削除するには、プロキシを無効にしてプロキシ設定を一度保存してください。

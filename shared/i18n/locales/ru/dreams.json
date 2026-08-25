@@ -2,7 +2,7 @@
     "title": "Dreams",
     "subtitle": "Просматривайте сигналы памяти OpenClaw, дневник снов и простое обслуживание прямо в ClawX.",
     "openFullUi": "Открыть полный Dreams",
-    "gatewayNotReady": "OpenClaw Gateway еще запускается или отключен. Данные Dreams загрузятся, когда gateway станет доступен.",
+    "runtimeNotReady": "Среда OpenClaw запускается, остановлена или не установлена. Данные Dreams загрузятся, когда она будет готова.",
     "accessibility": {
         "mascot": "Спящий персонаж OpenClaw"
     },

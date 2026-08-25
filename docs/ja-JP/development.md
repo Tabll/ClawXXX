@@ -2,6 +2,22 @@
 
 このドキュメントは、READMEの「開発」セクションの詳細版です。
 
+### Multi-kernel開発境界
+
+Canonical contractsは`shared/{kernels,conversations,domains,data}`、Main-owned implementationは`electron/{kernels,conversations,domains,data,scheduler,channels,security}`に置きます。Rendererは`src/lib/host-api.ts`/`api-client.ts`だけを使い、Gateway、DSH endpoint、runtime filesystem、SQLiteへ直接アクセスしません。Kernel固有処理は`KernelDriver`/projection adapterの背後に置き、pageでbusiness branchを作りません。
+
+Frozen upstream、patch、overlayは`kernels/<kernelId>/`にあります。`scripts/kernel-runtime/`がsource verification、license audit、independent Node、platform signing、deterministic `tar.zst`、SBOM/provenance、catalog promotion、mirror drillを担当します。Base packageの`afterPack`はoptional runtime payload/linkを検出すると失敗します。
+
+```bash
+pnpm run kernel:sources:verify
+pnpm run data:electron-smoke
+pnpm run test:multi-kernel:chaos
+pnpm run release:multi-kernel:validate
+pnpm harness validate --spec harness/specs/tasks/implement-multi-kernel-m16-release-gate.md
+```
+
+Protected runtime CIは2 kernels × 5 targetsをbuildし、promotion workflowがcomplete signed setを検証してartifact-first/catalog-lastで公開し、2 mirror Range drillを行います。Certificate、private key、notarization、legal approvalはprotected environment evidenceでありlocal buildでは代替できません。[Security/support](runtime-security-support.md)と[data policy](data-security-retention.md)を参照してください。
+
 ### 前提条件
 
 - **Node.js**：対応するメジャー系列の22.22.3以上、24.15.0以上、または25.9.0以上（Node 24 LTS推奨）

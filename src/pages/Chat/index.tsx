@@ -33,6 +33,9 @@ import { ChatInput, type ChatWorkspaceOption, type FileAttachment } from './Chat
 import { ChatToolbar } from './ChatToolbar';
 import { AcpTimeline } from './AcpTimeline';
 import { AcpErrorBanner } from './AcpErrorBanner';
+import type { KernelId } from '@shared/kernels/contracts';
+import { kernelDisplayName, useKernelStore } from '@/stores/kernels';
+import { useConversationKernelStore } from '@/stores/conversation-kernel';
 
 const ArtifactPanelLazy = lazy(() =>
   import('@/components/file-preview/ArtifactPanel').then((m) => ({ default: m.ArtifactPanel })),
@@ -207,6 +210,23 @@ export function Chat() {
     () => sessions.find((session) => session.key === currentSessionKey) ?? null,
     [currentSessionKey, sessions],
   );
+  const selectedByConversation = useConversationKernelStore(state => state.selectedByConversation);
+  const selectConversationKernel = useConversationKernelStore(state => state.select);
+  const kernelCatalog = useKernelStore(state => state.catalog);
+  const kernelRuntimes = useKernelStore(state => state.runtimes);
+  const startKernel = useKernelStore(state => state.start);
+  const selectableKernelIds = useMemo(() => (kernelCatalog?.entries ?? [])
+    .filter(entry => entry.installation.state === 'installed' || kernelRuntimes[entry.kernelId]?.state !== 'not-installed')
+    .map(entry => entry.kernelId), [kernelCatalog, kernelRuntimes]);
+  const selectedKernelId = selectedByConversation[currentSessionKey]
+    ?? currentSession?.kernelId
+    ?? selectableKernelIds.find(kernelId => kernelRuntimes[kernelId]?.state === 'ready')
+    ?? selectableKernelIds[0];
+  const selectedKernelRuntime = selectedKernelId ? kernelRuntimes[selectedKernelId] : undefined;
+  const selectedKernelReady = selectedKernelRuntime?.state === 'ready';
+  const kernelBoundaryPending = Boolean(
+    selectedKernelId && currentSession?.kernelId && selectedKernelId !== currentSession.kernelId,
+  );
   const currentSessionTitle = currentSession
     ? getSessionDisplayTitle(currentSession, sessionLabels)
     : currentSessionKey;
@@ -276,6 +296,8 @@ export function Chat() {
   const acpCancelling = useAcpChatSessionStore((s) => s.cancelling);
   const acpError = useAcpChatSessionStore((s) => s.error);
   const acpActiveSessionKey = useAcpChatSessionStore((s) => s.activeSessionKey);
+  const acpActiveKernelId = useAcpChatSessionStore((s) => s.activeKernelId);
+  const acpGeneration = useAcpChatSessionStore((s) => s.generation);
   const acpWorkspaceRoot = useAcpChatSessionStore((s) => s.workspaceRoot);
   const acpCwd = useAcpChatSessionStore((s) => s.cwd);
   const prepareLocalAcpSession = useAcpChatSessionStore((s) => s.prepareLocalSession);
@@ -373,8 +395,13 @@ export function Chat() {
     acpLoadInFlightKeyRef.current = null;
     const hasStaleTimeline = acpTimeline.sessionId !== currentSessionKey || acpTimeline.itemOrder.length > 0;
     if (acpActiveSessionKey === currentSessionKey && acpWorkspaceRoot === cwd && acpCwd === cwd && !hasStaleTimeline) return;
-    prepareLocalAcpSession({ sessionKey: currentSessionKey, workspaceRoot: cwd, cwd });
-  }, [acpActiveSessionKey, acpCwd, acpTimeline.itemOrder.length, acpTimeline.sessionId, acpWorkspaceRoot, currentSession, currentSessionKey, cwd, prepareLocalAcpSession]);
+    prepareLocalAcpSession({
+      sessionKey: currentSessionKey,
+      workspaceRoot: cwd,
+      cwd,
+      ...(selectedKernelId ? { kernelId: selectedKernelId } : {}),
+    });
+  }, [acpActiveSessionKey, acpCwd, acpTimeline.itemOrder.length, acpTimeline.sessionId, acpWorkspaceRoot, currentSession, currentSessionKey, cwd, prepareLocalAcpSession, selectedKernelId]);
 
   useEffect(() => {
     if (!currentSessionKey || !cwd || !workspaceContextAvailable) return;
@@ -384,8 +411,17 @@ export function Chat() {
       && acpActiveSessionKey == null
       && !sessionCatalogReady
     ) return;
-    if (acpActiveSessionKey === currentSessionKey && acpWorkspaceRoot === cwd && acpCwd === cwd) return;
-    const acpLoadKey = `${currentSessionKey}\0${cwd}`;
+    const activeContextMatches = acpActiveSessionKey === currentSessionKey
+      && acpWorkspaceRoot === cwd
+      && acpCwd === cwd;
+    const runtimeBindingMatches = !selectedKernelReady
+      || !selectedKernelId
+      || (
+        acpActiveKernelId === selectedKernelId
+        && acpGeneration === selectedKernelRuntime?.generation
+      );
+    if (activeContextMatches && runtimeBindingMatches) return;
+    const acpLoadKey = `${currentSessionKey}\0${cwd}\0${selectedKernelId ?? ''}\0${selectedKernelRuntime?.generation ?? 0}`;
     if (acpLoadInFlightKeyRef.current === acpLoadKey) return;
     const currentSession = sessions.find((session) => session.key === currentSessionKey);
     if (currentSession?.createdLocally) return;
@@ -396,6 +432,7 @@ export function Chat() {
       sessionKey: currentSessionKey,
       workspaceRoot: cwd,
       cwd,
+      ...(selectedKernelReady && selectedKernelId ? { kernelId: selectedKernelId } : {}),
       ...(createIfMissing ? { createIfMissing: true } : {}),
     }).then((loaded) => {
       if (loaded && createIfMissing) {
@@ -406,7 +443,7 @@ export function Chat() {
         acpLoadInFlightKeyRef.current = null;
       }
     });
-  }, [acknowledgeAcpSessionCreated, acpActiveSessionKey, acpCwd, acpWorkspaceRoot, currentSessionKey, cwd, loadAcpSession, selectAcpSession, sessionCatalogReady, sessions, workspaceContextAvailable]);
+  }, [acknowledgeAcpSessionCreated, acpActiveKernelId, acpActiveSessionKey, acpCwd, acpGeneration, acpWorkspaceRoot, currentSessionKey, cwd, loadAcpSession, selectAcpSession, selectedKernelId, selectedKernelReady, selectedKernelRuntime?.generation, sessionCatalogReady, sessions, workspaceContextAvailable]);
 
   const platform = window.electron?.platform;
   const isMac = platform === 'darwin';
@@ -495,6 +532,12 @@ export function Chat() {
                 openSessionKey === currentSessionKey ? null : currentSessionKey
               ))}
               workspaceAvailable={!!cwd}
+              selectedKernelId={selectedKernelId}
+              kernelSelectionDisabled={composerBusy}
+              onSelectKernel={(kernelId: KernelId) => {
+                selectConversationKernel(currentSessionKey, kernelId);
+                acpLoadInFlightKeyRef.current = null;
+              }}
             />
           </div>
         </div>
@@ -510,6 +553,22 @@ export function Chat() {
                       readOnly={effectiveWorkspace.readOnly}
                       onChooseWorkspace={effectiveWorkspace.readOnly ? undefined : () => void chooseReplacementWorkspace()}
                     />
+                  )}
+                  {kernelBoundaryPending && selectedKernelId && (
+                    <div data-testid="chat-kernel-boundary" className="flex items-center justify-between gap-3 rounded-2xl border border-blue-500/20 bg-blue-500/10 px-4 py-3 text-sm text-blue-700 dark:text-blue-400">
+                      <span>{t('kernelSelector.boundary', {
+                        previous: kernelDisplayName(currentSession!.kernelId!),
+                        next: kernelDisplayName(selectedKernelId),
+                      })}</span>
+                    </div>
+                  )}
+                  {selectedKernelId && !selectedKernelReady && (
+                    <div data-testid="chat-kernel-unavailable" className="flex items-center justify-between gap-3 rounded-2xl border border-yellow-500/20 bg-yellow-500/10 px-4 py-3 text-sm text-yellow-700 dark:text-yellow-400">
+                      <span>{t('kernelSelector.notReady', { kernel: kernelDisplayName(selectedKernelId) })}</span>
+                      {selectedKernelRuntime?.state !== 'not-installed' && (
+                        <Button size="sm" variant="outline" onClick={() => void startKernel(selectedKernelId)}>{t('kernelSelector.start')}</Button>
+                      )}
+                    </div>
                   )}
                   {visibleAcpError && <AcpErrorBanner message={visibleAcpError} onDismiss={clearAcpError} />}
                   {acpLoading ? (
@@ -555,6 +614,7 @@ export function Chat() {
         </div>
 
         <ChatInput
+          kernelId={selectedKernelId}
           onSend={(text: string, attachments?: FileAttachment[], targetAgentId?: string | null) => {
             if (!currentSessionKey || !cwd || !workspaceContextAvailable) return;
             const targetAgent = targetAgentId
@@ -600,6 +660,7 @@ export function Chat() {
                       sessionKey,
                       workspaceRoot: promptCwd,
                       cwd: promptCwd,
+                      ...(selectedKernelId ? { kernelId: selectedKernelId } : {}),
                       ...(createIfMissing ? { createIfMissing: true } : {}),
                     });
                   } finally {
@@ -618,6 +679,7 @@ export function Chat() {
                 cwd: promptCwd,
                 message: text,
                 media,
+                ...(selectedKernelId ? { kernelId: selectedKernelId } : {}),
               });
               requestAnimationFrame(() => {
                 void scrollToBottom({ animation: 'instant', ignoreEscapes: true });
@@ -638,7 +700,7 @@ export function Chat() {
               }));
             return enqueueAcpPrompt({ sessionKey: currentSessionKey, cwd, message: text, media });
           }}
-          disabled={acpLoading || acpCancelling || !cwd || !workspaceContextAvailable}
+          disabled={acpLoading || acpCancelling || !cwd || !workspaceContextAvailable || !selectedKernelReady}
           sending={composerBusy}
           imageGenerating={imageGenerationPending}
           workspaceLabel={workspaceLabel}

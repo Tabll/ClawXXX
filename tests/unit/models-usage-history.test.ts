@@ -34,6 +34,48 @@ describe('token usage history helpers', () => {
     expect(groups[11]?.totalTokens).toBe(12);
   });
 
+  it('uses the requested IANA timezone for day aggregation boundaries', () => {
+    const entries = [
+      { ...createEntry(1, 10), timestamp: '2026-03-01T07:30:00.000Z' },
+      { ...createEntry(1, 20), timestamp: '2026-03-01T08:30:00.000Z' },
+    ];
+
+    const losAngeles = groupUsageHistory(entries, 'day', { timeZone: 'America/Los_Angeles' });
+    const shanghai = groupUsageHistory(entries, 'day', { timeZone: 'Asia/Shanghai' });
+
+    expect(losAngeles).toHaveLength(2);
+    expect(losAngeles.map(group => group.totalTokens)).toEqual([10, 20]);
+    expect(shanghai).toHaveLength(1);
+    expect(shanghai[0]?.totalTokens).toBe(30);
+  });
+
+  it('tracks missing token and cost fields as unknown instead of inventing zero observations', () => {
+    const unknown: UsageHistoryEntry = {
+      timestamp: '2026-03-12T12:00:00.000Z',
+      sessionId: 'unknown-usage',
+      agentId: 'main',
+      kernelId: 'deepseek-harness',
+      usageStatus: 'missing',
+    };
+
+    const [group] = groupUsageHistory([unknown], 'model');
+    const [session] = aggregateUsageSessions([unknown]);
+
+    expect(group).toMatchObject({
+      label: 'Unknown',
+      count: 1,
+      unknownTokenEntries: 1,
+      unknownCostEntries: 1,
+    });
+    expect(session).toMatchObject({
+      unknownTokenEntries: 1,
+      unknownCostEntries: 1,
+      missingEntries: 1,
+    });
+    expect(unknown).not.toHaveProperty('totalTokens');
+    expect(unknown).not.toHaveProperty('costUsd');
+  });
+
   it('limits model buckets to the top eight by total tokens', () => {
     const entries = Array.from({ length: 10 }, (_, index) => ({
       ...createEntry(index + 1, index + 1),

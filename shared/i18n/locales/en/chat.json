@@ -11,6 +11,13 @@
         "brainstorming": "Multi-Agent Parallel"
     },
     "noLogs": "(No logs available yet)",
+    "kernelSelector": {
+        "label": "Kernel for the next run",
+        "noneInstalled": "No kernel installed",
+        "boundary": "The next run switches from {{previous}} to {{next}}. Existing history stays in this conversation.",
+        "notReady": "{{kernel}} is not ready. History remains available offline.",
+        "start": "Start kernel"
+    },
     "scrollToLatest": "Back to bottom",
     "toolbar": {
         "refresh": "Refresh chat",
@@ -73,6 +80,9 @@
         "turnDuration": "Took {{duration}}",
         "turnElapsed": "{{duration}} elapsed",
         "metadata": {
+            "kernel": "Kernel {{kernel}}",
+            "agent": "Agent {{agent}}",
+            "agentDeleted": "deleted",
             "input": "In {{count}}",
             "output": "Out {{count}}",
             "cache": "Cache {{count}}"
@@ -242,12 +252,15 @@
         "followUpAttachments": "{{count}} attachment(s)",
         "removeQueuedFollowUp": "Remove queued follow-up {{number}}",
         "gatewayDisconnectedPlaceholder": "Gateway not connected...",
+        "kernelUnavailablePlaceholder": "The selected kernel is not ready...",
         "send": "Send",
         "stop": "Stop",
         "thinking": "Thinking…",
         "gatewayConnected": "connected",
         "gatewayStarting": "starting",
         "gatewayStatus": "gateway {{state}}",
+        "kernelStatus": "{{kernel}} · {{state}}",
+        "noKernelSelected": "No kernel",
         "retryFailedAttachments": "Retry failed attachments",
         "workspacePrefix": "{{workspace}}",
         "workspacePickerTitle": "Select workspace folder",

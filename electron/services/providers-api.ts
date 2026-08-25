@@ -1,31 +1,49 @@
 import type { BrowserWindow } from 'electron';
-import type { HostApiContract } from '@shared/host-api/contract';
+import type {
+  HostApiContract,
+  ProviderKernelProjection,
+  ProviderValidationResult,
+} from '@shared/host-api/contract';
+import type { KernelId } from '@shared/kernels/contracts';
 import type { CompleteHostServiceRegistry } from '../main/ipc/host-contract';
 import type { GatewayManager } from '../gateway/manager';
 import type { ProviderConfig } from '../utils/secure-storage';
 import { browserOAuthManager, type BrowserOAuthProviderType } from '../utils/browser-oauth';
 import { deviceOAuthManager, type OAuthProviderType } from '../utils/device-oauth';
-import { removeProviderFromOpenClaw, saveProviderKeyToOpenClaw } from '../utils/openclaw-auth';
 import { getProviderConfig } from '../utils/provider-registry';
 import { logger } from '../utils/logger';
 import { getProviderService } from './providers/provider-service';
-import { providerAccountToConfig } from './providers/provider-store';
 import {
-  getOpenClawProviderKey,
+  listProviderDefaults,
+  providerAccountToConfig,
+  setDefaultProviderAccount,
+} from './providers/provider-store';
+import {
   syncDefaultProviderToRuntime,
   syncDeletedProviderApiKeyToRuntime,
   syncDeletedProviderToRuntime,
-  syncProviderApiKeyToRuntime,
   syncSavedProviderToRuntime,
-  syncUpdatedProviderToRuntime,
 } from './providers/provider-runtime-sync';
 import { validateApiKeyWithProvider } from './providers/provider-validation';
-import type { ProviderAccount } from '../shared/providers/types';
+import {
+  OLLAMA_PLACEHOLDER_API_KEY,
+  type ProviderAccount,
+} from '../shared/providers/types';
 import { isRecord } from './payload-utils';
+import type { RemoteDataServiceClient } from '../data/data-service-utility-host';
+import type {
+  ProviderProjectionReconciler,
+  ProviderProjectionResult,
+} from './providers/provider-projection-reconciler';
+import type { CredentialStagingVault } from '../security/credential-staging-vault';
+import { REDACTED_SECRET, redactSecrets } from '../security/secret-redaction';
 
 type ProvidersApiContext = {
   gatewayManager: GatewayManager;
   mainWindow: BrowserWindow;
+  dataClient?: RemoteDataServiceClient;
+  projectionReconciler?: ProviderProjectionReconciler;
+  credentialVault?: CredentialStagingVault;
 };
 
 type ProviderPayload<Action extends keyof HostApiContract['providers']> =
@@ -37,33 +55,7 @@ type ValidationOptions = {
   modelId?: string;
 };
 
-function hasObjectChanges<T extends Record<string, unknown>>(
-  existing: T,
-  patch: Partial<T> | undefined,
-): boolean {
-  if (!patch) return false;
-  const keys = Object.keys(patch) as Array<keyof T>;
-  if (keys.length === 0) return false;
-  return keys.some((key) => JSON.stringify(existing[key]) !== JSON.stringify(patch[key]));
-}
-
-function selectReplacementDefaultAccount(
-  accounts: ProviderAccount[],
-  deletedAccountId: string,
-): ProviderAccount | undefined {
-  return accounts
-    .filter((account) => account.id !== deletedAccountId)
-    .sort((left, right) => {
-      if (left.enabled !== right.enabled) {
-        return left.enabled ? -1 : 1;
-      }
-      const updatedAtOrder = right.updatedAt.localeCompare(left.updatedAt);
-      return updatedAtOrder !== 0 ? updatedAtOrder : left.id.localeCompare(right.id);
-    })[0];
-}
-
 function payloadString(payload: unknown, key: string): string | undefined {
-  if (typeof payload === 'string') return payload;
   if (!isRecord(payload)) return undefined;
   const value = payload[key];
   return typeof value === 'string' && value.trim() ? value.trim() : undefined;
@@ -71,24 +63,16 @@ function payloadString(payload: unknown, key: string): string | undefined {
 
 function requireString(payload: unknown, key: string, action: string): string {
   const value = payloadString(payload, key);
-  if (!value) {
-    throw new Error(`Invalid providers.${action} payload`);
-  }
+  if (!value) throw new Error(`Invalid providers.${action} payload`);
   return value;
 }
 
 function getPayloadRecord(payload: unknown, action: string): Record<string, unknown> {
-  if (!isRecord(payload)) {
-    throw new Error(`Invalid providers.${action} payload`);
-  }
+  if (!isRecord(payload)) throw new Error(`Invalid providers.${action} payload`);
   return payload;
 }
 
 function getProviderId(payload: unknown, action: string): string {
-  if (Array.isArray(payload)) {
-    const [providerId] = payload;
-    if (typeof providerId === 'string' && providerId.trim()) return providerId.trim();
-  }
   return requireString(payload, 'providerId', action);
 }
 
@@ -96,341 +80,252 @@ function getAccountId(payload: unknown, action: string): string {
   return requireString(payload, 'accountId', action);
 }
 
-function getApiKeyPayload(payload: unknown, action: string): { providerId: string; apiKey: string } {
-  if (Array.isArray(payload)) {
-    const [providerId, apiKey] = payload;
-    if (typeof providerId === 'string' && providerId.trim() && typeof apiKey === 'string') {
-      return { providerId: providerId.trim(), apiKey };
-    }
-  }
-  const record = getPayloadRecord(payload, action);
-  const providerId = typeof record.providerId === 'string' ? record.providerId.trim() : '';
-  if (!providerId || typeof record.apiKey !== 'string') {
-    throw new Error(`Invalid providers.${action} payload`);
-  }
-  return { providerId, apiKey: record.apiKey };
+function safeError(error: unknown, credential?: string): string {
+  let message = error instanceof Error ? error.message : String(error);
+  if (credential) message = message.split(credential).join(REDACTED_SECRET);
+  return String(redactSecrets(message));
 }
 
-function getProviderUpdatePayload(payload: unknown): {
-  providerId: string;
-  updates: Partial<ProviderConfig>;
-  apiKey?: string;
-} {
-  if (Array.isArray(payload)) {
-    const [providerId, updates, apiKey] = payload;
-    if (typeof providerId === 'string' && providerId.trim() && isRecord(updates)) {
-      return { providerId: providerId.trim(), updates: updates as Partial<ProviderConfig>, apiKey: typeof apiKey === 'string' ? apiKey : undefined };
-    }
+function getStagedCredential(
+  ctx: ProvidersApiContext,
+  handle: unknown,
+  mode: 'read' | 'consume',
+): string | undefined {
+  if (handle === undefined) return undefined;
+  if (typeof handle !== 'string' || !handle.startsWith('credential-stage://')) {
+    throw new Error('Provider credential must be supplied as a secure staging handle');
   }
-  const record = getPayloadRecord(payload, 'updateWithKey');
-  const providerId = typeof record.providerId === 'string' ? record.providerId.trim() : '';
-  if (!providerId || !isRecord(record.updates)) {
-    throw new Error('Invalid providers.updateWithKey payload');
-  }
+  if (!ctx.credentialVault) throw new Error('Secure credential staging is unavailable');
+  const credential = mode === 'read'
+    ? ctx.credentialVault.read(handle)
+    : ctx.credentialVault.consume(handle);
+  const normalized = credential.trim();
+  if (!normalized) throw new Error('Provider credential is empty');
+  return normalized;
+}
+
+function supportedKernelIds(account: ProviderAccount | null, providerType: string): KernelId[] {
+  if (account?.supportedKernels?.length) return [...new Set(account.supportedKernels)] as KernelId[];
+  return providerType === 'deepseek'
+    ? ['openclaw', 'deepseek-harness']
+    : ['openclaw'];
+}
+
+function selectReplacementAccount(
+  accounts: ProviderAccount[],
+  kernelId: KernelId,
+): ProviderAccount | undefined {
+  return accounts
+    .filter(account => account.enabled && supportedKernelIds(account, account.vendorId).includes(kernelId))
+    .sort((left, right) => {
+      const updated = right.updatedAt.localeCompare(left.updatedAt);
+      return updated !== 0 ? updated : left.id.localeCompare(right.id);
+    })[0];
+}
+
+function requestedKernelIds(body: Record<string, unknown>, supported: KernelId[]): KernelId[] {
+  if (!Array.isArray(body.kernelIds)) return supported;
+  const ids = body.kernelIds
+    .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+    .map(value => value.trim() as KernelId);
+  return [...new Set(ids)];
+}
+
+function toHostProjection(result: ProviderProjectionResult): ProviderKernelProjection {
   return {
-    providerId,
-    updates: record.updates as Partial<ProviderConfig>,
-    apiKey: typeof record.apiKey === 'string' ? record.apiKey : undefined,
+    kernelId: result.kernelId,
+    status: result.status,
+    desiredVersion: 0,
+    ...(result.status === 'ready' || result.status === 'partial' ? { appliedVersion: 0 } : {}),
+    ...(result.nativeId ? { nativeId: result.nativeId } : {}),
+    ...(result.error ? { error: result.error } : {}),
+    updatedAt: new Date().toISOString(),
   };
 }
 
-function getSavePayload(payload: unknown): { config: ProviderConfig; apiKey?: string } {
-  if (Array.isArray(payload)) {
-    const [config, apiKey] = payload;
-    if (isRecord(config)) {
-      return { config: config as unknown as ProviderConfig, apiKey: typeof apiKey === 'string' ? apiKey : undefined };
-    }
+async function reconcileAccount(
+  ctx: ProvidersApiContext,
+  accountId: string,
+  kernelIds?: KernelId[],
+): Promise<ProviderProjectionResult[]> {
+  if (ctx.projectionReconciler) {
+    return ctx.projectionReconciler.reconcileAccount(accountId, kernelIds);
   }
-  const record = getPayloadRecord(payload, 'save');
-  if (!isRecord(record.config)) {
-    throw new Error('Invalid providers.save payload');
-  }
-  return {
-    config: record.config as unknown as ProviderConfig,
-    apiKey: typeof record.apiKey === 'string' ? record.apiKey : undefined,
-  };
+
+  // Production Main always supplies the reconciler. This fallback only keeps
+  // isolated legacy/unit contexts operational.
+  const account = await getProviderService().getAccount(accountId);
+  if (!account) throw new Error(`Provider account not found: ${accountId}`);
+  await syncSavedProviderToRuntime(providerAccountToConfig(account), undefined, ctx.gatewayManager);
+  return [{ kernelId: 'openclaw', accountId, status: 'ready', nativeId: accountId }];
 }
 
-async function validateKey(payload: ProviderPayload<'validateKey'>): Promise<{ valid: boolean; error?: string }> {
+async function validateKey(
+  ctx: ProvidersApiContext,
+  payload: ProviderPayload<'validateKey'>,
+): Promise<ProviderValidationResult> {
+  let credential: string | undefined;
   try {
     const body = getPayloadRecord(payload, 'validateKey');
-    const accountId = typeof body.accountId === 'string' && body.accountId.trim()
-      ? body.accountId.trim()
-      : undefined;
-    const vendorId = typeof body.vendorId === 'string' && body.vendorId.trim()
-      ? body.vendorId.trim()
-      : undefined;
-    const providerId = typeof body.providerId === 'string' && body.providerId.trim()
-      ? body.providerId.trim()
-      : undefined;
-    const apiKey = typeof body.apiKey === 'string' ? body.apiKey : undefined;
-    if (!apiKey) {
-      return { valid: false, error: 'Invalid providers.validateKey payload' };
-    }
+    credential = getStagedCredential(ctx, body.credentialHandle, 'read');
+    if (!credential) return { valid: false, error: 'A secure credential handle is required' };
 
+    const accountId = payloadString(body, 'accountId');
+    const vendorId = payloadString(body, 'vendorId');
+    const providerId = payloadString(body, 'providerId');
+    const lookupId = accountId || providerId || vendorId || '';
     const providerService = getProviderService();
-    const lookupId = accountId || vendorId || providerId || '';
     const account = lookupId ? await providerService.getAccount(lookupId) : null;
-    const legacyProvider = !account && providerId ? await providerService._getProviderInternal(providerId) : null;
-    const providerType = account?.vendorId || legacyProvider?.type || vendorId || providerId || lookupId;
-    if (!providerType) {
-      return { valid: false, error: 'Invalid providers.validateKey payload' };
-    }
+    const legacyProvider = !account && providerId
+      ? await providerService._getProviderInternal(providerId)
+      : null;
+    const providerType = account?.vendorId || legacyProvider?.type || vendorId || providerId;
+    if (!providerType) return { valid: false, error: 'Provider identity is required' };
 
     const options = isRecord(body.options) ? body.options as ValidationOptions : undefined;
     const registryBaseUrl = getProviderConfig(providerType)?.baseUrl;
-    const resolvedBaseUrl = options?.baseUrl || account?.baseUrl || legacyProvider?.baseUrl || registryBaseUrl;
-    const resolvedProtocol = options?.apiProtocol || account?.apiProtocol || legacyProvider?.apiProtocol;
-    const resolvedModelId = options?.modelId || account?.model || legacyProvider?.model;
-    return await validateApiKeyWithProvider(providerType, apiKey, {
-      baseUrl: resolvedBaseUrl,
-      apiProtocol: resolvedProtocol,
-      modelId: resolvedModelId,
+    const validation = await validateApiKeyWithProvider(providerType, credential, {
+      baseUrl: options?.baseUrl || account?.baseUrl || legacyProvider?.baseUrl || registryBaseUrl,
+      apiProtocol: options?.apiProtocol || account?.apiProtocol || legacyProvider?.apiProtocol,
+      modelId: options?.modelId || account?.model || legacyProvider?.model,
     });
-  } catch (error) {
-    return { valid: false, error: String(error) };
-  }
-}
 
-async function saveProvider(payload: ProviderPayload<'save'>, gatewayManager?: GatewayManager) {
-  const providerService = getProviderService();
-  const { config, apiKey } = getSavePayload(payload);
-  try {
-    await providerService._saveProviderInternal(config);
-    if (apiKey !== undefined) {
-      const trimmedKey = apiKey.trim();
-      if (trimmedKey) {
-        await providerService._setProviderApiKeyInternal(config.id, trimmedKey);
-        await syncProviderApiKeyToRuntime(config.type, config.id, trimmedKey);
+    const supported = supportedKernelIds(account, providerType);
+    const requested = requestedKernelIds(body, supported);
+    const kernels = requested.map(kernelId => {
+      if (!supported.includes(kernelId)) {
+        return { kernelId, valid: false, error: `Provider ${providerType} is unsupported by kernel ${kernelId}` };
       }
-    }
-    await syncSavedProviderToRuntime(config, apiKey, gatewayManager);
-    return { success: true };
-  } catch (error) {
-    return { success: false, error: String(error) };
-  }
-}
-
-async function deleteProvider(payload: ProviderPayload<'delete'>, gatewayManager?: GatewayManager) {
-  const providerService = getProviderService();
-  const providerId = getProviderId(payload, 'delete');
-  try {
-    const existing = await providerService._getProviderInternal(providerId);
-    await syncDeletedProviderToRuntime(existing, providerId, gatewayManager);
-    await providerService._deleteProviderInternal(providerId);
-    return { success: true };
-  } catch (error) {
-    return { success: false, error: String(error) };
-  }
-}
-
-async function setProviderApiKey(payload: ProviderPayload<'setApiKey'>) {
-  const providerService = getProviderService();
-  const { providerId, apiKey } = getApiKeyPayload(payload, 'setApiKey');
-  try {
-    await providerService._setProviderApiKeyInternal(providerId, apiKey);
-    const provider = await providerService._getProviderInternal(providerId);
-    const providerType = provider?.type || providerId;
-    await syncProviderApiKeyToRuntime(providerType, providerId, apiKey);
-    return { success: true };
-  } catch (error) {
-    return { success: false, error: String(error) };
-  }
-}
-
-async function updateProviderWithKey(payload: ProviderPayload<'updateWithKey'>, gatewayManager?: GatewayManager) {
-  const providerService = getProviderService();
-  const { providerId, updates, apiKey } = getProviderUpdatePayload(payload);
-  const existing = await providerService._getProviderInternal(providerId);
-  if (!existing) {
-    return { success: false, error: 'Provider not found' };
-  }
-
-  const previousKey = await providerService._getProviderApiKeyInternal(providerId);
-  const previousOck = getOpenClawProviderKey(existing.type, providerId);
-
-  try {
-    const nextConfig: ProviderConfig = {
-      ...existing,
-      ...updates,
-      updatedAt: new Date().toISOString(),
+      return {
+        kernelId,
+        valid: validation.valid,
+        ...(validation.error ? { error: safeError(validation.error, credential) } : {}),
+      };
+    });
+    return {
+      valid: kernels.length > 0 && kernels.every(result => result.valid),
+      ...(!validation.valid && validation.error
+        ? { error: safeError(validation.error, credential) }
+        : {}),
+      kernels,
     };
-    const ock = getOpenClawProviderKey(nextConfig.type, providerId);
-    await providerService._saveProviderInternal(nextConfig);
-
-    if (apiKey !== undefined) {
-      const trimmedKey = apiKey.trim();
-      if (trimmedKey) {
-        await providerService._setProviderApiKeyInternal(providerId, trimmedKey);
-        await syncProviderApiKeyToRuntime(nextConfig.type, providerId, trimmedKey);
-      } else {
-        await providerService._deleteProviderApiKeyInternal(providerId);
-        await removeProviderFromOpenClaw(ock);
-      }
-    }
-
-    await syncUpdatedProviderToRuntime(nextConfig, apiKey, gatewayManager);
-    return { success: true };
   } catch (error) {
-    try {
-      await providerService._saveProviderInternal(existing);
-      if (previousKey) {
-        await providerService._setProviderApiKeyInternal(providerId, previousKey);
-        await saveProviderKeyToOpenClaw(previousOck, previousKey);
-      } else {
-        await providerService._deleteProviderApiKeyInternal(providerId);
-        await removeProviderFromOpenClaw(previousOck);
-      }
-    } catch (rollbackError) {
-      logger.warn('Failed to rollback provider updateWithKey:', rollbackError);
-    }
-    return { success: false, error: String(error) };
+    return { valid: false, error: safeError(error, credential) };
   }
 }
 
-async function deleteProviderApiKey(payload: ProviderPayload<'deleteApiKey'>) {
-  const providerService = getProviderService();
-  const providerId = getProviderId(payload, 'deleteApiKey');
-  try {
-    await providerService._deleteProviderApiKeyInternal(providerId);
-    const provider = await providerService._getProviderInternal(providerId);
-    await syncDeletedProviderApiKeyToRuntime(provider, providerId);
-    return { success: true };
-  } catch (error) {
-    return { success: false, error: String(error) };
-  }
-}
-
-async function setDefaultProvider(payload: ProviderPayload<'setDefault'>, gatewayManager?: GatewayManager) {
-  const providerService = getProviderService();
-  const providerId = getProviderId(payload, 'setDefault');
-  try {
-    await providerService._setDefaultProviderInternal(providerId);
-    await syncDefaultProviderToRuntime(providerId, gatewayManager);
-    return { success: true };
-  } catch (error) {
-    return { success: false, error: String(error) };
-  }
-}
-
-async function createAccount(payload: ProviderPayload<'createAccount'>, gatewayManager?: GatewayManager) {
-  const providerService = getProviderService();
+async function createAccount(ctx: ProvidersApiContext, payload: ProviderPayload<'createAccount'>) {
   const body = getPayloadRecord(payload, 'createAccount');
-  if (!isRecord(body.account)) {
-    throw new Error('Invalid providers.createAccount payload');
-  }
-  const apiKey = typeof body.apiKey === 'string' ? body.apiKey : undefined;
+  if (!isRecord(body.account)) throw new Error('Invalid providers.createAccount payload');
+  const account = body.account as unknown as ProviderAccount;
+  let credential: string | undefined;
   try {
-    const account = await providerService.createAccount(body.account as unknown as ProviderAccount, apiKey);
-    await syncSavedProviderToRuntime(providerAccountToConfig(account), apiKey, gatewayManager);
-    return { success: true, account };
+    credential = getStagedCredential(ctx, body.credentialHandle, 'consume');
+    if (!credential && account.vendorId === 'ollama') credential = OLLAMA_PLACEHOLDER_API_KEY;
+    const saved = await getProviderService().createAccount(account, credential);
+    const projections = await reconcileAccount(ctx, saved.id);
+    return { success: true, account: saved, projections: projections.map(toHostProjection) };
   } catch (error) {
-    return { success: false, error: String(error) };
+    return { success: false, error: safeError(error, credential) };
   }
 }
 
-async function updateAccount(payload: ProviderPayload<'updateAccount'>, gatewayManager?: GatewayManager) {
-  const providerService = getProviderService();
+async function updateAccount(ctx: ProvidersApiContext, payload: ProviderPayload<'updateAccount'>) {
   const body = getPayloadRecord(payload, 'updateAccount');
-  const accountId = typeof body.accountId === 'string' ? body.accountId.trim() : '';
-  const updates = isRecord(body.updates) ? body.updates as Partial<ProviderAccount> : undefined;
-  const apiKey = typeof body.apiKey === 'string' ? body.apiKey : undefined;
-  if (!accountId || !updates) {
-    throw new Error('Invalid providers.updateAccount payload');
-  }
+  const accountId = requireString(body, 'accountId', 'updateAccount');
+  if (!isRecord(body.updates)) throw new Error('Invalid providers.updateAccount payload');
+  let credential: string | undefined;
   try {
-    const existing = await providerService.getAccount(accountId);
-    if (!existing) {
-      return { success: false, error: 'Provider account not found' };
-    }
-    const hasPatchChanges = hasObjectChanges(existing as unknown as Record<string, unknown>, updates as Record<string, unknown>);
-    if (!hasPatchChanges && apiKey === undefined) {
-      if (updates.modelCapabilities !== undefined) {
-        await syncUpdatedProviderToRuntime(providerAccountToConfig(existing), undefined, gatewayManager);
-      }
-      return { success: true, noChange: true, account: existing };
-    }
-    const account = await providerService.updateAccount(accountId, updates, apiKey);
-    await syncUpdatedProviderToRuntime(providerAccountToConfig(account), apiKey, gatewayManager);
-    return { success: true, account };
+    credential = getStagedCredential(ctx, body.credentialHandle, 'consume');
+    const existing = await getProviderService().getAccount(accountId);
+    if (!existing) return { success: false, error: 'Provider account not found' };
+    const updates = body.updates as Partial<ProviderAccount>;
+    const noChange = credential === undefined
+      && Object.keys(updates).every(key => (
+        JSON.stringify(existing[key as keyof ProviderAccount])
+        === JSON.stringify(updates[key as keyof ProviderAccount])
+      ));
+    if (noChange) return { success: true, noChange: true, account: existing };
+
+    const saved = await getProviderService().updateAccount(accountId, updates, credential);
+    const projections = await reconcileAccount(ctx, saved.id);
+    return { success: true, account: saved, projections: projections.map(toHostProjection) };
   } catch (error) {
-    return { success: false, error: String(error) };
+    return { success: false, error: safeError(error, credential) };
   }
 }
 
-async function deleteAccount(
-  payload: ProviderPayload<'deleteAccount'> & { apiKeyOnly?: boolean },
-  gatewayManager?: GatewayManager,
-) {
+async function deleteAccount(ctx: ProvidersApiContext, accountId: string, apiKeyOnly = false) {
   const providerService = getProviderService();
-  const body = getPayloadRecord(payload, 'deleteAccount');
-  const accountId = typeof body.accountId === 'string' ? body.accountId.trim() : '';
-  const apiKeyOnly = body.apiKeyOnly === true;
-  if (!accountId) {
-    throw new Error('Invalid providers.deleteAccount payload');
-  }
   try {
     const existing = await providerService.getAccount(accountId);
-    const runtimeProviderKey = existing?.authMode === 'oauth_browser' && existing.vendorId === 'openai'
-      ? 'openai'
-      : undefined;
+    if (!existing) return { success: true, noChange: true };
     if (apiKeyOnly) {
-      await syncDeletedProviderApiKeyToRuntime(
-        existing ? providerAccountToConfig(existing) : null,
-        accountId,
-        runtimeProviderKey,
-      );
       await providerService._deleteProviderApiKeyInternal(accountId);
+      await syncDeletedProviderApiKeyToRuntime(providerAccountToConfig(existing), accountId);
       return { success: true };
     }
-    const currentDefaultAccountId = await providerService.getDefaultAccountId();
-    const replacementDefault = currentDefaultAccountId === accountId
-      ? selectReplacementDefaultAccount(await providerService.listAccounts(), accountId)
-      : undefined;
 
-    if (replacementDefault) {
-      await syncDefaultProviderToRuntime(replacementDefault.id);
-      await providerService.setDefaultAccount(replacementDefault.id);
-    }
-    await syncDeletedProviderToRuntime(
-      existing ? providerAccountToConfig(existing) : null,
-      accountId,
-      gatewayManager,
-      runtimeProviderKey,
-    );
+    const defaults = await listProviderDefaults();
+    const remaining = (await providerService.listAccounts()).filter(account => account.id !== accountId);
+    const removals = ctx.projectionReconciler
+      ? await ctx.projectionReconciler.removeAccount(accountId)
+      : (await syncDeletedProviderToRuntime(
+          providerAccountToConfig(existing), accountId, ctx.gatewayManager,
+        ), []);
     await providerService.deleteAccount(accountId);
-    return { success: true };
+
+    for (const entry of defaults.filter(candidate => candidate.accountId === accountId)) {
+      const replacement = selectReplacementAccount(remaining, entry.kernelId);
+      if (!replacement) continue;
+      await setDefaultProviderAccount(replacement.id, entry.kernelId, replacement.model);
+      const nextDefault = (await listProviderDefaults()).find(item => item.kernelId === entry.kernelId);
+      if (nextDefault && ctx.projectionReconciler) {
+        await ctx.projectionReconciler.reconcileDefault(nextDefault);
+      } else if (entry.kernelId === 'openclaw') {
+        await syncDefaultProviderToRuntime(replacement.id, ctx.gatewayManager);
+      }
+    }
+    return {
+      success: true,
+      ...(removals.length > 0 ? { projections: removals.map(toHostProjection) } : {}),
+    };
   } catch (error) {
-    return { success: false, error: String(error) };
+    return { success: false, error: safeError(error) };
   }
 }
 
-async function setDefaultAccount(payload: ProviderPayload<'setDefaultAccount'>, gatewayManager?: GatewayManager) {
-  const providerService = getProviderService();
-  const accountId = getAccountId(payload, 'setDefaultAccount');
+async function setKernelDefault(ctx: ProvidersApiContext, payload: ProviderPayload<'setKernelDefault'>) {
+  const body = getPayloadRecord(payload, 'setKernelDefault');
+  const kernelId = requireString(body, 'kernelId', 'setKernelDefault') as KernelId;
+  const accountId = requireString(body, 'accountId', 'setKernelDefault');
+  const modelId = payloadString(body, 'modelId');
   try {
-    const currentDefault = await providerService.getDefaultAccountId();
-    if (currentDefault === accountId) {
-      return { success: true, noChange: true };
+    const account = await getProviderService().getAccount(accountId);
+    if (!account) return { success: false, error: 'Provider account not found' };
+    if (!supportedKernelIds(account, account.vendorId).includes(kernelId)) {
+      return { success: false, error: `Provider ${account.vendorId} is unsupported by kernel ${kernelId}` };
     }
-    await providerService.setDefaultAccount(accountId);
-    await syncDefaultProviderToRuntime(accountId, gatewayManager);
-    return { success: true };
+    await setDefaultProviderAccount(accountId, kernelId, modelId || account.model);
+    const entry = (await listProviderDefaults()).find(item => item.kernelId === kernelId);
+    const projection = entry ? await ctx.projectionReconciler?.reconcileDefault(entry) : undefined;
+    if (!ctx.projectionReconciler && kernelId === 'openclaw') {
+      await syncDefaultProviderToRuntime(accountId, ctx.gatewayManager);
+    }
+    return { success: true, ...(projection ? { projections: [toHostProjection(projection)] } : {}) };
   } catch (error) {
-    return { success: false, error: String(error) };
+    return { success: false, error: safeError(error) };
   }
 }
 
 async function requestOAuth(payload: ProviderPayload<'requestOAuth'>) {
   const body = getPayloadRecord(payload, 'requestOAuth');
-  const provider = typeof body.provider === 'string' ? body.provider : undefined;
-  if (!provider) {
-    return { success: false, error: 'Invalid providers.requestOAuth payload' };
-  }
+  const provider = payloadString(body, 'provider');
+  if (!provider) return { success: false, error: 'Invalid providers.requestOAuth payload' };
   const region = body.region === 'global' || body.region === 'cn' ? body.region : undefined;
   const options = {
-    accountId: typeof body.accountId === 'string' ? body.accountId : undefined,
-    label: typeof body.label === 'string' ? body.label : undefined,
+    accountId: payloadString(body, 'accountId'),
+    label: payloadString(body, 'label'),
   };
   try {
     if (provider === 'openai') {
@@ -440,8 +335,8 @@ async function requestOAuth(payload: ProviderPayload<'requestOAuth'>) {
     }
     return { success: true };
   } catch (error) {
-    logger.error('providers.requestOAuth failed', error);
-    return { success: false, error: String(error) };
+    logger.error('providers.requestOAuth failed', redactSecrets(error));
+    return { success: false, error: safeError(error) };
   }
 }
 
@@ -451,8 +346,8 @@ async function cancelOAuth() {
     await browserOAuthManager.stopFlow();
     return { success: true };
   } catch (error) {
-    logger.error('providers.cancelOAuth failed', error);
-    return { success: false, error: String(error) };
+    logger.error('providers.cancelOAuth failed', redactSecrets(error));
+    return { success: false, error: safeError(error) };
   }
 }
 
@@ -461,45 +356,117 @@ async function submitOAuth(payload: ProviderPayload<'submitOAuth'>) {
   const code = typeof body.code === 'string' ? body.code : '';
   try {
     const accepted = browserOAuthManager.submitManualCode(code);
-    if (!accepted) {
-      return { success: false, error: 'No active manual OAuth input pending' };
-    }
-    return { success: true };
+    return accepted
+      ? { success: true }
+      : { success: false, error: 'No active manual OAuth input pending' };
   } catch (error) {
-    return { success: false, error: String(error) };
+    return { success: false, error: safeError(error, code) };
   }
 }
 
+/** Renderer-facing Provider API. Raw credential values never cross this contract. */
 export function createProvidersApi(ctx: ProvidersApiContext): CompleteHostServiceRegistry['providers'] {
   const providerService = getProviderService();
   deviceOAuthManager.setWindow(ctx.mainWindow);
   browserOAuthManager.setWindow(ctx.mainWindow);
 
   return {
-    list: async () => providerService._listProvidersWithKeyInfoInternal(),
-    get: async (payload) => providerService._getProviderInternal(getProviderId(payload, 'get')),
-    getDefault: async () => providerService._getDefaultProviderInternal(),
-    hasApiKey: async (payload) => providerService._hasProviderApiKeyInternal(getProviderId(payload, 'hasApiKey')),
-    getApiKey: async (payload) => providerService._getProviderApiKeyInternal(getProviderId(payload, 'getApiKey')),
-    validateKey,
-    save: async (payload) => saveProvider(payload, ctx.gatewayManager),
-    delete: async (payload) => deleteProvider(payload, ctx.gatewayManager),
-    setApiKey: setProviderApiKey,
-    updateWithKey: async (payload) => updateProviderWithKey(payload, ctx.gatewayManager),
-    deleteApiKey: deleteProviderApiKey,
-    setDefault: async (payload) => setDefaultProvider(payload, ctx.gatewayManager),
-    accounts: async () => providerService.listAccounts(),
-    vendors: async () => providerService.listVendors(),
-    accountKeyInfo: async () => providerService.listAccountsKeyInfo(),
+    list: () => providerService._listProvidersWithKeyInfoInternal(),
+    get: payload => providerService._getProviderInternal(getProviderId(payload, 'get')),
+    getDefault: () => providerService._getDefaultProviderInternal(),
+    hasApiKey: payload => providerService._hasProviderApiKeyInternal(getProviderId(payload, 'hasApiKey')),
+    validateKey: payload => validateKey(ctx, payload),
+    save: async payload => {
+      const body = getPayloadRecord(payload, 'save');
+      if (!isRecord(body.config)) throw new Error('Invalid providers.save payload');
+      const config = body.config as unknown as ProviderConfig;
+      const existing = await providerService.getAccount(config.id);
+      return existing
+        ? updateAccount(ctx, {
+            accountId: config.id,
+            updates: {
+              label: config.name,
+              vendorId: config.type,
+              baseUrl: config.baseUrl,
+              apiProtocol: config.apiProtocol,
+              headers: config.headers,
+              model: config.model,
+              modelCapabilities: config.modelCapabilities,
+              fallbackModels: config.fallbackModels,
+              fallbackAccountIds: config.fallbackProviderIds,
+              enabled: config.enabled,
+            },
+            credentialHandle: body.credentialHandle,
+          } as never)
+        : createAccount(ctx, {
+            account: {
+              id: config.id,
+              vendorId: config.type,
+              label: config.name,
+              authMode: config.type === 'ollama' ? 'local' : 'api_key',
+              baseUrl: config.baseUrl,
+              apiProtocol: config.apiProtocol,
+              headers: config.headers,
+              model: config.model,
+              modelCapabilities: config.modelCapabilities,
+              fallbackModels: config.fallbackModels,
+              fallbackAccountIds: config.fallbackProviderIds,
+              enabled: config.enabled,
+              isDefault: false,
+              createdAt: config.createdAt,
+              updatedAt: config.updatedAt,
+            },
+            credentialHandle: body.credentialHandle,
+          } as never);
+    },
+    delete: payload => deleteAccount(ctx, getProviderId(payload, 'delete')),
+    setApiKey: payload => updateAccount(ctx, {
+      accountId: getProviderId(payload, 'setApiKey'),
+      updates: {},
+      credentialHandle: getPayloadRecord(payload, 'setApiKey').credentialHandle,
+    } as never),
+    updateWithKey: payload => {
+      const body = getPayloadRecord(payload, 'updateWithKey');
+      return updateAccount(ctx, {
+        accountId: requireString(body, 'providerId', 'updateWithKey'),
+        updates: body.updates,
+        credentialHandle: body.credentialHandle,
+      } as never);
+    },
+    deleteApiKey: payload => deleteAccount(ctx, getProviderId(payload, 'deleteApiKey'), true),
+    setDefault: payload => setKernelDefault(ctx, {
+      kernelId: 'openclaw',
+      accountId: getProviderId(payload, 'setDefault'),
+    }),
+    accounts: () => providerService.listAccounts(),
+    vendors: () => providerService.listVendors(),
+    accountKeyInfo: () => providerService.listAccountsKeyInfo(),
     getDefaultAccount: async () => ({ accountId: await providerService.getDefaultAccountId() ?? null }),
-    getAccount: async (payload) => providerService.getAccount(getAccountId(payload, 'getAccount')),
-    getAccountApiKey: async (payload) => providerService.getAccountApiKey(getAccountId(payload, 'getAccountApiKey')),
-    hasAccountApiKey: async (payload) => providerService.hasAccountApiKey(getAccountId(payload, 'hasAccountApiKey')),
-    createAccount: async (payload) => createAccount(payload, ctx.gatewayManager),
-    updateAccount: async (payload) => updateAccount(payload, ctx.gatewayManager),
-    deleteAccount: async (payload) => deleteAccount(payload, ctx.gatewayManager),
-    deleteAccountApiKey: async (payload) => deleteAccount({ accountId: getAccountId(payload, 'deleteAccountApiKey'), apiKeyOnly: true }, ctx.gatewayManager),
-    setDefaultAccount: async (payload) => setDefaultAccount(payload, ctx.gatewayManager),
+    getAccount: payload => providerService.getAccount(getAccountId(payload, 'getAccount')),
+    hasAccountApiKey: payload => providerService.hasAccountApiKey(getAccountId(payload, 'hasAccountApiKey')),
+    createAccount: payload => createAccount(ctx, payload),
+    updateAccount: payload => updateAccount(ctx, payload),
+    deleteAccount: payload => deleteAccount(ctx, getAccountId(payload, 'deleteAccount')),
+    deleteAccountApiKey: payload => deleteAccount(ctx, getAccountId(payload, 'deleteAccountApiKey'), true),
+    setDefaultAccount: payload => setKernelDefault(ctx, {
+      kernelId: 'openclaw',
+      accountId: getAccountId(payload, 'setDefaultAccount'),
+    }),
+    kernelDefaults: () => listProviderDefaults(),
+    setKernelDefault: payload => setKernelDefault(ctx, payload),
+    reconcileAccount: async payload => {
+      const body = getPayloadRecord(payload, 'reconcileAccount');
+      const accountId = requireString(body, 'accountId', 'reconcileAccount');
+      const kernelIds = Array.isArray(body.kernelIds)
+        ? body.kernelIds.filter((id): id is string => typeof id === 'string').map(id => id as KernelId)
+        : undefined;
+      try {
+        const projections = await reconcileAccount(ctx, accountId, kernelIds);
+        return { success: true, projections: projections.map(toHostProjection) };
+      } catch (error) {
+        return { success: false, error: safeError(error) };
+      }
+    },
     requestOAuth,
     cancelOAuth,
     submitOAuth,

@@ -2,36 +2,47 @@
 
 本文档是 README「系统架构」一节的详细说明。
 
-ClawX 采用 **双进程 + Host API 统一接入架构**。渲染进程只调用统一客户端抽象，协议选择与进程生命周期由 Electron 主进程统一管理：
+## ClawX 0.6 多内核权威架构
 
-OpenClaw 配置交付也统一由 Electron Main 管理。Gateway 运行时，ClawX 以 `config.get` 返回的权威快照为基线，并通过 `config.set` 提交修改；Gateway 停止或启动中时，同一个协调器只更新解析后的 JSON5 配置文件，不会因此启动 Gateway。因此，普通的 Provider、Agent、Channel、绑定、Skill 和模型修改不会替换 Gateway 进程。完整重启仅保留给代理等进程启动环境变化和用户显式操作。已确认的进程退出与 WebSocket 关闭继续使用现有的自动重连路径。连续前 3 次 WebSocket 心跳无响应只更新诊断，不会因短暂的 pong 延迟中断长时间运行的任务；收到 pong 或任意消息会重置计数，连续第 4 次无响应时，只有在生命周期处于可自动恢复的 running 状态时，才会请求受保护的 Gateway 自动恢复。认证配置写入 SQLite 后，ClawX 会调用 OpenClaw 的 `secrets.reload`，让运行中的 Agent 无需重启即可读取新凭据。
+ClawX 现在是可选、独立版本内核的宿主。OpenClaw 已从主安装包移除；OpenClaw 与 DeepSeek Harness 都从 CI 预制的签名运行时安装，并可同时运行。现有 Renderer 完全共用，只认识 ClawX canonical 领域契约，不认识任何上游 session/config 协议。
 
-Chat 使用由 Electron Main 持有的 ACP stdio bridge。Main 通过私有进程环境把同一份应用管理的 Gateway token 传给本地子进程，因此运行时配置重载后 ACP 历史回放仍能完成认证。如果受保护的 Gateway 恢复中断了已接收的主会话 run，补丁后的 OpenClaw 运行时会启动独立的恢复 run，并显式携带被中断 run id 作为 lineage。Chat 和 agent events 会保留该 lineage；重连后的 ACP bridge 据此将 pending prompt 接续到新 run，重置该 run 的流式游标，并订阅会话级 tool events。Renderer 不感知 Gateway 运行实例身份，仍通过类型化 host events 渲染同一个内存 ACP timeline。Gateway 继续负责 providers、models、skills、workspace、settings、diagnostics 和 media configuration 等非 Chat 能力。
+```text
+React Renderer
+  -> typed Host API / Host events
+Electron Main 领域服务
+  -> ClawXDataService utility process -> 单一 SQLite + content-addressed Blobs
+  -> ConversationRouter / Scheduler / Channel Orchestrator / Credential Broker
+  -> KernelPackageManager + SupervisorRegistry
+       -> OpenClawDriver -> 下载的 OpenClaw runtime
+       -> DeepSeekHarnessDriver -> 下载的 DSH runtime host
+       -> 未来 KernelDriver
+```
 
-### ACP 语义权威
+SQLite 是全部新 Conversation、Cron、Channel、Usage、Agent/Provider/Skill 状态与 runtime operation 的唯一 durable authority。Runtime 不打开数据库，也不拥有第二份 transcript/scheduler history。ACP 与 DSH bridges 只承担实时执行；DataService 只接受带 conversation/run/kernel/generation/sequence 的事件。同一 Conversation 只可在 turn 边界改变下一次执行内核，目标内核只收到经过 visibility/redaction/budget 规则编译的 portable context。
 
-对于 ACP 能够提供的每一种 Chat 语义和上下文，ACP 都是优先的语义权威。这包括适用时的 session identity 与路由、工作空间和执行 `cwd`、prompt 与 timeline 状态，以及标准 resource 或附件语义。ACP 提供值或事件时，Main 和 Renderer 必须使用 ACP 的结果，不得用 Gateway 快照、transcript 推断、本地配置或另一套并行投影替代。
+Package 安装是事务化的：Main 校验签名且有期限的 catalog/descriptor，使用有界流与断点续传下载，在拒绝链接/路径穿越的 staging 中解压，执行 artifact/platform/storage self-test 后原子激活。每个内核都有独立 supervisor、目录、port/stdio bridge、operation queue、health 和 rollback slot；停止、崩溃、修复或更新一个不得替换另一个。
 
-只有在上游 ACP 没有对应能力时，才允许绕过 ACP。此类兼容性路径必须保持狭窄、有界，并绑定 session 和 generation；同时必须在相关 Harness reference 或 rule 中记录其原因、事实来源、限制、协调行为和移除条件，不得悄悄演变为竞争性的权威来源。
+本文后续 OpenClaw Gateway/config 内容只描述 `OpenClawDriver` adapter，不再是全局宿主架构。DSH 通过受补丁保护的 ACP/control/persistence bridge 使用同一 Host API/领域层。参见[完整多内核设计](multi-kernel-design.md)、[运行时安全/支持策略](runtime-security-support.md)与[数据安全/保留策略](data-security-retention.md)。
 
-### ACP 历史权威与有界 transcript 补充
+ClawX 采用 **Main-owned 多进程 + Host API 统一接入架构**。Renderer 只调用统一客户端抽象；DataService utility process、runtime 选择、协议 adapter 与进程生命周期全部由 Electron Main 管理。
 
-ACP `session/load` 回放是 Chat 历史的首要事实来源。ClawX 不会持久化第二套 ACP ledger、精简 timeline、回放缓存或重建的工具历史。当 OpenClaw 的结构化 ACP event ledger 不可用时，其 ACP adapter 会按 transcript 顺序把持久化的 `toolCall` 和 `toolResult` 记录重建为原生工具更新，并保留 text-tool-text 边界；ClawX 本身不会推断这些记录。OpenClaw 的部分能力目前还没有完全对应的 ACP 实现；例如，assistant 媒体可能不会出现在 ACP 中，Gateway 处理也可能从可见的实时回复中移除 assistant `MEDIA:` 指令。因此，ClawX 只保留有界、带标记、仅存于内存的兼容性补充路径：
+OpenClaw 配置交付是 Electron Main 管理的一种 adapter projection。可选 Gateway 运行时，ClawX 通过 `config.get`/`config.set` 投影状态；停止或启动中时，只更新可替换的 managed JSON5 配置而不启动进程。Provider、Agent、Channel、绑定、Skill 与模型意图的权威记录仍在 SQLite。普通投影变更不替换进程，完整重启只用于代理等启动环境变化或用户显式操作。心跳恢复只作用于 ClawX 持有的 OpenClaw supervisor，不会重启其它内核。认证元数据提交后，secret 仍在 OS 凭据存储，OpenClaw 只收到受限的 `secrets.reload` 通知。
 
-- 只有在同一 session 中存在已确认的 `image_generate` 上下文，且完成证据可信或来自获准 transcript 证据时，才可以恢复异步图像生成结果。
-- 普通附件可以从持久化的 assistant `__openclaw.media` 规范事实或明确的行首 assistant `MEDIA:` 指令中恢复。这只恢复附件引用和声明的元数据，不恢复周围的 assistant 消息。
-- 由于 ACP 回放不提供原始事件时间戳，Main 可以从有界的 transcript JSONL 记录中补充仅包含元数据的整轮耗时，但只能标注已经由 ACP 回放恢复出的回合。
-- 如果 cron session 的 ACP 回放完全为空，Main 的类型化 cron-history API 可以提供计划提示词和完成摘要。当已识别的运行摘要带有 OpenClaw 截断标记时，只有在对应 run 的 transcript 更长且共享完整的已持久化摘要前缀时，Main 才可以恢复最终 assistant 文本。
+执行 OpenClaw 时，Main 持有 ACP stdio bridge，只向它提供已准入的 Conversation snapshot、run identity、受限凭据与 workspace grant；bridge 不从 runtime 加载 UI history。受保护恢复若中断已接收 run，补丁运行时会为替代进程/run 发出显式 lineage；ConversationRouter 只接受 kernel、generation、run 与递增 event sequence 全部匹配的事件。OpenClaw 仍实现 models、skills、diagnostics 等 runtime projection，但 durable ownership 始终属于 ClawX 领域服务。
 
-历史读取最多读取最近 1000 条 transcript 消息。一次成功的实时 prompt 会立即读取一次，并在 1500ms 后重试一次。每个补充路径都必须绑定精确的 session、ACP generation、补充操作，并在适用时绑定当前的用户回合；过期、缺失、重复或有歧义的匹配都会被丢弃。这些路径不得重建普通 assistant 消息、thought、tool、plan、permission、文件活动、缺失回合或另一套 Chat 历史，Main 也不得根据 transcript 伪造原生 ACP 事件。标准 ACP resource 仍是首选；上游提供等价内容后，这些兼容性例外应当移除。
+### 实时 Adapter 语义与 Canonical History
 
-打开其它会话或页面时，尚未完成的 ACP 回复仍会继续流式接收。若在回复完成前返回，ClawX 会恢复最新的内存 timeline 并继续显示实时输出；回复完成后，普通 ACP 历史回放仍是唯一事实来源。
+ACP 只对已准入 OpenClaw run 发出的实时执行语义负责；DSH bridge 具有同样角色。Main 把 text、reasoning、tool、permission、plan、usage、image 与 resource 规范化为 `KernelEventEnvelopeV1`，ConversationRouter 校验身份后经 DataService 写入。任何 transport 都不得向 UI 提供 Conversation catalog/history、Cron history 或 Usage history。
 
-ACP assistant 回合会显示整轮耗时。Live 计时跟随客户端观测到的 prompt 生命周期，并在应用内导航后保持连续；历史耗时由 Electron Main 根据有界的 OpenClaw transcript 时间戳计算，而且只能标注 ACP 回放已经恢复出的回合。
+SQLite Conversation records 是唯一历史来源。打开或刷新 Conversation 时，Main 将 canonical turns、content blocks、runs、tool calls、permissions、usage 与 timestamps 投影到现有 Chat timeline，不调用 runtime `session/load`，不读取 JSONL，也不扫描 runtime 目录。Canonical record 缺失就保持缺失，不能用 transcript、Gateway 或 native history fallback 重建。为旧调用者保留的兼容 API 名称也只是同一 Conversation repository 的 facade，不是第二份存储。
 
-ACP Chat 会将标准 ACP resource 渲染为附件。用户选择的图片会显示为缩略图，并在悬停蒙层中显示文件名；其它可用的附件卡片会显示文件名，以及灰色、可截断的来源路径。当前 OpenClaw ACP adapter 遗漏 assistant 媒体时，OpenClaw 持久化的规范媒体事实和显式 assistant `MEDIA:` 指令也可恢复为附件卡片，且不会显示仅用于 transcript 的元数据。现有本地文件引用（包括当前 workspace 外的路径）在每次预览或打开前，都会由 Electron Main 按精确的 session 和 generation 重新验证。AI 生成且可预览的本地附件（包括不超过 20 MB 的 `.docx` 和 `.pptx` 文件）会保留主要的只读应用内预览操作，并提供次级菜单，可通过兼容应用打开，或在 Finder、文件资源管理器或系统文件管理器中显示。对于本地 HTML 附件，该菜单第一项会在右侧预览中打开文件。Office 预览在此处也有相同限制：`.doc` 和 `.ppt` 仍通过系统应用打开，DOCX 的分页效果可能与 Microsoft Word 不同，PPTX 的动画、切换效果和媒体播放不受支持。兼容应用发现仅在 macOS 和 Windows 上可用；在 Linux 上或发现失败时，会静默降级为仅显示文件位置。其它本地文件（包括超过 20 MB 的 Office 文件）会在用户点击后通过系统应用打开。用户选择的文件夹附件在发送后也会保持可用，点击后交给系统文件管理器打开；ClawX 不会读取或预览其中内容。远程 HTTP 和 HTTPS 附件会在用户点击后从外部打开。没有规范媒体事实佐证的普通文本裸路径或行内路径不会被当作附件。
+切换 Conversation 或页面不会停止未完成回复；live snapshot 按 Conversation/run/kernel/generation 隔离，terminal commit 原子写入最终 assistant turn 及关联记录。完成前返回会继续内存流，完成后返回则重新投影同一 SQLite durable history。
 
-ACP Chat 也可在 runtime 以可信结构化媒体投递图像生成结果时显示生成图片预览。对于可信的 OpenClaw internal-UI 投递和与生图任务关联的最终回复，ClawX 会保留原始的用户可见完成文案，包括只有文本的失败说明，而不会统一替换成通用图片文案。历史 OpenClaw 回放中，assistant 的图片 `MEDIA:` 标记只有在同一会话已记录图像生成任务启动后才会进入内联图片体验。ClawX 通过 Electron Main 的主机媒体处理加载预览，而不是让 Renderer 任意访问文件系统。标准 ACP 图片和 resource 内容仍是首选路径，并会直接渲染。
+Assistant 整轮耗时来自 canonical run admission 与 terminal timestamp。附件、生成图片和文件活动保存为 canonical content blocks 与结构化 run events。标准 ACP/DSH resource/image 只在实时 adapter 边界被规范化；历史渲染不会解析 `MEDIA:` 文本或 native transcript。用户图片显示缩略图，其它 resource 显示附件卡；每次本地文件操作仍由 Electron Main 按精确 Conversation/run workspace grant 重新验证。
+
+现有本地文件引用（包括当前 workspace 外的已授权路径）在每次预览或打开前都会重新验证。AI 生成且可预览的本地附件（包括不超过 20 MB 的 `.docx` 和 `.pptx`）提供只读应用内预览及通过兼容应用打开/在系统文件管理器中显示的菜单；本地 HTML 可在右侧 Preview 打开。`.doc`、`.ppt`、超过 20 MB 的 Office 文件及用户选择的目录交给系统应用；远程 HTTP/HTTPS 附件只在用户点击后外部打开。没有 canonical resource 佐证的文本路径不视为附件。
+
+生成图只从已被 canonical run 接受的可信结构化 runtime event 显示；与任务关联的最终回复保留原始用户可见文本，包括纯文本失败说明。预览通过 Electron Main 的 host media 处理加载，Renderer 不会任意访问文件系统。
 
 ### ACP 文件活动语义
 
@@ -41,7 +52,7 @@ ACP Chat 也可在 runtime 以可信结构化媒体投递图像生成结果时�
 - **Changes** 是按时间顺序记录工具声明活动的会话级记录，不是 Git 输出，也不是相对于已验证源码基线的差异。
 - 对每个文件，Changes 在每轮助手回复中最多展示一个 diff 编辑器。可安全串联的片段会合并，独立片段会拼接到同一个编辑器中，但不会被描述为基于完整文件基线的差异。
 - Shell 命令、脚本、用户或 IDE 产生的副作用不会被检测。
-- 完整的 ACP 回放可以恢复已记录的文件活动；如果回放不完整，ClawX 不会通过回退推断来补造缺失活动。
+- Canonical Conversation 投影恢复已记录的文件活动；结构化记录缺失时，不从文本、文件系统或 runtime history 推断。
 
 ```
 ┌───────────────────────────────────────────────────────────────────┐

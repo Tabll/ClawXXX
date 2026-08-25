@@ -9,14 +9,25 @@ const toastSuccessMock = vi.fn();
 const toastErrorMock = vi.fn();
 const toastWarningMock = vi.fn();
 
-const { gatewayState } = vi.hoisted(() => ({
-  gatewayState: {
-    status: { state: 'running', port: 18789 },
+const { kernelState } = vi.hoisted(() => ({
+  kernelState: {
+    catalog: {
+      entries: [
+        { kernelId: 'openclaw', displayName: 'OpenClaw' },
+        { kernelId: 'deepseek-harness', displayName: 'DeepSeek Harness' },
+      ],
+    },
+    runtimes: {
+      openclaw: { kernelId: 'openclaw', state: 'ready', generation: 1, diagnostics: [] },
+      'deepseek-harness': { kernelId: 'deepseek-harness', state: 'ready', generation: 1, diagnostics: [] },
+    } as Record<string, Record<string, unknown>>,
+    restart: vi.fn(),
   },
 }));
 
-vi.mock('@/stores/gateway', () => ({
-  useGatewayStore: (selector: (state: typeof gatewayState) => unknown) => selector(gatewayState),
+vi.mock('@/stores/kernels', () => ({
+  kernelDisplayName: (kernelId: string) => kernelId === 'openclaw' ? 'OpenClaw' : kernelId === 'deepseek-harness' ? 'DeepSeek Harness' : kernelId,
+  useKernelStore: (selector: (state: typeof kernelState) => unknown) => selector(kernelState),
 }));
 
 vi.mock('@/lib/host-api', () => ({
@@ -41,18 +52,13 @@ vi.mock('@/lib/host-api', () => ({
       startLogin: (channelType: string, input?: unknown) => hostApiCallMock('channels.startLogin', { channelType, input }),
       cancelLogin: (channelType: string, input?: unknown) => hostApiCallMock('channels.cancelLogin', { channelType, input }),
     },
-    diagnostics: {
-      gatewaySnapshot: () => hostApiCallMock('diagnostics.gatewaySnapshot'),
-    },
-    gateway: {
-      restart: () => hostApiCallMock('gateway.restart', { method: 'POST' }),
-    },
   },
 }));
 
 vi.mock('@/lib/host-events', () => ({
   hostEvents: {
-    onGatewayChannelStatus: (handler: unknown) => subscribeHostEventMock('gateway:channel-status', handler),
+    onChannelStatusChanged: (handler: unknown) => subscribeHostEventMock('channels:status-changed', handler),
+    onKernelStatusChanged: (handler: unknown) => subscribeHostEventMock('kernels:status-changed', handler),
     onChannelQr: (channel: string, handler: unknown) => subscribeHostEventMock(`channel:${channel}-qr`, handler),
     onChannelSuccess: (channel: string, handler: unknown) => subscribeHostEventMock(`channel:${channel}-success`, handler),
     onChannelError: (channel: string, handler: unknown) => subscribeHostEventMock(`channel:${channel}-error`, handler),
@@ -73,6 +79,45 @@ vi.mock('sonner', () => ({
   },
 }));
 
+vi.mock('@/components/ui/secure-secret-input', async () => {
+  const React = await import('react');
+  type MockSecretInputProps = React.InputHTMLAttributes<HTMLInputElement> & {
+    onPresenceChange?: (hasValue: boolean) => void;
+  };
+  type MockSecretInputHandle = {
+    stage(): Promise<string | null>;
+    clear(): void;
+    focus(): void;
+  };
+  const SecureSecretInput = React.forwardRef<MockSecretInputHandle, MockSecretInputProps>(
+    function MockSecureSecretInput({ onPresenceChange, ...props }, ref) {
+      const [value, setValue] = React.useState('');
+      const inputRef = React.useRef<HTMLInputElement>(null);
+      React.useImperativeHandle(ref, () => ({
+        stage: async () => value ? `credential-stage://test/${encodeURIComponent(value)}` : null,
+        clear: () => {
+          setValue('');
+          onPresenceChange?.(false);
+        },
+        focus: () => inputRef.current?.focus(),
+      }), [onPresenceChange, value]);
+      return (
+        <input
+          {...props}
+          ref={inputRef}
+          type="password"
+          value={value}
+          onChange={(event) => {
+            setValue(event.target.value);
+            onPresenceChange?.(event.target.value.length > 0);
+          }}
+        />
+      );
+    },
+  );
+  return { SecureSecretInput };
+});
+
 function createDeferred<T>() {
   let resolve!: (value: T | PromiseLike<T>) => void;
   let reject!: (reason?: unknown) => void;
@@ -92,7 +137,15 @@ describe('Channels page status refresh', () => {
       },
       configurable: true,
     });
-    gatewayState.status = { state: 'running', port: 18789 };
+    kernelState.runtimes = {
+      openclaw: { kernelId: 'openclaw', state: 'ready', generation: 1, diagnostics: [] },
+      'deepseek-harness': { kernelId: 'deepseek-harness', state: 'ready', generation: 1, diagnostics: [] },
+    };
+    kernelState.catalog.entries = [
+      { kernelId: 'openclaw', displayName: 'OpenClaw' },
+      { kernelId: 'deepseek-harness', displayName: 'DeepSeek Harness' },
+    ];
+    kernelState.restart.mockReset().mockResolvedValue(true);
     hostApiCallMock.mockImplementation(async (path: string) => {
       if (path === 'channels.accounts') {
         return {
@@ -410,10 +463,10 @@ describe('Channels page status refresh', () => {
     });
   });
 
-  it('refetches channel accounts when gateway channel-status events arrive', async () => {
+  it('refetches channel accounts when canonical channel status events arrive', async () => {
     let channelStatusHandler: (() => void) | undefined;
     subscribeHostEventMock.mockImplementation((eventName: string, handler: () => void) => {
-      if (eventName === 'gateway:channel-status') {
+      if (eventName === 'channels:status-changed') {
         channelStatusHandler = handler;
       }
       return vi.fn();
@@ -425,7 +478,7 @@ describe('Channels page status refresh', () => {
       expect(hostApiCallMock).toHaveBeenCalledWith('channels.accounts', expect.objectContaining({ mode: 'runtime' }));
       expect(hostApiCallMock).toHaveBeenCalledWith('agents.list');
     });
-    expect(subscribeHostEventMock).toHaveBeenCalledWith('gateway:channel-status', expect.any(Function));
+    expect(subscribeHostEventMock).toHaveBeenCalledWith('channels:status-changed', expect.any(Function));
 
     await act(async () => {
       channelStatusHandler?.();
@@ -441,19 +494,22 @@ describe('Channels page status refresh', () => {
     });
   });
 
-  it('refetches when the gateway transitions to running after mount', async () => {
-    gatewayState.status = { state: 'starting', port: 18789 };
+  it('refetches when a kernel lifecycle event arrives after mount', async () => {
+    let kernelStatusHandler: (() => void) | undefined;
+    subscribeHostEventMock.mockImplementation((eventName: string, handler: () => void) => {
+      if (eventName === 'kernels:status-changed') kernelStatusHandler = handler;
+      return vi.fn();
+    });
 
-    const { rerender } = render(<Channels />);
+    render(<Channels />);
 
     await waitFor(() => {
       expect(hostApiCallMock).toHaveBeenCalledWith('channels.accounts', expect.objectContaining({ mode: 'runtime' }));
       expect(hostApiCallMock).toHaveBeenCalledWith('agents.list');
     });
 
-    gatewayState.status = { state: 'running', port: 18789 };
     await act(async () => {
-      rerender(<Channels />);
+      kernelStatusHandler?.();
     });
 
     await waitFor(() => {
@@ -670,369 +726,114 @@ describe('Channels page status refresh', () => {
     expect(appSecretInput).toHaveValue('secret_test_value');
   });
 
-  it('shows degraded gateway banner and copies diagnostics snapshot', async () => {
+  it('shows a kernel-scoped health banner and restarts only the affected runtime', async () => {
     subscribeHostEventMock.mockImplementation(() => vi.fn());
-    const writeTextMock = vi.mocked(navigator.clipboard.writeText);
-
-    hostApiCallMock.mockImplementation(async (path: string, init?: { method?: string }) => {
+    kernelState.runtimes.openclaw = {
+      kernelId: 'openclaw', state: 'degraded', generation: 3, diagnostics: ['health timeout'],
+    };
+    hostApiCallMock.mockImplementation(async (path: string) => {
       if (path === 'channels.accounts') {
         return {
           success: true,
-          gatewayHealth: {
-            state: 'degraded',
-            reasons: ['channels_status_timeout'],
-            consecutiveHeartbeatMisses: 1,
-          },
-          channels: [
-            {
-              channelType: 'feishu',
-              defaultAccountId: 'default',
+          channels: [{
+            channelType: 'feishu',
+            defaultAccountId: 'default',
+            status: 'degraded',
+            accounts: [{
+              accountId: 'default',
+              name: 'Primary Account',
+              configured: true,
               status: 'degraded',
-              statusReason: 'channels_status_timeout',
-              accounts: [
-                {
-                  accountId: 'default',
-                  name: 'Primary Account',
-                  configured: true,
-                  status: 'degraded',
-                  statusReason: 'channels_status_timeout',
-                  isDefault: true,
-                },
-              ],
-            },
-          ],
+              isDefault: true,
+              kernelId: 'openclaw',
+            }],
+          }],
         };
       }
-
-      if (path === 'agents.list') {
-        return {
-          success: true,
-          agents: [],
-        };
-      }
-
-      if (path === 'diagnostics.gatewaySnapshot') {
-        return {
-          capturedAt: 123,
-          platform: 'darwin',
-          gateway: {
-            state: 'degraded',
-            reasons: ['channels_status_timeout'],
-            consecutiveHeartbeatMisses: 1,
-          },
-          channels: [],
-          clawxLogTail: 'clawx',
-          gatewayLogTail: 'gateway',
-          gatewayErrLogTail: '',
-        };
-      }
-
-      if (path === 'gateway.restart' && init?.method === 'POST') {
-        return { success: true };
-      }
-
+      if (path === 'agents.list') return { success: true, agents: [] };
       throw new Error(`Unexpected host API path: ${path}`);
     });
 
     render(<Channels />);
 
-    expect(await screen.findByTestId('channels-health-banner')).toBeInTheDocument();
-    expect(screen.getByText('health.state.degraded')).toBeInTheDocument();
+    expect(await screen.findByTestId('channels-kernel-health-banner')).toBeInTheDocument();
+    expect(screen.getByTestId('channels-kernel-health-openclaw')).toHaveTextContent(
+      'OpenClaw · common:kernels.states.degraded',
+    );
+    expect(screen.queryByTestId('channels-kernel-health-deepseek-harness')).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByTestId('channels-copy-diagnostics'));
-
-    await waitFor(() => {
-      expect(hostApiCallMock).toHaveBeenCalledWith('diagnostics.gatewaySnapshot');
-      expect(writeTextMock).toHaveBeenCalledWith(expect.stringContaining('"platform": "darwin"'));
-    });
+    fireEvent.click(screen.getByTestId('channels-restart-kernel-openclaw'));
+    await waitFor(() => expect(kernelState.restart).toHaveBeenCalledWith('openclaw'));
   });
 
-  it('suppresses stale gateway-not-running health while gateway status is running', async () => {
+  it('supports a future catalog kernel without adding a page-level backend branch', async () => {
     subscribeHostEventMock.mockImplementation(() => vi.fn());
-
+    kernelState.catalog.entries.push({ kernelId: 'future-kernel', displayName: 'Future Kernel' });
+    kernelState.runtimes['future-kernel'] = {
+      kernelId: 'future-kernel', state: 'failed', generation: 9, diagnostics: ['failed'],
+    };
     hostApiCallMock.mockImplementation(async (path: string) => {
       if (path === 'channels.accounts') {
         return {
           success: true,
-          gatewayHealth: {
-            state: 'degraded',
-            reasons: ['gateway_not_running'],
-            consecutiveHeartbeatMisses: 0,
-          },
-          channels: [
-            {
-              channelType: 'feishu',
-              defaultAccountId: 'default',
-              status: 'connected',
-              accounts: [
-                {
-                  accountId: 'default',
-                  name: 'Primary Account',
-                  configured: true,
-                  status: 'connected',
-                  isDefault: true,
-                },
-              ],
-            },
-          ],
+          channels: [{
+            channelType: 'telegram',
+            defaultAccountId: 'future',
+            status: 'degraded',
+            accounts: [{
+              accountId: 'future',
+              name: 'Future Account',
+              configured: true,
+              status: 'degraded',
+              isDefault: true,
+              kernelId: 'future-kernel',
+            }],
+          }],
         };
       }
+      if (path === 'agents.list') return { success: true, agents: [] };
+      throw new Error(`Unexpected host API path: ${path}`);
+    });
 
-      if (path === 'agents.list') {
-        return { success: true, agents: [] };
+    render(<Channels />);
+
+    expect(await screen.findByTestId('channels-kernel-health-future-kernel')).toHaveTextContent(
+      'future-kernel · common:kernels.states.failed',
+    );
+    fireEvent.click(screen.getByTestId('channels-restart-kernel-future-kernel'));
+    await waitFor(() => expect(kernelState.restart).toHaveBeenCalledWith('future-kernel'));
+  });
+
+  it('does not derive page health from a legacy global gateway payload', async () => {
+    subscribeHostEventMock.mockImplementation(() => vi.fn());
+    hostApiCallMock.mockImplementation(async (path: string) => {
+      if (path === 'channels.accounts') {
+        return {
+          success: true,
+          gatewayHealth: { state: 'degraded', reasons: ['legacy'], consecutiveHeartbeatMisses: 99 },
+          channels: [{
+            channelType: 'feishu',
+            defaultAccountId: 'default',
+            status: 'connected',
+            accounts: [{
+              accountId: 'default',
+              name: 'Primary Account',
+              configured: true,
+              status: 'connected',
+              isDefault: true,
+              kernelId: 'openclaw',
+            }],
+          }],
+        };
       }
-
+      if (path === 'agents.list') return { success: true, agents: [] };
       throw new Error(`Unexpected host API path: ${path}`);
     });
 
     render(<Channels />);
 
     expect(await screen.findByText('Feishu / Lark')).toBeInTheDocument();
-    expect(screen.queryByTestId('channels-health-banner')).not.toBeInTheDocument();
-    expect(screen.queryByText('health.reasons.gateway_not_running')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('channels-kernel-health-banner')).not.toBeInTheDocument();
   });
 
-  it('surfaces diagnostics fetch failure payloads instead of caching them as snapshots', async () => {
-    subscribeHostEventMock.mockImplementation(() => vi.fn());
-
-    hostApiCallMock.mockImplementation(async (path: string) => {
-      if (path === 'channels.accounts') {
-        return {
-          success: true,
-          gatewayHealth: {
-            state: 'degraded',
-            reasons: ['channels_status_timeout'],
-            consecutiveHeartbeatMisses: 1,
-          },
-          channels: [
-            {
-              channelType: 'feishu',
-              defaultAccountId: 'default',
-              status: 'degraded',
-              statusReason: 'channels_status_timeout',
-              accounts: [
-                {
-                  accountId: 'default',
-                  name: 'Primary Account',
-                  configured: true,
-                  status: 'degraded',
-                  statusReason: 'channels_status_timeout',
-                  isDefault: true,
-                },
-              ],
-            },
-          ],
-        };
-      }
-      if (path === 'agents.list') {
-        return { success: true, agents: [] };
-      }
-      if (path === 'diagnostics.gatewaySnapshot') {
-        return { success: false, error: 'snapshot failed' };
-      }
-
-      throw new Error(`Unexpected host API path: ${path}`);
-    });
-
-    render(<Channels />);
-    expect(await screen.findByTestId('channels-health-banner')).toBeInTheDocument();
-
-    fireEvent.click(screen.getByTestId('channels-toggle-diagnostics'));
-
-    await waitFor(() => {
-      expect(toastErrorMock).toHaveBeenCalledWith('health.diagnosticsCopyFailed');
-    });
-    expect(screen.queryByTestId('channels-diagnostics')).not.toBeInTheDocument();
-  });
-
-  it('shows restart failure when gateway restart returns success=false', async () => {
-    subscribeHostEventMock.mockImplementation(() => vi.fn());
-
-    hostApiCallMock.mockImplementation(async (path: string, init?: { method?: string }) => {
-      if (path === 'channels.accounts') {
-        return {
-          success: true,
-          gatewayHealth: {
-            state: 'degraded',
-            reasons: ['channels_status_timeout'],
-            consecutiveHeartbeatMisses: 1,
-          },
-          channels: [
-            {
-              channelType: 'feishu',
-              defaultAccountId: 'default',
-              status: 'degraded',
-              statusReason: 'channels_status_timeout',
-              accounts: [
-                {
-                  accountId: 'default',
-                  name: 'Primary Account',
-                  configured: true,
-                  status: 'degraded',
-                  statusReason: 'channels_status_timeout',
-                  isDefault: true,
-                },
-              ],
-            },
-          ],
-        };
-      }
-      if (path === 'agents.list') {
-        return { success: true, agents: [] };
-      }
-      if (path === 'gateway.restart' && init?.method === 'POST') {
-        return { success: false, error: 'restart failed' };
-      }
-
-      throw new Error(`Unexpected host API path: ${path}`);
-    });
-
-    render(<Channels />);
-    expect(await screen.findByTestId('channels-health-banner')).toBeInTheDocument();
-
-    fireEvent.click(screen.getByTestId('channels-restart-gateway'));
-
-    await waitFor(() => {
-      expect(toastErrorMock).toHaveBeenCalledWith('health.restartFailed');
-    });
-    expect(toastSuccessMock).not.toHaveBeenCalledWith('health.restartTriggered');
-  });
-
-  it('refetches diagnostics snapshot every time the diagnostics panel is reopened', async () => {
-    subscribeHostEventMock.mockImplementation(() => vi.fn());
-
-    let diagnosticsFetchCount = 0;
-    hostApiCallMock.mockImplementation(async (path: string) => {
-      if (path === 'channels.accounts') {
-        return {
-          success: true,
-          gatewayHealth: {
-            state: 'degraded',
-            reasons: ['channels_status_timeout'],
-            consecutiveHeartbeatMisses: 1,
-          },
-          channels: [
-            {
-              channelType: 'feishu',
-              defaultAccountId: 'default',
-              status: 'degraded',
-              statusReason: 'channels_status_timeout',
-              accounts: [
-                {
-                  accountId: 'default',
-                  name: 'Primary Account',
-                  configured: true,
-                  status: 'degraded',
-                  statusReason: 'channels_status_timeout',
-                  isDefault: true,
-                },
-              ],
-            },
-          ],
-        };
-      }
-      if (path === 'agents.list') {
-        return { success: true, agents: [] };
-      }
-      if (path === 'diagnostics.gatewaySnapshot') {
-        diagnosticsFetchCount += 1;
-        return {
-          capturedAt: diagnosticsFetchCount,
-          platform: 'darwin',
-          gateway: {
-            state: 'degraded',
-            reasons: ['channels_status_timeout'],
-            consecutiveHeartbeatMisses: 1,
-          },
-          channels: [],
-          clawxLogTail: `clawx-${diagnosticsFetchCount}`,
-          gatewayLogTail: 'gateway',
-          gatewayErrLogTail: '',
-        };
-      }
-
-      throw new Error(`Unexpected host API path: ${path}`);
-    });
-
-    render(<Channels />);
-
-    expect(await screen.findByTestId('channels-health-banner')).toBeInTheDocument();
-
-    fireEvent.click(screen.getByTestId('channels-toggle-diagnostics'));
-    await waitFor(() => {
-      expect(screen.getByTestId('channels-diagnostics')).toHaveTextContent('"capturedAt": 1');
-    });
-
-    fireEvent.click(screen.getByTestId('channels-toggle-diagnostics'));
-    expect(screen.queryByTestId('channels-diagnostics')).not.toBeInTheDocument();
-
-    fireEvent.click(screen.getByTestId('channels-toggle-diagnostics'));
-    await waitFor(() => {
-      expect(screen.getByTestId('channels-diagnostics')).toHaveTextContent('"capturedAt": 2');
-    });
-
-    expect(diagnosticsFetchCount).toBe(2);
-  });
-
-  it.each([
-    { recoveryState: 'verifying', healthState: 'degraded', reason: 'gateway_verifying' },
-    { recoveryState: 'restart-executing', healthState: 'unresponsive', reason: 'gateway_unresponsive' },
-    { recoveryState: 'external-unavailable', healthState: 'degraded', reason: 'external_gateway_unavailable' },
-  ])('explains $recoveryState recovery through the existing diagnostics panel', async ({
-    recoveryState,
-    healthState,
-    reason,
-  }) => {
-    subscribeHostEventMock.mockImplementation(() => vi.fn());
-    const recovery = {
-      state: recoveryState,
-      lastAliveAt: 100,
-      deadlineAt: 280,
-      externallyManaged: recoveryState === 'external-unavailable',
-    };
-
-    hostApiCallMock.mockImplementation(async (path: string) => {
-      if (path === 'channels.accounts') {
-        return {
-          success: true,
-          gatewayHealth: {
-            state: healthState,
-            reasons: [reason],
-            consecutiveHeartbeatMisses: 1,
-            recovery,
-          },
-          channels: [],
-        };
-      }
-      if (path === 'agents.list') return { success: true, agents: [] };
-      if (path === 'diagnostics.gatewaySnapshot') {
-        return {
-          capturedAt: 123,
-          platform: 'darwin',
-          gateway: {
-            state: healthState,
-            reasons: [reason],
-            consecutiveHeartbeatMisses: 1,
-            recovery,
-          },
-          channels: [],
-          clawxLogTail: 'clawx',
-          gatewayLogTail: 'gateway',
-          gatewayErrLogTail: '',
-        };
-      }
-      throw new Error(`Unexpected host API path: ${path}`);
-    });
-
-    render(<Channels />);
-
-    expect(await screen.findByTestId('channels-health-banner')).toBeInTheDocument();
-    expect(screen.getByText(`health.reasons.${reason}`)).toBeInTheDocument();
-    expect(screen.getByTestId('channels-recovery-status')).toHaveTextContent(`health.recovery.${recoveryState}`);
-
-    fireEvent.click(screen.getByTestId('channels-toggle-diagnostics'));
-    await waitFor(() => {
-      expect(screen.getByTestId('channels-diagnostics')).toHaveTextContent(`"state": "${recoveryState}"`);
-    });
-  });
 });

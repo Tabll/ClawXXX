@@ -1,6 +1,7 @@
 /**
  * Read/write agents.defaults.imageGenerationModel and per-agent auth readiness.
  */
+import { join } from 'node:path';
 import { mutateOpenClawConfig } from '../gateway/config-delivery';
 import { readOpenClawConfig } from './channel-config';
 import {
@@ -15,7 +16,7 @@ import {
   listAgentsSnapshotFromConfig,
   type AgentsSnapshot,
 } from './agent-config';
-import { expandPath } from './paths';
+import { expandPath, getOpenClawConfigDir } from './paths';
 import {
   generateImageInProcess,
   listImageGenerationProvidersInProcess,
@@ -388,7 +389,7 @@ export async function listImageGenerationProvidersFromRuntime(): Promise<ImageGe
 
 function resolveAgentDirForTest(agentId: string, snapshot: AgentsSnapshot): string {
   const entry = snapshot.agents.find((agent) => agent.id === agentId);
-  const agentDir = entry?.agentDir || `~/.openclaw/agents/${agentId}/agent`;
+  const agentDir = entry?.agentDir || join(getOpenClawConfigDir(), 'agents', agentId, 'agent');
   return expandPath(agentDir);
 }
 

@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "root": "kernels/openclaw/overlay",
+  "files": [
+    {
+      "path": "clawx-channel-handoff/index.mjs",
+      "sha256": "427ff83a342a417a460fb96ec28b2e60e03a633a31ab1dc9ab7399b91bcc1f2f"
+    },
+    {
+      "path": "clawx-channel-handoff/openclaw.plugin.json",
+      "sha256": "abbdb70408e0c65de06a1c7e3cdd307965a33a5d3d05afaf9f3512fac5a63721"
+    },
+    {
+      "path": "clawx-channel-handoff/package.json",
+      "sha256": "c98112483b1a4fdeaac17ca6f252fef0e3968c19b062d68e09b46f6532c5b035"
+    },
+    {
+      "path": "clawx-control-bridge.mjs",
+      "sha256": "8784e02ffe0c80c5ca7b609b74369d7639865a36b23f25401573c90ea380bcee"
+    },
+    {
+      "path": "clawx-openclaw.mjs",
+      "sha256": "7926657c9fc234dba62716b22e5605ce25b9a20777f22b15ec8513e69954f7eb"
+    }
+  ]
+}

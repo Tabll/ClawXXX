@@ -3,10 +3,6 @@ import { closeElectronApp, completeSetup, expect, getStableWindow, installIpcMoc
 
 const MAIN_SESSION_KEY = 'agent:main:main';
 const DEFAULT_WORKSPACE_SEGMENT = '~%2F.openclaw%2Fworkspace';
-const SESSIONS_LIST_PAYLOAD = {
-  includeDerivedTitles: true,
-  includeLastMessage: true,
-};
 
 function defaultWorkspaceSessionGroupTestId(): string {
   return `workspace-session-group-${DEFAULT_WORKSPACE_SEGMENT}`;
@@ -100,7 +96,6 @@ test.describe('dialog transitions', () => {
               agents: [{
                 id: 'main',
                 name: 'Main Agent',
-                isDefault: true,
                 modelDisplay: 'Default Model',
                 modelRef: 'openai/gpt-5.5',
                 overrideModelRef: null,
@@ -109,8 +104,23 @@ test.describe('dialog transitions', () => {
                 agentDir: '/tmp/clawx-main-agent/agent',
                 mainSessionKey: 'main/default',
                 channelTypes: [],
+                supportedKernels: ['openclaw', 'deepseek-harness'],
+                defaultForKernels: ['openclaw'],
+                projections: [{
+                  kernelId: 'openclaw',
+                  status: 'ready',
+                  desiredVersion: 1,
+                  appliedVersion: 1,
+                  nativeId: 'main',
+                  updatedAt: '2026-08-24T00:00:00.000Z',
+                }],
+                version: 1,
               }],
-              defaultAgentId: 'main',
+              kernelDefaults: [{
+                kernelId: 'openclaw',
+                agentId: 'main',
+                updatedAt: '2026-08-24T00:00:00.000Z',
+              }],
               defaultModelRef: 'openai/gpt-5.5',
               configuredChannelTypes: [],
               channelOwners: {},
@@ -149,18 +159,24 @@ test.describe('dialog transitions', () => {
     const nowMs = Date.now();
 
     try {
+      // Wait for Main to finish registering the production IPC surface before
+      // replacing handlers. DataService startup is intentionally asynchronous,
+      // so installing mocks immediately after electron.launch() can otherwise
+      // race registerIpcHandlers() and make Electron reject a duplicate handler.
+      const page = await getStableWindow(app);
       await installIpcMocks(app, {
         gatewayStatus: { state: 'running', port: 18789, pid: 12345, gatewayReady: true, connectedAt: nowMs },
-        gatewayRpc: {
-          [stableStringify(['sessions.list', SESSIONS_LIST_PAYLOAD])]: {
-            sessions: [{
-              key: MAIN_SESSION_KEY,
-              displayName: 'Preserved session',
-              updatedAt: nowMs,
+        hostApi: {
+          [stableStringify(['conversations', 'list', { limit: 100 }])]: {
+            items: [{
+              id: MAIN_SESSION_KEY,
+              title: 'Preserved session',
+              createdAt: new Date(nowMs - 1_000).toISOString(),
+              updatedAt: new Date(nowMs).toISOString(),
+              workspaceUri: '~/.openclaw/workspace',
+              lastKernelId: 'openclaw',
             }],
           },
-        },
-        hostApi: {
           [stableStringify(['/api/gateway/status', 'GET'])]: {
             ok: true,
             data: {
@@ -180,7 +196,6 @@ test.describe('dialog transitions', () => {
         },
       });
 
-      const page = await getStableWindow(app);
       try {
         await page.reload();
       } catch (error) {
@@ -210,7 +225,7 @@ test.describe('dialog transitions', () => {
 
       await installIpcMocks(app, {
         hostApi: {
-          [stableStringify(['sessions', 'delete', { id: MAIN_SESSION_KEY }])]: {
+          [stableStringify(['conversations', 'delete', { id: MAIN_SESSION_KEY, hard: true }])]: {
             success: false,
             error: 'Session is locked',
           },
@@ -222,7 +237,7 @@ test.describe('dialog transitions', () => {
 
       await installIpcMocks(app, {
         hostApi: {
-          [stableStringify(['sessions', 'delete', { id: MAIN_SESSION_KEY }])]: { success: true },
+          [stableStringify(['conversations', 'delete', { id: MAIN_SESSION_KEY, hard: true }])]: { success: true },
         },
       });
       await page.getByTestId('confirm-dialog-confirm-button').click();

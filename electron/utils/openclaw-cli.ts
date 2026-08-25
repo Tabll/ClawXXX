@@ -1,6 +1,4 @@
-/**
- * OpenClaw CLI utilities — cross-platform auto-install
- */
+/** OpenClaw CLI integration for an optional, verified managed runtime. */
 import { app } from 'electron';
 import {
   appendFileSync,
@@ -8,94 +6,54 @@ import {
   existsSync,
   mkdirSync,
   readFileSync,
-  symlinkSync,
   unlinkSync,
+  writeFileSync,
 } from 'node:fs';
 import { spawn, type ForkOptions } from 'node:child_process';
 import { homedir } from 'node:os';
-import { basename, delimiter, dirname, join } from 'node:path';
-import { getOpenClawDir, getOpenClawEntryPath } from './paths';
+import { delimiter, dirname, join } from 'node:path';
+import {
+  buildManagedOpenClawEnvironment,
+  getOpenClawRuntimeLocation,
+  requireOpenClawRuntimeLocation,
+} from '../kernels/openclaw/runtime-location';
 import { logger } from './logger';
 
-// ── Quoting helpers ──────────────────────────────────────────────────────────
+const CLI_MARKER = 'ClawX managed OpenClaw CLI';
 
-function escapeForDoubleQuotes(value: string): string {
-  return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+function quotePosix(value: string): string {
+  return `'${value.replace(/'/g, `'"'"'`)}'`;
 }
 
-function quoteForPosix(value: string): string {
-  return `"${escapeForDoubleQuotes(value)}"`;
-}
-
-function quoteForPowerShell(value: string): string {
+function quotePowerShell(value: string): string {
   return `'${value.replace(/'/g, "''")}'`;
 }
 
-function getPackagedWindowsNodePath(): string | null {
-  if (!app.isPackaged || process.platform !== 'win32') return null;
-  const nodePath = join(process.resourcesPath, 'bin', 'node.exe');
-  return existsSync(nodePath) ? nodePath : null;
+export function getOpenClawCliTargetPath(platform: NodeJS.Platform = process.platform): string {
+  if (platform === 'win32') return join(app.getPath('userData'), 'bin', 'openclaw.cmd');
+  return join(homedir(), '.local', 'bin', 'openclaw');
 }
 
-// ── CLI command string (for display / copy) ──────────────────────────────────
+function isManagedWrapper(path: string): boolean {
+  try {
+    return readFileSync(path, 'utf8').includes(CLI_MARKER);
+  } catch {
+    return false;
+  }
+}
 
 export function getOpenClawCliCommand(): string {
-  const entryPath = getOpenClawEntryPath();
-  const platform = process.platform;
-
-  if (platform === 'darwin' || platform === 'linux') {
-    const localBinPath = join(homedir(), '.local', 'bin', 'openclaw');
-    if (existsSync(localBinPath)) {
-      return quoteForPosix(localBinPath);
-    }
+  const location = requireOpenClawRuntimeLocation();
+  const wrapper = getOpenClawCliTargetPath();
+  if (existsSync(wrapper) && isManagedWrapper(wrapper)) {
+    return process.platform === 'win32'
+      ? `& ${quotePowerShell(wrapper)}`
+      : quotePosix(wrapper);
   }
-
-  if (platform === 'linux') {
-    if (existsSync('/usr/local/bin/openclaw')) {
-      return '/usr/local/bin/openclaw';
-    }
+  if (process.platform === 'win32') {
+    return `& ${quotePowerShell(location.nodeExecutable)} ${quotePowerShell(location.entryPath)}`;
   }
-
-  if (!app.isPackaged) {
-    const openclawDir = getOpenClawDir();
-    const nodeModulesDir = dirname(openclawDir);
-    const binName = platform === 'win32' ? 'openclaw.cmd' : 'openclaw';
-    const binPath = join(nodeModulesDir, '.bin', binName);
-
-    if (existsSync(binPath)) {
-      if (platform === 'win32') {
-        return `& ${quoteForPowerShell(binPath)}`;
-      }
-      return quoteForPosix(binPath);
-    }
-  }
-
-  if (app.isPackaged) {
-    if (platform === 'win32') {
-      const cliDir = join(process.resourcesPath, 'cli');
-      const cmdPath = join(cliDir, 'openclaw.cmd');
-      if (existsSync(cmdPath)) {
-        return `& ${quoteForPowerShell(cmdPath)}`;
-      }
-
-      const bundledNode = getPackagedWindowsNodePath();
-      if (bundledNode) {
-        return `& ${quoteForPowerShell(bundledNode)} ${quoteForPowerShell(entryPath)}`;
-      }
-    }
-
-    const execPath = process.execPath;
-    if (platform === 'win32') {
-      return `$env:ELECTRON_RUN_AS_NODE=1; & ${quoteForPowerShell(execPath)} ${quoteForPowerShell(entryPath)}`;
-    }
-    return `ELECTRON_RUN_AS_NODE=1 ${quoteForPosix(execPath)} ${quoteForPosix(entryPath)}`;
-  }
-
-  if (platform === 'win32') {
-    return `node ${quoteForPowerShell(entryPath)}`;
-  }
-
-  return `node ${quoteForPosix(entryPath)}`;
+  return `${quotePosix(location.nodeExecutable)} ${quotePosix(location.entryPath)}`;
 }
 
 export type OpenClawCliSpawnSpec = {
@@ -113,146 +71,35 @@ export type OpenClawEmbeddedForkSpec = {
   options: OpenClawEmbeddedForkOptions;
 };
 
-function fileExists(path: string): boolean {
-  return existsSync(path);
-}
-
-function getWindowsCmdWrapperSpawnSpec(cmdPath: string): OpenClawCliSpawnSpec {
-  return {
-    command: process.env.ComSpec || 'cmd.exe',
-    args: ['/d', '/s', '/c', `"${cmdPath}"`],
-  };
-}
-
-function getExecutableFromPath(command: string): string | null {
-  const pathEnv = process.env.PATH || '';
-  for (const dir of pathEnv.split(delimiter)) {
-    if (!dir) continue;
-    const candidate = join(dir, command);
-    if (fileExists(candidate)) return candidate;
-  }
-  return null;
-}
-
-function getDevNodeExecPath(): string | null {
-  const nodeCommand = process.platform === 'win32' ? 'node.exe' : 'node';
-  return getExecutableFromPath(nodeCommand);
-}
-
 export function getOpenClawCliSpawnSpec(): OpenClawCliSpawnSpec {
-  const entryPath = getOpenClawEntryPath();
-  const platform = process.platform;
-
-  if (platform === 'darwin' || platform === 'linux') {
-    const localBinPath = join(homedir(), '.local', 'bin', 'openclaw');
-    if (fileExists(localBinPath)) {
-      return { command: localBinPath, args: [] };
+  const location = requireOpenClawRuntimeLocation();
+  const wrapper = getOpenClawCliTargetPath();
+  if (existsSync(wrapper) && isManagedWrapper(wrapper)) {
+    if (process.platform === 'win32') {
+      return {
+        command: process.env.ComSpec || 'cmd.exe',
+        args: ['/d', '/s', '/c', `"${wrapper}"`],
+      };
     }
+    return { command: wrapper, args: [], shell: false };
   }
-
-  if (platform === 'linux' && fileExists('/usr/local/bin/openclaw')) {
-    return { command: '/usr/local/bin/openclaw', args: [] };
-  }
-
-  if (!app.isPackaged) {
-    const openclawDir = getOpenClawDir();
-    const nodeModulesDir = dirname(openclawDir);
-    const binName = platform === 'win32' ? 'openclaw.cmd' : 'openclaw';
-    const binPath = join(nodeModulesDir, '.bin', binName);
-
-    if (fileExists(binPath)) {
-      if (platform === 'win32') {
-        return getWindowsCmdWrapperSpawnSpec(binPath);
-      }
-
-      return { command: binPath, args: [], shell: false };
-    }
-  }
-
-  const packagedWrapper = getPackagedCliWrapperPath();
-  if (packagedWrapper) {
-    if (platform === 'win32') {
-      return getWindowsCmdWrapperSpawnSpec(packagedWrapper);
-    }
-
-    return { command: packagedWrapper, args: [], shell: false };
-  }
-
-  if (app.isPackaged) {
-    if (platform === 'win32') {
-      const bundledNode = getPackagedWindowsNodePath();
-      if (bundledNode) {
-        return { command: bundledNode, args: [entryPath] };
-      }
-    }
-
-    return {
-      command: process.execPath,
-      args: [entryPath],
-      env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
-    };
-  }
-
-  return { command: 'node', args: [entryPath] };
-}
-
-function getOpenClawEmbeddedExecPath(): { execPath: string; electronRunAsNode: boolean } {
-  if (!app.isPackaged) {
-    // Keep embedded OpenClaw on the Node version pinned by Electron. A developer's
-    // shell PATH can contain a newer Node release that falls outside OpenClaw's
-    // supported version ranges, even though the Electron utility runtime is valid.
-    if (process.versions?.electron) {
-      if (process.platform === 'darwin') {
-        const helperPath = getDevelopmentMacOSHelperPath();
-        if (!helperPath) {
-          throw new Error('Electron Helper executable not found for embedded OpenClaw launch');
-        }
-        return { execPath: helperPath, electronRunAsNode: true };
-      }
-      return { execPath: process.execPath, electronRunAsNode: true };
-    }
-    const nodeExecPath = getDevNodeExecPath();
-    if (nodeExecPath) return { execPath: nodeExecPath, electronRunAsNode: false };
-  }
-
-  if (app.isPackaged && process.platform === 'win32') {
-    const bundledNode = getPackagedWindowsNodePath();
-    if (bundledNode) return { execPath: bundledNode, electronRunAsNode: false };
-  }
-
-  if (app.isPackaged && process.platform === 'darwin') {
-    const helperPath = getPackagedMacOSHelperPath();
-    if (!helperPath) {
-      throw new Error('ClawX Helper executable not found for embedded OpenClaw launch');
-    }
-    return { execPath: helperPath, electronRunAsNode: true };
-  }
-
-  return { execPath: process.execPath, electronRunAsNode: Boolean(process.versions?.electron) };
+  return {
+    command: location.nodeExecutable,
+    args: [location.entryPath],
+    env: buildManagedOpenClawEnvironment(location),
+    shell: false,
+  };
 }
 
 export function getOpenClawEmbeddedForkSpec(args: string[] = []): OpenClawEmbeddedForkSpec {
-  const { execPath, electronRunAsNode } = getOpenClawEmbeddedExecPath();
-  const env: NodeJS.ProcessEnv = {
-    ...process.env,
-    OPENCLAW_NO_RESPAWN: '1',
-    OPENCLAW_EMBEDDED_IN: 'ClawX',
-    OPENCLAW_EXEC_SHELL_SNAPSHOT: '0',
-  };
-
-  if (electronRunAsNode) {
-    env.ELECTRON_RUN_AS_NODE = '1';
-  } else {
-    delete env.ELECTRON_RUN_AS_NODE;
-  }
-
+  const location = requireOpenClawRuntimeLocation();
   return {
-    modulePath: getOpenClawEntryPath(),
+    modulePath: location.entryPath,
     args,
     options: {
-      cwd: getOpenClawDir(),
-      env,
-      execPath,
+      cwd: location.packageDir,
+      env: buildManagedOpenClawEnvironment(location),
+      execPath: location.nodeExecutable,
       execArgv: [],
       stdio: ['pipe', 'pipe', 'pipe', 'ipc'],
       windowsHide: true,
@@ -260,21 +107,39 @@ export function getOpenClawEmbeddedForkSpec(args: string[] = []): OpenClawEmbedd
   };
 }
 
-// ── Packaged CLI wrapper path ────────────────────────────────────────────────
+function posixWrapper(nodeExecutable: string, entryPath: string, stateRoot: string, cacheRoot: string): string {
+  return `#!/bin/sh
+# ${CLI_MARKER}. Regenerated after kernel activation.
+export CLAWX_MANAGED_RUNTIME=1
+export CLAWX_CONVERSATION_STORE_PROTOCOL=clawx.conversation-store/v1
+export OPENCLAW_STATE_DIR=${quotePosix(stateRoot)}
+export OPENCLAW_CONFIG_PATH=${quotePosix(join(stateRoot, 'openclaw.json'))}
+export OPENCLAW_CACHE_DIR=${quotePosix(cacheRoot)}
+export OPENCLAW_HISTORY_MODE=clawx-data-service
+export OPENCLAW_DISABLE_NATIVE_HISTORY=1
+export OPENCLAW_DISABLE_CRON_HISTORY=1
+export OPENCLAW_DISABLE_TRANSCRIPT_USAGE_SCAN=1
+exec ${quotePosix(nodeExecutable)} ${quotePosix(entryPath)} "$@"
+`;
+}
 
-function getPackagedCliWrapperPath(): string | null {
-  if (!app.isPackaged) return null;
-  const platform = process.platform;
-
-  if (platform === 'darwin' || platform === 'linux') {
-    const wrapper = join(process.resourcesPath, 'cli', 'openclaw');
-    return existsSync(wrapper) ? wrapper : null;
-  }
-  if (platform === 'win32') {
-    const wrapper = join(process.resourcesPath, 'cli', 'openclaw.cmd');
-    return existsSync(wrapper) ? wrapper : null;
-  }
-  return null;
+function windowsWrapper(nodeExecutable: string, entryPath: string, stateRoot: string, cacheRoot: string): string {
+  return `@echo off
+rem ${CLI_MARKER}. Regenerated after kernel activation.
+setlocal
+set "CLAWX_MANAGED_RUNTIME=1"
+set "CLAWX_CONVERSATION_STORE_PROTOCOL=clawx.conversation-store/v1"
+set "OPENCLAW_STATE_DIR=${stateRoot}"
+set "OPENCLAW_CONFIG_PATH=${join(stateRoot, 'openclaw.json')}"
+set "OPENCLAW_CACHE_DIR=${cacheRoot}"
+set "OPENCLAW_HISTORY_MODE=clawx-data-service"
+set "OPENCLAW_DISABLE_NATIVE_HISTORY=1"
+set "OPENCLAW_DISABLE_CRON_HISTORY=1"
+set "OPENCLAW_DISABLE_TRANSCRIPT_USAGE_SCAN=1"
+"${nodeExecutable}" "${entryPath}" %*
+set "CLAWX_EXIT=%ERRORLEVEL%"
+endlocal & exit /b %CLAWX_EXIT%
+`;
 }
 
 function getWindowsPowerShellPath(): string {
@@ -282,307 +147,134 @@ function getWindowsPowerShellPath(): string {
   return join(systemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
 }
 
-function getMacOSHelperExecutablePath(helperName: string): string | null {
-  const helperPath = join(
-    dirname(process.execPath),
-    '../Frameworks',
-    `${helperName}.app`,
-    'Contents/MacOS',
-    helperName,
-  );
-  return existsSync(helperPath) ? helperPath : null;
+function getPathHelper(): string | undefined {
+  if (!app.isPackaged) return undefined;
+  const candidates = [
+    join(process.resourcesPath, 'cli', 'update-user-path.ps1'),
+    join(process.resourcesPath, 'resources', 'cli', 'win32', 'update-user-path.ps1'),
+  ];
+  return candidates.find(existsSync);
 }
 
-function getDevelopmentMacOSHelperPath(): string | null {
-  if (process.platform !== 'darwin' || app.isPackaged) return null;
-  return getMacOSHelperExecutablePath(`${basename(process.execPath)} Helper`);
-}
-
-function getPackagedMacOSHelperPath(): string | null {
-  if (process.platform !== 'darwin' || !app.isPackaged) return null;
-  return getMacOSHelperExecutablePath(`${app.getName()} Helper`);
-}
-
-// ── macOS / Linux install ────────────────────────────────────────────────────
-
-function getCliTargetPath(): string {
-  return join(homedir(), '.local', 'bin', 'openclaw');
-}
-
-export async function installOpenClawCli(): Promise<{
-  success: boolean; path?: string; error?: string;
-}> {
-  const platform = process.platform;
-
-  if (platform === 'win32') {
-    return { success: false, error: 'Windows CLI is configured by the installer.' };
+async function updateWindowsUserPath(action: 'add' | 'remove', cliDir: string): Promise<void> {
+  const helper = getPathHelper();
+  if (!helper) {
+    logger.warn('Windows CLI PATH helper is unavailable; wrapper was still generated');
+    return;
   }
-
-  if (!app.isPackaged) {
-    return { success: false, error: 'CLI install is only available in packaged builds.' };
-  }
-
-  const wrapperSrc = getPackagedCliWrapperPath();
-  if (!wrapperSrc) {
-    return { success: false, error: 'CLI wrapper not found in app resources.' };
-  }
-
-  const targetDir = join(homedir(), '.local', 'bin');
-  const target = getCliTargetPath();
-
-  try {
-    mkdirSync(targetDir, { recursive: true });
-
-    // Remove existing file/symlink to avoid EEXIST
-    if (existsSync(target)) {
-      unlinkSync(target);
-    }
-
-    symlinkSync(wrapperSrc, target);
-    chmodSync(wrapperSrc, 0o755);
-    logger.info(`OpenClaw CLI symlink created: ${target} -> ${wrapperSrc}`);
-    return { success: true, path: target };
-  } catch (error) {
-    logger.error('Failed to install OpenClaw CLI:', error);
-    return { success: false, error: String(error) };
-  }
-}
-
-// ── Auto-install on first launch ─────────────────────────────────────────────
-
-function isCliInstalled(): boolean {
-  const platform = process.platform;
-
-  if (platform === 'win32') return true; // handled by NSIS installer
-
-  const target = getCliTargetPath();
-  if (!existsSync(target)) return false;
-
-  // Also check /usr/local/bin/openclaw for deb installs
-  if (platform === 'linux' && existsSync('/usr/local/bin/openclaw')) return true;
-
-  return true;
-}
-
-function ensureWindowsCliOnPath(): Promise<'updated' | 'already-present'> {
-  return new Promise((resolve, reject) => {
-    const cliWrapper = getPackagedCliWrapperPath();
-    if (!cliWrapper) {
-      reject(new Error('CLI wrapper not found in app resources.'));
-      return;
-    }
-
-    const cliDir = dirname(cliWrapper);
-    const helperPath = join(cliDir, 'update-user-path.ps1');
-    if (!existsSync(helperPath)) {
-      reject(new Error(`PATH helper not found at ${helperPath}`));
-      return;
-    }
-
-    const child = spawn(
-      getWindowsPowerShellPath(),
-      [
-        '-NoProfile',
-        '-NonInteractive',
-        '-ExecutionPolicy',
-        'Bypass',
-        '-File',
-        helperPath,
-        '-Action',
-        'add',
-        '-CliDir',
-        cliDir,
-      ],
-      {
-        env: process.env,
-        stdio: ['ignore', 'pipe', 'pipe'],
-        windowsHide: true,
-      },
-    );
-
-    let stdout = '';
-    let stderr = '';
-
-    child.stdout.on('data', (chunk) => {
-      stdout += chunk.toString();
-    });
-
-    child.stderr.on('data', (chunk) => {
-      stderr += chunk.toString();
-    });
-
-    child.on('error', reject);
-    child.on('close', (code) => {
-      if (code !== 0) {
-        reject(new Error(stderr.trim() || `PowerShell exited with code ${code}`));
-        return;
-      }
-
-      const status = stdout.trim();
-      if (status === 'updated' || status === 'already-present') {
-        resolve(status);
-        return;
-      }
-
-      reject(new Error(`Unexpected PowerShell output: ${status || '(empty)'}`));
+  await new Promise<void>((resolve, reject) => {
+    const child = spawn(getWindowsPowerShellPath(), [
+      '-NoProfile',
+      '-NonInteractive',
+      '-ExecutionPolicy',
+      'Bypass',
+      '-File',
+      helper,
+      '-Action',
+      action,
+      '-CliDir',
+      cliDir,
+    ], { env: process.env, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
+    let errorOutput = '';
+    child.stderr.on('data', chunk => { errorOutput += String(chunk); });
+    child.once('error', reject);
+    child.once('close', code => {
+      if (code === 0) resolve();
+      else reject(new Error(errorOutput.trim() || `PowerShell exited with code ${String(code)}`));
     });
   });
 }
 
 function ensureLocalBinInPath(): void {
   if (process.platform === 'win32') return;
-
   const localBin = join(homedir(), '.local', 'bin');
-  const pathEnv = process.env.PATH || '';
-  if (pathEnv.split(':').includes(localBin)) return;
-
+  if ((process.env.PATH || '').split(delimiter).includes(localBin)) return;
   const shell = process.env.SHELL || '/bin/zsh';
   const profileFile = shell.includes('zsh')
     ? join(homedir(), '.zshrc')
     : shell.includes('fish')
       ? join(homedir(), '.config', 'fish', 'config.fish')
       : join(homedir(), '.bashrc');
-
   try {
-    const marker = '.local/bin';
-    let content = '';
-    try {
-      content = readFileSync(profileFile, 'utf-8');
-    } catch {
-      // file doesn't exist yet
-    }
-
-    if (content.includes(marker)) return;
-
+    const existing = existsSync(profileFile) ? readFileSync(profileFile, 'utf8') : '';
+    if (existing.includes('.local/bin')) return;
     const line = shell.includes('fish')
       ? '\n# Added by ClawX\nfish_add_path "$HOME/.local/bin"\n'
       : '\n# Added by ClawX\nexport PATH="$HOME/.local/bin:$PATH"\n';
-
     appendFileSync(profileFile, line);
-    logger.info(`Added ~/.local/bin to PATH in ${profileFile}`);
   } catch (error) {
     logger.warn('Failed to add ~/.local/bin to PATH:', error);
   }
 }
 
-export async function autoInstallCliIfNeeded(
-  notify?: (path: string) => void,
-): Promise<void> {
-  if (!app.isPackaged) return;
+export async function installOpenClawCli(): Promise<{ success: boolean; path?: string; error?: string }> {
+  const location = getOpenClawRuntimeLocation();
+  if (!location) return { success: false, error: 'OpenClaw runtime is not installed.' };
+  const target = getOpenClawCliTargetPath();
+  try {
+    mkdirSync(dirname(target), { recursive: true, mode: 0o700 });
+    if (existsSync(target) && !isManagedWrapper(target)) {
+      return { success: false, error: `Refusing to replace a user-managed CLI at ${target}` };
+    }
+    writeFileSync(
+      target,
+      process.platform === 'win32'
+        ? windowsWrapper(location.nodeExecutable, location.entryPath, location.configRoot, location.cacheRoot)
+        : posixWrapper(location.nodeExecutable, location.entryPath, location.configRoot, location.cacheRoot),
+      { encoding: 'utf8', mode: 0o755 },
+    );
+    if (process.platform !== 'win32') chmodSync(target, 0o755);
+    else await updateWindowsUserPath('add', dirname(target));
+    logger.info(`Managed OpenClaw CLI generated at ${target}`);
+    return { success: true, path: target };
+  } catch (error) {
+    logger.error('Failed to install managed OpenClaw CLI:', error);
+    return { success: false, error: String(error) };
+  }
+}
+
+export async function removeManagedOpenClawCli(): Promise<void> {
+  const target = getOpenClawCliTargetPath();
+  if (!existsSync(target) || !isManagedWrapper(target)) return;
+  unlinkSync(target);
   if (process.platform === 'win32') {
-    try {
-      const result = await ensureWindowsCliOnPath();
-      if (result === 'updated') {
-        logger.info('Added Windows CLI directory to user PATH.');
-      }
-    } catch (error) {
-      logger.warn('Failed to ensure Windows CLI is on PATH:', error);
-    }
-    return;
+    await updateWindowsUserPath('remove', dirname(target)).catch(error => {
+      logger.warn('Failed to remove managed OpenClaw CLI directory from PATH:', error);
+    });
   }
+}
 
-  const target = getCliTargetPath();
-  const wrapperSrc = getPackagedCliWrapperPath();
-
-  if (isCliInstalled()) {
-    if (target && wrapperSrc && existsSync(target)) {
-      try {
-        unlinkSync(target);
-        symlinkSync(wrapperSrc, target);
-        logger.debug(`Refreshed CLI symlink: ${target} -> ${wrapperSrc}`);
-      } catch {
-        // non-critical
-      }
-    }
-    return;
-  }
-
-  logger.info('Auto-installing openclaw CLI...');
+export async function autoInstallCliIfNeeded(notify?: (path: string) => void): Promise<void> {
+  if (!app.isPackaged || !getOpenClawRuntimeLocation()) return;
   const result = await installOpenClawCli();
-  if (result.success) {
-    logger.info(`CLI auto-installed at ${result.path}`);
-    ensureLocalBinInPath();
-    if (result.path) notify?.(result.path);
-  } else {
-    logger.warn(`CLI auto-install failed: ${result.error}`);
-  }
+  if (!result.success) throw new Error(result.error ?? 'OpenClaw CLI installation failed');
+  if (process.platform !== 'win32') ensureLocalBinInPath();
+  if (result.path) notify?.(result.path);
 }
 
-// ── Completion helpers ───────────────────────────────────────────────────────
-
-function getNodeExecForCli(): string {
-  const helperPath = getPackagedMacOSHelperPath();
-  if (helperPath) return helperPath;
-  return process.execPath;
-}
-
-export function generateCompletionCache(): void {
+function spawnCompletion(args: string[], success: string): void {
   if (!app.isPackaged) return;
-
-  const entryPath = getOpenClawEntryPath();
-  if (!existsSync(entryPath)) return;
-
-  const execPath = getNodeExecForCli();
-
-  const child = spawn(execPath, [entryPath, 'completion', '--write-state'], {
-    env: {
-      ...process.env,
-      ELECTRON_RUN_AS_NODE: '1',
-      OPENCLAW_NO_RESPAWN: '1',
-      OPENCLAW_EMBEDDED_IN: 'ClawX',
-    },
+  const location = getOpenClawRuntimeLocation();
+  if (!location) return;
+  const child = spawn(location.nodeExecutable, [location.entryPath, ...args], {
+    cwd: location.packageDir,
+    env: buildManagedOpenClawEnvironment(location),
     stdio: 'ignore',
     detached: false,
     windowsHide: true,
   });
-
-  child.on('close', (code) => {
-    if (code === 0) {
-      logger.info('OpenClaw completion cache generated');
-    } else {
-      logger.warn(`OpenClaw completion cache generation exited with code ${code}`);
-    }
+  child.once('close', code => {
+    if (code === 0) logger.info(success);
+    else logger.warn(`OpenClaw completion command exited with code ${String(code)}`);
   });
+  child.once('error', error => logger.warn('OpenClaw completion command failed:', error));
+}
 
-  child.on('error', (err) => {
-    logger.warn('Failed to generate completion cache:', err);
-  });
+export function generateCompletionCache(): void {
+  spawnCompletion(['completion', '--write-state'], 'OpenClaw completion cache generated');
 }
 
 export function installCompletionToProfile(): void {
-  if (!app.isPackaged) return;
   if (process.platform === 'win32') return;
-
-  const entryPath = getOpenClawEntryPath();
-  if (!existsSync(entryPath)) return;
-
-  const execPath = getNodeExecForCli();
-
-  const child = spawn(
-    execPath,
-    [entryPath, 'completion', '--install', '-y'],
-    {
-      env: {
-        ...process.env,
-        ELECTRON_RUN_AS_NODE: '1',
-        OPENCLAW_NO_RESPAWN: '1',
-        OPENCLAW_EMBEDDED_IN: 'ClawX',
-      },
-      stdio: 'ignore',
-      detached: false,
-      windowsHide: true,
-    }
-  );
-
-  child.on('close', (code) => {
-    if (code === 0) {
-      logger.info('OpenClaw completion installed to shell profile');
-    } else {
-      logger.warn(`OpenClaw completion install exited with code ${code}`);
-    }
-  });
-
-  child.on('error', (err) => {
-    logger.warn('Failed to install completion to shell profile:', err);
-  });
+  spawnCompletion(['completion', '--install', '-y'], 'OpenClaw completion installed to shell profile');
 }

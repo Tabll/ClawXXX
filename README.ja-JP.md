@@ -6,7 +6,7 @@
 <h1 align="center">ClawX</h1>
 
 <p align="center">
-  <strong>OpenClaw AIエージェントのためのデスクトップインターフェース</strong>
+  <strong>複数のAI Agent Runtimeに共通するデスクトップインターフェース</strong>
 </p>
 
 <p align="center">
@@ -24,7 +24,7 @@
   <a href="https://discord.com/invite/84Kex3GGAh" target="_blank">
   <img src="https://img.shields.io/discord/1399603591471435907?logo=discord&labelColor=%20%235462eb&logoColor=%20%23f5f5f5&color=%20%235462eb" alt="chat on Discord" />
   </a>
-  <img src="https://img.shields.io/github/downloads/ValueCell-ai/ClawX/total?color=%23027DEB" alt="Downloads" />
+  <img src="https://img.shields.io/github/downloads/Tabll/ClawXXX/total?color=%23027DEB" alt="Downloads" />
   <img src="https://img.shields.io/badge/license-MIT-green" alt="License" />
 </p>
 
@@ -36,7 +36,7 @@
 
 ## 概要
 
-**ClawX**は、強力なAIエージェントと日常のユーザーとの間のギャップを埋めます。[OpenClaw](https://github.com/OpenClaw)をベースに構築されており、コマンドラインによるAIオーケストレーションを、使いやすく美しいデスクトップ体験に変換します。ターミナルは必要ありません。
+**ClawX**は、強力なAIエージェントと日常のユーザーとの間のギャップを埋めます。Optionalな[OpenClaw](https://github.com/openclaw/openclaw)と[DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) runtimeを、1つの使いやすいデスクトップ体験でhostします。ターミナルは必要ありません。
 
 ワークフローの自動化、AI搭載チャネルの管理、インテリジェントなタスクのスケジューリングなど、ClawXはAIエージェントを効果的に活用するために必要なインターフェースを提供します。
 
@@ -63,19 +63,20 @@ ClawXにはベストプラクティスに基づくモデルプロバイダーが
 
 ## ClawXを選ぶ理由
 
-AIエージェントの構築にコマンドラインの習得は不要であるべきです。ClawXはシンプルな哲学のもとに設計されました：**強力な技術には、あなたの時間を尊重するインターフェースがふさわしい。** ClawXは公式の **OpenClaw** コアを直接ベースに構築されています。別途インストールする必要はなく、ランタイムをアプリケーション内に組み込むことで、シームレスな「すべて込み」の体験を提供します。上流のOpenClawと緊密に連携し、公式の最新機能、安定性の改善、エコシステムとの互換性を利用できるようにしています。
+AIエージェントの構築にコマンドラインの習得は不要であるべきです。ClawXはシンプルな哲学のもとに設計されました：**強力な技術には、あなたの時間を尊重するインターフェースがふさわしい。** 小さなbase appはAgent kernelを含みません。初回にOpenClaw、DeepSeek Harness、両方、または未installを選べます。両runtimeは独立署名・独立更新され、同じClawX UIと1つのlocal historyを使います。
 
 | 課題 | ClawXのソリューション |
 |------|----------------------|
 | 複雑なCLIセットアップ | ガイド付きセットアップウィザードによるワンクリックインストール |
 | 設定ファイル | リアルタイム検証付きのビジュアル設定 |
-| プロセス管理 | Gatewayライフサイクルの自動管理 |
+| プロセス管理 | Kernelごとの独立lifecycle、health、repair、rollback |
 | アプリの更新 | 起動時に更新を確認し、ダウンロードまたはインストール前に通知 |
 | 複数のAIプロバイダー | 統合プロバイダー設定パネル |
 | スキル/プラグインのインストール | オプションの拡張機能マーケットプレイスにも対応したローカル優先のスキル管理 |
 
 ### 機能
 
+- **🧠 Optional Multi-Kernel**：OpenClawとDeepSeek Harnessを個別downloadして同時実行できます。一方のcrash/update/rollbackは他方に影響せず、Chat、Agents、Channels、Cron、Skills、historyは同じUIです。
 - **🎯 ゼロ設定バリア**：直感的なグラフィカルインターフェースでセットアップを完了できます。ターミナルコマンド、YAMLファイル、環境変数の探索は不要です。
 - **💬 インテリジェントチャットインターフェース**：ワークスペース別のグループ化、固定、検索、一括操作に対応した複数セッションの履歴に加え、ACPネイティブのセッション別モデル・推論設定、コンテキスト使用量と手動圧縮、上限付きの可視フォローアップキュー、メッセージのモデル・トークン使用量のホバー表示を提供します。ストリーミングMarkdown、`@agent`ルーティング、インライン`/skill`カード、ドキュメントの読み取り専用プレビューにも対応します。
 - **📡 マルチチャネル管理**：複数アカウント、アカウント単位のAgent紐付け、既定アカウントの切り替え、Tencent公式個人WeChatチャネルプラグインを備えた独立したAIチャネルを設定・監視できます。
@@ -100,21 +101,23 @@ AIエージェントの構築にコマンドラインの習得は不要である
 
 ### システム要件
 
-- **オペレーティングシステム**：macOS 11以上、Windows 10以上、またはLinux（Ubuntu 20.04以上）
+- **Optional kernel OS**：macOS 13.5以上、Windows 10 x64、またはUbuntu 24.04互換Linux（x64/arm64、glibc 2.39以上、kernel 6.8以上）
 - **メモリ**：最低4GB RAM（8GB推奨）
-- **ストレージ**：1GBの空きディスク容量
+- **ストレージ**：ClawXに1GB、選択runtime用を加えて3GB以上推奨
+
+0.6.0ではLinux musl/AlpineとWindows arm64 runtimeは非対応です。[Support matrix](docs/ja-JP/runtime-security-support.md)を参照してください。
 
 ### インストール
 
 #### ビルド済みリリース（推奨）
 
-[Releases](https://github.com/ValueCell-ai/ClawX/releases) ページから、お使いのプラットフォーム向けの最新リリースをダウンロードしてください。
+[Releases](https://github.com/Tabll/ClawXXX/releases) ページから、お使いのプラットフォーム向けの最新リリースをダウンロードしてください。
 
 #### ソースからビルド
 
 ```bash
 # リポジトリをクローン
-git clone https://github.com/ValueCell-ai/ClawX.git
+git clone https://github.com/Tabll/ClawXXX.git
 cd ClawX
 
 # プロジェクトを初期化
@@ -129,9 +132,10 @@ pnpm dev
 ClawXを初めて起動すると、**セットアップウィザード**が次の手順を案内します。
 
 1. **言語と地域**：使用するロケールを設定
-2. **AIプロバイダー**：ブラウザまたはデバイスログインに対応したプロバイダーでは、APIキーまたはOAuthで追加
-3. **スキルバンドル**：一般的なユースケース向けの事前設定スキルを選択
-4. **検証**：メインインターフェースに入る前に設定をテスト
+2. **Kernel Catalog**：OpenClaw、DeepSeek Harness、両方、または未installを選択
+3. **AIプロバイダー**：ブラウザまたはデバイスログインに対応したプロバイダーでは、APIキーまたはOAuthで追加
+4. **スキルバンドル**：一般的なユースケース向けの事前設定スキルを選択
+5. **検証**：メインインターフェースに入る前に設定をテスト
 
 サポートされている場合、ウィザードはシステム言語を初期選択し、対応していない場合は英語にフォールバックします。
 
@@ -141,7 +145,7 @@ ClawXを初めて起動すると、**セットアップウィザード**が次�
 
 ### プロキシ設定
 
-ClawXには、Electron、OpenClaw Gateway、Telegramなどのチャネルがローカルプロキシクライアント経由でインターネットにアクセスする必要がある環境向けの、組み込みプロキシ設定があります。
+ClawXのproxy設定はElectron、downloadable runtime traffic、Telegram等のchannelを対象にします。Launch environment変更でrestartするのは影響を受けるinstalled kernelだけで、未install runtimeを起動したり他kernelをrestartしたりしません。
 
 **設定 → Gateway → プロキシ**を開き、既定のプロキシ、バイパスルール、開発者モードでのHTTP・HTTPS・`ALL_PROXY` / SOCKSの上書きを設定します。ローカル設定の例は `http://127.0.0.1:7890` です。
 
@@ -149,11 +153,18 @@ ClawXには、Electron、OpenClaw Gateway、Telegramなどのチャネルがロ�
 
 ## アーキテクチャ
 
-ClawXは **Host API統一レイヤーを備えたデュアルプロセスアーキテクチャ**を採用しています。React Rendererは単一のクライアント抽象を呼び出し、Electron Mainがプロトコル選択、Gatewayのライフサイクル、ACP Chatのstdio bridgeを管理します。
+ClawXは **Main-owned multi-kernel + unified Host API architecture**を採用します。React Rendererはcanonical clientだけを呼び、Electron MainがDataService、package verification、kernel supervisors、Scheduler、Channels、Credential Brokerを管理します。
 
-- **プロセスモデル**：Electron Mainがウィンドウ、Gateway監視、システム統合、更新を管理します。OpenClaw GatewayはAIオーケストレーション、チャネル、スキル機能を提供し、Rendererはローカルエンドポイントへ直接アクセスしません。
+> ClawX 0.6はoptional CI-built OpenClaw/DSHと単一Main-owned SQLite/Blob authorityを実装しています。Protected cross-platform signing、promotion、packaged-test evidenceが不足する場合、public releaseはfail closedです。[設計](docs/zh-CN/multi-kernel-design.md)、[TODO](TODO.md)、[security/support](docs/ja-JP/runtime-security-support.md)、[data policy](docs/ja-JP/data-security-retention.md)を参照してください。
+
+- **プロセスモデル**：Electron Mainがsystem integration、one DataService、Package Manager、kernel別Supervisorを管理します。OpenClawとDSHは並行実行でき、Renderer/runtimeはSQLiteを直接開かず相互接続しません。
 - **設定の配信**：Gateway実行中は `config.get` / `config.set` を使い、停止中または起動中は解決済みJSON5設定を更新します。通常のプロバイダー、Agent、スキル、モデル変更ではプロセスを置き換えず、認証情報は `secrets.reload` でホットリロードされます。検証済みのGatewayアクティビティが3分間ない場合、ClawXはコアRPCを検証し、自身が所有する利用不能なGatewayプロセスだけを再起動します。外部管理のGatewayは手動で復旧します。
-- **ACP Chat**：Chat UIは [ACP（Agent Client Protocol）](https://agentclientprotocol.com) を介してOpenClawとやり取りし、頻繁に反復されるOpenClawの前に比較的安定したチャットプロトコル面を確保します。ACPはMainが所有するstdio bridge経由で動作し、設定リロード後の認証済み履歴リプレイ、ページ移動中のストリーミング、セッションが公開するモデル・推論設定、コンテキスト使用量と手動圧縮、順次送信されるフォローアップキュー、Mainが検証したメディア・添付ファイル・ファイルアクティビティに対応します。Transcriptの読み取りは、ホバー用メタデータとACPに不足するリソースを限定的に補完するだけで、第二の会話履歴にはなりません。保護されたGateway再起動によって受理済みターンが中断された場合、パッチ済みOpenClawランタイムは復旧runを元のACP promptへ明示的に関連付け、後続のテキストとツールアクティビティを同じメモリ内ターンで継続します。その後の履歴リプレイでも、永続化されたツール境界をネイティブACP updateとして復元します。
+- **統合 Provider**：Provider metadata、model 選択、kernel ごとの default、独立した projection 状態は SQLite の canonical record です。secret は OS の安全な保存領域に残り、preload 所有の closed-shadow field から Main へ一回限りの handle として渡されます。認証済み kernel process は、選択された account と許可済み purpose だけを Credential Broker に要求できます。一方の projection failure が他方の ready projection を rollback することはありません。
+- **統合 Skills**：単一の Skills catalog が不変 package metadata、kernel ごとの install/enable intent、互換性、projection diagnostics、retry を管理します。OpenClaw と DeepSeek Harness は相互に独立した物理コピーを使い、root を cross-link しません。Both 操作は partial success を保持して表示します。DSH は隔離された `ctx.skills` adapter だけで互換 instruction body を登録し、未対応の補助ファイルには明確な理由を表示します。
+- **統合 Channels**：単一の SQLite catalog が account、kernel/agent binding、owner lease、Conversation mapping、attachment、retry、delivery history を管理し、credential は OS の安全な保存領域にのみ置かれます。OpenClaw は認証済み native handoff adapter、DeepSeek Harness は Main 所有の8種類の connector Relayを使用します。別 account は同時実行でき、同一 account の二重所有や connector-native history は発生しません。
+- **統合 Cron**：Main 所有の ClawXScheduler が job、重複しない due admission、run diagnostics、Conversation target、Channel delivery link を SQLite で一元管理します。OpenClaw と DeepSeek Harness の job は同時実行でき、kernel/agent、timezone、misfire、overlap、timeout、Conversation policy を明示します。managed runtime の native scheduler/history は無効です。
+- **統合 Chat**：Chat 履歴、run event、権限、Usage、添付参照はすべて Main 所有の SQLite Conversation Store から読み取ります。ACP と将来の runtime bridge はリアルタイム実行専用です。各イベントは conversation/run/kernel/generation/sequence の完全な識別子を持つため、画面移動中もバックグラウンド stream を保持でき、同じ Conversation を turn 境界で別 kernel に継続できます。runtime transcript fallback は使用しません。
+- **統合 Usage と診断**：OpenClaw の provider response と DeepSeek Harness の SessionEvent は、呼び出し単位の冪等な Usage record として同じ SQLite に保存されます。Dashboard は全体/OpenClaw/DSH を比較でき、不明な Token やコストを 0 に変換しません。kernel ごとの診断では正確な artifact、patch revision、protocol、process generation、health、capability を特定でき、永続化・export するログは分離ディレクトリと共通の secret/path redaction を使用します。
 - **Dreams**：開発者向けのネイティブ Dreams ページは、型付き Host API 経由で OpenClaw `doctor.memory.*` と保護された `config.patch` のみを呼び出します。認証済み Control UI URL は Electron Main が生成し、Dreams ビューを `/dreaming` へマップするため、Renderer は Gateway へ直接接続しません。
 - **設計原則**：フロントエンドの単一入口、Mainによるトランスポート管理、再接続・タイムアウト・バックオフによるグレースフルリカバリ、安全なストレージ、CORSセーフな境界を採用しています。
 
@@ -170,7 +181,7 @@ ClawXは **Host API統一レイヤーを備えたデュアルプロセスアー�
 ### よく使うコマンド
 
 ```bash
-pnpm run init        # 依存関係をインストールし、バンドルランタイムをダウンロード
+pnpm run init        # Host依存関係とhost utilityを準備
 pnpm dev             # ホットリロード付きで開発モードを起動
 pnpm lint            # ESLintを実行
 pnpm typecheck       # TypeScriptを検証
@@ -231,7 +242,7 @@ ClawXをより多くのお客様、特にカスタムAIエージェントや自�
 ## Star History
 
 <p align="center">
-  <img src="https://api.star-history.com/svg?repos=ValueCell-ai/ClawX&type=Date" alt="Star History Chart" />
+  <img src="https://api.star-history.com/svg?repos=Tabll/ClawXXX&type=Date" alt="Star History Chart" />
 </p>
 
 ## ライセンス

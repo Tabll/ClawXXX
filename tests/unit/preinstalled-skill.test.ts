@@ -25,6 +25,7 @@ vi.mock('os', async () => {
 });
 
 vi.mock('@electron/utils/paths', () => ({
+  getOpenClawConfigDir: () => join(state.homeDir, '.clawx', 'kernel-config', 'openclaw'),
   getOpenClawDir: () => '/runtime/openclaw',
   getOpenClawResolvedDir: () => '/runtime/openclaw',
   getResourcesDir: () => state.resourcesDir,
@@ -74,9 +75,15 @@ describe('preinstalled skill config', () => {
       skills: { entries: { example: { enabled: true } } },
     });
     expect(mutateOpenClawConfigMock).toHaveBeenCalledOnce();
-    expect(existsSync(join(state.homeDir, '.openclaw', 'openclaw.json'))).toBe(false);
+    expect(existsSync(join(
+      state.homeDir,
+      '.clawx',
+      'kernel-config',
+      'openclaw',
+      'openclaw.json',
+    ))).toBe(false);
     expect(readFileSync(
-      join(state.homeDir, '.openclaw', 'skills', 'example', 'SKILL.md'),
+      join(state.homeDir, '.clawx', 'kernel-config', 'openclaw', 'skills', 'example', 'SKILL.md'),
       'utf8',
     )).toBe('# Example\n');
   });

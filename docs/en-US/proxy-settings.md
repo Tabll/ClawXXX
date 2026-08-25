@@ -4,7 +4,7 @@ This document provides the detailed version of the Proxy Settings section in the
 
 - A bare `host:port` value is treated as an HTTP proxy.
 - If advanced proxy fields are left empty, ClawX falls back to **Proxy Server**.
-- Saving proxy settings reapplies Electron networking immediately and restarts the Gateway automatically.
+- Saving proxy settings reapplies Electron networking immediately. If the optional OpenClaw runtime is installed and its launch environment changed, only its owned Gateway is restarted; DeepSeek Harness and future kernels are not restarted, and an absent runtime is not started.
 - When Telegram is enabled, ClawX also syncs the proxy to OpenClaw's Telegram channel configuration.
 - When the ClawX proxy is disabled, a normal Gateway restart preserves an existing Telegram channel proxy.
 - To explicitly clear the Telegram proxy from OpenClaw configuration, disable the proxy and save the proxy settings once.

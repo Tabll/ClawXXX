@@ -30,15 +30,25 @@ function onIpc<
     : () => ipc.off?.(channel);
 }
 
-const onGatewayEvent = <E extends HostEventName<'gateway'>>(
+const onKernelsEvent = <E extends HostEventName<'kernels'>>(
   event: E,
-  handler: HostEventHandler<'gateway', E>,
-) => onIpc(HOST_EVENT_CHANNELS.gateway[event], handler);
+  handler: HostEventHandler<'kernels', E>,
+) => onIpc(HOST_EVENT_CHANNELS.kernels[event], handler);
+
+const onConversationsEvent = <E extends HostEventName<'conversations'>>(
+  event: E,
+  handler: HostEventHandler<'conversations', E>,
+) => onIpc(HOST_EVENT_CHANNELS.conversations[event], handler);
 
 const onChatEvent = <E extends HostEventName<'chat'>>(
   event: E,
   handler: HostEventHandler<'chat', E>,
 ) => onIpc(HOST_EVENT_CHANNELS.chat[event], handler);
+
+const onChannelsEvent = <E extends HostEventName<'channels'>>(
+  event: E,
+  handler: HostEventHandler<'channels', E>,
+) => onIpc(HOST_EVENT_CHANNELS.channels[event], handler);
 
 const onOAuthEvent = <E extends HostEventName<'oauth'>>(
   event: E,
@@ -62,32 +72,20 @@ const onAppEvent = <E extends HostEventName<'app'>>(
 ) => onIpc(HOST_EVENT_CHANNELS.app[event], handler);
 
 export const hostEvents = {
-  onGatewayStatus: (handler: HostEventHandler<'gateway', 'statusChanged'>) => (
-    onGatewayEvent('statusChanged', handler)
+  onConversationCatalogChanged: (
+    handler: HostEventHandler<'conversations', 'catalogChanged'>,
+  ) => onConversationsEvent('catalogChanged', handler),
+  onKernelStatusChanged: (handler: HostEventHandler<'kernels', 'statusChanged'>) => (
+    onKernelsEvent('statusChanged', handler)
   ),
-  onGatewayMessage: (handler: HostEventHandler<'gateway', 'message'>) => (
-    onGatewayEvent('message', handler)
+  onKernelPackageProgress: (handler: HostEventHandler<'kernels', 'packageProgress'>) => (
+    onKernelsEvent('packageProgress', handler)
   ),
-  onGatewayError: (handler: HostEventHandler<'gateway', 'error'>) => (
-    onGatewayEvent('error', handler)
+  onKernelCatalogChanged: (handler: HostEventHandler<'kernels', 'catalogChanged'>) => (
+    onKernelsEvent('catalogChanged', handler)
   ),
-  onGatewayNotification: (handler: HostEventHandler<'gateway', 'notification'>) => (
-    onGatewayEvent('notification', handler)
-  ),
-  onGatewayHealth: (handler: HostEventHandler<'gateway', 'healthChanged'>) => (
-    onGatewayEvent('healthChanged', handler)
-  ),
-  onGatewayPresence: (handler: HostEventHandler<'gateway', 'presenceChanged'>) => (
-    onGatewayEvent('presenceChanged', handler)
-  ),
-  onGatewayChatMessage: (handler: HostEventHandler<'gateway', 'chatMessage'>) => (
-    onGatewayEvent('chatMessage', handler)
-  ),
-  onGatewayChannelStatus: (handler: HostEventHandler<'gateway', 'channelStatus'>) => (
-    onGatewayEvent('channelStatus', handler)
-  ),
-  onGatewayExit: (handler: HostEventHandler<'gateway', 'exit'>) => (
-    onGatewayEvent('exit', handler)
+  onChannelStatusChanged: (handler: HostEventHandler<'channels', 'statusChanged'>) => (
+    onChannelsEvent('statusChanged', handler)
   ),
   onChatRuntimeEvent: (handler: HostEventHandler<'chat', 'runtimeEvent'>) => (
     onChatEvent('runtimeEvent', handler)
@@ -97,6 +95,9 @@ export const hostEvents = {
   ),
   onAcpPermissionRequest: (handler: HostEventHandler<'chat', 'acpPermissionRequest'>) => (
     onChatEvent('acpPermissionRequest', handler)
+  ),
+  onKernelEvent: (handler: HostEventHandler<'chat', 'kernelEvent'>) => (
+    onChatEvent('kernelEvent', handler)
   ),
   onOAuthCode: (handler: HostEventHandler<'oauth', 'code'>) => onOAuthEvent('code', handler),
   onOAuthSuccess: (handler: HostEventHandler<'oauth', 'success'>) => onOAuthEvent('success', handler),

@@ -1,21 +1,18 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { RefreshCw, Trash2, AlertCircle, Plus, Copy, RotateCcw, ChevronDown, ChevronUp } from 'lucide-react';
+import { RefreshCw, Trash2, AlertCircle, Plus, RotateCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
-import { useGatewayStore } from '@/stores/gateway';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import {
   hostApi,
   type ChannelAccountsResult,
   type ChannelGroupItem,
-  type DiagnosticsGatewaySnapshotResult,
-  type GatewayHealthSummary,
 } from '@/lib/host-api';
 import { hostEvents } from '@/lib/host-events';
 import { ChannelConfigModal } from '@/components/channels/ChannelConfigModal';
-import { isGatewayStopped } from '@/lib/gateway-status';
 import { cn } from '@/lib/utils';
+import { kernelDisplayName, useKernelStore } from '@/stores/kernels';
 import {
   CHANNEL_ICONS,
   CHANNEL_NAMES,
@@ -37,29 +34,10 @@ import feishuIcon from '@/assets/channels/feishu.svg';
 import wecomIcon from '@/assets/channels/wecom.svg';
 import qqIcon from '@/assets/channels/qq.svg';
 
-type GatewayDiagnosticSnapshot = DiagnosticsGatewaySnapshotResult;
-
-function isGatewayDiagnosticSnapshot(value: unknown): value is GatewayDiagnosticSnapshot {
-  if (!value || typeof value !== 'object') {
-    return false;
-  }
-
-  const snapshot = value as Record<string, unknown>;
-  return (
-    typeof snapshot.capturedAt === 'number' &&
-    typeof snapshot.platform === 'string' &&
-    typeof snapshot.gateway === 'object' &&
-    snapshot.gateway !== null &&
-    Array.isArray(snapshot.channels) &&
-    typeof snapshot.clawxLogTail === 'string' &&
-    typeof snapshot.gatewayLogTail === 'string' &&
-    typeof snapshot.gatewayErrLogTail === 'string'
-  );
-}
-
 interface AgentItem {
   id: string;
   name: string;
+  supportedKernels?: string[];
 }
 
 interface DeleteTarget {
@@ -89,42 +67,29 @@ function removeDeletedTarget(groups: ChannelGroupItem[], target: DeleteTarget): 
   return groups.filter((group) => group.channelType !== target.channelType);
 }
 
-const DEFAULT_GATEWAY_HEALTH: GatewayHealthSummary = {
-  state: 'healthy',
-  reasons: [],
-  consecutiveHeartbeatMisses: 0,
-};
-
-function isStaleNotRunningHealthForRunningGateway(gatewayHealth: GatewayHealthSummary, gatewayState: string): boolean {
-  return (
-    gatewayState === 'running' &&
-    gatewayHealth.state === 'degraded' &&
-    gatewayHealth.reasons.includes('gateway_not_running')
-  );
-}
-
 export function Channels() {
   const { t } = useTranslation('channels');
-  const gatewayStatus = useGatewayStore((state) => state.status);
-  const lastGatewayStateRef = useRef(gatewayStatus.state);
+  const kernelCatalog = useKernelStore((state) => state.catalog);
+  const kernelRuntimes = useKernelStore((state) => state.runtimes);
+  const restartKernel = useKernelStore((state) => state.restart);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [channelGroups, setChannelGroups] = useState<ChannelGroupItem[]>([]);
+  const [channelAdapters, setChannelAdapters] = useState<Array<{ kernelId: string; supportedChannels: string[] }>>([]);
   const [agents, setAgents] = useState<AgentItem[]>([]);
-  const [gatewayHealth, setGatewayHealth] = useState<GatewayHealthSummary>(DEFAULT_GATEWAY_HEALTH);
-  const [diagnosticsSnapshot, setDiagnosticsSnapshot] = useState<GatewayDiagnosticSnapshot | null>(null);
-  const [showDiagnostics, setShowDiagnostics] = useState(false);
-  const [diagnosticsLoading, setDiagnosticsLoading] = useState(false);
   const [showConfigModal, setShowConfigModal] = useState(false);
   const [selectedChannelType, setSelectedChannelType] = useState<ChannelType | null>(null);
   const [selectedAccountId, setSelectedAccountId] = useState<string | undefined>(undefined);
+  const [selectedKernelIdForModal, setSelectedKernelIdForModal] = useState<string | undefined>(undefined);
+  const [selectedAgentIdForModal, setSelectedAgentIdForModal] = useState<string | undefined>(undefined);
   const [allowExistingConfigInModal, setAllowExistingConfigInModal] = useState(true);
   const [allowEditAccountIdInModal, setAllowEditAccountIdInModal] = useState(false);
   const [existingAccountIdsForModal, setExistingAccountIdsForModal] = useState<string[]>([]);
   const [initialConfigValuesForModal, setInitialConfigValuesForModal] = useState<Record<string, string> | undefined>(
     undefined,
   );
+  const [initialConfiguredSecretFieldsForModal, setInitialConfiguredSecretFieldsForModal] = useState<string[]>([]);
   const [deleteTarget, setDeleteTarget] = useState<DeleteTarget | null>(null);
   const convergenceRefreshTimersRef = useRef<number[]>([]);
   const fetchInFlightRef = useRef(false);
@@ -133,9 +98,6 @@ export function Channels() {
   const hasLoadedAgentsRef = useRef(false);
 
   const displayedChannelTypes = getPrimaryChannels();
-  const displayedGatewayHealth = isStaleNotRunningHealthForRunningGateway(gatewayHealth, gatewayStatus.state)
-    ? DEFAULT_GATEWAY_HEALTH
-    : gatewayHealth;
   const visibleChannelGroups = useMemo(
     () => channelGroups.filter(
       (group): group is ChannelGroupItem & { channelType: ChannelType } => (
@@ -229,9 +191,7 @@ export function Channels() {
         }
 
         setChannelGroups(channelsPayload.channels || []);
-        setGatewayHealth(channelsPayload.gatewayHealth || DEFAULT_GATEWAY_HEALTH);
-        setDiagnosticsSnapshot(null);
-        setShowDiagnostics(false);
+        if (channelsPayload.adapters) setChannelAdapters(channelsPayload.adapters);
         console.info(
           `[channels-ui] fetch ok mode=${configOnly ? 'config' : 'runtime'} probe=${probe ? '1' : '0'} elapsedMs=${Date.now() - startedAt} view=${(channelsPayload.channels || []).map((item) => `${item.channelType}:${item.status}`).join(',')}`,
         );
@@ -264,7 +224,7 @@ export function Channels() {
 
   const scheduleConvergenceRefresh = useCallback(() => {
     clearConvergenceRefreshTimers();
-    // Channel adapters can take time to reconnect after gateway restart.
+    // Kernel-owned channel adapters can take time to reconnect after a runtime transition.
     // First few rounds use probe=true to force runtime connectivity checks,
     // then fall back to cached pulls to reduce load.
     [
@@ -297,7 +257,7 @@ export function Channels() {
     let throttleTimer: ReturnType<typeof setTimeout> | null = null;
     let pending = false;
 
-    const unsubscribe = hostEvents.onGatewayChannelStatus(() => {
+    const unsubscribe = hostEvents.onChannelStatusChanged(() => {
       if (throttleTimer) {
         pending = true;
         return;
@@ -321,17 +281,18 @@ export function Channels() {
     };
   }, [fetchPageData]);
 
-  useEffect(() => {
-    const previousGatewayState = lastGatewayStateRef.current;
-    lastGatewayStateRef.current = gatewayStatus.state;
-
-    if (previousGatewayState !== 'running' && gatewayStatus.state === 'running') {
+  useEffect(() => hostEvents.onKernelStatusChanged(() => {
       void fetchPageData();
       scheduleConvergenceRefresh();
-    }
-  }, [fetchPageData, gatewayStatus.state, scheduleConvergenceRefresh]);
+  }), [fetchPageData, scheduleConvergenceRefresh]);
 
   const configuredTypes = useMemo(() => visibleChannelGroups.map((group) => group.channelType), [visibleChannelGroups]);
+  const availableKernelsForModal = useMemo(() => {
+    if (!selectedChannelType) return [...new Set(channelAdapters.map(adapter => adapter.kernelId))];
+    return channelAdapters
+      .filter(adapter => adapter.supportedChannels.includes(selectedChannelType))
+      .map(adapter => adapter.kernelId);
+  }, [channelAdapters, selectedChannelType]);
 
   const groupedByType = useMemo(() => {
     return Object.fromEntries(visibleChannelGroups.map((group) => [group.channelType, group]));
@@ -344,92 +305,24 @@ export function Channels() {
   }, [displayedChannelTypes, groupedByType]);
 
   const unsupportedGroups = displayedChannelTypes.filter((type) => !configuredTypes.includes(type));
+  const catalogKernelIds = useMemo(
+    () => kernelCatalog?.entries.map(entry => entry.kernelId) ?? Object.keys(kernelRuntimes),
+    [kernelCatalog, kernelRuntimes],
+  );
+  const unavailableAccountKernels = useMemo(() => {
+    const configuredKernelIds = new Set<string>();
+    visibleChannelGroups.forEach(group => group.accounts.forEach(account => {
+      if (account.kernelId) configuredKernelIds.add(account.kernelId);
+    }));
+    return [...configuredKernelIds].flatMap(kernelId => {
+      const snapshot = kernelRuntimes[kernelId];
+      return snapshot && snapshot.state !== 'ready' ? [snapshot] : [];
+    });
+  }, [kernelRuntimes, visibleChannelGroups]);
 
   const handleRefresh = () => {
     void fetchPageData({ probe: true, forceAgentsRefresh: true });
   };
-
-  const fetchDiagnosticsSnapshot = useCallback(async (): Promise<GatewayDiagnosticSnapshot> => {
-    const response = await hostApi.diagnostics.gatewaySnapshot();
-    if (response && typeof response === 'object') {
-      const payload = response as Record<string, unknown>;
-      if (payload.success === false || typeof payload.error === 'string') {
-        throw new Error(
-          typeof payload.error === 'string' ? payload.error : 'Failed to fetch gateway diagnostics snapshot',
-        );
-      }
-    }
-    if (!isGatewayDiagnosticSnapshot(response)) {
-      throw new Error('Invalid gateway diagnostics snapshot response');
-    }
-    const snapshot = response;
-    setDiagnosticsSnapshot(snapshot);
-    return snapshot;
-  }, []);
-
-  const handleRestartGateway = async () => {
-    try {
-      const result = await hostApi.gateway.restart();
-      if (result?.success !== true) {
-        throw new Error('Failed to restart gateway');
-      }
-      setDiagnosticsSnapshot(null);
-      setShowDiagnostics(false);
-      toast.success(t('health.restartTriggered'));
-      void fetchPageData({ probe: true });
-    } catch (restartError) {
-      toast.error(t('health.restartFailed', { error: String(restartError) }));
-    }
-  };
-
-  const handleCopyDiagnostics = async () => {
-    setDiagnosticsLoading(true);
-    try {
-      const snapshot = await fetchDiagnosticsSnapshot();
-      await navigator.clipboard.writeText(JSON.stringify(snapshot, null, 2));
-      toast.success(t('health.diagnosticsCopied'));
-    } catch (copyError) {
-      toast.error(t('health.diagnosticsCopyFailed', { error: String(copyError) }));
-    } finally {
-      setDiagnosticsLoading(false);
-    }
-  };
-
-  const handleToggleDiagnostics = async () => {
-    if (showDiagnostics) {
-      setShowDiagnostics(false);
-      return;
-    }
-    setDiagnosticsLoading(true);
-    try {
-      await fetchDiagnosticsSnapshot();
-    } catch (diagnosticsError) {
-      toast.error(t('health.diagnosticsCopyFailed', { error: String(diagnosticsError) }));
-      setDiagnosticsLoading(false);
-      return;
-    } finally {
-      setDiagnosticsLoading(false);
-    }
-    setShowDiagnostics(true);
-  };
-
-  const healthReasonLabel = useMemo(() => {
-    const primaryReason = displayedGatewayHealth.reasons[0];
-    if (!primaryReason) return '';
-    return t(`health.reasons.${primaryReason}`);
-  }, [displayedGatewayHealth.reasons, t]);
-
-  const recoveryExplanation = useMemo(() => {
-    const recoveryState = displayedGatewayHealth.recovery?.state;
-    return recoveryState && recoveryState !== 'healthy'
-      ? t(`health.recovery.${recoveryState}`)
-      : '';
-  }, [displayedGatewayHealth.recovery?.state, t]);
-
-  const diagnosticsText = useMemo(
-    () => (diagnosticsSnapshot ? JSON.stringify(diagnosticsSnapshot, null, 2) : ''),
-    [diagnosticsSnapshot],
-  );
 
   const statusLabel = useCallback(
     (status: ChannelGroupItem['status']) => {
@@ -438,12 +331,23 @@ export function Channels() {
     [t],
   );
 
-  const handleBindAgent = async (channelType: string, accountId: string, agentId: string) => {
+  const handleBinding = async (
+    channelType: string,
+    accountId: string,
+    kernelId: string,
+    agentId: string,
+  ) => {
     try {
       if (!agentId) {
         await hostApi.channels.deleteBinding({ channelType, accountId });
       } else {
-        await hostApi.channels.saveBinding({ channelType, accountId, agentId });
+        await hostApi.channels.saveBinding({
+          channelType,
+          accountId,
+          kernelId,
+          agentId,
+          conversationPolicy: 'per-thread',
+        });
       }
       await fetchPageData();
       toast.success(t('toast.bindingUpdated'));
@@ -456,8 +360,8 @@ export function Channels() {
     if (!deleteTarget) return;
     const target = deleteTarget;
 
-    // Close the dialog and update the list before waiting for OpenClaw's
-    // coordinated config delivery. Main still owns the durable mutation; on
+    // Close the dialog while Main coordinates canonical persistence and the
+    // selected kernel projection. Main still owns the durable mutation; on
     // failure, reload the file-backed view to restore the actual state.
     setDeleteTarget(null);
     setChannelGroups((prev) => removeDeletedTarget(prev, target));
@@ -509,7 +413,6 @@ export function Channels() {
             <Button
               variant="outline"
               onClick={handleRefresh}
-              disabled={gatewayStatus.state !== 'running'}
               className="h-9 text-meta font-medium rounded-full px-4 border-black/10 dark:border-white/10 bg-transparent hover:bg-black/5 dark:hover:bg-white/5 shadow-none text-foreground/80 hover:text-foreground transition-colors"
             >
               <RefreshCw className={cn('h-3.5 w-3.5 mr-2', isUsingStableValue && 'animate-spin')} />
@@ -519,102 +422,43 @@ export function Channels() {
         </div>
 
         <div className="flex-1 overflow-y-auto pr-2 pb-10 min-h-0 -mr-2">
-          {isGatewayStopped(gatewayStatus) && (
-            <div className="mb-8 p-4 rounded-xl border border-yellow-500/50 bg-yellow-500/10 flex items-center gap-3">
-              <AlertCircle className="h-5 w-5 text-yellow-600 dark:text-yellow-400" />
-              <span className="text-yellow-700 dark:text-yellow-400 text-sm font-medium">{t('gatewayWarning')}</span>
-            </div>
-          )}
-
-          {gatewayStatus.state === 'running' && displayedGatewayHealth.state !== 'healthy' && (
+          {unavailableAccountKernels.length > 0 && (
             <div
-              data-testid="channels-health-banner"
-              className={cn(
-                'mb-8 rounded-xl border p-4',
-                displayedGatewayHealth.state === 'unresponsive'
-                  ? 'border-destructive/50 bg-destructive/10'
-                  : 'border-yellow-500/50 bg-yellow-500/10',
-              )}
+              data-testid="channels-kernel-health-banner"
+              className="mb-8 rounded-xl border border-yellow-500/50 bg-yellow-500/10 p-4"
             >
-              <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-                <div className="flex items-start gap-3">
-                  <AlertCircle
-                    className={cn(
-                      'mt-0.5 h-5 w-5 shrink-0',
-                      displayedGatewayHealth.state === 'unresponsive'
-                        ? 'text-destructive'
-                        : 'text-yellow-600 dark:text-yellow-400',
-                    )}
-                  />
-                  <div>
-                    <p className="text-sm font-semibold text-foreground">
-                      {t(`health.state.${displayedGatewayHealth.state}`)}
-                    </p>
-                    {healthReasonLabel && <p className="mt-1 text-sm text-foreground/75">{healthReasonLabel}</p>}
-                    {recoveryExplanation && (
-                      <p data-testid="channels-recovery-status" className="mt-1 text-sm text-foreground/75">
-                        {recoveryExplanation}
-                      </p>
-                    )}
-                  </div>
+              <div className="mb-3 flex items-start gap-3">
+                <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-yellow-600 dark:text-yellow-400" />
+                <div>
+                  <p className="text-sm font-semibold text-foreground">{t('kernelHealth.title')}</p>
+                  <p className="mt-1 text-sm text-foreground/75">{t('kernelHealth.description')}</p>
                 </div>
-                <div className="flex flex-wrap items-center gap-2">
+              </div>
+              <div className="space-y-2 pl-8">
+                {unavailableAccountKernels.map(snapshot => (
+                  <div key={snapshot.kernelId} className="flex items-center justify-between gap-3 text-sm">
+                    <span data-testid={`channels-kernel-health-${snapshot.kernelId}`}>
+                      {kernelDisplayName(snapshot.kernelId)} · {t(`common:kernels.states.${snapshot.state}`)}
+                    </span>
+                    {snapshot.state !== 'not-installed' && snapshot.state !== 'incompatible' && (
                   <Button
-                    data-testid="channels-restart-gateway"
+                    data-testid={`channels-restart-kernel-${snapshot.kernelId}`}
                     size="sm"
                     variant="outline"
                     className="h-8 rounded-full text-xs"
                     onClick={() => {
-                      void handleRestartGateway();
+                      void restartKernel(snapshot.kernelId).then(ok => {
+                        if (ok) void fetchPageData({ probe: true });
+                      });
                     }}
                   >
                     <RotateCcw className="mr-2 h-3.5 w-3.5" />
-                    {t('health.restartGateway')}
+                    {t('kernelHealth.restart')}
                   </Button>
-                  <Button
-                    data-testid="channels-copy-diagnostics"
-                    size="sm"
-                    variant="outline"
-                    className="h-8 rounded-full text-xs"
-                    disabled={diagnosticsLoading}
-                    onClick={() => {
-                      void handleCopyDiagnostics();
-                    }}
-                  >
-                    <Copy className="mr-2 h-3.5 w-3.5" />
-                    {t('health.copyDiagnostics')}
-                  </Button>
-                  <Button
-                    data-testid="channels-toggle-diagnostics"
-                    size="sm"
-                    variant="outline"
-                    className="h-8 rounded-full text-xs"
-                    disabled={diagnosticsLoading}
-                    onClick={() => {
-                      void handleToggleDiagnostics();
-                    }}
-                  >
-                    {showDiagnostics ? (
-                      <ChevronUp className="mr-2 h-3.5 w-3.5" />
-                    ) : (
-                      <ChevronDown className="mr-2 h-3.5 w-3.5" />
                     )}
-                    {showDiagnostics ? t('health.hideDiagnostics') : t('health.viewDiagnostics')}
-                  </Button>
-                </div>
+                  </div>
+                ))}
               </div>
-
-              {showDiagnostics && diagnosticsText && (
-                <div className="mt-4 rounded-xl border border-black/10 dark:border-white/10 bg-background/80 p-3">
-                  <p className="mb-2 text-xs font-medium text-muted-foreground">{t('health.diagnosticsTitle')}</p>
-                  <pre
-                    data-testid="channels-diagnostics"
-                    className="max-h-[320px] overflow-auto whitespace-pre-wrap break-all text-tiny text-foreground/85"
-                  >
-                    {diagnosticsText}
-                  </pre>
-                </div>
-              )}
             </div>
           )}
 
@@ -678,10 +522,13 @@ export function Channels() {
                               : undefined;
                             setSelectedChannelType(group.channelType as ChannelType);
                             setSelectedAccountId(nextAccountId);
+                            setSelectedKernelIdForModal(undefined);
+                            setSelectedAgentIdForModal(undefined);
                             setAllowExistingConfigInModal(false);
                             setAllowEditAccountIdInModal(shouldUseGeneratedAccountId);
                             setExistingAccountIdsForModal(group.accounts.map((item) => item.accountId));
                             setInitialConfigValuesForModal(undefined);
+                            setInitialConfiguredSecretFieldsForModal([]);
                             setShowConfigModal(true);
                           }}
                         >
@@ -706,6 +553,10 @@ export function Channels() {
                           account.accountId === 'default' && account.name === account.accountId
                             ? t('account.mainAccount')
                             : account.name;
+                        const accountKernelId = account.kernelId
+                          || account.supportedKernels?.[0]
+                          || catalogKernelIds[0]
+                          || '';
                         return (
                           <div
                             key={`${group.channelType}-${account.accountId}`}
@@ -727,16 +578,54 @@ export function Channels() {
                               </div>
 
                               <div className="flex items-center gap-2">
+                                <span className="text-xs text-muted-foreground">{t('account.bindKernelLabel')}</span>
+                                <select
+                                  data-testid={`channel-kernel-${group.channelType}-${account.accountId}`}
+                                  className="h-8 rounded-lg border border-black/10 dark:border-white/10 bg-surface-input px-2 text-xs"
+                                  value={accountKernelId}
+                                  onChange={(event) => {
+                                    const kernelId = event.target.value;
+                                    const currentAgent = visibleAgents.find(agent => agent.id === account.agentId);
+                                    const compatibleAgent = currentAgent?.supportedKernels?.includes(kernelId)
+                                      ? currentAgent
+                                      : visibleAgents.find(agent => agent.supportedKernels?.includes(kernelId));
+                                    if (!compatibleAgent) {
+                                      toast.error(t('toast.noCompatibleAgent', { kernel: kernelDisplayName(kernelId) }));
+                                      return;
+                                    }
+                                    void handleBinding(
+                                      group.channelType,
+                                      account.accountId,
+                                      kernelId,
+                                      compatibleAgent.id,
+                                    );
+                                  }}
+                                >
+                                  {(account.supportedKernels?.length
+                                    ? account.supportedKernels
+                                    : catalogKernelIds).map(kernelId => (
+                                    <option key={kernelId} value={kernelId}>{kernelDisplayName(kernelId)}</option>
+                                  ))}
+                                </select>
                                 <span className="text-xs text-muted-foreground">{t('account.bindAgentLabel')}</span>
                                 <select
-                                  className="h-8 rounded-lg border border-black/10 dark:border-white/10 bg-background px-2 text-xs"
+                                  data-testid={`channel-agent-${group.channelType}-${account.accountId}`}
+                                  className="h-8 rounded-lg border border-black/10 dark:border-white/10 bg-surface-input px-2 text-xs"
                                   value={account.agentId || ''}
                                   onChange={(event) => {
-                                    void handleBindAgent(group.channelType, account.accountId, event.target.value);
+                                    void handleBinding(
+                                      group.channelType,
+                                      account.accountId,
+                                      accountKernelId,
+                                      event.target.value,
+                                    );
                                   }}
                                 >
                                   <option value="">{t('account.unassigned')}</option>
-                                  {visibleAgents.map((agent) => (
+                                  {visibleAgents
+                                    .filter(agent => !agent.supportedKernels?.length
+                                      || agent.supportedKernels.includes(accountKernelId))
+                                    .map((agent) => (
                                     <option key={agent.id} value={agent.id}>
                                       {agent.name}
                                     </option>
@@ -756,12 +645,18 @@ export function Channels() {
                                         setInitialConfigValuesForModal(
                                           result.success ? result.values || {} : undefined,
                                         );
+                                        setInitialConfiguredSecretFieldsForModal(
+                                          result.success ? result.configuredSecretFields || [] : [],
+                                        );
                                       } catch {
                                         // Fall back to modal-side loading when prefetch fails.
                                         setInitialConfigValuesForModal(undefined);
+                                        setInitialConfiguredSecretFieldsForModal([]);
                                       }
                                       setSelectedChannelType(group.channelType as ChannelType);
                                       setSelectedAccountId(account.accountId);
+                                      setSelectedKernelIdForModal(account.kernelId);
+                                      setSelectedAgentIdForModal(account.agentId);
                                       setAllowExistingConfigInModal(true);
                                       setAllowEditAccountIdInModal(false);
                                       setExistingAccountIdsForModal([]);
@@ -784,6 +679,18 @@ export function Channels() {
                                 </Button>
                               </div>
                             </div>
+                            {account.delivery && (account.delivery.retrying > 0 || account.delivery.deadLetter > 0) && (
+                              <div
+                                data-testid={`channel-delivery-${group.channelType}-${account.accountId}`}
+                                className="mt-2 text-xs text-yellow-700 dark:text-yellow-400"
+                              >
+                                {t('account.deliveryDiagnostics', {
+                                  retrying: account.delivery.retrying,
+                                  deadLetter: account.delivery.deadLetter,
+                                })}
+                                {account.delivery.lastError ? ` · ${account.delivery.lastError}` : ''}
+                              </div>
+                            )}
                           </div>
                         );
                       })}
@@ -808,10 +715,13 @@ export function Channels() {
                     onClick={() => {
                       setSelectedChannelType(type);
                       setSelectedAccountId(undefined);
+                      setSelectedKernelIdForModal(undefined);
+                      setSelectedAgentIdForModal(undefined);
                       setAllowExistingConfigInModal(true);
                       setAllowEditAccountIdInModal(false);
                       setExistingAccountIdsForModal([]);
                       setInitialConfigValuesForModal(undefined);
+                      setInitialConfiguredSecretFieldsForModal([]);
                       setShowConfigModal(true);
                     }}
                     className={cn(
@@ -849,34 +759,45 @@ export function Channels() {
         <ChannelConfigModal
           initialSelectedType={selectedChannelType}
           accountId={selectedAccountId}
+          availableKernels={availableKernelsForModal}
+          agents={visibleAgents}
+          initialKernelId={selectedKernelIdForModal}
+          initialAgentId={selectedAgentIdForModal}
           configuredTypes={configuredTypes}
           allowExistingConfig={allowExistingConfigInModal}
           allowEditAccountId={allowEditAccountIdInModal}
           existingAccountIds={existingAccountIdsForModal}
           initialConfigValues={initialConfigValuesForModal}
+          initialConfiguredSecretFields={initialConfiguredSecretFieldsForModal}
           showChannelName={false}
           onClose={() => {
             setShowConfigModal(false);
             setSelectedChannelType(null);
             setSelectedAccountId(undefined);
+            setSelectedKernelIdForModal(undefined);
+            setSelectedAgentIdForModal(undefined);
             setAllowExistingConfigInModal(true);
             setAllowEditAccountIdInModal(false);
             setExistingAccountIdsForModal([]);
             setInitialConfigValuesForModal(undefined);
+            setInitialConfiguredSecretFieldsForModal([]);
           }}
           onChannelSaved={async () => {
-            // The host may still be restarting Gateway for plugin activation.
-            // Read the committed file-backed view immediately and let the
+            // The selected kernel adapter may still be restarting for connector activation.
+            // Read the committed canonical view immediately and let the
             // existing convergence loop refresh runtime status asynchronously.
             await fetchPageData({ configOnly: true });
             scheduleConvergenceRefresh();
             setShowConfigModal(false);
             setSelectedChannelType(null);
             setSelectedAccountId(undefined);
+            setSelectedKernelIdForModal(undefined);
+            setSelectedAgentIdForModal(undefined);
             setAllowExistingConfigInModal(true);
             setAllowEditAccountIdInModal(false);
             setExistingAccountIdsForModal([]);
             setInitialConfigValuesForModal(undefined);
+            setInitialConfiguredSecretFieldsForModal([]);
           }}
         />
       )}

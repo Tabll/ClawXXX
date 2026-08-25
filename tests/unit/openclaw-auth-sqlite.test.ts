@@ -22,7 +22,7 @@ vi.mock('os', async () => {
 });
 
 async function writeJsonStore(agentId: string, store: Record<string, unknown>): Promise<void> {
-  const dir = join(testHome, '.openclaw', 'agents', agentId, 'agent');
+  const dir = join(testHome, '.clawx', 'kernel-config', 'openclaw', 'agents', agentId, 'agent');
   await mkdir(dir, { recursive: true });
   await writeFile(join(dir, 'auth-profiles.json'), JSON.stringify(store, null, 2), 'utf8');
 }
@@ -85,7 +85,16 @@ describe('openclaw-auth-sqlite', () => {
     });
 
     const json = JSON.parse(
-      await readFile(join(testHome, '.openclaw', 'agents', 'main', 'agent', 'auth-profiles.json'), 'utf8'),
+      await readFile(join(
+        testHome,
+        '.clawx',
+        'kernel-config',
+        'openclaw',
+        'agents',
+        'main',
+        'agent',
+        'auth-profiles.json',
+      ), 'utf8'),
     ) as Record<string, unknown>;
     expect((json.profiles as Record<string, unknown>)['custom-customc7:default']).toMatchObject({
       key: 'sk-runtime-key',

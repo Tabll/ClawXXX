@@ -34,7 +34,7 @@ export function getPort(key: keyof typeof PORTS): number {
  */
 export const APP_PATHS = {
   /** OpenClaw configuration directory */
-  OPENCLAW_CONFIG: '~/.openclaw',
+  OPENCLAW_CONFIG: '~/.clawx/kernel-config/openclaw',
   
   /** ClawX configuration directory */
   CLAWX_CONFIG: '~/.clawx',

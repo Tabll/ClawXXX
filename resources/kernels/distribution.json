@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "channel": "production",
+  "catalogUrls": [
+    "https://oss.intelli-spectrum.com/kernels/catalog.production.json",
+    "https://github.com/Tabll/ClawXXX/releases/download/kernel-runtimes/kernel-catalog.production.json"
+  ],
+  "mirrorBaseUrls": [
+    "https://oss.intelli-spectrum.com/kernels/",
+    "https://github.com/Tabll/ClawXXX/releases/download/kernel-runtimes/"
+  ]
+}

@@ -9,6 +9,12 @@
         "disconnected": "未接続"
     },
     "gatewayWarning": "ゲートウェイサービスが実行されていないため、チャンネルに接続できません。",
+    "kernel": { "openclaw": "OpenClaw", "deepseek-harness": "DeepSeek Harness" },
+    "kernelHealth": {
+        "title": "チャンネルのカーネルを利用できません",
+        "description": "アカウントとバインドは保持されています。対象カーネルを起動または再起動すると配信が再開します。",
+        "restart": "カーネルを再起動"
+    },
     "availableChannels": "利用可能なチャンネル",
     "supportedChannels": "サポートされているチャンネル",
     "available": "利用可能なチャンネル",
@@ -32,7 +38,8 @@
         "bindingUpdated": "アカウントの紐付けを保存しました",
         "defaultUpdated": "デフォルトアカウントを更新しました",
         "accountDeleted": "アカウントを削除しました",
-        "channelDeleted": "チャンネルを削除しました"
+        "channelDeleted": "チャンネルを削除しました",
+        "noCompatibleAgent": "{{kernel}} に対応する Agent がありません"
     },
     "account": {
         "add": "アカウントを追加",
@@ -43,6 +50,8 @@
         "default": "現在の既定",
         "setDefault": "チャンネル既定に設定",
         "bindAgentLabel": "紐付け Agent",
+        "bindKernelLabel": "カーネル",
+        "deliveryDiagnostics": "再試行中: {{retrying}} · デッドレター: {{deadLetter}}",
         "unassigned": "未割り当て",
         "mainAccount": "メインアカウント",
         "customIdLabel": "アカウント ID",
@@ -98,6 +107,7 @@
         "generateQRCode": "QRコードを生成",
         "updateAndReconnect": "更新して再接続",
         "saveAndConnect": "保存して接続",
+        "secretConfiguredPlaceholder": "安全に保存済みです。空欄のままにすると現在の認証情報を保持します",
         "envVar": "環境変数: {{var}}"
     },
     "health": {

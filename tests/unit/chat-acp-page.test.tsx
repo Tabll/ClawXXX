@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Chat } from '@/pages/Chat';
 import type { AcpTimelineSnapshot } from '@/lib/acp/timeline-types';
 
-const { acpState, agentsState, artifactPanelState, artifactPanelProps, chatState, gatewayState, settingsState } = vi.hoisted(() => ({
+const { acpState, agentsState, artifactPanelState, artifactPanelProps, chatState, kernelState, settingsState } = vi.hoisted(() => ({
   acpState: {
     timeline: {
       sessionId: 'agent:main:main',
@@ -46,6 +46,8 @@ const { acpState, agentsState, artifactPanelState, artifactPanelProps, chatState
     cancelling: false,
     error: null as string | null,
     activeSessionKey: 'agent:main:main' as string | null,
+    activeKernelId: null as string | null,
+    generation: 0,
     workspaceRoot: null as string | null,
     cwd: null as string | null,
     acceptedPromptSessionKeys: [] as string[],
@@ -80,8 +82,18 @@ const { acpState, agentsState, artifactPanelState, artifactPanelProps, chatState
     selectAcpSession: vi.fn(),
     acknowledgeAcpSessionCreated: vi.fn(),
   },
-  gatewayState: {
-    status: { state: 'running', gatewayReady: true, port: 18789 },
+  kernelState: {
+    catalog: {
+      entries: [{
+        kernelId: 'openclaw',
+        displayName: 'OpenClaw',
+        installation: { state: 'installed' },
+      }],
+    },
+    runtimes: {
+      openclaw: { kernelId: 'openclaw', state: 'ready', generation: 1, diagnostics: [] },
+    } as Record<string, Record<string, unknown>>,
+    start: vi.fn(),
   },
   settingsState: {
     chatWorkspacePath: '/workspace',
@@ -125,8 +137,9 @@ vi.mock('@/stores/settings', () => ({
   useSettingsStore: (selector: (state: typeof settingsState) => unknown) => selector(settingsState),
 }));
 
-vi.mock('@/stores/gateway', () => ({
-  useGatewayStore: (selector: (state: typeof gatewayState) => unknown) => selector(gatewayState),
+vi.mock('@/stores/kernels', () => ({
+  kernelDisplayName: (kernelId: string) => kernelId === 'openclaw' ? 'OpenClaw' : kernelId,
+  useKernelStore: (selector: (state: typeof kernelState) => unknown) => selector(kernelState),
 }));
 
 vi.mock('@/hooks/use-stick-to-bottom-instant', () => ({
@@ -294,20 +307,36 @@ describe('ACP Chat page', () => {
     acpState.cancelling = false;
     acpState.error = null;
     acpState.activeSessionKey = 'agent:main:main';
+    acpState.activeKernelId = null;
+    acpState.generation = 0;
     acpState.workspaceRoot = null;
     acpState.cwd = null;
     acpState.acceptedPromptSessionKeys = [];
     acpState.timeline = populatedTimeline();
     acpState.prepareLocalSession.mockReset();
-    acpState.prepareLocalSession.mockImplementation((input: { sessionKey: string; workspaceRoot: string; cwd: string }) => {
+    acpState.prepareLocalSession.mockImplementation((input: {
+      sessionKey: string;
+      workspaceRoot: string;
+      cwd: string;
+      kernelId?: string;
+    }) => {
       acpState.activeSessionKey = input.sessionKey;
+      acpState.activeKernelId = input.kernelId ?? null;
+      acpState.generation = input.kernelId ? 1 : 0;
       acpState.workspaceRoot = input.workspaceRoot;
       acpState.cwd = input.cwd;
       acpState.timeline = { ...emptyTimeline(), sessionId: input.sessionKey };
     });
     acpState.loadSession.mockReset();
-    acpState.loadSession.mockImplementation(async (input: { sessionKey: string; workspaceRoot: string; cwd: string }) => {
+    acpState.loadSession.mockImplementation(async (input: {
+      sessionKey: string;
+      workspaceRoot: string;
+      cwd: string;
+      kernelId?: string;
+    }) => {
       acpState.activeSessionKey = input.sessionKey;
+      acpState.activeKernelId = input.kernelId ?? null;
+      acpState.generation = input.kernelId ? 1 : 0;
       acpState.workspaceRoot = input.workspaceRoot;
       acpState.cwd = input.cwd;
       return true;
@@ -361,7 +390,10 @@ describe('ACP Chat page', () => {
     chatState.acknowledgeAcpSessionCreated.mockReset();
     settingsState.chatWorkspacePath = '/workspace';
     settingsState.setChatWorkspacePath.mockReset();
-    gatewayState.status = { state: 'running', gatewayReady: true, port: 18789 };
+    kernelState.runtimes = {
+      openclaw: { kernelId: 'openclaw', state: 'ready', generation: 1, diagnostics: [] },
+    };
+    kernelState.start.mockReset().mockResolvedValue(true);
   });
 
   it('renders ACP inline timeline content', async () => {
@@ -381,6 +413,7 @@ describe('ACP Chat page', () => {
     await waitFor(() => {
       expect(ensureAcpChatSubscriptions).toHaveBeenCalled();
       expect(acpState.loadSession).toHaveBeenCalledWith({
+        kernelId: "openclaw",
         sessionKey: 'agent:main:main', workspaceRoot: '/workspace', cwd: '/workspace',
       });
     });
@@ -397,6 +430,7 @@ describe('ACP Chat page', () => {
     });
     fireEvent.click(screen.getByTestId('mock-send'));
     expect(acpState.sendPrompt).toHaveBeenCalledWith({
+      kernelId: "openclaw",
       sessionKey: 'agent:main:main',
       cwd: '/workspace',
       message: 'Ship it',
@@ -421,6 +455,7 @@ describe('ACP Chat page', () => {
 
     await waitFor(() => {
       expect(acpState.loadSession).toHaveBeenCalledWith({
+        kernelId: "openclaw",
         sessionKey: 'agent:main:main', workspaceRoot: '/session-workspace', cwd: '/session-workspace',
       });
     });
@@ -448,6 +483,7 @@ describe('ACP Chat page', () => {
     });
     await waitFor(() => {
       expect(acpState.loadSession).toHaveBeenCalledWith({
+        kernelId: "openclaw",
         sessionKey: 'agent:main:main', workspaceRoot: '/workspace', cwd: '/workspace', createIfMissing: true,
       });
       expect(chatState.acknowledgeAcpSessionCreated).toHaveBeenCalledWith(
@@ -497,6 +533,7 @@ describe('ACP Chat page', () => {
     finishDiscovery();
     await waitFor(() => {
       expect(acpState.loadSession).toHaveBeenCalledWith({
+        kernelId: "openclaw",
         sessionKey,
         workspaceRoot: '/hydrated-workspace',
         cwd: '/hydrated-workspace',
@@ -534,6 +571,7 @@ describe('ACP Chat page', () => {
     await waitFor(() => {
       expect(chatState.selectAcpSession).toHaveBeenCalledWith(sessionKey, '/workspace');
       expect(acpState.loadSession).toHaveBeenCalledWith({
+        kernelId: "openclaw",
         sessionKey,
         workspaceRoot: '/workspace',
         cwd: '/workspace',
@@ -588,6 +626,7 @@ describe('ACP Chat page', () => {
     fireEvent.click(screen.getByTestId('mock-send'));
     await waitFor(() => expect(acpState.loadSession).toHaveBeenCalledTimes(1));
     expect(acpState.loadSession).toHaveBeenLastCalledWith({
+      kernelId: "openclaw",
       sessionKey,
       workspaceRoot: '/workspace',
       cwd: '/workspace',
@@ -602,6 +641,7 @@ describe('ACP Chat page', () => {
     await waitFor(() => {
       expect(acpState.loadSession).toHaveBeenCalledTimes(2);
       expect(acpState.loadSession).toHaveBeenLastCalledWith({
+        kernelId: "openclaw",
         sessionKey,
         workspaceRoot: '/workspace',
         cwd: '/workspace',
@@ -626,6 +666,7 @@ describe('ACP Chat page', () => {
 
     await waitFor(() => {
       expect(acpState.loadSession).toHaveBeenCalledWith({
+        kernelId: "openclaw",
         sessionKey: 'agent:main:session-a',
         workspaceRoot: '/Users/alex/workspace/ClawX',
         cwd: '/Users/alex/workspace/ClawX',
@@ -646,7 +687,7 @@ describe('ACP Chat page', () => {
     settingsState.chatWorkspacePath = '/workspace';
     acpState.activeSessionKey = null;
     acpState.loadSession.mockImplementation((input: { cwd: string; sessionKey: string }) => {
-      if (input.cwd === '~/.openclaw/workspace') return initialLoad;
+      if (input.cwd === '~/.clawx/workspace') return initialLoad;
       return Promise.resolve(true);
     });
 
@@ -654,7 +695,8 @@ describe('ACP Chat page', () => {
 
     await waitFor(() => {
       expect(acpState.loadSession).toHaveBeenCalledWith({
-        sessionKey, workspaceRoot: '~/.openclaw/workspace', cwd: '~/.openclaw/workspace',
+        kernelId: "openclaw",
+        sessionKey, workspaceRoot: '~/.clawx/workspace', cwd: '~/.clawx/workspace',
       });
     });
 
@@ -663,6 +705,7 @@ describe('ACP Chat page', () => {
 
     await waitFor(() => {
       expect(acpState.loadSession).toHaveBeenCalledWith({
+        kernelId: "openclaw",
         sessionKey,
         workspaceRoot: '/Users/alex/workspace/ClawX',
         cwd: '/Users/alex/workspace/ClawX',
@@ -704,6 +747,7 @@ describe('ACP Chat page', () => {
     await waitFor(() => expect(resolveWorkspaceContext).toHaveBeenCalledTimes(3));
     await waitFor(() => expect(acpState.loadSession).toHaveBeenCalledTimes(2));
     expect(acpState.loadSession).toHaveBeenLastCalledWith({
+      kernelId: "openclaw",
       sessionKey,
       workspaceRoot: '/workspace',
       cwd: '/workspace',
@@ -739,6 +783,7 @@ describe('ACP Chat page', () => {
     expect(banner).toHaveTextContent('Workspace unavailable');
     expect(banner).toHaveTextContent('/workspace');
     expect(acpState.prepareLocalSession).toHaveBeenCalledWith({
+      kernelId: "openclaw",
       sessionKey, workspaceRoot: '/workspace', cwd: '/workspace',
     });
     expect(acpState.loadSession).not.toHaveBeenCalled();
@@ -761,6 +806,7 @@ describe('ACP Chat page', () => {
 
     await waitFor(() => {
       expect(acpState.prepareLocalSession).toHaveBeenCalledWith({
+        kernelId: "openclaw",
         sessionKey, workspaceRoot: '/workspace', cwd: '/workspace',
       });
     });
@@ -789,6 +835,7 @@ describe('ACP Chat page', () => {
 
     await waitFor(() => {
       expect(acpState.loadSession).toHaveBeenCalledWith({
+        kernelId: "openclaw",
         sessionKey, workspaceRoot: '/workspace', cwd: '/workspace', createIfMissing: true,
       });
     });
@@ -816,6 +863,7 @@ describe('ACP Chat page', () => {
 
     await waitFor(() => {
       expect(acpState.loadSession).toHaveBeenCalledWith({
+        kernelId: "openclaw",
         sessionKey, workspaceRoot: '/workspace', cwd: '/workspace', createIfMissing: true,
       });
     });
@@ -890,6 +938,7 @@ describe('ACP Chat page', () => {
     await waitFor(() => {
       expect(chatState.selectAcpSession).toHaveBeenCalledWith(sessionKey, '/workspace');
       expect(acpState.loadSession).toHaveBeenCalledWith({
+        kernelId: "openclaw",
         sessionKey,
         workspaceRoot: '/workspace',
         cwd: '/workspace',
@@ -906,13 +955,15 @@ describe('ACP Chat page', () => {
     );
   });
 
-  it('loads ACP sessions and keeps the composer enabled while Gateway is stopped', async () => {
-    gatewayState.status = { state: 'stopped', gatewayReady: false, port: 18789 };
+  it('keeps history loaded but disables execution while the selected kernel is stopped', async () => {
+    kernelState.runtimes.openclaw = {
+      kernelId: 'openclaw', state: 'stopped', generation: 1, diagnostics: [],
+    };
 
     render(<Chat />);
 
     await waitFor(() => {
-      expect(screen.getByTestId('mock-chat-input')).toHaveAttribute('data-disabled', 'false');
+      expect(screen.getByTestId('mock-chat-input')).toHaveAttribute('data-disabled', 'true');
       expect(acpState.loadSession).toHaveBeenCalledWith({
         sessionKey: 'agent:main:main', workspaceRoot: '/workspace', cwd: '/workspace',
       });
@@ -934,6 +985,7 @@ describe('ACP Chat page', () => {
     await waitFor(() => {
       expect(screen.getByTestId('mock-chat-input')).toHaveAttribute('data-disabled', 'false');
       expect(acpState.loadSession).toHaveBeenCalledWith({
+        kernelId: "openclaw",
         sessionKey: 'agent:main:main', workspaceRoot: '/workspace', cwd: '/workspace',
       });
     });
@@ -944,10 +996,12 @@ describe('ACP Chat page', () => {
       expect(acpState.acceptedPromptSessionKeys).toContain('agent:research:desk');
     });
     expect(acpState.loadSession).toHaveBeenCalledWith({
+      kernelId: "openclaw",
       sessionKey: 'agent:research:desk', workspaceRoot: '/research-workspace', cwd: '/research-workspace',
     });
     expect(chatState.selectAcpSession).toHaveBeenCalledWith('agent:research:desk', '/research-workspace');
     expect(acpState.sendPrompt).toHaveBeenCalledWith({
+      kernelId: "openclaw",
       sessionKey: 'agent:research:desk',
       cwd: '/research-workspace',
       message: 'Ask research',
@@ -985,6 +1039,7 @@ describe('ACP Chat page', () => {
       '/research-workspace',
     );
     expect(acpState.loadSession).toHaveBeenCalledWith({
+      kernelId: "openclaw",
       sessionKey: 'agent:research:main',
       workspaceRoot: '/research-workspace',
       cwd: '/research-workspace',
@@ -996,6 +1051,7 @@ describe('ACP Chat page', () => {
       'Ask research',
     );
     expect(acpState.sendPrompt).toHaveBeenCalledWith({
+      kernelId: "openclaw",
       sessionKey: 'agent:research:main',
       cwd: '/research-workspace',
       message: 'Ask research',
@@ -1027,6 +1083,7 @@ describe('ACP Chat page', () => {
 
     await waitFor(() => {
       expect(acpState.loadSession).toHaveBeenCalledWith({
+        kernelId: "openclaw",
         sessionKey,
         workspaceRoot: '/research-workspace',
         cwd: '/research-workspace',
@@ -1034,6 +1091,7 @@ describe('ACP Chat page', () => {
       });
     });
     expect(acpState.sendPrompt).toHaveBeenCalledWith({
+      kernelId: "openclaw",
       sessionKey,
       cwd: '/research-workspace',
       message: 'Ask research',
@@ -1068,6 +1126,7 @@ describe('ACP Chat page', () => {
 
     await waitFor(() => {
       expect(acpState.loadSession).toHaveBeenCalledWith({
+        kernelId: "openclaw",
         sessionKey: 'agent:research:desk', workspaceRoot: '/research-workspace', cwd: '/research-workspace',
       });
     });
@@ -1086,13 +1145,13 @@ describe('ACP Chat page', () => {
 
   it('projects only completed file tools after Main resolves the canonical workspace context', async () => {
     artifactPanelState.open = true;
-    settingsState.chatWorkspacePath = '~/.openclaw/workspace';
+    settingsState.chatWorkspacePath = '~/.clawx/workspace';
     chatState.sessions = [{ key: 'agent:main:main' }];
-    acpState.cwd = '~/.openclaw/workspace';
+    acpState.cwd = '~/.clawx/workspace';
     resolveWorkspaceContext.mockResolvedValueOnce({
       ok: true,
-      workspaceRoot: '/Users/test/.openclaw/workspace',
-      executionCwd: '/Users/test/.openclaw/workspace',
+      workspaceRoot: '/Users/test/.clawx/workspace',
+      executionCwd: '/Users/test/.clawx/workspace',
     });
     acpState.timeline = {
       ...emptyTimeline(),
@@ -1132,7 +1191,7 @@ describe('ACP Chat page', () => {
           toolCallId: 'write-file',
           title: 'write: app',
           status: 'completed',
-          input: { path: '/Users/test/.openclaw/workspace/src/app.tsx', content: 'export {}' },
+          input: { path: '/Users/test/.clawx/workspace/src/app.tsx', content: 'export {}' },
           outputParts: [{
             kind: 'attachment',
             attachmentId: 'attachment:tool:write-file:0:0',
@@ -1149,8 +1208,8 @@ describe('ACP Chat page', () => {
 
     await waitFor(() => {
       expect(resolveWorkspaceContext).toHaveBeenCalledWith({
-        workspaceRoot: '~/.openclaw/workspace',
-        executionCwd: '~/.openclaw/workspace',
+        workspaceRoot: '~/.clawx/workspace',
+        executionCwd: '~/.clawx/workspace',
       });
       expect(artifactPanelProps.at(-1)?.fileGroups).toEqual([
         expect.objectContaining({ relativePath: 'src/app.tsx' }),

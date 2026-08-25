@@ -28,20 +28,20 @@ export function resolveModulePathWithFallbacks(
 }
 
 function getRuntimeModuleResolvers(): RuntimeModuleResolver[] {
-  const candidates: Array<{ label: string; base: string | URL }> = [
-    { label: 'openclaw-resolved', base: join(getOpenClawResolvedDir(), 'package.json') },
-    { label: 'openclaw', base: join(getOpenClawDir(), 'package.json') },
-    { label: 'app', base: import.meta.url },
-  ];
-
   const seen = new Set<string>();
   const resolvers: RuntimeModuleResolver[] = [];
-
-  for (const candidate of candidates) {
-    const key = typeof candidate.base === 'string' ? candidate.base : candidate.base.toString();
-    if (seen.has(key)) {
-      continue;
+  const add = (label: string, getBase: () => string | URL) => {
+    let base: string | URL;
+    try {
+      base = getBase();
+    } catch {
+      // An optional runtime can be absent while the base app still owns the
+      // dependency (for example QR rendering during kernel onboarding).
+      return;
     }
+    const candidate = { label, base };
+    const key = typeof candidate.base === 'string' ? candidate.base : candidate.base.toString();
+    if (seen.has(key)) return;
     seen.add(key);
 
     const runtimeRequire = createRequire(candidate.base);
@@ -49,7 +49,11 @@ function getRuntimeModuleResolvers(): RuntimeModuleResolver[] {
       label: candidate.label,
       resolve: runtimeRequire.resolve.bind(runtimeRequire),
     });
-  }
+  };
+
+  add('openclaw-resolved', () => join(getOpenClawResolvedDir(), 'package.json'));
+  add('openclaw', () => join(getOpenClawDir(), 'package.json'));
+  add('app', () => import.meta.url);
 
   return resolvers;
 }

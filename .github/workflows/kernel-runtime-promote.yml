@@ -1,0 +1,222 @@
+name: Promote kernel catalog
+
+on:
+  workflow_dispatch:
+    inputs:
+      staging-run-id:
+        description: Successful Build signed kernel runtimes workflow run
+        required: true
+      expected-source-sha:
+        description: Exact source commit built by the successful staging workflow
+        required: true
+      sequence:
+        description: Next monotonic production catalog sequence
+        required: true
+      issued-at:
+        description: ISO-8601 issue time
+        required: true
+      expires-at:
+        description: ISO-8601 expiry time
+        required: true
+      bootstrap:
+        description: Explicitly authorize sequence 1 only after both production mirrors report no catalog
+        type: boolean
+        required: true
+        default: false
+      revoke-artifact-identities:
+        description: Optional comma-separated exact artifact identities to revoke before signing
+        required: false
+      github-release-tag:
+        description: Stable GitHub release used as the kernel mirror
+        required: true
+        default: kernel-runtimes
+
+permissions:
+  actions: read
+  contents: write
+  id-token: write
+
+concurrency:
+  group: kernel-runtime-production-catalog
+  cancel-in-progress: false
+
+jobs:
+  promote:
+    environment: kernel-production
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs['expected-source-sha'] }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.15.0
+      - name: Bind promotion to a successful staging workflow and exact source commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          STAGING_RUN_ID: ${{ inputs['staging-run-id'] }}
+          EXPECTED_SOURCE_SHA: ${{ inputs['expected-source-sha'] }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          run_json="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${STAGING_RUN_ID}")"
+          actual_name="$(jq -r '.name' <<<"$run_json")"
+          actual_conclusion="$(jq -r '.conclusion' <<<"$run_json")"
+          actual_sha="$(jq -r '.head_sha' <<<"$run_json")"
+          test "$actual_name" = 'Build signed kernel runtimes'
+          test "$actual_conclusion" = 'success'
+          test "$actual_sha" = "$EXPECTED_SOURCE_SHA"
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE_SHA"
+      - uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs['staging-run-id'] }}
+          pattern: kernel-runtime-*
+          merge-multiple: false
+          path: temp/approved-artifacts
+      - name: Materialize public release trust roots
+        env:
+          CLAWX_KERNEL_TRUST_KEYS_B64: ${{ secrets.CLAWX_KERNEL_TRUST_KEYS_B64 }}
+        run: >-
+          node scripts/kernel-runtime/build-trust-store.mjs
+          --channel production
+          --output temp/roots.production.json
+      - name: Resolve exact signed catalog continuity from both production mirrors
+        env:
+          NEXT_SEQUENCE: ${{ inputs.sequence }}
+          BOOTSTRAP: ${{ inputs.bootstrap }}
+          GITHUB_RELEASE_TAG: ${{ inputs['github-release-tag'] }}
+        run: >-
+          node scripts/kernel-runtime/resolve-previous-catalog.mjs
+          --distribution resources/kernels/distribution.json
+          --trust-store temp/roots.production.json
+          --github-repository "$GITHUB_REPOSITORY"
+          --github-release-tag "$GITHUB_RELEASE_TAG"
+          --sequence "$NEXT_SEQUENCE"
+          --bootstrap "$BOOTSTRAP"
+          --expected-issued-at "${{ inputs['issued-at'] }}"
+          --expected-expires-at "${{ inputs['expires-at'] }}"
+          --required-revocations "${{ inputs['revoke-artifact-identities'] }}"
+          --output temp/kernel-catalog.previous.json
+          --published-output temp/kernel-catalog.production.json
+          --evidence temp/catalog-continuity.json
+      - name: Sign immutable production catalog without rebuilding artifacts
+        env:
+          CLAWX_CATALOG_SIGNING_KEY_ID: ${{ secrets.CLAWX_CATALOG_SIGNING_KEY_ID }}
+          CLAWX_CATALOG_SIGNING_PRIVATE_KEY_B64: ${{ secrets.CLAWX_CATALOG_SIGNING_PRIVATE_KEY_B64 }}
+          BOOTSTRAP: ${{ inputs.bootstrap }}
+          REVOKE_ARTIFACT_IDENTITIES: ${{ inputs['revoke-artifact-identities'] }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -f temp/kernel-catalog.production.json ]; then
+            echo 'Reusing the exact trusted sequence already present on at least one production mirror.'
+            exit 0
+          fi
+          previous=()
+          if [ -f temp/kernel-catalog.previous.json ]; then
+            previous=(--previous temp/kernel-catalog.previous.json)
+          fi
+          revocations=()
+          IFS=',' read -ra requested_revocations <<< "$REVOKE_ARTIFACT_IDENTITIES"
+          for identity in "${requested_revocations[@]}"; do
+            identity="${identity#"${identity%%[![:space:]]*}"}"
+            identity="${identity%"${identity##*[![:space:]]}"}"
+            if [ -n "$identity" ]; then revocations+=(--revoke "$identity"); fi
+          done
+          node scripts/kernel-runtime/promote-catalog.mjs \
+            --descriptor-dir temp/approved-artifacts \
+            --sequence "${{ inputs.sequence }}" \
+            --channel production \
+            --issued-at "${{ inputs['issued-at'] }}" \
+            --expires-at "${{ inputs['expires-at'] }}" \
+            --output temp/kernel-catalog.production.json \
+            --trust-store temp/roots.production.json \
+            --bootstrap "$BOOTSTRAP" \
+            "${previous[@]}" \
+            "${revocations[@]}"
+      - name: Verify the complete promotion set
+        run: |
+          node scripts/kernel-runtime/verify-release-set.mjs --catalog temp/kernel-catalog.production.json --trust-store temp/roots.production.json --artifacts temp/approved-artifacts --distribution resources/kernels/distribution.json --kernels openclaw,deepseek-harness
+      - name: Flatten immutable runtime assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p temp/publish
+          find temp/approved-artifacts -type f \( -name '*.tar.zst' -o -name '*.descriptor.json' -o -name '*.sha256' \) -exec cp {} temp/publish/ \;
+          test "$(find temp/publish -type f | wc -l | tr -d ' ')" -ge 20
+      - name: Install and configure ossutil
+        env:
+          OSS_ACCESS_KEY_ID: ${{ secrets.OSS_ACCESS_KEY_ID }}
+          OSS_ACCESS_KEY_SECRET: ${{ secrets.OSS_ACCESS_KEY_SECRET }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -sL https://gosspublic.alicdn.com/ossutil/install.sh | sudo bash
+          {
+            echo '[Credentials]'
+            echo 'language=EN'
+            echo 'endpoint=oss-cn-hangzhou.aliyuncs.com'
+            echo "accessKeyID=${OSS_ACCESS_KEY_ID}"
+            echo "accessKeySecret=${OSS_ACCESS_KEY_SECRET}"
+          } > "$HOME/.ossutilconfig"
+          chmod 600 "$HOME/.ossutilconfig"
+          ossutil --version
+      - name: Publish immutable runtime assets to OSS without overwrite
+        shell: bash
+        run: |
+          set -euo pipefail
+          for file in temp/publish/*; do
+            name="$(basename "$file")"
+            remote="oss://valuecell-clawx/kernels/$name"
+            existing="temp/existing-oss-$name"
+            if ossutil stat "$remote" >/dev/null 2>&1; then
+              ossutil cp "$remote" "$existing" -f
+              cmp "$file" "$existing" || { echo "Immutable OSS asset differs: $name" >&2; exit 1; }
+            else
+              ossutil cp "$file" "$remote" --meta 'Cache-Control:public,max-age=31536000,immutable'
+            fi
+          done
+      - name: Publish immutable runtime assets to GitHub mirror without overwrite
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="${{ inputs['github-release-tag'] }}"
+          gh release view "$tag" >/dev/null 2>&1 || gh release create "$tag" --title 'ClawX Kernel Runtimes' --notes 'Immutable, signed optional kernel runtime artifacts.'
+          mkdir -p temp/existing-github
+          for file in temp/publish/*; do
+            name="$(basename "$file")"
+            if gh release download "$tag" --pattern "$name" --dir temp/existing-github >/dev/null 2>&1; then
+              cmp "$file" "temp/existing-github/$name" || { echo "Immutable GitHub asset differs: $name" >&2; exit 1; }
+            else
+              gh release upload "$tag" "$file"
+            fi
+          done
+      - name: Publish signed catalog last to both mirrors
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          ossutil cp temp/kernel-catalog.production.json oss://valuecell-clawx/kernels/catalog.production.json -f --meta 'Cache-Control:no-cache,no-store,must-revalidate'
+          gh release upload "${{ inputs['github-release-tag'] }}" temp/kernel-catalog.production.json --clobber
+      - name: Drill both catalogs and both artifact mirrors with Range resume
+        run: >-
+          node scripts/kernel-runtime/distribution-drill.mjs
+          --distribution resources/kernels/distribution.json
+          --trust-store temp/roots.production.json
+          --platform linux --arch x64
+          --kernels openclaw,deepseek-harness
+      - uses: actions/upload-artifact@v4
+        with:
+          name: kernel-production-catalog-${{ inputs.sequence }}
+          path: |
+            temp/kernel-catalog.production.json*
+            temp/kernel-catalog.previous.json
+            temp/catalog-continuity.json
+            temp/roots.production.json
+          if-no-files-found: error
+          retention-days: 90

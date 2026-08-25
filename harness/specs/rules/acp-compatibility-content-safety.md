@@ -1,14 +1,15 @@
 ---
 id: acp-compatibility-content-safety
-title: ACP Compatibility Content Safety
+title: Kernel Compatibility Content Safety
 type: ai-coding-rule
 appliesTo:
   - acp-chat-experience
   - gateway-backend-communication
+  - multi-kernel-runtime
 ---
 
-Standard ACP content is authoritative and preferred. A compatibility supplement is allowed only when it is explicitly marked by source, retained in memory, backed by approved structured runtime evidence or explicit assistant transcript evidence, and accompanied by reason-coded diagnostics. Compatibility data must never be represented as a native ACP event.
+Canonical content blocks and kernel event envelopes are authoritative. A kernel adapter may translate structured native evidence into canonical blocks/events only before or during the owning run's durable commit. Translation MUST retain source kernel, run, generation, visibility, and reason-coded diagnostics; unsupported or ambiguous evidence is skipped.
 
-Approved transcript evidence has three bounded forms: asynchronous image-generation completion with proven image-generation context, including explicit internal-UI `message` tool source replies; canonical persisted assistant `__openclaw.media` facts; and general attachment recovery from whole-line, line-leading assistant OpenClaw `MEDIA:` directives outside fenced code blocks. Canonical facts and directives accept only the documented local path, `file:`, execution-cwd-relative, HTTP, and HTTPS forms. Quoted directive references may contain spaces, while unquoted directives may not; canonical structured values may contain spaces. General recovery projects only ordered attachment references and declared media metadata, never surrounding transcript prose. A trusted image-generation source reply may provide user-facing completion or failure text. Reject malformed or wrapped directives, bare or inline prose paths without canonical media facts, unknown URI schemes, incidental tool paths, and unrelated assistant prose.
+Approved compatibility inputs are structured native tool/resource events, canonical assistant media facts, and explicit whole-line media directives emitted by the active adapter. Accept only documented local path, `file:`, execution-workspace-relative, HTTP, and HTTPS forms. Reject unknown schemes, wrapped or inline prose paths, incidental tool paths, malformed facts, and unrelated assistant prose. Main attachment authorization remains mandatory even for syntactically valid references.
 
-Compatibility logic must not reconstruct ordinary assistant messages, thoughts, tools, plans, permissions, file activity, or a parallel Chat history. User-side OpenClaw prompt projection may be reconstructed only from structured ACP content already present in the same timeline; generated-looking user prose is not evidence and must not be stripped or parsed. Unmatched or ambiguous evidence is skipped rather than attached by guesswork. Deduplication is turn-scoped and uses only a Main-authorized opaque identity; native ACP resource content wins over equivalent compatibility evidence, generated-image evidence remains inline, and an unavailable result does not block a later available upgrade.
+Compatibility logic MUST NOT scan runtime transcripts to reconstruct ordinary user/assistant messages, thoughts, tools, plans, permissions, file activity, titles, usage, or a parallel Chat history. Deduplication is scoped to canonical run/event identity. Native structured resource content wins over an equivalent translated reference, and unavailable evidence cannot block a later canonical event from the same live run.

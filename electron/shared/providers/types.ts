@@ -199,6 +199,16 @@ export interface ProviderAccount {
     resourceUrl?: string;
     customModels?: string[];
   };
+  supportedKernels?: string[];
+  projections?: Array<{
+    kernelId: string;
+    status: 'pending' | 'applying' | 'ready' | 'partial' | 'failed' | 'unsupported';
+    desiredVersion: number;
+    appliedVersion?: number;
+    nativeId?: string;
+    error?: string;
+    updatedAt: string;
+  }>;
   createdAt: string;
   updatedAt: string;
 }

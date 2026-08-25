@@ -3,7 +3,13 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { createServer, type IncomingHttpHeaders, type Server } from 'node:http';
 import { basename, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { installIpcMocks, test as electronTest } from './electron';
+import {
+  canonicalConversationHostApi,
+  canonicalConversationSummary,
+  installIpcMocks,
+  readyKernelFixture,
+  test as electronTest,
+} from './electron';
 
 export interface LocalWebBrowserRequest {
   method: string;
@@ -322,36 +328,35 @@ export async function prepareWebBrowserApp(app: ElectronApplication, workspaceDi
   const sessionKey = WEB_BROWSER_E2E_SESSION_KEYS.primary;
   const secondarySessionKey = WEB_BROWSER_E2E_SESSION_KEYS.secondary;
   const now = Date.now();
-  const sessions = [
-    {
-      key: sessionKey,
-      displayName: 'Browser fixture',
-      derivedTitle: 'Browser fixture',
-      workspacePath: workspaceDir,
-      updatedAt: new Date(now).toISOString(),
-    },
-    {
-      key: secondarySessionKey,
-      displayName: 'Browser fixture secondary',
-      derivedTitle: 'Browser fixture secondary',
-      workspacePath: workspaceDir,
-      updatedAt: new Date(now - 1).toISOString(),
-    },
+  const conversations = [
+    canonicalConversationSummary({
+      id: sessionKey,
+      title: 'Browser fixture',
+      createdAt: now,
+      updatedAt: now,
+      workspaceUri: workspaceDir,
+      lastKernelId: 'openclaw',
+      kernelIds: ['openclaw'],
+      lastAgentId: 'main',
+    }),
+    canonicalConversationSummary({
+      id: secondarySessionKey,
+      title: 'Browser fixture secondary',
+      createdAt: now - 1,
+      updatedAt: now - 1,
+      workspaceUri: workspaceDir,
+      lastKernelId: 'openclaw',
+      kernelIds: ['openclaw'],
+      lastAgentId: 'main',
+    }),
   ];
-  const sessionsList = {
-    success: true,
-    result: {
-      sessions,
-    },
-  };
+  const kernelSelection = { success: true, generation: 1, kernelId: 'openclaw' };
 
   await installIpcMocks(app, {
     gatewayStatus: { state: 'running', gatewayReady: true, port: 18789, pid: 12345, connectedAt: now },
-    gatewayRpc: {
-      [stableStringify(['sessions.list', {}])]: sessionsList,
-      [stableStringify(['sessions.list', { includeDerivedTitles: true, includeLastMessage: true }])]: sessionsList,
-    },
+    kernelFixture: readyKernelFixture(),
     hostApi: {
+      ...canonicalConversationHostApi(conversations),
       [stableStringify(['settings', 'getAll', null])]: {
         language: 'en',
         setupComplete: true,
@@ -363,28 +368,22 @@ export async function prepareWebBrowserApp(app: ElectronApplication, workspaceDi
         agents: [{ id: 'main', name: 'main', workspace: workspaceDir, mainSessionKey: sessionKey }],
         defaultAgentId: 'main',
       },
-      [stableStringify(['sessions', 'summaries', { sessionKeys: [sessionKey, secondarySessionKey] }])]: {
-        summaries: sessions.map((session, index) => ({
-          sessionKey: session.key,
-          firstUserText: session.derivedTitle,
-          lastTimestamp: now - index,
-          workspacePath: workspaceDir,
-        })),
-      },
       [stableStringify(['files', 'resolveWorkspaceContext', {
         workspaceRoot: workspaceDir,
         executionCwd: workspaceDir,
       }])]: { ok: true, workspaceRoot: workspaceDir, executionCwd: workspaceDir },
-      [stableStringify(['chat', 'loadAcpSession', {
+      [stableStringify(['chat', 'selectConversationKernel', {
         sessionKey,
         workspaceRoot: workspaceDir,
         cwd: workspaceDir,
-      }])]: { success: true, generation: 1 },
-      [stableStringify(['chat', 'loadAcpSession', {
+        kernelId: 'openclaw',
+      }])]: kernelSelection,
+      [stableStringify(['chat', 'selectConversationKernel', {
         sessionKey: secondarySessionKey,
         workspaceRoot: workspaceDir,
         cwd: workspaceDir,
-      }])]: { success: true, generation: 2 },
+        kernelId: 'openclaw',
+      }])]: kernelSelection,
     },
   });
 

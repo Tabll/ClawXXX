@@ -15,8 +15,6 @@ import {
   PanelLeftClose,
   PanelLeft,
   Plus,
-  Terminal,
-  ExternalLink,
   Trash2,
   Pencil,
   Pin,
@@ -30,18 +28,16 @@ import {
   ChevronsUpDown,
   ChevronsDownUp,
   LoaderCircle,
-  Loader2,
   Search,
   MoreHorizontal,
   ListChecks,
+  Download,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { isGatewayRestarting } from '@/lib/gateway-status';
 import { rendererExtensionRegistry } from '@/extensions/registry';
 import { useSettingsStore } from '@/stores/settings';
 import { useChatStore } from '@/stores/chat';
 import { useSessionAttentionStore } from '@/stores/session-attention';
-import { useGatewayStore } from '@/stores/gateway';
 import { useAgentsStore } from '@/stores/agents';
 import { groupSessionsByWorkspace } from './session-buckets';
 import { shouldIncludeSessionInSidebarList } from '@/stores/chat/session-key-utils';
@@ -66,6 +62,8 @@ import { isDefaultWorkspacePath } from '@/lib/workspace-context';
 import { useWorkspaceAvailability } from '@/hooks/use-workspace-availability';
 import { projectSessionRunState } from '@/stores/chat/session-status';
 import { getSessionDisplayTitle } from '@shared/chat/session-title';
+import { KernelStatusStrip } from '@/components/kernels/KernelStatus';
+import { kernelDisplayName, kernelOptionsFor, useKernelStore } from '@/stores/kernels';
 
 interface NavItemProps {
   to: string;
@@ -172,20 +170,19 @@ export function Sidebar() {
   const renameSession = useChatStore((s) => s.renameSession);
   const setSessionPinned = useChatStore((s) => s.setSessionPinned);
   const loadSessions = useChatStore((s) => s.loadSessions);
+  const loadMoreSessions = useChatStore((s) => s.loadMoreSessions);
+  const searchSessions = useChatStore((s) => s.searchSessions);
+  const exportSession = useChatStore((s) => s.exportSession);
+  const sessionNextCursor = useChatStore((s) => s.sessionNextCursor);
+  const sessionCatalogLoading = useChatStore((s) => s.sessionCatalogLoading);
+  const kernelCatalog = useKernelStore((s) => s.catalog);
   const sessionAttentionByKey = useSessionAttentionStore((s) => s.bySessionKey);
   const markRead = useSessionAttentionStore((s) => s.markRead);
   const handleNewChat = useNewChatAction();
 
-  const gatewayStatus = useGatewayStore((s) => s.status);
-  const isGatewayRunning = gatewayStatus.state === 'running';
-  const isGatewayReady = isGatewayRunning && gatewayStatus.gatewayReady !== false;
-  const gatewayRestarting = isGatewayRestarting(gatewayStatus);
-  const gatewayRuntimeKey = `${gatewayStatus.pid ?? 'none'}:${gatewayStatus.connectedAt ?? 'none'}:${gatewayStatus.port}`;
-
   useEffect(() => {
-    if (!isGatewayReady) return;
     void loadSessions();
-  }, [gatewayRuntimeKey, isGatewayReady, loadSessions]);
+  }, [loadSessions]);
   const agents = useAgentsStore((s) => s.agents);
   const fetchAgents = useAgentsStore((s) => s.fetchAgents);
 
@@ -196,23 +193,6 @@ export function Sidebar() {
 
   const navigate = useNavigate();
   const isOnChat = useLocation().pathname === '/';
-
-  const openControlUi = async (label = 'OpenClaw Page') => {
-    try {
-      const result = await hostApi.gateway.controlUi();
-      if (result.success && result.url) {
-        await hostApi.shell.openExternal(result.url);
-      } else {
-        console.error(`Failed to get ${label} URL:`, result.error);
-      }
-    } catch (err) {
-      console.error(`Error opening ${label}:`, err);
-    }
-  };
-
-  const openDevConsole = async () => {
-    await openControlUi('OpenClaw Page');
-  };
 
   const { t, i18n } = useTranslation(['common', 'chat']);
   const [sessionToDelete, setSessionToDelete] = useState<{ key: string; label: string } | null>(null);
@@ -240,6 +220,17 @@ export function Sidebar() {
   const sidebarMoreMenuRef = useRef<HTMLDivElement | null>(null);
   const [sessionSearchOpen, setSessionSearchOpen] = useState(false);
   const [sessionSearchQuery, setSessionSearchQuery] = useState('');
+  const [sessionSearchResponse, setSessionSearchResponse] = useState<{
+    criteriaKey: string;
+    keys: string[];
+  } | null>(null);
+  const [sessionSearchLoadingCriteria, setSessionSearchLoadingCriteria] = useState<string | null>(null);
+  const [sessionKernelFilter, setSessionKernelFilter] = useState('');
+  const [sessionKernelScope, setSessionKernelScope] = useState<'last' | 'participated'>('last');
+  const [sessionAgentFilter, setSessionAgentFilter] = useState('');
+  const [sessionSourceFilter, setSessionSourceFilter] = useState('');
+  const [sessionWorkspaceFilter, setSessionWorkspaceFilter] = useState('');
+  const [sessionAttentionFilter, setSessionAttentionFilter] = useState<'all' | 'busy' | 'unread'>('all');
   const [batchMode, setBatchMode] = useState(false);
   const [selectedSessionKeys, setSelectedSessionKeys] = useState<Set<string>>(() => new Set());
   const [batchDeleteDialogOpen, setBatchDeleteDialogOpen] = useState(false);
@@ -347,9 +338,28 @@ export function Sidebar() {
     }
   };
 
+  const handleContextMenuExport = async () => {
+    const target = sessionContextMenu;
+    if (!target) return;
+    closeSessionContextMenu();
+    const result = await exportSession(target.key);
+    if (result.success) toast.success(t('common:sidebar.exportSessionSuccess'));
+    else toast.error(t('common:sidebar.exportSessionFailed', { error: result.error }));
+  };
+
   const handleSessionSearchOpenChange = useCallback((open: boolean) => {
     setSessionSearchOpen(open);
-    if (!open) setSessionSearchQuery('');
+    if (!open) {
+      setSessionSearchQuery('');
+      setSessionSearchResponse(null);
+      setSessionSearchLoadingCriteria(null);
+      setSessionKernelFilter('');
+      setSessionKernelScope('last');
+      setSessionAgentFilter('');
+      setSessionSourceFilter('');
+      setSessionWorkspaceFilter('');
+      setSessionAttentionFilter('all');
+    }
   }, []);
 
   const exitBatchMode = useCallback(() => {
@@ -491,6 +501,13 @@ export function Sidebar() {
     () => Object.fromEntries((agents ?? []).map((agent) => [agent.id, agent.name])),
     [agents],
   );
+  const kernelOptions = useMemo(() => kernelOptionsFor(
+    kernelCatalog,
+    sessions.flatMap(session => [
+      ...(session.kernelId ? [session.kernelId] : []),
+      ...(session.kernelIds ?? []),
+    ]),
+  ), [kernelCatalog, sessions]);
   const sidebarSessions = useMemo(
     () => sessions.filter((session) => shouldIncludeSessionInSidebarList(session)),
     [sessions],
@@ -584,7 +601,7 @@ export function Sidebar() {
       for (const entry of group.sessions) workspaceBySessionKey.set(entry.session.key, group.label);
     }
     return sidebarSessions.map((session) => {
-      const agentId = getAgentIdFromSessionKey(session.key);
+      const agentId = session.agentId || getAgentIdFromSessionKey(session.key);
       const agentName = agentNameById[agentId] || agentId;
       const label = getSessionDisplayTitle(session, sessionLabels);
       const workspaceLabel = workspaceBySessionKey.get(session.key) ?? '';
@@ -598,6 +615,10 @@ export function Sidebar() {
         agentName,
         workspaceLabel,
         channelName,
+        kernelId: session.kernelId,
+        kernelIds: session.kernelIds ?? (session.kernelId ? [session.kernelId] : []),
+        workspacePath: session.workspacePath ?? '',
+        attention: sessionAttentionByKey[session.key],
         pinned: Boolean(session.pinned),
         activityMs: sessionLastActivity[session.key] ?? session.updatedAt ?? 0,
         searchText: [
@@ -609,21 +630,107 @@ export function Sidebar() {
           agentName,
           workspaceLabel,
           channelName,
+          session.kernelId ? kernelDisplayName(session.kernelId) : '',
+          ...(session.kernelIds ?? []).map(kernelDisplayName),
         ].filter(Boolean).join(' ').toLowerCase(),
       };
     }).sort((a, b) => {
       const pinnedOrder = Number(b.pinned) - Number(a.pinned);
       return pinnedOrder || b.activityMs - a.activityMs;
     });
-  }, [agentNameById, sessionLabels, sessionLastActivity, sidebarSessions, workspaceSessionGroups]);
+  }, [agentNameById, sessionAttentionByKey, sessionLabels, sessionLastActivity, sidebarSessions, workspaceSessionGroups]);
 
   const normalizedSessionSearchQuery = sessionSearchQuery.trim().toLowerCase();
+  const hasServerSearchCriteria = Boolean(
+    normalizedSessionSearchQuery || sessionKernelFilter || sessionAgentFilter || sessionSourceFilter,
+  );
+  const sessionSearchCriteriaKey = JSON.stringify([
+    normalizedSessionSearchQuery,
+    sessionKernelFilter,
+    sessionKernelScope,
+    sessionAgentFilter,
+    sessionSourceFilter,
+  ]);
+  useEffect(() => {
+    if (!sessionSearchOpen || !hasServerSearchCriteria) return;
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      setSessionSearchLoadingCriteria(sessionSearchCriteriaKey);
+      void searchSessions(normalizedSessionSearchQuery, {
+        ...(sessionKernelFilter && sessionKernelScope === 'last'
+          ? { lastKernelId: sessionKernelFilter }
+          : {}),
+        ...(sessionKernelFilter && sessionKernelScope === 'participated'
+          ? { participatedKernelId: sessionKernelFilter }
+          : {}),
+        ...(sessionAgentFilter ? { agentId: sessionAgentFilter } : {}),
+        ...(sessionSourceFilter ? { sourceChannel: sessionSourceFilter } : {}),
+      }).then(results => {
+        if (!cancelled) {
+          setSessionSearchResponse({
+            criteriaKey: sessionSearchCriteriaKey,
+            keys: results.map(result => result.key),
+          });
+        }
+      }).catch(error => {
+        if (!cancelled) {
+          setSessionSearchResponse({ criteriaKey: sessionSearchCriteriaKey, keys: [] });
+          toast.error(t('common:sidebar.searchSessionsFailed', { error: String(error) }));
+        }
+      }).finally(() => {
+        if (!cancelled) {
+          setSessionSearchLoadingCriteria(current => (
+            current === sessionSearchCriteriaKey ? null : current
+          ));
+        }
+      });
+    }, 220);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [
+    hasServerSearchCriteria,
+    normalizedSessionSearchQuery,
+    searchSessions,
+    sessionAgentFilter,
+    sessionKernelFilter,
+    sessionKernelScope,
+    sessionSearchCriteriaKey,
+    sessionSearchOpen,
+    sessionSourceFilter,
+    t,
+  ]);
+
+  const sessionSearchKeys = sessionSearchResponse?.criteriaKey === sessionSearchCriteriaKey
+    ? sessionSearchResponse.keys
+    : null;
+  const sessionSearchLoading = sessionSearchLoadingCriteria === sessionSearchCriteriaKey;
   const sessionSearchResults = useMemo(() => {
-    const matches = normalizedSessionSearchQuery
+    const byKey = new Map(searchableSessions.map(session => [session.key, session] as const));
+    const serverOrdered = sessionSearchKeys?.flatMap(key => {
+      const session = byKey.get(key);
+      return session ? [session] : [];
+    });
+    const matches = serverOrdered ?? (normalizedSessionSearchQuery
       ? searchableSessions.filter((session) => session.searchText.includes(normalizedSessionSearchQuery))
-      : searchableSessions;
-    return matches.slice(0, normalizedSessionSearchQuery ? 30 : 12);
-  }, [normalizedSessionSearchQuery, searchableSessions]);
+      : searchableSessions);
+    const filtered = matches.filter(session => (
+      (!sessionWorkspaceFilter || session.workspacePath === sessionWorkspaceFilter)
+      && (sessionAttentionFilter === 'all'
+        || (sessionAttentionFilter === 'busy'
+          ? session.attention?.observedBusy === true
+          : session.attention?.unread === true))
+    ));
+    return filtered.slice(0, hasServerSearchCriteria ? 50 : 12);
+  }, [
+    hasServerSearchCriteria,
+    normalizedSessionSearchQuery,
+    searchableSessions,
+    sessionAttentionFilter,
+    sessionSearchKeys,
+    sessionWorkspaceFilter,
+  ]);
 
   const openSearchResult = useCallback((sessionKey: string) => {
     openSession(sessionKey);
@@ -1015,7 +1122,7 @@ export function Sidebar() {
                   {!collapsed && (
                     <div className="space-y-0.5">
                       {visibleSessions.map(({ session: s, activityMs }) => {
-                        const agentId = getAgentIdFromSessionKey(s.key);
+                        const agentId = s.agentId || getAgentIdFromSessionKey(s.key);
                         const agentName = agentNameById[agentId] || agentId;
                         const isEditing = editingSessionKey === s.key;
                         const isCurrentSession = isOnChat && currentSessionKey === s.key;
@@ -1069,6 +1176,11 @@ export function Sidebar() {
                                 <span className="shrink-0 rounded-full bg-black/[0.04] px-2 py-0.5 text-2xs font-medium text-foreground/70 dark:bg-white/[0.08]">
                                   {agentName}
                                 </span>
+                                {s.kernelId && (
+                                  <span className="shrink-0 rounded-full bg-violet-500/10 px-2 py-0.5 text-2xs font-medium text-violet-700 dark:text-violet-400">
+                                    {kernelDisplayName(s.kernelId)}
+                                  </span>
+                                )}
                                 <span className="min-w-0 flex-1 truncate">{sessionLabel}</span>
                                 {s.pinned && <Pin aria-hidden="true" className="h-3 w-3 shrink-0 text-muted-foreground" />}
                               </label>
@@ -1127,6 +1239,15 @@ export function Sidebar() {
                                         className="shrink-0 truncate rounded-full bg-blue-500/10 px-2 py-0.5 text-2xs font-medium text-blue-700 dark:bg-blue-400/10 dark:text-blue-400"
                                       >
                                         {channelName}
+                                      </span>
+                                    )}
+                                    {s.kernelId && (
+                                      <span
+                                        data-testid={`sidebar-session-kernel-${s.key}`}
+                                        title={t('common:sidebar.lastKernel', { kernel: kernelDisplayName(s.kernelId) })}
+                                        className="shrink-0 truncate rounded-full bg-violet-500/10 px-2 py-0.5 text-2xs font-medium text-violet-700 dark:text-violet-400"
+                                      >
+                                        {kernelDisplayName(s.kernelId)}
                                       </span>
                                     )}
                                     <span className="truncate">{sessionLabel}</span>
@@ -1220,39 +1341,24 @@ export function Sidebar() {
                 </div>
               );
             })}
+            {sessionNextCursor && (
+              <button
+                type="button"
+                data-testid="sidebar-catalog-load-more"
+                disabled={sessionCatalogLoading}
+                onClick={() => void loadMoreSessions()}
+                className="mt-2 w-full rounded-lg px-2 py-1.5 text-tiny font-medium text-muted-foreground transition-colors hover:bg-black/5 hover:text-foreground disabled:opacity-50 dark:hover:bg-white/10"
+              >
+                {sessionCatalogLoading ? t('common:status.loading') : t('common:sidebar.loadMoreConversations')}
+              </button>
+            )}
           </div>
         </div>
       )}
 
       {/* Footer */}
       <div className="mt-auto flex flex-col gap-1 p-2">
-        <div
-          data-testid="sidebar-gateway-restarting"
-          data-state={gatewayRestarting ? 'visible' : 'hidden'}
-          aria-hidden={!gatewayRestarting}
-          className={cn(
-            'overflow-hidden transition-[max-height,opacity,transform] duration-200 ease-out',
-            gatewayRestarting ? 'max-h-12 translate-y-0 opacity-100' : 'max-h-0 translate-y-1 opacity-0',
-          )}
-        >
-          <div
-            aria-live="polite"
-            aria-label={t('common:gateway.restarting')}
-            title={t('common:gateway.restarting')}
-            className={cn(
-              'sidebar-nav-text flex items-center gap-2 rounded-lg px-2.5 py-1.5',
-              'border border-yellow-500/20 bg-yellow-500/10 text-yellow-700 dark:text-yellow-400',
-              sidebarCollapsed && 'justify-center px-0',
-            )}
-          >
-            <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
-            {!sidebarCollapsed && (
-              <span className="flex-1 overflow-hidden text-ellipsis whitespace-nowrap">
-                {t('common:gateway.restarting')}
-              </span>
-            )}
-          </div>
-        </div>
+        <KernelStatusStrip collapsed={sidebarCollapsed} />
 
         <NavLink
           to="/settings"
@@ -1276,30 +1382,6 @@ export function Sidebar() {
           </>
         </NavLink>
 
-        {devModeUnlocked && (
-          <Button
-            data-testid="sidebar-open-dev-console"
-            variant="ghost"
-            className={cn(
-              'sidebar-nav-text flex h-auto w-full items-center gap-2 rounded-lg px-2.5 py-1.5 transition-colors',
-              'hover:bg-black/5 dark:hover:bg-white/5 text-foreground/80',
-              sidebarCollapsed ? 'justify-center px-0' : 'justify-start',
-            )}
-            onClick={openDevConsole}
-          >
-            <div className="flex shrink-0 items-center justify-center text-current [&_svg]:size-4">
-              <Terminal className="h-4 w-4" strokeWidth={2} />
-            </div>
-            {!sidebarCollapsed && (
-              <>
-                <span className="flex-1 text-left overflow-hidden text-ellipsis whitespace-nowrap">
-                  {t('common:sidebar.openClawPage')}
-                </span>
-                <ExternalLink className="ml-auto h-3 w-3 shrink-0 opacity-50 text-current" />
-              </>
-            )}
-          </Button>
-        )}
       </div>
 
       {!sidebarCollapsed && (
@@ -1363,6 +1445,16 @@ export function Sidebar() {
             <Pencil className="h-3.5 w-3.5 shrink-0" />
             <span className="truncate">{t('common:sidebar.renameSession')}</span>
           </button>
+          <button
+            type="button"
+            role="menuitem"
+            data-testid={`sidebar-session-context-export-${sessionContextMenu.key}`}
+            onClick={() => void handleContextMenuExport()}
+            className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-foreground/85 transition-colors hover:bg-black/5 hover:text-foreground dark:hover:bg-white/10"
+          >
+            <Download className="h-3.5 w-3.5 shrink-0" />
+            <span className="truncate">{t('common:sidebar.exportSession')}</span>
+          </button>
         </div>
       )}
 
@@ -1388,9 +1480,85 @@ export function Sidebar() {
                 className="h-9 min-w-0 flex-1 border-0 bg-transparent px-0 text-sm shadow-none focus-visible:border-transparent focus-visible:ring-0"
               />
             </div>
+            <div className="mt-2 grid grid-cols-2 gap-2" data-testid="sidebar-session-search-filters">
+              <select
+                data-testid="sidebar-session-filter-kernel"
+                aria-label={t('common:sidebar.filterKernel')}
+                value={sessionKernelFilter}
+                onChange={event => setSessionKernelFilter(event.target.value)}
+                className="h-8 rounded-lg border border-border/70 bg-surface-input px-2 text-xs text-foreground"
+              >
+                <option value="">{t('common:sidebar.allKernels')}</option>
+                {kernelOptions.map(option => (
+                  <option key={option.id} value={option.id}>{option.label}</option>
+                ))}
+              </select>
+              <select
+                data-testid="sidebar-session-filter-kernel-scope"
+                aria-label={t('common:sidebar.filterKernelScope')}
+                value={sessionKernelScope}
+                onChange={event => setSessionKernelScope(event.target.value as 'last' | 'participated')}
+                disabled={!sessionKernelFilter}
+                className="h-8 rounded-lg border border-border/70 bg-surface-input px-2 text-xs text-foreground disabled:opacity-50"
+              >
+                <option value="last">{t('common:sidebar.lastKernelFilter')}</option>
+                <option value="participated">{t('common:sidebar.participatedKernelFilter')}</option>
+              </select>
+              <select
+                data-testid="sidebar-session-filter-agent"
+                aria-label={t('common:sidebar.filterAgent')}
+                value={sessionAgentFilter}
+                onChange={event => setSessionAgentFilter(event.target.value)}
+                className="h-8 rounded-lg border border-border/70 bg-surface-input px-2 text-xs text-foreground"
+              >
+                <option value="">{t('common:sidebar.allAgents')}</option>
+                {agents.map(agent => <option key={agent.id} value={agent.id}>{agent.name}</option>)}
+              </select>
+              <select
+                data-testid="sidebar-session-filter-source"
+                aria-label={t('common:sidebar.filterSource')}
+                value={sessionSourceFilter}
+                onChange={event => setSessionSourceFilter(event.target.value)}
+                className="h-8 rounded-lg border border-border/70 bg-surface-input px-2 text-xs text-foreground"
+              >
+                <option value="">{t('common:sidebar.allSources')}</option>
+                {[...new Set(sessions.map(session => session.sourceChannel).filter((value): value is string => !!value))]
+                  .map(source => (
+                    <option key={source} value={source}>{CHANNEL_NAMES[source as keyof typeof CHANNEL_NAMES] ?? source}</option>
+                  ))}
+              </select>
+              <select
+                data-testid="sidebar-session-filter-workspace"
+                aria-label={t('common:sidebar.filterWorkspace')}
+                value={sessionWorkspaceFilter}
+                onChange={event => setSessionWorkspaceFilter(event.target.value)}
+                className="h-8 rounded-lg border border-border/70 bg-surface-input px-2 text-xs text-foreground"
+              >
+                <option value="">{t('common:sidebar.allWorkspaces')}</option>
+                {workspaceSessionGroups.map(group => (
+                  <option key={group.workspacePath} value={group.workspacePath}>{group.label}</option>
+                ))}
+              </select>
+              <select
+                data-testid="sidebar-session-filter-attention"
+                aria-label={t('common:sidebar.filterAttention')}
+                value={sessionAttentionFilter}
+                onChange={event => setSessionAttentionFilter(event.target.value as 'all' | 'busy' | 'unread')}
+                className="h-8 rounded-lg border border-border/70 bg-surface-input px-2 text-xs text-foreground"
+              >
+                <option value="all">{t('common:sidebar.allAttention')}</option>
+                <option value="busy">{t('common:sidebar.busyConversations')}</option>
+                <option value="unread">{t('common:sidebar.unreadConversations')}</option>
+              </select>
+            </div>
           </div>
           <div data-testid="sidebar-session-search-results" className="max-h-80 overflow-y-auto p-1.5">
-            {sessionSearchResults.length > 0 ? (
+            {sessionSearchLoading ? (
+              <div className="flex items-center justify-center px-3 py-6 text-meta text-muted-foreground">
+                <LoaderCircle className="mr-2 h-4 w-4 animate-spin" />
+                {t('common:status.loading')}
+              </div>
+            ) : sessionSearchResults.length > 0 ? (
               sessionSearchResults.map((session) => (
                 <button
                   key={session.key}
@@ -1402,6 +1570,11 @@ export function Sidebar() {
                   <span className="shrink-0 rounded-full bg-surface-input px-2 py-0.5 text-2xs font-medium text-muted-foreground">
                     {session.agentName}
                   </span>
+                  {session.kernelId && (
+                    <span className="shrink-0 rounded-full bg-violet-500/10 px-2 py-0.5 text-2xs font-medium text-violet-700 dark:text-violet-400">
+                      {kernelDisplayName(session.kernelId)}
+                    </span>
+                  )}
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-sm text-foreground/85">{session.label}</span>
                     <span className="block truncate text-2xs text-muted-foreground">

@@ -3,7 +3,6 @@ import crypto from 'node:crypto';
 import { constants } from 'node:fs';
 import type { Stats } from 'node:fs';
 import type { FileHandle } from 'node:fs/promises';
-import { homedir } from 'node:os';
 import {
   basename,
   dirname,
@@ -29,7 +28,7 @@ import {
   FILE_PREVIEW_MAX_TEXT_BYTES,
 } from '@shared/file-preview/limits';
 import type { CompleteHostServiceRegistry } from '../main/ipc/host-contract';
-import { expandPath, resolveOpenClawStateDir } from '../utils/paths';
+import { expandPath, getOpenClawConfigDir } from '../utils/paths';
 import {
   resolveClawXStagingDir,
   type AttachmentAccess,
@@ -378,7 +377,7 @@ function getWorkspaceBinaryCap(value: unknown): number {
 
 function getFilePreviewWriteRoots(): string[] {
   const roots: string[] = [];
-  roots.push(resolve(join(homedir(), '.openclaw')));
+  roots.push(resolve(getOpenClawConfigDir()));
   try {
     roots.push(resolve(app.getPath('userData')));
   } catch {
@@ -449,14 +448,18 @@ export function createFilesApi(dependencies: FilesApiDependencies = {}): Complet
   const initializeStagingArea = async (): Promise<PinnedStagingArea> => {
     const fsP = await import('node:fs/promises');
     const directories: PinnedStagingDirectory[] = [];
-    const ensureDirectory = async (lexicalPath: string, parent?: PinnedStagingDirectory) => {
+    const ensureDirectory = async (
+      lexicalPath: string,
+      parent?: PinnedStagingDirectory,
+      recursive = false,
+    ) => {
       let entryStat: Stats;
       try {
         entryStat = await fsP.lstat(lexicalPath);
       } catch (error) {
         const code = error && typeof error === 'object' && 'code' in error ? error.code : undefined;
         if (code !== 'ENOENT') throw error;
-        await fsP.mkdir(lexicalPath, { mode: 0o700 });
+        await fsP.mkdir(lexicalPath, { mode: 0o700, recursive });
         entryStat = await fsP.lstat(lexicalPath);
       }
       if (entryStat.isSymbolicLink() || !entryStat.isDirectory()) {
@@ -478,8 +481,10 @@ export function createFilesApi(dependencies: FilesApiDependencies = {}): Complet
       return pinned;
     };
 
-    const stateDir = await ensureDirectory(resolveOpenClawStateDir());
-    const mediaDir = await ensureDirectory(join(stateDir.canonicalPath, 'media'), stateDir);
+    // Staging is ClawX-owned and kernel-neutral. Attachments may be prepared
+    // before any optional runtime is installed, then granted to either kernel.
+    const dataDir = await ensureDirectory(resolve(app.getPath('userData')), undefined, true);
+    const mediaDir = await ensureDirectory(join(dataDir.canonicalPath, 'media'), dataDir);
     const outboundDir = await ensureDirectory(join(mediaDir.canonicalPath, 'outbound'), mediaDir);
     const stagingRoot = await ensureDirectory(join(outboundDir.canonicalPath, 'clawx-staging'), outboundDir);
     const stagingArea = await ensureDirectory(join(stagingRoot.canonicalPath, stagingAreaName), stagingRoot);

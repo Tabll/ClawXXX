@@ -1,0 +1,13 @@
+{
+  "id": "clawx-channel-handoff",
+  "activation": {
+    "onStartup": true
+  },
+  "name": "ClawX Channel Handoff",
+  "description": "Hands managed channel ingress to the canonical ClawX Channel Orchestrator before native agent execution.",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {}
+  }
+}
