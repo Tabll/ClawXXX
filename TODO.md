@@ -6,7 +6,7 @@
 >
 > 最近完整本地证据（2026-08-24）：Vitest 241 files / 2105 passed / 6 skipped（其中 2 项只在真实 CI 制品存在时执行）；Electron E2E 151 passed / 3 platform skips；multi-kernel chaos 28/28；DSH 精确上游树 build + focused tests 4 files / 10 passed；typecheck、comms、Harness、release validation、base-package structural audit 与官方 actionlint 1.7.12 全绿
 >
-> 远端证据核对（2026-08-24）：`origin` 尚无 `codex/upgrade-v0.5.4` 分支；公开 Actions 仅登记旧 `main` 工作流，没有 `kernel-runtime-build/promote` 运行记录；仓库 Environments API 返回 `total_count: 0`，尚未创建 `kernel-staging` / `kernel-production`。因此以下 17 个受保护 CI/签名/公证/生产分发/法务项目继续保持 `[-]`
+> 远端证据核对（2026-08-25）：提交 `699b8e4d` 已推送到 `Tabll/ClawXXX` 的 `codex/upgrade-v0.5.4` 分支；已创建 `kernel-staging` 与 `kernel-production`，两者均启用 `Tabll` required reviewer 和 selected refs，staging 仅允许 `main`，production 仅允许 `main` 与 `v*`，且暂未写入 secrets。新增的 runtime build/promote 工作流尚未进入默认分支，也未产生受保护运行、签名、公证或生产分发证据，因此以下 17 个外部证据项目继续保持 `[-]`
 >
 > 目标：OpenClaw 与 DeepSeek Harness 可选下载、共享 ClawX UI、能力同构、同时运行，并以单一 SQLite 统一保存 Conversation、Cron、Channel 与 Usage 记录
 
