@@ -6,7 +6,7 @@
 >
 > 最近完整本地证据（2026-08-24）：Vitest 241 files / 2105 passed / 6 skipped（其中 2 项只在真实 CI 制品存在时执行）；Electron E2E 151 passed / 3 platform skips；multi-kernel chaos 28/28；DSH 精确上游树 build + focused tests 4 files / 10 passed；typecheck、comms、Harness、release validation、base-package structural audit 与官方 actionlint 1.7.12 全绿
 >
-> 远端证据核对（2026-08-25）：提交 `699b8e4d` 已推送到 `Tabll/ClawXXX` 的 `codex/upgrade-v0.5.4` 分支；已创建 `kernel-staging` 与 `kernel-production`，两者均启用 `Tabll` required reviewer 和 selected refs，staging 仅允许 `main`，production 仅允许 `main` 与 `v*`，且暂未写入 secrets。新增的 runtime build/promote 工作流尚未进入默认分支，也未产生受保护运行、签名、公证或生产分发证据，因此以下 17 个外部证据项目继续保持 `[-]`
+> 远端证据核对（2026-08-30）：实现已推送到 `Tabll/ClawXXX` 的 `codex/upgrade-v0.5.4` 分支；`kernel-staging` 与 `kernel-production` 均启用 `Tabll` required reviewer 和 selected refs，staging 仅允许 `main`，production 仅允许 `main` 与 `v*`。两个环境已分别写入 runtime/宿主 Developer ID P12、独立 Apple 公证凭据与所需 identity/Team secrets；最终 P12 已轮换为未展示的随机密码，并通过隔离钥匙串导入、Hardened Runtime 和 Apple timestamp 签名验证，两枚 App 专用密码均通过 `notarytool history` 认证。runtime build/promote 工作流尚未进入默认分支，也未产生受保护制品的 `Accepted` 公证、生产晋级或分发证据，因此以下 17 个外部证据项目继续保持 `[-]`
 >
 > 目标：OpenClaw 与 DeepSeek Harness 可选下载、共享 ClawX UI、能力同构、同时运行，并以单一 SQLite 统一保存 Conversation、Cron、Channel 与 Usage 记录
 
@@ -370,7 +370,7 @@
 ## M16：安全、发布与文档
 
 - [x] `MK-1601` 完成 runtime signing key 管理、rotation、revocation runbook。
-- [-] `MK-1602` 完成 macOS runtime executable 签名/公证验证。（leaf-first Hardened Runtime、notary `Accepted`、制品与宿主校验均已编码；等待真实 Developer ID/Apple 公证日志）
+- [-] `MK-1602` 完成 macOS runtime executable 签名/公证验证。（leaf-first Hardened Runtime、notary `Accepted`、制品与宿主校验均已编码；真实 Developer ID P12 已配置到 staging/production，隔离导入、Hardened Runtime、Apple timestamp 与两枚 `notarytool` 凭据认证均已通过；仍等待受保护 CI 对真实 runtime/宿主制品产生 `Accepted`、staple 与 Gatekeeper 日志）
 - [-] `MK-1603` 完成 Windows process tree、文件锁、签名和卸载验证。（实现与 CI 门禁已完成；等待真实 Authenticode 证书和 Windows packaged runner 结果）
 - [-] `MK-1604` 完成 Linux glibc/kernel/sandbox 支持矩阵。（glibc >= 2.39、kernel >= 6.8、x64/arm64 与 DSH sandbox self-test 已固化；等待两个 Linux runner 结果）
 - [-] `MK-1605` 完成 CDN/OSS/GitHub 镜像和断点续传运行演练。（双 catalog/双 artifact host、Range/If-Range、精确 N−1 双镜像连续晋级与重试演练已实现并通过模拟测试；promotion 与宿主 release 均把线上演练设为硬门禁，仍须生产 promotion 后取得在线证据）

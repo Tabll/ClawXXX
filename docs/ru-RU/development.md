@@ -82,6 +82,7 @@ pnpm run build:vite       # Собрать только фронтенд
 pnpm build                # Полная production-сборка с ресурсами упаковки
 pnpm package              # Упаковать для текущей платформы со встроенными навыками
 pnpm package:mac          # Упаковать для macOS
+pnpm package:mac:release  # Release-пакет macOS: подпись обязательна, сбой закрывает выпуск
 pnpm package:win          # Упаковать для Windows
 pnpm package:linux        # Упаковать для Linux
 ```

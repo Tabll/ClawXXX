@@ -242,7 +242,7 @@ jobs:
         run: |
           ulimit -n 65536
           echo "File descriptor limit: $(ulimit -n)"
-          pnpm run package:mac
+          pnpm run package:mac:release
 
       - name: Verify macOS app signing, Gatekeeper and stapled notarization ticket
         if: matrix.platform == 'mac'

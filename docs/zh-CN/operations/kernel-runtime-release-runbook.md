@@ -33,8 +33,10 @@
 | `CLAWX_CATALOG_SIGNING_PRIVATE_KEY_B64` | catalog 私钥；不得与 artifact key 相同 |
 | `CLAWX_KERNEL_TRUST_KEYS_B64` | 经评审的 artifact/catalog/rollback 公钥 bundle；必须保留仍在有效 metadata 中使用的旧公钥 |
 | `OSS_ACCESS_KEY_ID` / `OSS_ACCESS_KEY_SECRET` | 仅允许写 runtime immutable prefix 与 catalog object |
+| `MAC_CERTS` / `MAC_CERTS_PASSWORD` | 宿主 Developer ID Application P12 的 base64 与独立随机密码 |
+| `APPLE_ID` / `APPLE_TEAM_ID` / `APPLE_APP_SPECIFIC_PASSWORD` | 宿主 `electron-builder` 公证；与 staging 使用可独立吊销的 App 专用密码 |
 
-宿主 `release.yml` 还使用既有 `MAC_CERTS`、`MAC_CERTS_PASSWORD`、Apple 公证、Windows PFX、OSS 与 production trust bundle secrets。GitHub Release 使用 workflow 的短期 `github.token`，不配置长期 PAT。
+宿主 `release.yml` 还使用 Windows PFX、OSS 与 production trust bundle secrets。GitHub Release 使用 workflow 的短期 `github.token`，不配置长期 PAT。macOS 正式包必须运行 `pnpm run package:mac:release`；它显式加载 `electron-builder.release.yml` 并以 `forceCodeSigning: true` 失败关闭。`pnpm run package:mac` 仅用于普通本地打包，不得替代发布命令或发布证据。
 
 ## 3. 构建 staging 完整集合
 

@@ -82,6 +82,7 @@ pnpm run build:vite       # 仅构建前端
 pnpm build                # 完整生产构建（含打包资源）
 pnpm package              # 为当前平台打包（包含预装技能资源）
 pnpm package:mac          # 为 macOS 打包
+pnpm package:mac:release  # 构建 macOS 正式包；强制签名并失败关闭
 pnpm package:win          # 为 Windows 打包
 pnpm package:linux        # 为 Linux 打包
 ```

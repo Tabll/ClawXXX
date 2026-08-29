@@ -58,13 +58,18 @@ describe('kernel platform signing and support evidence', () => {
     expect(workflow).toContain('--platform linux');
     expect(workflow).toContain('--platform-security temp/reports/platform-security.json');
     const release = readFileSync(join(process.cwd(), '.github/workflows/release.yml'), 'utf8');
+    const packageJson = JSON.parse(readFileSync(join(process.cwd(), 'package.json'), 'utf8')) as {
+      scripts: Record<string, string>;
+    };
     const releaseBuilder = readFileSync(join(process.cwd(), 'electron-builder.release.yml'), 'utf8');
     const windowsSmoke = readFileSync(join(process.cwd(), 'scripts/windows-packaged-smoke.ps1'), 'utf8');
     expect(release).toContain('stapler validate');
     expect(release).toContain('windows-packaged-smoke.ps1');
     expect(release).toContain('CLAWX_WINDOWS_SIGNING_CERT_PFX_B64');
+    expect(release).toContain('package:mac:release');
     expect(release).toContain('package:win:release');
     expect(release).not.toContain('skipping code signing');
+    expect(packageJson.scripts['package:mac:release']).toContain('--config electron-builder.release.yml');
     expect(releaseBuilder).toContain('forceCodeSigning: true');
     expect(releaseBuilder).toContain('verifyUpdateCodeSignature: true');
     expect(windowsSmoke).toContain('Get-AuthenticodeSignature');

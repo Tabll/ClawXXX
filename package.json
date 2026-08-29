@@ -83,6 +83,7 @@
         "icons": "zx scripts/generate-icons.mjs",
         "package": "node scripts/generate-ext-bridge.mjs && pnpm run build:vite && zx scripts/bundle-preinstalled-skills.mjs",
         "package:mac": "pnpm run package && node scripts/run-electron-builder.mjs --mac --publish never",
+        "package:mac:release": "pnpm run package && node scripts/run-electron-builder.mjs --mac --publish never --config electron-builder.release.yml",
         "package:mac:local": "SKIP_PREINSTALLED_SKILLS=1 pnpm run package && node scripts/run-electron-builder.mjs --mac --publish never",
         "package:win": "pnpm run prep:win-binaries && pnpm run package && node scripts/patch-nsis-win.mjs && node scripts/run-electron-builder.mjs --win --publish never",
         "package:win:release": "pnpm run prep:win-binaries && pnpm run package && node scripts/patch-nsis-win.mjs && node scripts/run-electron-builder.mjs --win --publish never --config electron-builder.release.yml",

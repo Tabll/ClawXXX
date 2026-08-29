@@ -84,6 +84,7 @@ pnpm run build:vite       # Build the frontend only
 pnpm build                # Full production build with packaging assets
 pnpm package              # Package for the current platform with bundled skills
 pnpm package:mac          # Package for macOS
+pnpm package:mac:release  # Release macOS package; signing is mandatory and fail-closed
 pnpm package:win          # Package for Windows
 pnpm package:linux        # Package for Linux
 ```
