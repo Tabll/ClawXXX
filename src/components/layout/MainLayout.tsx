@@ -36,7 +36,7 @@ export function MainLayout() {
             !isWin && 'border-t border-border/60',
           )}
         >
-          <div className="absolute right-4 top-3 z-20"><KernelTitleStatus /></div>
+          <div className="pointer-events-none absolute right-4 top-3 z-20"><KernelTitleStatus /></div>
           {isMac && (
             <div
               data-testid="mac-main-drag-region"

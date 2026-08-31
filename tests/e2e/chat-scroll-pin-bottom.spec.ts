@@ -1,4 +1,4 @@
-import type { ElectronApplication } from '@playwright/test';
+import type { ElectronApplication, Locator } from '@playwright/test';
 import {
   closeElectronApp,
   expect,
@@ -30,6 +30,29 @@ async function openChat(app: ElectronApplication) {
   return page;
 }
 
+async function waitForInitialScrollToSettle(scrollContainer: Locator) {
+  const maxScroll = () => scrollContainer.evaluate((element) => (
+    element.scrollHeight - element.clientHeight
+  ));
+  const distanceFromBottom = () => scrollContainer.evaluate((element) => (
+    Math.round(element.scrollHeight - element.clientHeight - element.scrollTop)
+  ));
+
+  await expect.poll(maxScroll).toBeGreaterThan(70);
+  await expect.poll(distanceFromBottom).toBeLessThanOrEqual(8);
+  await scrollContainer.evaluate((element) => new Promise<void>((resolve) => {
+    const view = element.ownerDocument.defaultView;
+    if (!view) {
+      resolve();
+      return;
+    }
+    view.requestAnimationFrame(() => {
+      view.requestAnimationFrame(() => resolve());
+    });
+  }));
+  await expect.poll(distanceFromBottom).toBeLessThanOrEqual(8);
+}
+
 test.describe('canonical chat scroll pin-to-bottom during runs', () => {
   test('stays pinned through tool-heavy streaming and yields to manual scroll-up', async ({ launchElectronApp }) => {
     const app = await launchElectronApp({ skipSetup: true });
@@ -43,6 +66,7 @@ test.describe('canonical chat scroll pin-to-bottom during runs', () => {
       const page = await openChat(app);
       await expect(page.getByText('Chat history message 40')).toBeVisible({ timeout: 30_000 });
       const scrollContainer = page.getByTestId('chat-scroll-container');
+      await waitForInitialScrollToSettle(scrollContainer);
       const expectPinned = async () => {
         await expect.poll(async () => scrollContainer.evaluate((element) => (
           Math.round(element.scrollHeight - element.clientHeight - element.scrollTop)

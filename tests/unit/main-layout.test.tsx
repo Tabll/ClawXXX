@@ -37,6 +37,12 @@ describe('MainLayout platform layout', () => {
     expect(screen.queryByTestId('mac-main-drag-region')).not.toBeInTheDocument();
   });
 
+  it('keeps the floating kernel status from blocking page controls', () => {
+    render(<MainLayout />);
+
+    expect(screen.getByTestId('titlebar-kernel-status').parentElement).toHaveClass('pointer-events-none');
+  });
+
   it('mounts one global web browser host beside routed main content', () => {
     render(<MainLayout />);
 

@@ -1,4 +1,4 @@
-import type { ElectronApplication } from '@playwright/test';
+import type { ElectronApplication, Locator } from '@playwright/test';
 import {
   closeElectronApp,
   expect,
@@ -28,6 +28,29 @@ async function openChat(app: ElectronApplication) {
   return page;
 }
 
+async function waitForInitialScrollToSettle(scrollContainer: Locator) {
+  const maxScroll = () => scrollContainer.evaluate((element) => (
+    element.scrollHeight - element.clientHeight
+  ));
+  const distanceFromBottom = () => scrollContainer.evaluate((element) => (
+    Math.round(element.scrollHeight - element.clientHeight - element.scrollTop)
+  ));
+
+  await expect.poll(maxScroll).toBeGreaterThan(70);
+  await expect.poll(distanceFromBottom).toBeLessThanOrEqual(8);
+  await scrollContainer.evaluate((element) => new Promise<void>((resolve) => {
+    const view = element.ownerDocument.defaultView;
+    if (!view) {
+      resolve();
+      return;
+    }
+    view.requestAnimationFrame(() => {
+      view.requestAnimationFrame(() => resolve());
+    });
+  }));
+  await expect.poll(distanceFromBottom).toBeLessThanOrEqual(8);
+}
+
 test.describe('canonical chat scroll-to-latest affordance', () => {
   test('shows a jump button when reading older history and returns to the latest turn', async ({ launchElectronApp }) => {
     const app = await launchElectronApp({ skipSetup: true });
@@ -39,6 +62,7 @@ test.describe('canonical chat scroll-to-latest affordance', () => {
       const page = await openChat(app);
       await expect(page.getByText('Chat history message 36')).toBeVisible({ timeout: 30_000 });
       const scrollContainer = page.getByTestId('chat-scroll-container');
+      await waitForInitialScrollToSettle(scrollContainer);
       await scrollContainer.evaluate((element) => {
         element.scrollTop = 0;
         element.dispatchEvent(new Event('scroll', { bubbles: true }));
