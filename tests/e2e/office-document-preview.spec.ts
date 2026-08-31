@@ -10,6 +10,7 @@ import {
   test,
   type AttachmentHostFixture,
 } from './fixtures/electron';
+import { nativePathsEqual } from './fixtures/native-path';
 import { MAC_TRAFFIC_LIGHT_SAFE_INSET } from '../../shared/sidebar-layout';
 
 const MAIN_SESSION_KEY = 'agent:main:main';
@@ -321,30 +322,26 @@ test.describe('real Office document previews', () => {
       await assertSinglePptxViewer(page);
 
       const hostCalls = await fixture.getHostInvocations();
-      expect(hostCalls).toEqual(expect.arrayContaining([
-        expect.objectContaining({
-          module: 'files',
-          action: 'readBinary',
-          payload: expect.objectContaining({ path: paths.docxPath }),
-        }),
-        expect.objectContaining({
-          module: 'files',
-          action: 'readBinary',
-          payload: expect.objectContaining({ path: paths.deckAPath }),
-        }),
-        expect.objectContaining({
-          module: 'files',
-          action: 'readWorkspaceBinary',
-          payload: expect.objectContaining({
-            workspaceRoot: fixture.workspaceDir,
-            relativePath: 'slides-b.pptx',
-          }),
-        }),
-      ]));
       expect(hostCalls.some((call) => (
         call.module === 'files'
         && call.action === 'readBinary'
-        && call.payload?.path === paths.deckBPath
+        && nativePathsEqual(call.payload?.path, paths.docxPath)
+      ))).toBe(true);
+      expect(hostCalls.some((call) => (
+        call.module === 'files'
+        && call.action === 'readBinary'
+        && nativePathsEqual(call.payload?.path, paths.deckAPath)
+      ))).toBe(true);
+      expect(hostCalls.some((call) => (
+        call.module === 'files'
+        && call.action === 'readWorkspaceBinary'
+        && nativePathsEqual(call.payload?.workspaceRoot, fixture.workspaceDir)
+        && call.payload?.relativePath === 'slides-b.pptx'
+      ))).toBe(true);
+      expect(hostCalls.some((call) => (
+        call.module === 'files'
+        && call.action === 'readBinary'
+        && nativePathsEqual(call.payload?.path, paths.deckBPath)
       ))).toBe(false);
       expect(await getRecordedLegacyIpcInvocations(app)).toEqual([]);
       expect(await page.evaluate(() => (

@@ -10,6 +10,7 @@ import {
   type AttachmentHostFixture,
 } from './fixtures/electron';
 import { expectVisibleToolCallCards } from './fixtures/acp-timeline';
+import { nativePathsEqual } from './fixtures/native-path';
 
 const MAIN_SESSION_KEY = 'agent:main:main';
 const OTHER_SESSION_KEY = 'agent:main:other';
@@ -509,7 +510,7 @@ test.describe('ClawX chat file changes', () => {
       await expect.poll(async () => (await fixture.getHostInvocations()).some((request) => (
         request.module === 'files'
         && request.action === 'listTree'
-        && request.payload?.path === fixture.workspaceDir
+        && nativePathsEqual(request.payload?.path, fixture.workspaceDir)
         && (request.payload?.opts as { includeHidden?: boolean } | undefined)?.includeHidden === true
       ))).toBe(true);
       await fixture.clearInvocations();
@@ -520,11 +521,12 @@ test.describe('ClawX chat file changes', () => {
       await expect(panel.getByRole('button', { name: 'Show in file manager' })).toHaveCount(0);
       await expect(panel.getByRole('button', { name: 'Open directly' })).toHaveCount(0);
       const invocations = await fixture.getHostInvocations();
-      expect(invocations).toEqual(expect.arrayContaining([expect.objectContaining({
-        module: 'files',
-        action: 'readWorkspaceText',
-        payload: { workspaceRoot: fixture.workspaceDir, relativePath: 'blocked.ts' },
-      })]));
+      expect(invocations.some((request) => (
+        request.module === 'files'
+        && request.action === 'readWorkspaceText'
+        && nativePathsEqual(request.payload?.workspaceRoot, fixture.workspaceDir)
+        && request.payload?.relativePath === 'blocked.ts'
+      ))).toBe(true);
       expect(invocations.filter((request) => (
         (request.module === 'files' && request.action !== 'readWorkspaceText')
         || request.module === 'shell'
