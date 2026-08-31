@@ -23,8 +23,8 @@ describe('DeepSeek Harness Windows ambient-temp parity patch', () => {
       .map((match) => [match[1], match[2]]);
 
     expect(source).toMatchObject({
-      artifactVersion: '0.1.1-rc.2+clawx.8',
-      patchRevision: 8,
+      artifactVersion: '0.1.2-alpha.2+clawx.9',
+      patchRevision: 9,
     });
     expect(source.patches.map((entry) => entry.path)).toEqual([
       'kernels/deepseek-harness/patches/0001-clawx-overlay-lockfile.patch',

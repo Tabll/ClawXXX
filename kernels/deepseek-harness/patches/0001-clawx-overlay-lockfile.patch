@@ -1,8 +1,8 @@
 diff --git a/pnpm-lock.yaml b/pnpm-lock.yaml
-index 737a21eea64d9ab25ed35258719442ae55376710..b22dde79b3354d99e749eabbbe9bd9af7bc3c4b6 100644
+index 828cd597..9e0ba9d1 100644
 --- a/pnpm-lock.yaml
 +++ b/pnpm-lock.yaml
-@@ -817,6 +817,70 @@ importers:
+@@ -625,6 +625,76 @@ importers:
          specifier: workspace:^
          version: link:../../interaction/user-approval
  
@@ -11,6 +11,9 @@ index 737a21eea64d9ab25ed35258719442ae55376710..b22dde79b3354d99e749eabbbe9bd9af
 +      '@clawx/dsh-rich-events':
 +        specifier: workspace:^
 +        version: link:../clawx-rich-events
++      '@deepseek-ai/dsh-session-projection':
++        specifier: workspace:^
++        version: link:../../session/session-projection
 +    devDependencies:
 +      '@deepseek-ai/cordis':
 +        specifier: workspace:^
@@ -64,6 +67,9 @@ index 737a21eea64d9ab25ed35258719442ae55376710..b22dde79b3354d99e749eabbbe9bd9af
 +      '@deepseek-ai/dsh-session':
 +        specifier: workspace:^
 +        version: link:../../core/session
++      '@deepseek-ai/dsh-tool-todo':
++        specifier: workspace:^
++        version: link:../../todo/tool-todo
 +      '@deepseek-ai/dsh-tools':
 +        specifier: workspace:^
 +        version: link:../../core/tools
@@ -72,8 +78,8 @@ index 737a21eea64d9ab25ed35258719442ae55376710..b22dde79b3354d99e749eabbbe9bd9af
 +
    packages/api/gateway:
      dependencies:
-       '@deepseek-ai/dsh-typert-protocol':
-@@ -3602,6 +3666,8 @@ importers:
+       '@deepseek-ai/dsh-deque':
+@@ -4345,6 +4415,8 @@ importers:
          specifier: workspace:^
          version: link:../../core/system-prompt
  
@@ -82,7 +88,7 @@ index 737a21eea64d9ab25ed35258719442ae55376710..b22dde79b3354d99e749eabbbe9bd9af
    packages/core/agent:
      devDependencies:
        '@deepseek-ai/cordis':
-@@ -3823,6 +3889,19 @@ importers:
+@@ -4594,6 +4666,19 @@ importers:
          specifier: workspace:^
          version: link:../../llm/llm
  
@@ -100,9 +106,9 @@ index 737a21eea64d9ab25ed35258719442ae55376710..b22dde79b3354d99e749eabbbe9bd9af
 +        version: link:../../runtime-diagnostics/invariants
 +
    packages/credentials/credentials:
-     devDependencies:
-       '@deepseek-ai/cordis':
-@@ -5932,6 +6011,232 @@ importers:
+     dependencies:
+       '@deepseek-ai/dsh-brand':
+@@ -7038,6 +7123,235 @@ importers:
          specifier: workspace:^
          version: link:../../../vendor/cordis
  
@@ -186,6 +192,9 @@ index 737a21eea64d9ab25ed35258719442ae55376710..b22dde79b3354d99e749eabbbe9bd9af
 +      '@deepseek-ai/dsh-credentials':
 +        specifier: workspace:^
 +        version: link:../../credentials/credentials
++      '@deepseek-ai/dsh-deepseek-llm-api-extensions':
++        specifier: workspace:^
++        version: link:../../llm/deepseek-llm-api-extensions
 +      '@deepseek-ai/dsh-fs':
 +        specifier: workspace:^
 +        version: link:../../fs/fs
@@ -333,9 +342,9 @@ index 737a21eea64d9ab25ed35258719442ae55376710..b22dde79b3354d99e749eabbbe9bd9af
 +        version: link:../../test-support/agent-loop-testkit
 +
    packages/sandbox/sandbox:
-     devDependencies:
-       '@deepseek-ai/cordis':
-@@ -6346,6 +6651,36 @@ importers:
+     dependencies:
+       '@deepseek-ai/dsh-util-values':
+@@ -7566,6 +7880,39 @@ importers:
          specifier: workspace:^
          version: link:../../util/timeout
  
@@ -368,11 +377,14 @@ index 737a21eea64d9ab25ed35258719442ae55376710..b22dde79b3354d99e749eabbbe9bd9af
 +      '@deepseek-ai/dsh-session-persistence':
 +        specifier: workspace:^
 +        version: link:../session-persistence
++      '@deepseek-ai/dsh-session-projection':
++        specifier: workspace:^
++        version: link:../session-projection
 +
    packages/session/session-persistence-jsonl:
      dependencies:
        '@deepseek-ai/schemastery':
-@@ -7187,6 +7522,15 @@ importers:
+@@ -8497,6 +8844,15 @@ importers:
          specifier: workspace:^
          version: link:../../core/tools
  
@@ -388,21 +400,45 @@ index 737a21eea64d9ab25ed35258719442ae55376710..b22dde79b3354d99e749eabbbe9bd9af
    packages/spill/spill:
      devDependencies:
        '@deepseek-ai/cordis':
+@@ -10939,6 +11295,11 @@ importers:
+ 
+ packages:
+ 
++  '@agentclientprotocol/sdk@0.25.1':
++    resolution: {integrity: sha512-jx2rF3bdpGwZ75Q/meyEDLLbYmbtxk82Uh9hDCdxDvcEedBnNSF5hZAnL/kJR5VNz56JqwOmqnAqasC84MwwkQ==}
++    peerDependencies:
++      zod: ^3.25.0 || ^4.0.0
++
+   '@agentclientprotocol/sdk@1.4.0':
+     resolution: {integrity: sha512-/eufudw+aFY1LKLolT6yFE6UMmYRl7fMJ/DEONSIyR6wI3slHWITBsANRGqXEY8FRzqUxwh7QEaGiZHcJPVThg==}
+     peerDependencies:
+@@ -16638,6 +16999,10 @@ packages:
+ 
+ snapshots:
+ 
++  '@agentclientprotocol/sdk@0.25.1(zod@4.4.3)':
++    dependencies:
++      zod: 4.4.3
++
+   '@agentclientprotocol/sdk@1.4.0(zod@4.4.3)':
+     dependencies:
+       zod: 4.4.3
 diff --git a/tsconfig.host.json b/tsconfig.host.json
-index f37b98ea57a8f6b257629c07690440c81e15f834..1b6ea7d1817ed532604f84d7fbaa1aef761b8f5f 100644
+index f8166642..f7e77a52 100644
 --- a/tsconfig.host.json
 +++ b/tsconfig.host.json
-@@ -307,6 +307,12 @@
+@@ -329,6 +329,14 @@
      { "path": "./packages/lsp/lsp" },
      { "path": "./packages/lsp/lsp-stdio" },
      { "path": "./packages/lsp/tool-lsp" },
--    { "path": "./apps/cli" }
-+    { "path": "./apps/cli" },
 +    { "path": "./packages/acp/clawx-rich-events" },
 +    { "path": "./packages/acp/clawx-acp-bridge" },
 +    { "path": "./packages/agents/clawx-dsh-agent-catalog" },
 +    { "path": "./packages/control/clawx-control-bridge" },
++    { "path": "./packages/credentials/clawx-dsh-credential-provider" },
++    { "path": "./packages/session/session-persistence-clawx" },
++    { "path": "./packages/skills/clawx-dsh-skill-catalog" },
 +    { "path": "./packages/runtime/clawx-runtime-host" },
-+    { "path": "./packages/session/session-persistence-clawx" }
+     { "path": "./apps/cli" }
    ]
  }

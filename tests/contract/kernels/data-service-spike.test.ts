@@ -31,7 +31,7 @@ function admission(input: {
     runId: asRunId(input.run),
     routing: {
       kernelId: input.kernelId,
-      kernelVersion: input.kernelId === 'openclaw' ? '2026.7.1-2' : '0.1.1-rc.2',
+      kernelVersion: input.kernelId === 'openclaw' ? '2026.7.1-2' : '0.1.2-alpha.2',
       generation: input.generation ?? 1,
       ...testAgentRouting(input.kernelId, { providerId: 'fake', modelId: 'fake-model' }),
       contextCompilerVersion: '1.0.0',

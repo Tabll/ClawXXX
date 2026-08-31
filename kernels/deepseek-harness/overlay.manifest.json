@@ -8,11 +8,11 @@
     },
     {
       "path": "packages/acp/clawx-acp-bridge/package.json",
-      "sha256": "be2bd33fcb497672f1f46919b096c8d15bfb19472d640c3d86f4471a830e039f"
+      "sha256": "f321c1cd6bd5510a21b96d3089730c57634a59b5df1528767ea1016ba24dfaaf"
     },
     {
       "path": "packages/acp/clawx-acp-bridge/src/index.ts",
-      "sha256": "c090b7448414fe3960fa880b8b8c3d99a0bb5f79a716a09d1f7302531ab2ab86"
+      "sha256": "55d3795a4cc1e70d9c55d086afa38e88fb024baba309409ae7d21cc512e237f9"
     },
     {
       "path": "packages/acp/clawx-acp-bridge/src/invariant.ts",
@@ -20,7 +20,7 @@
     },
     {
       "path": "packages/acp/clawx-acp-bridge/tests/bridge.spec.ts",
-      "sha256": "d8bfc06112da7761a6cf451d065c1b43f1d79243c048a7001ca0971dcbf387ef"
+      "sha256": "4f20e19375d26851f05583bc42900b31cf0601c18efdbd091d7b126524f0af4e"
     },
     {
       "path": "packages/acp/clawx-acp-bridge/tsconfig.json",
@@ -32,11 +32,11 @@
     },
     {
       "path": "packages/acp/clawx-rich-events/package.json",
-      "sha256": "a61ef1b8028464b3ffe2388adcf8a4e5e11896e9c9c3f52456fadb7178e50cf6"
+      "sha256": "66d9ef68c039171aa95bb6b98b69e268626a50e990467f547bb1c30cb8b85482"
     },
     {
       "path": "packages/acp/clawx-rich-events/src/index.ts",
-      "sha256": "5c289ee608c5286bc2c3a83bee1aa8d4d6c942209c7857055c1ba4b9ac8ea93b"
+      "sha256": "d5cd5a3151ad28cfc258db0c2b392bab156523b43141613e1e1dca7a2b1096b7"
     },
     {
       "path": "packages/acp/clawx-rich-events/src/invariant.ts",
@@ -44,11 +44,11 @@
     },
     {
       "path": "packages/acp/clawx-rich-events/tests/rich-events.spec.ts",
-      "sha256": "28fddf440f0541ebc8b4a02e9d2d9c70ab84972395d7dcd867d8720511dc820d"
+      "sha256": "857344538e21fa55ddb1f59c007e2a4325cb73ade9f9a3293c2497e55144f1c5"
     },
     {
       "path": "packages/acp/clawx-rich-events/tsconfig.json",
-      "sha256": "d50afa98d7dd67b28f4f5d07bdd5b9e5c9183ee4ca2d35d79082d1f2cad45e60"
+      "sha256": "dc771daa1aac5ffbb51898a95b3428d6d221e690eadf31561d5c89212658cc2b"
     },
     {
       "path": "packages/agents/clawx-dsh-agent-catalog/README.md",
@@ -56,7 +56,7 @@
     },
     {
       "path": "packages/agents/clawx-dsh-agent-catalog/package.json",
-      "sha256": "52df1fc2cb5742e08e977c0811917496b6acb767254a7586a9d57cee3138bfd1"
+      "sha256": "2f9b237d2aceb48473bce45d575379e0487d4bc07f8e08cffa14d0b977924538"
     },
     {
       "path": "packages/agents/clawx-dsh-agent-catalog/src/index.ts",
@@ -80,7 +80,7 @@
     },
     {
       "path": "packages/control/clawx-control-bridge/package.json",
-      "sha256": "e717fc37eecca17666cceb8ede63063ecda0d007f16787c35ab135814d986afb"
+      "sha256": "760bd6b0d449a01ad0640401f655b8ee212c510c110b0476d72d46ed529a3c13"
     },
     {
       "path": "packages/control/clawx-control-bridge/src/bin.ts",
@@ -92,7 +92,7 @@
     },
     {
       "path": "packages/control/clawx-control-bridge/tests/control.spec.ts",
-      "sha256": "21779eb30d96de93bedd576651542c342d3fe30547e13ad39b14ef53a765b072"
+      "sha256": "a8b38345df74f3f859d1599d57e2c4259baface79d14b56dce5ce72b561be4de"
     },
     {
       "path": "packages/control/clawx-control-bridge/tsconfig.json",
@@ -108,7 +108,7 @@
     },
     {
       "path": "packages/credentials/clawx-dsh-credential-provider/package.json",
-      "sha256": "1a67b27b6d9eff508f9f26be6bf24cc3dcd97debd5820c5c17e826b0016a1fe0"
+      "sha256": "3d05efffba2fc5bfe5f312634c3b72db2d95fbd467804d2fbe94626b97f4ecb0"
     },
     {
       "path": "packages/credentials/clawx-dsh-credential-provider/src/index.ts",
@@ -136,7 +136,7 @@
     },
     {
       "path": "packages/runtime/clawx-runtime-host/package.json",
-      "sha256": "9a919c5fcb40069a20aee0417a825c0b98d05cd194cef4b66c189f0b0d2e1915"
+      "sha256": "51ca26038845f1e310969286324fee109db784573c7c474ba53a1630252d492b"
     },
     {
       "path": "packages/runtime/clawx-runtime-host/src/bin.ts",
@@ -152,7 +152,7 @@
     },
     {
       "path": "packages/runtime/clawx-runtime-host/src/index.ts",
-      "sha256": "6976d79fbb66b8da9b93ce6d705f00dccd8ae4b6643541ab751731ae957e1fc9"
+      "sha256": "79fadbfc7b6f95a4e3485e39ef5e4dd007c697523597b562b5d57e0bb02a1add"
     },
     {
       "path": "packages/runtime/clawx-runtime-host/src/invariant.ts",
@@ -168,7 +168,7 @@
     },
     {
       "path": "packages/runtime/clawx-runtime-host/tests/runtime.spec.ts",
-      "sha256": "c0046950dc8bfd92eb5df98c99237655862172dad7e5c7a655c7a306c883f005"
+      "sha256": "6ee9cf41905578088ecb85af7fdc0612a5a531e7e47072c6673d140d404b36da"
     },
     {
       "path": "packages/runtime/clawx-runtime-host/tsconfig.json",
@@ -184,11 +184,11 @@
     },
     {
       "path": "packages/session/session-persistence-clawx/package.json",
-      "sha256": "f1a8ceda4cec2ecfebb25dde371b4e255f6fcc96749d78a0c54c3b9856d6f661"
+      "sha256": "66356451a3c6fc87a62b4ee8ce39e433cea6f7ad77bdce9e57cda8f4f6121ead"
     },
     {
       "path": "packages/session/session-persistence-clawx/src/index.ts",
-      "sha256": "0a1b07a0075dee06d75fe7d0eed84b22b9d57f44a0485745d61f5ecb90b48efa"
+      "sha256": "81584ad7570f25f0779d53e4689466a07ebdf3beced133d598b82e7f9773cdf6"
     },
     {
       "path": "packages/session/session-persistence-clawx/src/invariant.ts",
@@ -204,7 +204,7 @@
     },
     {
       "path": "packages/session/session-persistence-clawx/tests/resume.spec.ts",
-      "sha256": "e0f789db101e7467386086fb5b15f6373cc4cf84a3a2d64d7d0abf467d91f2a5"
+      "sha256": "c98436ab6600de68acb97f289aacdd29829a13726d80f8a831510911f6b69ffd"
     },
     {
       "path": "packages/session/session-persistence-clawx/tsconfig.json",
@@ -216,7 +216,7 @@
     },
     {
       "path": "packages/skills/clawx-dsh-skill-catalog/package.json",
-      "sha256": "7572350bd6ade2d0f519a606f9658c6750c3a656b715a794bd718b7b0046f653"
+      "sha256": "6c5f8edafe4d2320c831810b84b2f37baf17891edaa26f4b1482fc4be200fd42"
     },
     {
       "path": "packages/skills/clawx-dsh-skill-catalog/src/index.ts",

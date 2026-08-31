@@ -251,10 +251,7 @@ export class ClawXDshAcpBridge {
       this.onSessionEvent(session, event)
     }))
     this.disposers.push(ctx.on('approval/request', (request: ApprovalRequest) => this.onApproval(request)))
-    const questions = ctx.get('userQuestions')
-    if (questions !== undefined) {
-      this.disposers.push(questions.registerProvider({ ask: request => this.onQuestions(request) }))
-    }
+    this.disposers.push(ctx.on('user-questions/request', request => this.onQuestions(request)))
   }
 
   activeRunIds(): string[] {

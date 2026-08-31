@@ -4,9 +4,9 @@
 >
 > 状态：本地 release candidate 已完成 M0–M15 与 M16 可在仓库内完成的实现/验证；受保护五目标运行时签名、公证、生产镜像演练及许可证法务批准仍是公开发布阻断项，不以本机结果代替
 >
-> 最近完整本地证据（2026-08-24）：Vitest 241 files / 2105 passed / 6 skipped（其中 2 项只在真实 CI 制品存在时执行）；Electron E2E 151 passed / 3 platform skips；multi-kernel chaos 28/28；DSH 精确上游树 build + focused tests 4 files / 10 passed；typecheck、comms、Harness、release validation、base-package structural audit 与官方 actionlint 1.7.12 全绿
+> 最近完整本地证据（2026-09-01）：Vitest 243 files / 241 passed / 2 skipped、2116 tests passed / 6 skipped（其中制品依赖项只在真实 CI 制品存在时执行）；Electron E2E 既有证据 151 passed / 3 platform skips；multi-kernel chaos 既有证据 28/28；DSH `0.1.2-alpha.2` 干净精确上游树完成严格 patch/overlay 重放、冻结安装、完整 host build、12 files / 43 focused tests，并在真实 macOS `sandbox-exec` 下通过 3/3 runtime self-tests；typecheck、lint、comms 与本任务 Harness 全绿
 >
-> 远端证据核对（2026-08-30）：实现已推送到 `Tabll/ClawXXX` 的 `codex/upgrade-v0.5.4` 分支；`kernel-staging` 与 `kernel-production` 均启用 `Tabll` required reviewer 和 selected refs，staging 仅允许 `main`，production 仅允许 `main` 与 `v*`。两个环境已分别写入 runtime/宿主 Developer ID P12、独立 Apple 公证凭据与所需 identity/Team secrets；最终 P12 已轮换为未展示的随机密码，并通过隔离钥匙串导入、Hardened Runtime 和 Apple timestamp 签名验证，两枚 App 专用密码均通过 `notarytool history` 认证。runtime build/promote 工作流尚未进入默认分支，也未产生受保护制品的 `Accepted` 公证、生产晋级或分发证据，因此以下 17 个外部证据项目继续保持 `[-]`
+> 远端证据核对（2026-09-01）：实现分支已切换为 `Tabll/ClawXXX` 的 `main`；`kernel-staging` 与 `kernel-production` 均启用 `Tabll` required reviewer 和 selected refs，staging 仅允许 `main`，production 仅允许 `main` 与 `v*`。两个环境已分别写入 runtime/宿主 Developer ID P12、独立 Apple 公证凭据与所需 identity/Team secrets；最终 P12 已轮换为未展示的随机密码，并通过隔离钥匙串导入、Hardened Runtime 和 Apple timestamp 签名验证，两枚 App 专用密码均通过 `notarytool history` 认证。基于旧 DSH 输入 commit `44032823` 的待审批运行不得晋级；`0.1.2-alpha.2+clawx.9` 必须从升级后的新 commit 重新构建，当前仍没有 `Accepted` 公证、生产晋级或分发证据，因此外部证据项目继续保持 `[-]`
 >
 > 目标：OpenClaw 与 DeepSeek Harness 可选下载、共享 ClawX UI、能力同构、同时运行，并以单一 SQLite 统一保存 Conversation、Cron、Channel 与 Usage 记录
 
@@ -224,7 +224,7 @@
 - [x] `MK-0809` 实现 health、agents、providers、skills、usage、diagnostics RPC/events；Conversation catalog 不来自 DSH。
 - [x] `MK-0810` stdout protocol-pure，所有诊断走 stderr/structured logs。
 - [x] `MK-0811` 添加 DSH upstream-version patch regression 和 protocol golden replays。
-- [-] `MK-0812` 完成 macOS/Windows/Linux sandbox/tool/permission smoke。（源码与签名制品 self-test 已接入五目标 matrix；Windows 额外验证 ACL shell 与文件工具均拒绝 ambient `%TEMP%`，本机受嵌套 sandbox 限制，等待远端 matrix 首轮执行）
+- [-] `MK-0812` 完成 macOS/Windows/Linux sandbox/tool/permission smoke。（源码与签名制品 self-test 已接入五目标 matrix；2026-09-01 本机在系统沙箱外调用真实 macOS `sandbox-exec` 已通过 3/3，Windows 额外验证 ACL shell 与文件工具均拒绝 ambient `%TEMP%`，仍等待 Windows/Linux 与签名制品 matrix 首轮执行）
 - [x] `MK-0813` 实现 `@clawx/dsh-clawx-persistence`，只通过 DataService context/event RPC 持久化并禁用 DSH durable JSONL。
 
 ### M8 Acceptance
@@ -393,6 +393,25 @@
 - [x] 单一 SQLite 是 Conversation/Cron/Channel/Usage 唯一 durable authority；两个 runtime dirs 无第二份 durable history。（源码边界、adapter、runtime-dir、历史 cutover 与路径扫描 tests 已通过）
 - [x] 同一 Conversation 跨内核续接、停止/卸载后离线浏览、backup/restore/corruption recovery 全部通过 E2E/chaos。
 - [-] 安全、许可证、文档、i18n、性能和平台支持矩阵全部签字确认。（仓库内文档/i18n/性能已完成；平台签名、生产分发和法务签字待外部证据）
+
+## M17：DeepSeek Harness `0.1.2-alpha.2` 维护升级
+
+- [x] `MK-1701` 从官方 immutable tag `dsh-v0.1.2-alpha.2` 冻结 commit `0a53fb55bea101816fa226bb964ae2bed71c343b`、tree、lockfile 与 THIRD_PARTY_NOTICES 哈希。
+- [x] `MK-1702` 将累积制品身份升级为 `0.1.2-alpha.2+clawx.9`，同步 source/runtime/lock/patch-regression/overlay manifest 与逐文件 SHA-256。
+- [x] `MK-1703` 在全新 checkout 上以禁止 fuzz/offset 的严格模式重放 lock/project patch 与 Windows ambient-temp sandbox patch，并验证 prepared lockfile。
+- [x] `MK-1704` 适配上游 ToolCallId、SessionProjection、BorrowedSessionSource、Loader base URL、AgentPresets、Todo rich-event 类型与新增依赖闭包。
+- [x] `MK-1705` 适配作用域化 `user-questions/request`：孤儿问题只接受明确 fail-closed 原因，并新增 live Agent 提问—permission—answer 闭环测试，禁止用任意异常放宽自检。
+- [x] `MK-1706` 在干净源码树完成 `pnpm install --frozen-lockfile`、`build:lib:host`、12 files / 43 focused tests 与真实 macOS sandbox self-test 3/3。
+- [x] `MK-1707` 完成仓库 typecheck、lint（0 errors / 7 existing warnings）、241 files / 2116 tests、comms replay/compare 和本任务 Harness fast/comms profiles。
+- [x] `MK-1708` 同步四语言 release notes、架构/reference、THIRD_PARTY_NOTICES 与本清单；README 四版本经复核无需改动功能描述。
+- [-] `MK-1709` 从升级后的 `main` commit 重新执行受保护五目标 runtime build、macOS 公证、COS/GitHub 镜像上传、线上 Range/If-Range 演练与 production promotion；旧 DSH 输入运行禁止审批或晋级。
+
+### M17 Acceptance
+
+- [x] 最新 DSH 上游版本、ClawX patch revision、所有 descriptor/hash 和文档身份完全一致。
+- [x] ClawX 统一 SQLite、并行多内核、凭据、Agent、Skill、权限、取消与 rich event 适配边界未退化。
+- [x] 升级输入可由干净 checkout 严格复现并通过冻结安装、完整 host build、focused tests 与本机沙箱自检。
+- [-] 五平台签名制品、Apple `Accepted`/staple/Gatekeeper、COS/GitHub 双镜像和线上断点续传证据待新 commit 的受保护 CI 完成。
 
 ## 每个实现 PR 的最低检查
 

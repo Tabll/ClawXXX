@@ -20,10 +20,10 @@ function descriptor(overrides: Partial<KernelArtifactDescriptorV1> = {}): Kernel
     schemaVersion: 1,
     kernelId: 'deepseek-harness',
     displayName: 'DeepSeek Harness',
-    upstreamVersion: '0.1.1-rc.2',
-    upstreamCommit: 'b150a551b8d465e31e418e1b2eaf5e79bbb7d28e',
-    patchRevision: 3,
-    artifactVersion: '0.1.1-rc.2+clawx.3',
+    upstreamVersion: '0.1.2-alpha.2',
+    upstreamCommit: '0a53fb55bea101816fa226bb964ae2bed71c343b',
+    patchRevision: 9,
+    artifactVersion: '0.1.2-alpha.2+clawx.9',
     platform: 'win32',
     arch: 'x64',
     minHostVersion: '0.6.0',
@@ -78,7 +78,7 @@ describe('DeepSeek Harness managed driver/runtime contract', () => {
       platform: 'win32',
       requireFiles: false,
     });
-    expect(location.entryPath).toBe('/managed/kernels/deepseek-harness/installs/0.1.1-rc.2+clawx.3/runtime/kernel/lib/bin.js');
+    expect(location.entryPath).toBe('/managed/kernels/deepseek-harness/installs/0.1.2-alpha.2+clawx.9/runtime/kernel/lib/bin.js');
     expect(location.nodeExecutable).toMatch(/runtime\/node\/node\.exe$/);
     expect(location.capabilitiesDigest).toBe(hash);
     expect(buildDeepSeekHarnessEnvironment(location, 9)).toMatchObject({
@@ -119,7 +119,7 @@ describe('DeepSeek Harness managed driver/runtime contract', () => {
       files: string[]; dependencies: Record<string, string>;
     };
 
-    expect(source.git.commit).toBe('b150a551b8d465e31e418e1b2eaf5e79bbb7d28e');
+    expect(source.git.commit).toBe('0a53fb55bea101816fa226bb964ae2bed71c343b');
     expect(runtime.artifactVersion).toBe(source.artifactVersion);
     expect(runtime.entrypoints).toEqual({
       chat: 'runtime/kernel/node_modules/@clawx/dsh-acp-bridge/lib/index.js',

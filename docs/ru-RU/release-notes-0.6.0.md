@@ -5,7 +5,7 @@
 ## Главное
 
 - OpenClaw удалён из base installer и загружается по выбору при первом использовании.
-- DeepSeek Harness `0.1.1-rc.2+clawx.8` добавлен вторым optional kernel; оба могут работать одновременно и независимо обновляться, завершаться с ошибкой и откатываться.
+- DeepSeek Harness `0.1.2-alpha.2+clawx.9` добавлен вторым optional kernel; оба могут работать одновременно и независимо обновляться, завершаться с ошибкой и откатываться.
 - Оба используют единые ClawX Chat, Providers/Models, Agents, Channels, Cron, Skills, Usage, Diagnostics и canonical contracts.
 - Вся новая durable history хранится в одном Main-owned SQLite/Blob. Один Conversation можно продолжить другим kernel на границе turn через redacted portable context.
 - Runtime — воспроизводимый patched CI artifact с signed/expiring metadata, platform evidence, SBOM, provenance, license report, repair/rollback и зеркалами Tencent COS/GitHub.

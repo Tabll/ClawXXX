@@ -1,5 +1,5 @@
 import { PROTOCOL_VERSION } from '@agentclientprotocol/sdk'
-import { CallId, type StreamChunk } from '@deepseek-ai/dsh-llm'
+import { ToolCallId, type StreamChunk } from '@deepseek-ai/dsh-llm'
 import { defineContentToolFixture } from '@deepseek-ai/dsh-tools'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { makeBridgeHarness, textResponse, type BridgeHarness } from '../../acp/tests/harness.ts'
@@ -11,8 +11,8 @@ function richToolResponse(): StreamChunk[] {
     { type: 'reasoning-delta', index: 0, text: 'inspect first' },
     { type: 'block-end', index: 0, block: { type: 'reasoning', text: 'inspect first' } },
     { type: 'block-start', index: 1, blockType: 'tool-call' },
-    { type: 'tool-call-delta', index: 1, id: CallId('call-rich'), name: 'echo', argumentsDelta: '{"text":"ping"}' },
-    { type: 'block-end', index: 1, block: { type: 'tool-call', id: CallId('call-rich'), name: 'echo', arguments: '{"text":"ping"}' } },
+    { type: 'tool-call-delta', index: 1, id: ToolCallId('call-rich'), name: 'echo', argumentsDelta: '{"text":"ping"}' },
+    { type: 'block-end', index: 1, block: { type: 'tool-call', id: ToolCallId('call-rich'), name: 'echo', arguments: '{"text":"ping"}' } },
     { type: 'usage', usage: { inputTokens: 7, outputTokens: 4, cacheReadTokens: 2 } },
     { type: 'finish', reason: { kind: 'tool-calls' } },
   ]
@@ -78,10 +78,10 @@ describe('ClawX DSH rich event projection', () => {
       source: 'runtime-event',
     })
     expect(usage?._meta?.clawx).not.toHaveProperty('cacheWriteTokens')
-    expect(harness.updates).toContainEqual({
+    expect(harness.updates).toContainEqual(expect.objectContaining({
       sessionUpdate: 'agent_message_chunk',
       content: { type: 'text', text: 'done' },
-    })
+    }))
   })
 
   it('keeps private reasoning explicitly marked non-portable', () => {

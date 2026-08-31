@@ -5,7 +5,7 @@
 ## 主要变化
 
 - OpenClaw 已从主安装包移出，改为首次使用或用户选择时下载。
-- DeepSeek Harness `0.1.1-rc.2+clawx.8` 成为第二个可选内核；两个内核可并行运行并独立更新、失败或回滚。
+- DeepSeek Harness `0.1.2-alpha.2+clawx.9` 成为第二个可选内核；两个内核可并行运行并独立更新、失败或回滚。
 - 两个内核完全复用当前 Chat、Providers/Models、Agents、Channels、Cron、Skills、Usage 与 Diagnostics UI 和 canonical contracts。
 - 单一 Main-owned SQLite/Blob 服务保存全部新 durable history；同一 Conversation 可在 turn 边界通过脱敏 portable context 切换内核续接。
 - 运行时是可复现、可打补丁的 CI 制品，包含有期限签名 metadata、平台安全证据、SBOM、provenance、许可证报告、repair/rollback 与双镜像分发。

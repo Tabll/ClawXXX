@@ -1,7 +1,7 @@
 {
   "name": "@clawx/dsh-rich-events",
   "description": "DeepSeek Harness session-event to rich ACP projection for ClawX",
-  "version": "0.1.1-rc.2",
+  "version": "0.1.2-alpha.2",
   "private": true,
   "type": "module",
   "main": "lib/index.js",
@@ -30,7 +30,8 @@
   "peerDependencies": {
     "@deepseek-ai/cordis": "workspace:^",
     "@deepseek-ai/dsh-invariants": "workspace:^",
-    "@deepseek-ai/dsh-session": "workspace:^"
+    "@deepseek-ai/dsh-session": "workspace:^",
+    "@deepseek-ai/dsh-tool-todo": "workspace:^"
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "workspace:^",
@@ -38,6 +39,7 @@
     "@deepseek-ai/dsh-invariants": "workspace:^",
     "@deepseek-ai/dsh-llm": "workspace:^",
     "@deepseek-ai/dsh-session": "workspace:^",
+    "@deepseek-ai/dsh-tool-todo": "workspace:^",
     "@deepseek-ai/dsh-tools": "workspace:^"
   }
 }

@@ -12,6 +12,7 @@ import {
   SessionPersistence,
   SessionPersistenceRevision,
   type PersistenceBackend,
+  type BorrowedSessionSource,
   type SessionInspection,
   type SessionLocation,
   type SessionPersistenceSnapshot,
@@ -165,6 +166,10 @@ export class ClawXSessionPersistence extends SessionPersistence {
 
   inspect(id: SessionId, signal?: AbortSignal): Promise<SessionInspection> {
     return this.coordinator.inspect(id, signal)
+  }
+
+  override borrowSession(id: SessionId, signal?: AbortSignal): Promise<BorrowedSessionSource> {
+    return this.coordinator.borrowSession(id, signal)
   }
 
   readFrom(id: SessionId, fromSeq: number, signal?: AbortSignal): Promise<{

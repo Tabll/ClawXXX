@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
-  "upstreamCommit": "b150a551b8d465e31e418e1b2eaf5e79bbb7d28e",
-  "upstreamLockSha256": "6f20c268e76df1294c16f016ab10a7fa1271608b4db0f4fafe8f7c21ec90013e",
-  "preparedLockSha256": "e92720e4911c551ff76484ecb29344e05d5cb5cb17a069d09cd368ce2e316a96",
+  "upstreamCommit": "0a53fb55bea101816fa226bb964ae2bed71c343b",
+  "upstreamLockSha256": "6cc109a574218f51762474455c8d72e5f7c2625aedf25e85569dba1af7adcef0",
+  "preparedLockSha256": "444dff876e39411451544e0c2617168eb816053ca0ff4663060750bf8777d4c1",
   "workspacePackages": [
     "@clawx/dsh-rich-events",
     "@clawx/dsh-acp-bridge",
@@ -10,7 +10,8 @@
     "@clawx/dsh-control-bridge",
     "@clawx/dsh-credential-provider",
     "@clawx/dsh-runtime-host",
-    "@clawx/dsh-clawx-persistence"
+    "@clawx/dsh-clawx-persistence",
+    "@clawx/dsh-skill-catalog"
   ],
   "commands": [
     "pnpm install --frozen-lockfile",

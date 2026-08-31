@@ -9,7 +9,7 @@ const identity = {
   kernelId: 'deepseek-harness' as const,
   generation: 7,
   pid: 4321,
-  artifactVersion: '0.1.1-rc.2+clawx.2',
+  artifactVersion: '0.1.2-alpha.2+clawx.9',
 };
 
 function account(overrides: Partial<CanonicalProviderAccount> = {}): CanonicalProviderAccount {

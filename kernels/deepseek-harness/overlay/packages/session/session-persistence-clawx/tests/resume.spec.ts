@@ -8,6 +8,7 @@ import { mountAgentLoopTestDependencies } from '@deepseek-ai/dsh-agent-loop-test
 import { createUserMessage, LlmAdapter, type GenerateOptions, type StreamChunk } from '@deepseek-ai/dsh-llm'
 import * as CheckpointPolicy from '@deepseek-ai/dsh-session-checkpoint-policy'
 import { SessionId } from '@deepseek-ai/dsh-session'
+import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import { afterEach, describe, expect, it } from 'vitest'
 import ClawXSessionPersistence from '../src/index.ts'
 import { MemoryClawXClient } from './memory-client.ts'
@@ -51,6 +52,7 @@ async function runtime(client: MemoryClawXClient, answers: string[]) {
   await mountAgentLoopTestDependencies(ctx)
   await ctx.plugin(ClawXSessionPersistence, { client, writeBatchMaxDelayMs: 1 })
   await ctx.plugin(CheckpointPolicy)
+  await ctx.plugin(SessionProjectionRegistry)
   await ctx.plugin(AgentLoop, { agents: [] })
   const adapter = new ScriptedAdapter(answers)
   ctx.llm.registerAdapter(['mock'], adapter)

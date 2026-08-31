@@ -46,14 +46,14 @@ describe('ClawX DSH runtime host', () => {
   it('emits ready and generation-scoped responses using protocol-only envelopes', async () => {
     const output: unknown[] = []
     const control = new ClawXDshControlBridge({
-      artifactVersion: '0.1.1-rc.2+clawx.2',
+      artifactVersion: '0.1.2-alpha.2+clawx.2',
       generation: 2,
       capabilities: DSH_RUNTIME_CAPABILITIES,
     })
     const host = new ClawXDshRuntimeHost({
       kernelId: 'deepseek-harness',
       generation: 2,
-      artifactVersion: '0.1.1-rc.2+clawx.2',
+      artifactVersion: '0.1.2-alpha.2+clawx.2',
       dataDir: '/tmp/data',
       configDir: '/tmp/config',
       cacheDir: '/tmp/cache',
@@ -132,7 +132,7 @@ describe('ClawX DSH runtime host', () => {
         config: {
           kernelId: 'deepseek-harness',
           generation: 4,
-          artifactVersion: '0.1.1-rc.2+clawx.2',
+          artifactVersion: '0.1.2-alpha.2+clawx.2',
           capabilitiesDigest: 'a'.repeat(64),
           selfTestEnabled: true,
           dataDir: join(root, 'data'),

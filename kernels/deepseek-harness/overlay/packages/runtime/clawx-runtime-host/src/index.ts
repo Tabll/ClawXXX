@@ -12,7 +12,7 @@ import BashSandbox from '@deepseek-ai/dsh-bash-sandbox'
 import * as FsObservationPolicy from '@deepseek-ai/dsh-fs-observation-policy'
 import FsSandbox from '@deepseek-ai/dsh-fs-sandbox'
 import * as LlmDeepSeek from '@deepseek-ai/dsh-llm-deepseek'
-import { CallId } from '@deepseek-ai/dsh-llm'
+import { ToolCallId } from '@deepseek-ai/dsh-llm'
 import SandboxLocal from '@deepseek-ai/dsh-sandbox-local'
 import SandboxPolicy from '@deepseek-ai/dsh-sandbox-policy'
 import SubprocessLocal from '@deepseek-ai/dsh-subprocess-local'
@@ -123,6 +123,13 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
 }
 
+function isExpectedOrphanQuestionDenial(error: unknown): boolean {
+  const message = errorMessage(error)
+  return /Question belongs to no active ClawX run/i.test(message)
+    || (message.includes('"user-questions/request" is a scope-filtered event')
+      && message.includes('dispatched without a scope carrier'))
+}
+
 async function readUtf8OrUndefined(path: string): Promise<string | undefined> {
   return await readFile(path, 'utf8').catch((error: NodeJS.ErrnoException) => {
     if (error.code === 'ENOENT') return undefined
@@ -220,14 +227,14 @@ async function runProductionSelfTest(ctx: Context, config: RuntimeHostConfig): P
     if (missingTools.length > 0) throw new Error(`DeepSeek Harness runtime tools are missing: ${missingTools.join(', ')}`)
     const signal = new AbortController().signal
     const write = await ctx.tools.execute({
-      callId: CallId('clawx-runtime-self-test-write'),
+      callId: ToolCallId('clawx-runtime-self-test-write'),
       name: 'write',
       arguments: { file_path: toolPath, content: 'tool-ok' },
       signal,
     })
     if (write.isError) throw new Error(`DeepSeek Harness write tool smoke failed: ${write.error.message}`)
     const read = await ctx.tools.execute({
-      callId: CallId('clawx-runtime-self-test-read'),
+      callId: ToolCallId('clawx-runtime-self-test-read'),
       name: 'read',
       arguments: { file_path: toolPath },
       signal,
@@ -237,7 +244,7 @@ async function runProductionSelfTest(ctx: Context, config: RuntimeHostConfig): P
     }
     if (process.platform === 'win32') {
       const ambientTool = await ctx.tools.execute({
-        callId: CallId('clawx-runtime-self-test-ambient-temp-write'),
+        callId: ToolCallId('clawx-runtime-self-test-ambient-temp-write'),
         name: 'write',
         arguments: { file_path: ambientTempPath, content: 'must-not-exist' },
         signal,
@@ -258,7 +265,7 @@ async function runProductionSelfTest(ctx: Context, config: RuntimeHostConfig): P
         questions: [{ id: 'runtime-self-test', question: 'Self-test question', options: [{ label: 'Continue' }] }],
       })
     } catch (error) {
-      orphanQuestionRejected = /no active ClawX run/i.test(errorMessage(error))
+      orphanQuestionRejected = isExpectedOrphanQuestionDenial(error)
     }
     if (!orphanQuestionRejected) throw new Error('DeepSeek Harness orphan ask-user request did not fail closed')
 
@@ -457,10 +464,11 @@ export async function createProductionRuntime(input: {
     // into Electron or another kernel generation.
     process.env.DSH_HOME = config.configDir
     const ctx = new Context()
+    ctx.baseUrl = import.meta.url
     // AgentPresets uses the upstream loader to compose user-authored native
     // presets under the managed DSH_HOME. No preset is mounted unless a
     // canonical Agent snapshot explicitly names one.
-    await ctx.plugin(Loader)
+    await ctx.plugin(Loader, { baseUrl: import.meta.url })
     ctx.loader.builtins.include = Include
     const hostBridge = new ClawXRuntimeHostBridge(config, input.output)
     await ctx.plugin(ClawXDshCredentialProvider, {
@@ -513,6 +521,7 @@ export async function createProductionRuntime(input: {
     await ctx.plugin(AgentPresets, {
       default: 'clawx',
       roots: [],
+      includeShippedRoot: false,
       includeUserRoot: true,
     })
 

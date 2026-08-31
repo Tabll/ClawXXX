@@ -24,13 +24,13 @@ const capabilities: ControlBridgeCapabilities = {
 describe('ClawX DSH control bridge', () => {
   it('negotiates exact identity and exposes no native conversation catalog', async () => {
     const bridge = new ClawXDshControlBridge({
-      artifactVersion: '0.1.1-rc.2+clawx.2',
+      artifactVersion: '0.1.2-alpha.2+clawx.2',
       generation: 4,
       capabilities,
       capabilitiesDigest: 'digest',
     })
     expect(bridge.initialize({
-      artifactVersion: '0.1.1-rc.2+clawx.2',
+      artifactVersion: '0.1.2-alpha.2+clawx.2',
       generation: 4,
       protocol: CLAWX_DSH_CONTROL_PROTOCOL,
       protocolVersion: 1,
@@ -49,7 +49,7 @@ describe('ClawX DSH control bridge', () => {
 
   it('supports idempotent Agent upsert, per-kernel default, and removal control operations', async () => {
     const bridge = new ClawXDshControlBridge({
-      artifactVersion: '0.1.1-rc.2+clawx.5',
+      artifactVersion: '0.1.2-alpha.2+clawx.5',
       generation: 4,
       capabilities,
     })

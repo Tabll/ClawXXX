@@ -3,7 +3,9 @@ import { Context } from '@deepseek-ai/cordis'
 import { type GenerateOptions, LlmAdapter, type LlmResolvedModelInfo, type StreamChunk } from '@deepseek-ai/dsh-llm'
 import AgentLoop from '@deepseek-ai/dsh-agent-loop'
 import { mountAgentLoopTestDependencies } from '@deepseek-ai/dsh-agent-loop-testkit'
+import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import ApprovalService from '@deepseek-ai/dsh-user-approval'
+import UserQuestionService from '@deepseek-ai/dsh-user-questions'
 import { ClawXDshAcpBridge, type ClawXDshKernelEvent } from '../src/index.ts'
 
 class ScriptedAdapter extends LlmAdapter {
@@ -56,6 +58,8 @@ describe('ClawX DeepSeek Harness bridge', () => {
     ctx = new Context()
     await mountAgentLoopTestDependencies(ctx, { systemPrompt: { persona: '' } })
     await ctx.plugin(ApprovalService, { policy: 'ask' })
+    await ctx.plugin(UserQuestionService)
+    await ctx.plugin(SessionProjectionRegistry)
     await ctx.plugin(AgentLoop, { agents: [] })
     const adapter = new ScriptedAdapter(scripts)
     ctx.llm.registerAdapter(['mock'], adapter)
@@ -67,6 +71,7 @@ describe('ClawX DeepSeek Harness bridge', () => {
   it('hydrates canonical roles, emits rich ordered events, checkpoints, and disposes its agent', async () => {
     ctx = new Context()
     await mountAgentLoopTestDependencies(ctx, { systemPrompt: { persona: '' } })
+    await ctx.plugin(SessionProjectionRegistry)
     await ctx.plugin(AgentLoop, { agents: [] })
     ctx.llm.registerAdapter(['mock'], new ScriptedAdapter([response('done')]))
     const events: ClawXDshKernelEvent[] = []
@@ -217,6 +222,47 @@ describe('ClawX DeepSeek Harness bridge', () => {
     expect(requestId).toBeTypeOf('string')
     await bridge.resolvePermission(identity, { requestId: requestId!, decision: 'allow-once' })
     await expect(approval).resolves.toBe('allowed-once')
+    await bridge.cancel(identity)
+    await pending.catch(() => undefined)
+    await bridge.close()
+  })
+
+  it('round-trips one live question through a run-scoped permission request', async () => {
+    const { bridge, events } = await setup(['hang'])
+    const identity = { conversationId: 'conversation', turnId: 'turn', runId: 'question-run' }
+    const pending = bridge.prompt({
+      identity,
+      context: [{ id: 'u', type: 'text', visibility: 'portable', text: 'hello' }],
+      agentId: 'default',
+      workspaceUri: process.cwd(),
+      providerId: 'mock',
+      modelId: 'mock',
+    })
+    let agent = ctx!.agents.roots()[0]
+    for (let attempt = 0; attempt < 100 && agent === undefined; attempt += 1) {
+      await new Promise(resolve => setTimeout(resolve, 2))
+      agent = ctx!.agents.roots()[0]
+    }
+    expect(agent).toBeDefined()
+    const answer = ctx!.userQuestions.ask({
+      agent: agent!,
+      questions: [{ id: 'confirm', question: 'Continue?', options: [{ label: 'Continue' }] }],
+    })
+    let request = events.find(event => event.event.kind === 'permission.request'
+      && (event.event.payload as { kind?: string } | undefined)?.kind === 'ask-user')
+    for (let attempt = 0; attempt < 100 && request === undefined; attempt += 1) {
+      await new Promise(resolve => setTimeout(resolve, 2))
+      request = events.find(event => event.event.kind === 'permission.request'
+        && (event.event.payload as { kind?: string } | undefined)?.kind === 'ask-user')
+    }
+    const requestId = (request?.event.payload as { requestId?: string } | undefined)?.requestId
+    expect(requestId).toBeTypeOf('string')
+    await bridge.resolvePermission(identity, {
+      requestId: requestId!,
+      decision: 'allow-once',
+      optionId: 'question:confirm:0',
+    })
+    await expect(answer).resolves.toEqual({ answers: [{ id: 'confirm', selected: ['Continue'] }] })
     await bridge.cancel(identity)
     await pending.catch(() => undefined)
     await bridge.close()

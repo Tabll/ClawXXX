@@ -9,6 +9,7 @@
     { "path": "../../../vendor/cosmokit" },
     { "path": "../../../vendor/cordis" },
     { "path": "../../core/session" },
-    { "path": "../../runtime-diagnostics/invariants" }
+    { "path": "../../runtime-diagnostics/invariants" },
+    { "path": "../../todo/tool-todo" }
   ]
 }

@@ -3,8 +3,8 @@
   "strategy": "patched-upstream-lockfile",
   "packageManager": "pnpm@11.7.0",
   "path": "pnpm-lock.yaml",
-  "upstreamSha256": "6f20c268e76df1294c16f016ab10a7fa1271608b4db0f4fafe8f7c21ec90013e",
-  "sha256": "14ba1b3f9d77f0053c7b1ba132e01aca009852802632949d1432962f7ef1c541",
+  "upstreamSha256": "6cc109a574218f51762474455c8d72e5f7c2625aedf25e85569dba1af7adcef0",
+  "sha256": "444dff876e39411451544e0c2617168eb816053ca0ff4663060750bf8777d4c1",
   "frozenInstall": true,
   "lifecycleScripts": "upstream-reviewed-allowBuilds-only"
 }

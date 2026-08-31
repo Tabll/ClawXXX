@@ -8,6 +8,7 @@
  */
 import type { Context } from '@deepseek-ai/cordis'
 import type { SessionEvent, SessionId, Session } from '@deepseek-ai/dsh-session'
+import type {} from '@deepseek-ai/dsh-tool-todo'
 import type { SessionUpdate, ToolKind } from '@agentclientprotocol/sdk'
 
 export const name = 'clawx-rich-events'
