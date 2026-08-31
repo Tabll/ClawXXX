@@ -371,10 +371,10 @@
 
 - [x] `MK-1601` 完成 runtime signing key 管理、rotation、revocation runbook。
 - [-] `MK-1602` 完成 macOS runtime executable 签名/公证验证。（leaf-first Hardened Runtime、notary `Accepted`、制品与宿主校验均已编码；真实 Developer ID P12 已配置到 staging/production，隔离导入、Hardened Runtime、Apple timestamp 与两枚 `notarytool` 凭据认证均已通过；仍等待受保护 CI 对真实 runtime/宿主制品产生 `Accepted`、staple 与 Gatekeeper 日志）
-- [-] `MK-1603` 完成 Windows process tree、文件锁、签名和卸载验证。（实现与 CI 门禁已完成；等待真实 Authenticode 证书和 Windows packaged runner 结果）
+- [-] `MK-1603` 完成 Windows process tree、文件锁、签名和卸载验证。（实现与 CI 门禁已完成；2026-08-31 决定暂缓配置 Authenticode，正式五目标 promotion/release 仍失败关闭，等待证书和 Windows packaged runner 结果）
 - [-] `MK-1604` 完成 Linux glibc/kernel/sandbox 支持矩阵。（glibc >= 2.39、kernel >= 6.8、x64/arm64 与 DSH sandbox self-test 已固化；等待两个 Linux runner 结果）
-- [-] `MK-1605` 完成 CDN/OSS/GitHub 镜像和断点续传运行演练。（双 catalog/双 artifact host、Range/If-Range、精确 N−1 双镜像连续晋级与重试演练已实现并通过模拟测试；promotion 与宿主 release 均把线上演练设为硬门禁，仍须生产 promotion 后取得在线证据）
-- [-] `MK-1606` 完成 supply-chain/SBOM/license/security review。（deterministic artifact、SPDX/CycloneDX、provenance 与审计均已实现；本地 OpenClaw 587/DSH 97 个包审计通过，但 GPL/LGPL/MPL 履约地址和法务批准仍待发布负责人签字）
+- [-] `MK-1605` 完成腾讯 COS/GitHub 镜像和断点续传运行演练。（COS 已固定 `aq-pub-1252262977/ap-shanghai/clawxxx`，官方 SDK、object-key 边界、SHA-256 metadata、immutable forbid-overwrite 与 catalog-last 已实现；双 catalog/双 artifact host、Range/If-Range、精确 N−1 双镜像连续晋级与重试演练已通过模拟测试，仍须生产 promotion 后取得在线证据）
+- [-] `MK-1606` 完成 supply-chain/SBOM/license/security review。（deterministic artifact、SPDX/CycloneDX、provenance 与审计均已实现；本地 OpenClaw 587/DSH 97 个包审计通过；2026-08-31 决定暂缓许可证/法务，GPL/LGPL/MPL 履约地址和批准仍待发布负责人签字，不能据此完成正式发布门禁）
 - [x] `MK-1607` 完成 crash/update/rollback/repair/disk-full/kill -9 chaos test。（本地 28/28）
 - [x] `MK-1608` 更新 README.md、README.zh-CN.md、README.ja-JP.md。（同时更新 README.ru-RU.md）
 - [x] `MK-1609` 更新 en-US/zh-CN/ja-JP/ru-RU architecture/features/development docs。

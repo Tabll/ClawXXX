@@ -39,7 +39,7 @@
   "overlay": {
     "root": "kernels/deepseek-harness/overlay",
     "manifest": "kernels/deepseek-harness/overlay.manifest.json",
-    "manifestSha256": "6b668f621888fedcbbc32afb8bebed81894d655b2edae49b98c5329b0e7a6f78"
+    "manifestSha256": "cce7ea9bd5c8e731d02559220223deedbb7c7f972d637aff3bf601080ca273d1"
   },
   "patches": [
     {

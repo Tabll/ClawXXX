@@ -63,6 +63,7 @@ resources/bin
 *.p12
 *.pem
 *.key
+.clawx-secrets/
 
 build/
 artifacts/

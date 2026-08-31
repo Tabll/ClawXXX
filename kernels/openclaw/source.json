@@ -20,9 +20,9 @@
   "sourceDateEpoch": 1787428800,
   "lockfile": {
     "descriptor": "kernels/openclaw/lock.json",
-    "descriptorSha256": "fb28ac86d71b918a8a8f75afd69b41ae4225eb25e08bea9d015d723b2455d49c",
+    "descriptorSha256": "cec34c0f11afe51a1fe680969af2705ba988f881bc9b502e6d2a347187f6040f",
     "contentPath": "pnpm-lock.yaml",
-    "contentSha256": "1bbe63a40a6413d3e5fa5dc310650a696805be093c5ef4fdad5929076cddd22d"
+    "contentSha256": "7654539c9750f5aa082f95bd6b6c5565449083843ae6facb7f25e49bdb6b3065"
   },
   "patchSeries": {
     "path": "kernels/openclaw/patches/series",

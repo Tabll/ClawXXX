@@ -19,7 +19,7 @@ ClawX 0.6.0から、個別にダウンロードされるOpenClawとDeepSeek Harn
 
 Source manifestはupstream commit/npm integrity、lockfile、patch、overlay、Node配布物、再現可能timestampを固定します。エンドユーザー環境でnpm/pnpm installは行いません。正確なpayloadに対してcontract test、native-history禁止scan、license audit、platform securityを実行し、SPDX/CycloneDX、provenance、license/security reportを生成します。
 
-macOSのMach-Oはleaf-firstで署名し、closure全体のnotarizationが`Accepted`でなければなりません。Windowsの`.exe`/`.dll`/`.node`はAuthenticodeを通過し、LinuxはABI baselineを記録・検証します。Ed25519 artifact keyがimmutable descriptorを、別のcatalog keyが単調増加かつ期限付きcatalogを署名します。OSSとGitHubへartifactを先に公開し、catalogは最後に公開します。その後、同一catalog、conditional cache、2つの独立したRange対応hostを実測します。
+macOSのMach-Oはleaf-firstで署名し、closure全体のnotarizationが`Accepted`でなければなりません。Windowsの`.exe`/`.dll`/`.node`はAuthenticodeを通過し、LinuxはABI baselineを記録・検証します。Ed25519 artifact keyがimmutable descriptorを、別のcatalog keyが単調増加かつ期限付きcatalogを署名します。Tencent COSとGitHubへartifactを先に公開し、catalogは最後に公開します。その後、同一catalog、conditional cache、2つの独立したRange対応hostを実測します。
 
 クライアントは期限切れ、revoked、downgrade、不適合、非HTTPS、過大、path traversal、symlink、署名不正、storage authority不正をactivation前に拒否します。
 

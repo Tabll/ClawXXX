@@ -11,7 +11,7 @@ on:
       artifact-base-url:
         description: Immutable staging object prefix
         required: true
-        default: https://oss.intelli-spectrum.com/kernels
+        default: https://aq-pub-1252262977.cos.ap-shanghai.tencentcos.cn/clawxxx/kernels
 
 permissions:
   contents: read

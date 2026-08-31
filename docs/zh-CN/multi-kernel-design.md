@@ -12,7 +12,7 @@
 
 设计中的领域边界已映射到 `shared/{kernels,conversations,domains,data}`、`electron/{kernels,conversations,domains,data,scheduler,channels,security}` 和统一 Host API；Renderer、OpenClaw legacy adapter 与 DSH bridges 都不能直接拥有 canonical history。主包 `afterPack` 有硬闸门拒绝任何可选 runtime，Setup/Settings 已提供双内核安装、运行、修复、更新、回滚、卸载与无内核离线历史流程。
 
-CI 供应链已覆盖两内核 × 五目标：冻结源码/lock/patch/overlay、许可证与再分发义务审计、独立 Node、macOS/Windows 可执行文件签名、macOS 公证、Linux ABI 证据、确定性 archive、Ed25519 descriptor/catalog、SPDX/CycloneDX、provenance、完整集合晋级、OSS/GitHub 双镜像和 Range 演练。每个真实制品还会走生产 Package Manager 的断点续传/验签/解包/激活/rescan/uninstall 链路；双内核构建会在同一 runner 并发 smoke 两份制品并注入单侧完整性故障。宿主 release 在打包前重跑完整门禁、三平台 Electron E2E 和线上分发演练。以上都是可执行门禁；只有 protected environment 的真实证书、密钥、公证、发布与 clean-machine 结果存在时，对应 release checkbox 才能完成。
+CI 供应链已覆盖两内核 × 五目标：冻结源码/lock/patch/overlay、许可证与再分发义务审计、独立 Node、macOS/Windows 可执行文件签名、macOS 公证、Linux ABI 证据、确定性 archive、Ed25519 descriptor/catalog、SPDX/CycloneDX、provenance、完整集合晋级、腾讯 COS/GitHub 双镜像和 Range 演练。每个真实制品还会走生产 Package Manager 的断点续传/验签/解包/激活/rescan/uninstall 链路；双内核构建会在同一 runner 并发 smoke 两份制品并注入单侧完整性故障。宿主 release 在打包前重跑完整门禁、三平台 Electron E2E 和线上分发演练。以上都是可执行门禁；只有 protected environment 的真实证书、密钥、公证、发布与 clean-machine 结果存在时，对应 release checkbox 才能完成。
 
 统一数据层已实现 WAL/FTS/backup/restore/corruption/read-only/disk-full、owner-only SQLite/Blob、hard-delete Blob GC 和无 runtime 离线 CRUD。0.6.0 明确以 OS 全盘加密作为静态机密性边界，`node:sqlite` 数据库仍为明文；旧上游 history 不迁移、不扫描、不 fallback、不自动删除。安全、EOL、恢复与数据保留策略见同目录 policy 文档。
 

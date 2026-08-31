@@ -22,7 +22,7 @@ The base application may open offline data on a broader OS range, but installing
 3. The exact payload passes contract tests, no-native-history scanning, license audit, platform signing checks, SPDX and CycloneDX generation, and provenance generation.
 4. macOS Mach-O files are signed leaf-first and the complete runtime closure must receive an `Accepted` notarization result. Windows `.exe`, `.dll`, and `.node` files must pass Authenticode verification. Linux records and verifies its ABI/support baseline.
 5. An Ed25519 artifact key signs the immutable descriptor. A separate Ed25519 catalog key signs a monotonically increasing, expiring production catalog. Promotion never rebuilds an approved artifact.
-6. The complete two-kernel/five-target set is verified before publication. Immutable artifacts are published to OSS and GitHub first; the signed catalog is published last.
+6. The complete two-kernel/five-target set is verified before publication. Immutable artifacts are published to Tencent COS and GitHub first; the signed catalog is published last.
 7. A post-publication drill requires identical signed catalogs, cache validation, and two independent range-capable artifact hosts. Failure stops promotion.
 
 Every artifact contains its source/patch identity, SHA-256 archive digest, storage authority, test report hashes, license report, platform-security report, SBOMs, and provenance. The host rejects expired, revoked, downgraded, incompatible, non-HTTPS, oversized, traversal-containing, symlink-containing, or incorrectly signed inputs before activation.

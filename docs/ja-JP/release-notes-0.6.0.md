@@ -8,7 +8,7 @@
 - DeepSeek Harness `0.1.1-rc.2+clawx.8`を第2 kernelとして追加し、両kernelは同時実行・独立update/failure/rollbackできます。
 - Chat、Providers/Models、Agents、Channels、Cron、Skills、Usage、Diagnosticsは同じClawX UIとcanonical contractsを使用します。
 - 新しいdurable historyは単一Main-owned SQLite/Blobへ保存します。同じConversationをturn境界でredacted portable contextにより別kernelへ継続できます。
-- Runtimeはsigned/expiring metadata、platform security evidence、SBOM、provenance、license report、repair/rollback、OSS/GitHub mirrorを持つ再現可能CI artifactです。
+- Runtimeはsigned/expiring metadata、platform security evidence、SBOM、provenance、license report、repair/rollback、Tencent COS/GitHub mirrorを持つ再現可能CI artifactです。
 - Kernelがなくてもhistoryの検索、rename、export、deleteができます。
 
 0.6.0は新canonical storeから開始し、旧OpenClaw/DSH Conversation/Cronは移行、scan、削除、fallbackしません。Full runtime supportはmacOS 13.5+、Windows 10 x64、documented Linux baselineです。musl/AlpineとWindows arm64は非対応です。無license QQ QR dependencyは除外し、AppID/AppSecret手動設定を使います。

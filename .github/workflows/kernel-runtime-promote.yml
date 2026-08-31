@@ -36,6 +36,11 @@ permissions:
   contents: write
   id-token: write
 
+env:
+  TENCENT_COS_BUCKET: aq-pub-1252262977
+  TENCENT_COS_REGION: ap-shanghai
+  TENCENT_COS_ROOT_PREFIX: clawxxx
+
 concurrency:
   group: kernel-runtime-production-catalog
   cancel-in-progress: false
@@ -49,9 +54,15 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs['expected-source-sha'] }}
+      - uses: pnpm/action-setup@v4
+        with:
+          run_install: false
       - uses: actions/setup-node@v4
         with:
           node-version: 24.15.0
+          cache: pnpm
+      - name: Install frozen promotion tooling
+        run: pnpm install --frozen-lockfile
       - name: Bind promotion to a successful staging workflow and exact source commit
         env:
           GH_TOKEN: ${{ github.token }}
@@ -146,37 +157,21 @@ jobs:
           mkdir -p temp/publish
           find temp/approved-artifacts -type f \( -name '*.tar.zst' -o -name '*.descriptor.json' -o -name '*.sha256' \) -exec cp {} temp/publish/ \;
           test "$(find temp/publish -type f | wc -l | tr -d ' ')" -ge 20
-      - name: Install and configure ossutil
+      - name: Verify the protected Tencent COS target before any external write
         env:
-          OSS_ACCESS_KEY_ID: ${{ secrets.OSS_ACCESS_KEY_ID }}
-          OSS_ACCESS_KEY_SECRET: ${{ secrets.OSS_ACCESS_KEY_SECRET }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          curl -sL https://gosspublic.alicdn.com/ossutil/install.sh | sudo bash
-          {
-            echo '[Credentials]'
-            echo 'language=EN'
-            echo 'endpoint=oss-cn-hangzhou.aliyuncs.com'
-            echo "accessKeyID=${OSS_ACCESS_KEY_ID}"
-            echo "accessKeySecret=${OSS_ACCESS_KEY_SECRET}"
-          } > "$HOME/.ossutilconfig"
-          chmod 600 "$HOME/.ossutilconfig"
-          ossutil --version
-      - name: Publish immutable runtime assets to OSS without overwrite
+          TENCENTCLOUD_SECRET_ID: ${{ secrets.TENCENTCLOUD_SECRET_ID }}
+          TENCENTCLOUD_SECRET_KEY: ${{ secrets.TENCENTCLOUD_SECRET_KEY }}
+        run: node scripts/tencent-cos.mjs verify-bucket
+      - name: Publish immutable runtime assets to Tencent COS without overwrite
+        env:
+          TENCENTCLOUD_SECRET_ID: ${{ secrets.TENCENTCLOUD_SECRET_ID }}
+          TENCENTCLOUD_SECRET_KEY: ${{ secrets.TENCENTCLOUD_SECRET_KEY }}
         shell: bash
         run: |
           set -euo pipefail
           for file in temp/publish/*; do
             name="$(basename "$file")"
-            remote="oss://valuecell-clawx/kernels/$name"
-            existing="temp/existing-oss-$name"
-            if ossutil stat "$remote" >/dev/null 2>&1; then
-              ossutil cp "$remote" "$existing" -f
-              cmp "$file" "$existing" || { echo "Immutable OSS asset differs: $name" >&2; exit 1; }
-            else
-              ossutil cp "$file" "$remote" --meta 'Cache-Control:public,max-age=31536000,immutable'
-            fi
+            node scripts/tencent-cos.mjs put-immutable --file "$file" --key "kernels/$name"
           done
       - name: Publish immutable runtime assets to GitHub mirror without overwrite
         env:
@@ -198,10 +193,12 @@ jobs:
       - name: Publish signed catalog last to both mirrors
         env:
           GH_TOKEN: ${{ github.token }}
+          TENCENTCLOUD_SECRET_ID: ${{ secrets.TENCENTCLOUD_SECRET_ID }}
+          TENCENTCLOUD_SECRET_KEY: ${{ secrets.TENCENTCLOUD_SECRET_KEY }}
         shell: bash
         run: |
           set -euo pipefail
-          ossutil cp temp/kernel-catalog.production.json oss://valuecell-clawx/kernels/catalog.production.json -f --meta 'Cache-Control:no-cache,no-store,must-revalidate'
+          node scripts/tencent-cos.mjs put-mutable --file temp/kernel-catalog.production.json --key kernels/catalog.production.json
           gh release upload "${{ inputs['github-release-tag'] }}" temp/kernel-catalog.production.json --clobber
       - name: Drill both catalogs and both artifact mirrors with Range resume
         run: >-

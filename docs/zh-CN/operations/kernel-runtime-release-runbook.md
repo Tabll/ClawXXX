@@ -5,7 +5,7 @@
 ## 1. 发布前硬条件
 
 1. 发布提交已经进入将承载生产 GitHub Release 的仓库与受保护分支。`resources/kernels/distribution.json` 当前绑定 `Tabll/ClawXXX` 和 `kernel-runtimes` tag；其他 fork 不得直接执行生产晋级，除非先正式修改、评审并发布自己的 catalog/artifact 镜像配置。
-2. `kernel-staging` 与 `kernel-production` 是两个启用 required reviewers、禁止任意分支部署的 GitHub Environments。常规 build 无 production catalog/OSS 写权限；常规 promotion 无 rollback 私钥。
+2. `kernel-staging` 与 `kernel-production` 是两个启用 required reviewers、禁止任意分支部署的 GitHub Environments。常规 build 无 production catalog/COS 写权限；常规 promotion 无 rollback 私钥。
 3. 五个 required targets 都可用：macOS arm64/x64、Windows x64、Linux x64/arm64。
 4. 许可证负责人已经确认 GPL/LGPL/MPL notices、source-offer/履约地址与目标分发区域。CI 许可证报告通过不等于法务批准。
 5. `issued-at`/`expires-at` 落在 catalog key、全部 retained artifact keys 和全部 retained descriptors 的共同有效期内。过期 artifact 必须用精确 identity 显式撤销。
@@ -25,6 +25,8 @@
 | `CLAWX_WINDOWS_SIGNING_CERT_PFX_B64` | Windows Authenticode 证书 |
 | `CLAWX_WINDOWS_SIGNING_CERT_PASSWORD` | PFX 密码 |
 
+Windows 签名可在准备阶段暂缓配置，但这不会把 Windows 目标改成可选项：完整 production promotion 和正式宿主 release 继续要求五目标签名集合并失败关闭。未配置 PFX 时只能完成不冒充正式发布的本地/局部验证。
+
 ### `kernel-production`
 
 | Secret | 用途 |
@@ -32,11 +34,28 @@
 | `CLAWX_CATALOG_SIGNING_KEY_ID` | production catalog Ed25519 key id |
 | `CLAWX_CATALOG_SIGNING_PRIVATE_KEY_B64` | catalog 私钥；不得与 artifact key 相同 |
 | `CLAWX_KERNEL_TRUST_KEYS_B64` | 经评审的 artifact/catalog/rollback 公钥 bundle；必须保留仍在有效 metadata 中使用的旧公钥 |
-| `OSS_ACCESS_KEY_ID` / `OSS_ACCESS_KEY_SECRET` | 仅允许写 runtime immutable prefix 与 catalog object |
+| `TENCENTCLOUD_SECRET_ID` / `TENCENTCLOUD_SECRET_KEY` | 仅允许操作 `aq-pub-1252262977/clawxxx/*` 的腾讯 COS 发布对象 |
 | `MAC_CERTS` / `MAC_CERTS_PASSWORD` | 宿主 Developer ID Application P12 的 base64 与独立随机密码 |
 | `APPLE_ID` / `APPLE_TEAM_ID` / `APPLE_APP_SPECIFIC_PASSWORD` | 宿主 `electron-builder` 公证；与 staging 使用可独立吊销的 App 专用密码 |
 
-宿主 `release.yml` 还使用 Windows PFX、OSS 与 production trust bundle secrets。GitHub Release 使用 workflow 的短期 `github.token`，不配置长期 PAT。macOS 正式包必须运行 `pnpm run package:mac:release`；它显式加载 `electron-builder.release.yml` 并以 `forceCodeSigning: true` 失败关闭。`pnpm run package:mac` 仅用于普通本地打包，不得替代发布命令或发布证据。
+宿主 `release.yml` 还使用 Windows PFX、腾讯 COS 与 production trust bundle secrets。GitHub Release 使用 workflow 的短期 `github.token`，不配置长期 PAT。macOS 正式包必须运行 `pnpm run package:mac:release`；它显式加载 `electron-builder.release.yml` 并以 `forceCodeSigning: true` 失败关闭。`pnpm run package:mac` 仅用于普通本地打包，不得替代发布命令或发布证据。
+
+### 密钥 bootstrap 与离线备份
+
+完整 key set 不进入 Git。使用新随机恢复口令（示例只展示环境变量来源，不把值写入 shell history）：
+
+```bash
+CLAWX_KEY_BACKUP_PASSPHRASE="$(security find-generic-password -a 'Tabll/ClawXXX' -s 'com.clawx.release.kernel-key-backup.v1' -w)" \
+  pnpm kernel:keys generate \
+  --output .clawx-secrets/kernel-signing/production-YYYY-MM.enc.json \
+  --not-before <ISO-8601> \
+  --not-after <ISO-8601> \
+  --key-id-suffix YYYY-MM
+```
+
+生成后必须执行 `verify`。需要配置 GitHub 时，`export-ci` 可临时生成 mode `0600` 的环境 secret JSON；上传完成立即删除该明文临时文件。rollback 私钥不在其中。密文与恢复口令必须分别复制到不同的离线介质；仅留在同一 Mac 或同一云盘不算离线灾备。轮换时生成新 backup，绝不覆盖旧 backup。
+
+腾讯 COS 固定为 bucket `aq-pub-1252262977`、region `ap-shanghai`、root prefix `clawxxx`，公开下载基址为 `https://aq-pub-1252262977.cos.ap-shanghai.tencentcos.cn/clawxxx/`。CAM 凭据应是可独立吊销的最小权限子账号，仅覆盖该 prefix 所需的 bucket location/versioning/list、object head/get/put/delete/ACL 与 multipart 操作。bucket versioning 必须不是 `Enabled`，否则不可变对象的 forbid-overwrite 语义会失效。发布器在写入前验证这两项。
 
 ## 3. 构建 staging 完整集合
 
@@ -47,7 +66,7 @@ gh workflow run kernel-runtime-build.yml \
   --repo Tabll/ClawXXX \
   --ref <protected-branch> \
   -f kernel=all \
-  -f artifact-base-url=https://oss.intelli-spectrum.com/kernels
+  -f artifact-base-url=https://aq-pub-1252262977.cos.ap-shanghai.tencentcos.cn/clawxxx/kernels
 ```
 
 记录 run id 与唯一 `head_sha`。只有 `Build signed kernel runtimes` conclusion 为 `success` 才可晋级。该 run 必须产生 10 个 runtime artifact（两个内核 × 五目标）、10 份 clean-machine evidence，以及 5 份同机双真实制品 evidence。任一 matrix cancel/skip/failure 都不是完整集合。
@@ -116,3 +135,5 @@ Catalog 是最后写入项，但两个服务无法构成跨云原子事务。若
 - `TODO.md` 中 17 个 `[-]` 项逐项对应的证据链接。
 
 拿到证据后才把相应 TODO 改为 `[x]`。本机测试、fixture 签名、未受保护 fork Actions 或控制面 smoke 不能替代这些项目。
+
+许可证/法务签字可以在开发阶段暂缓，但不能因此把发布硬条件标为完成，也不能创建面向公众的最终 production release；恢复发布前必须补齐第 1 节第 4 项和上述证据。

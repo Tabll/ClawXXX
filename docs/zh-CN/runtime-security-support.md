@@ -22,7 +22,7 @@
 3. 精确 payload 必须通过领域契约、无原生 history 扫描、许可证审计、平台签名检查，并生成 SPDX、CycloneDX 与 provenance。
 4. macOS 所有 Mach-O 叶子优先签名，完整 closure 的公证结果必须为 `Accepted`；Windows 的 `.exe`、`.dll`、`.node` 必须通过 Authenticode；Linux 固化并复验 ABI/支持基线。
 5. Ed25519 artifact key 签不可变 descriptor；独立 Ed25519 catalog key 签单调递增且有期限的生产 catalog。晋级不会重建已批准制品。
-6. 两内核、五目标完整集合通过校验后，先把不可变制品发布到 OSS 和 GitHub，最后发布签名 catalog。
+6. 两内核、五目标完整集合通过校验后，先把不可变制品发布到腾讯 COS 和 GitHub，最后发布签名 catalog。
 7. 发布后演练要求两个入口提供完全相同的签名 catalog、正确条件缓存及两个独立支持 Range 的制品主机；失败即停止晋级。
 
 每个制品包含源码/补丁身份、archive SHA-256、storage authority、测试/许可证/平台安全报告哈希、SBOM 与 provenance。宿主在激活前拒绝过期、撤销、降级、不兼容、非 HTTPS、超预算、路径穿越、符号链接或签名错误的输入。

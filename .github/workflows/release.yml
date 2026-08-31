@@ -384,22 +384,45 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   # ──────────────────────────────────────────────────────────────
-  # Job: Upload to Alibaba Cloud OSS
-  # Uploads all release artifacts to OSS for:
+  # Job: Upload to Tencent Cloud COS
+  # Uploads all release artifacts to COS for:
   #   - Official website downloads (via release-info.json)
   #   - electron-updater auto-update (via {channel}-*.yml)
   #
-  # Directory structure on OSS (channel-separated):
+  # Directory structure under the COS clawxxx prefix (channel-separated):
   #   latest/          → stable releases (latest.yml, latest-mac.yml, …)
   #   alpha/           → alpha  releases (alpha.yml,  alpha-mac.yml, …)
   #   beta/            → beta   releases (beta.yml,   beta-mac.yml,  …)
   #   releases/vX.Y.Z/ → permanent archive, never deleted
   # ──────────────────────────────────────────────────────────────
-  upload-oss:
+  upload-cos:
     needs: release
+    environment: kernel-production
     runs-on: ubuntu-latest
 
+    env:
+      TENCENT_COS_BUCKET: aq-pub-1252262977
+      TENCENT_COS_REGION: ap-shanghai
+      TENCENT_COS_ROOT_PREFIX: clawxxx
+      TENCENTCLOUD_SECRET_ID: ${{ secrets.TENCENTCLOUD_SECRET_ID }}
+      TENCENTCLOUD_SECRET_KEY: ${{ secrets.TENCENTCLOUD_SECRET_KEY }}
+
     steps:
+      - name: Checkout COS publishing tooling
+        uses: actions/checkout@v6
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: pnpm
+
+      - name: Install frozen COS publishing tooling
+        run: pnpm install --frozen-lockfile
+
       - name: Download release artifacts only
         uses: actions/download-artifact@v4
         with:
@@ -463,7 +486,7 @@ jobs:
         run: |
           VERSION="${{ steps.version.outputs.version }}"
           CHANNEL="${{ steps.version.outputs.channel }}"
-          BASE_URL="https://oss.intelli-spectrum.com/${CHANNEL}"
+          BASE_URL="https://aq-pub-1252262977.cos.ap-shanghai.tencentcos.cn/clawxxx/${CHANNEL}"
 
           jq -n \
             --arg version "$VERSION" \
@@ -498,66 +521,37 @@ jobs:
           echo "=== release-info.json ==="
           cat staging/${CHANNEL}/release-info.json
 
-      - name: Install and configure ossutil
-        env:
-          OSS_ACCESS_KEY_ID: ${{ secrets.OSS_ACCESS_KEY_ID }}
-          OSS_ACCESS_KEY_SECRET: ${{ secrets.OSS_ACCESS_KEY_SECRET }}
-        run: |
-          curl -sL https://gosspublic.alicdn.com/ossutil/install.sh | sudo bash
+      - name: Verify the protected Tencent COS target before any external write
+        run: node scripts/tencent-cos.mjs verify-bucket
 
-          # Write config file for non-interactive use
-          cat > $HOME/.ossutilconfig << EOF
-          [Credentials]
-          language=EN
-          endpoint=oss-cn-hangzhou.aliyuncs.com
-          accessKeyID=${OSS_ACCESS_KEY_ID}
-          accessKeySecret=${OSS_ACCESS_KEY_SECRET}
-          EOF
-
-          ossutil --version
-
-      - name: "Upload to OSS: {channel}/ (overwrite)"
-        run: |
-          CHANNEL="${{ steps.version.outputs.channel }}"
-
-          # Only clean the current channel's directory — never touch other channels
-          ossutil rm -r -f oss://valuecell-clawx/${CHANNEL}/ || true
-
-          # Upload all files with no-cache so clients always get the freshest version
-          ossutil cp -r -f \
-            --meta="Cache-Control:no-cache,no-store,must-revalidate" \
-            staging/${CHANNEL}/ \
-            oss://valuecell-clawx/${CHANNEL}/
-
-          echo "Uploaded to ${CHANNEL}/"
-
-      - name: "Upload to OSS: releases/vX.Y.Z/ (archive)"
+      - name: "Upload immutable Tencent COS archive: releases/vX.Y.Z/"
         run: |
           TAG="${{ steps.version.outputs.tag }}"
+          node scripts/tencent-cos.mjs put-directory-immutable --source "staging/releases/${TAG}" --prefix "releases/${TAG}"
 
-          # Upload to permanent archive (long cache, immutable)
-          ossutil cp -r \
-            staging/releases/${TAG}/ \
-            oss://valuecell-clawx/releases/${TAG}/ \
-            --meta "Cache-Control:public,max-age=31536000,immutable"
-
-          echo "Uploaded to releases/${TAG}/"
-
-      - name: Verify OSS upload
+      - name: "Sync Tencent COS channel metadata last: {channel}/"
         run: |
+          CHANNEL="${{ steps.version.outputs.channel }}"
+          node scripts/tencent-cos.mjs sync-channel --source "staging/${CHANNEL}" --channel "${CHANNEL}"
+
+      - name: Verify Tencent COS upload
+        run: |
+          set -euo pipefail
           TAG="${{ steps.version.outputs.tag }}"
           CHANNEL="${{ steps.version.outputs.channel }}"
 
           echo "=== ${CHANNEL}/ ==="
-          ossutil ls oss://valuecell-clawx/${CHANNEL}/ --short
+          node scripts/tencent-cos.mjs list --prefix "${CHANNEL}/" > temp-cos-channel.json
+          jq -e '.ok and (.result | length > 0)' temp-cos-channel.json
 
           echo ""
           echo "=== releases/${TAG}/ ==="
-          ossutil ls oss://valuecell-clawx/releases/${TAG}/ --short
+          node scripts/tencent-cos.mjs list --prefix "releases/${TAG}/" > temp-cos-release.json
+          jq -e '.ok and (.result | length > 0)' temp-cos-release.json
 
           echo ""
           echo "=== Verify release-info.json ==="
-          ossutil cp oss://valuecell-clawx/${CHANNEL}/release-info.json /tmp/release-info.json -f
+          node scripts/tencent-cos.mjs get --key "${CHANNEL}/release-info.json" --output /tmp/release-info.json
           jq . /tmp/release-info.json
 
           echo ""
@@ -568,7 +562,7 @@ jobs:
             YML_PREFIX="${CHANNEL}"
           fi
           echo "electron-updater expects ${YML_PREFIX}-mac.yml, ${YML_PREFIX}.yml, etc. in ${CHANNEL}/:"
-          ossutil ls oss://valuecell-clawx/${CHANNEL}/ --short | grep "${YML_PREFIX}.*\\.yml" || echo "(none found)"
+          jq -e --arg prefix "clawxxx/${CHANNEL}/${YML_PREFIX}" '.result | map(.Key) | any(startswith($prefix) and endswith(".yml"))' temp-cos-channel.json
           
           echo ""
           echo "All files uploaded and verified successfully!"
@@ -576,13 +570,13 @@ jobs:
   # ──────────────────────────────────────────────────────────────
   # Job: Finalize Release
   # Promotes the GitHub Release from pre-release to latest AFTER
-  # both GitHub Release assets and OSS uploads are fully complete.
+  # both GitHub Release assets and COS uploads are fully complete.
   # This ensures /releases/latest API never returns an incomplete
   # release — the website and electron-updater only see it when
   # all platform artifacts are ready.
   # ──────────────────────────────────────────────────────────────
   finalize:
-    needs: [publish, upload-oss]
+    needs: [publish, upload-cos]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/')
 

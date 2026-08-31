@@ -19,7 +19,7 @@
 
 Source manifest фиксирует upstream commit/npm integrity, lockfile, patch series, overlay, дистрибутив Node и воспроизводимый timestamp. На машине пользователя npm/pnpm не запускается. Точный payload проходит contract tests, запрет native history, license audit и platform security; CI создаёт SPDX/CycloneDX, provenance и отчёты.
 
-Mach-O подписываются leaf-first, а notarization всего macOS closure должна иметь статус `Accepted`. Windows `.exe`/`.dll`/`.node` проходят Authenticode. Linux фиксирует и повторно проверяет ABI. Ed25519 artifact key подписывает immutable descriptor, отдельный catalog key — монотонный и ограниченный по времени catalog. Сначала публикуются неизменяемые artifacts в OSS и GitHub, catalog — последним. После этого проверяются идентичность catalog, conditional cache и Range resume с двух независимых hosts.
+Mach-O подписываются leaf-first, а notarization всего macOS closure должна иметь статус `Accepted`. Windows `.exe`/`.dll`/`.node` проходят Authenticode. Linux фиксирует и повторно проверяет ABI. Ed25519 artifact key подписывает immutable descriptor, отдельный catalog key — монотонный и ограниченный по времени catalog. Сначала публикуются неизменяемые artifacts в Tencent COS и GitHub, catalog — последним. После этого проверяются идентичность catalog, conditional cache и Range resume с двух независимых hosts.
 
 До activation клиент отклоняет expired/revoked/downgrade/incompatible, non-HTTPS, oversized, traversal/symlink, неверно подписанные или нарушающие storage authority inputs.
 

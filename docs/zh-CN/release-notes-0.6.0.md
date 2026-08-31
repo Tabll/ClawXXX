@@ -26,6 +26,6 @@ SQLite 在 owner-only 用户目录内仍是明文；静态机密性请使用 OS 
 
 - 两内核 × 五目标制品通过 clean-machine smoke 与 storage-contract scan；
 - 保留 macOS 签名/公证以及 Windows Authenticode/安装/更新/卸载证据；
-- OSS/GitHub catalog 与 Range 断点续传演练通过；
+- 腾讯 COS/GitHub catalog 与 Range 断点续传演练通过；
 - 完整 typecheck、lint、unit、Electron E2E、comms、Harness 通过；
 - GPL/LGPL/MPL 源码义务与 `libsignal` 法务检查点获批准。

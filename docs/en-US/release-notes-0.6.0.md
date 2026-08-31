@@ -26,6 +26,6 @@ SQLite data is plaintext inside an owner-only user profile; use OS full-volume e
 
 - two kernels × five target runtime artifacts pass clean-machine smoke and storage-contract scans;
 - macOS signing/notarization and Windows Authenticode/install/update/uninstall evidence is retained;
-- OSS/GitHub catalog and Range-resume drill passes;
+- Tencent COS/GitHub catalog and Range-resume drill passes;
 - complete typecheck, lint, unit, Electron E2E, comms and Harness checks pass;
 - GPL/LGPL/MPL source obligations and the `libsignal` legal checkpoint are approved.

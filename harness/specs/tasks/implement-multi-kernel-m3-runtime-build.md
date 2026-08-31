@@ -20,6 +20,7 @@ requiredRules:
   - comms-regression
 requiredTests:
   - pnpm exec vitest run tests/unit/kernel-runtime-build.test.ts
+  - pnpm exec vitest run tests/unit/kernel-key-backup.test.ts tests/unit/tencent-cos-publisher.test.ts
   - pnpm exec vitest run tests/contract/kernels/real-runtime-artifact-install.test.ts tests/contract/kernels/real-dual-runtime-artifacts.test.ts
   - pnpm run typecheck:node
   - git diff --check

@@ -2,11 +2,11 @@
   "schemaVersion": 1,
   "channel": "production",
   "catalogUrls": [
-    "https://oss.intelli-spectrum.com/kernels/catalog.production.json",
+    "https://aq-pub-1252262977.cos.ap-shanghai.tencentcos.cn/clawxxx/kernels/catalog.production.json",
     "https://github.com/Tabll/ClawXXX/releases/download/kernel-runtimes/kernel-catalog.production.json"
   ],
   "mirrorBaseUrls": [
-    "https://oss.intelli-spectrum.com/kernels/",
+    "https://aq-pub-1252262977.cos.ap-shanghai.tencentcos.cn/clawxxx/kernels/",
     "https://github.com/Tabll/ClawXXX/releases/download/kernel-runtimes/"
   ]
 }

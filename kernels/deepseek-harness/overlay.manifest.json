@@ -188,7 +188,7 @@
     },
     {
       "path": "packages/session/session-persistence-clawx/src/index.ts",
-      "sha256": "5b6a71c4a77cf261c4b5d25a7c59d8f63792e3f66b90913c53f08525cdf379ad"
+      "sha256": "0a1b07a0075dee06d75fe7d0eed84b22b9d57f44a0485745d61f5ecb90b48efa"
     },
     {
       "path": "packages/session/session-persistence-clawx/src/invariant.ts",
@@ -208,7 +208,7 @@
     },
     {
       "path": "packages/session/session-persistence-clawx/tsconfig.json",
-      "sha256": "5efbef81b2cf274ede0db1730d1291e0d39085ea5a0f20221a6af86bd56243cf"
+      "sha256": "2a5b060b67a8d216a2d508f121f862130a2c1a64175aed5c8a9ee79c3ebf0ae0"
     },
     {
       "path": "packages/skills/clawx-dsh-skill-catalog/README.md",
