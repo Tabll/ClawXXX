@@ -437,7 +437,7 @@
 - [x] `MK-1807` 宿主 typecheck、lint（0 error / 7 既有 warning）、全量 2141 passed / 6 skipped、focused 27 passed、4 项 Electron 时间线 E2E、comms replay/compare、Harness CI、task validate/dry-run 与 diff check 通过；同步四语 README/release notes、设计与[升级契约](harness/reference/deepseek-harness-0.1.3-upgrade.md)。
 - [ ] `MK-1808` 后续从审核后的提交执行五目标 CI、macOS 签名公证、clean-machine、COS/镜像发布和 Range 演练；本地升级不等于这些发布步骤已经完成。
 
-本轮证据日期为 2026-09-06；未提交/推送、未触发远端 CI、未替换用户已安装内核。上游仍为 alpha 且公告存在性能回退，发布前还需代表性真实 Provider/长上下文验收。6 个未运行用例是既有条件性/真实制品闸门，不以本地 mock 或未签名包冒充通过。
+上述本地升级证据日期为 2026-09-06；随后已通过 `ae066914` 提交并推送，首次双内核构建的结果及修复见 M19 CI 续验。未替换用户已安装内核。上游仍为 alpha 且公告存在性能回退，发布前还需代表性真实 Provider/长上下文验收。6 个未运行用例是既有条件性/真实制品闸门，不以本地 mock 或未签名包冒充通过。
 
 ## M19：OpenClaw 2026.9.2 兼容升级（本地源码已切换，远端发布未执行）
 
@@ -454,7 +454,7 @@
 - [-] `MK-1911` 真实 Gateway/ACP + 可控本机 Provider 已通过多轮历史角色、工具/审批、模型/权限、取消、SIGKILL/新 generation 恢复、Channels admission 成功/拒绝、四次完整 usage 与无 native history；已接入 CI pre-seal 和 extracted-artifact 双重闸门。仍须真实 Provider 长上下文/自动压缩/异常重试、真实 Channel QR/媒体/收发及五目标 canonical Cron 端到端验收，不能用 SDK 或 UI mock 代替。
 - [ ] `MK-1912` 从审核提交完成新的五目标 CI、双制品同库 clean-machine、macOS 签名公证、COS/GitHub 发布与线上 Range；不沿用旧制品证据或替换运行中的版本。
 
-当前仓库 OpenClaw 为 `2026.9.2+clawx.7`，DSH 保持 `0.1.3-alpha.1+clawx.11`。本轮没有提交/推送/触发远端 CI，也没有替换已安装内核。旧安装包在启动前必须通过 managed protocol 校验；开发模式使用新 root dependency，正式应用需下载新的已验证制品。详细架构、旧补丁处置及验证边界见[升级设计](harness/reference/openclaw-2026.9.2-upgrade.md)。
+当前仓库 OpenClaw 为 `2026.9.2+clawx.7`，DSH 保持 `0.1.3-alpha.1+clawx.11`。源码升级已通过 `ae066914` 提交并推送至 `main`，首次双内核 CI 尚未全绿，见下方续验；没有替换已安装内核或发布生产 catalog。旧安装包在启动前必须通过 managed protocol 校验；开发模式使用新 root dependency，正式应用需下载新的已验证制品。详细架构、旧补丁处置及验证边界见[升级设计](harness/reference/openclaw-2026.9.2-upgrade.md)。
 
 本地最终验证记录（2026-09-06）：
 
@@ -463,6 +463,14 @@
 - 真实 macOS arm64 打包 payload：Gateway + ACP + 本机可控 Provider、固定 echo 审批/工具流、取消、SIGKILL 与新 generation hydrate、7 个 Channels 模块、canonical admission 接受/拒绝均通过；6 次 Provider 请求产生 4 个独立 usage 身份，不伪造缺失 cost，**无 native durable history**。报告：`temp/reports/openclaw-2026.9.2-payload-probe.json`。
 - 干净官方 npm 严格 patch/overlay 准备、两内核冻结摘要、native allowlist/架构检查、622 包许可证元数据审计通过；本机裁剪后 payload 为 **40,412 个文件 / 644,888,037 bytes**（不含独立 Node/签名/归档开销，不是完整归档预算验收）。
 - typecheck、lint（0 errors / 7 existing warnings）、Vite + Electron 构建、comms replay/compare、Harness CI、当前 diff-aware task validate/dry-run、`git diff --check` 通过。实际外部账号、长上下文和远端/签名制品项目继续按 MK-1911 / MK-1912 跟踪，未执行的不勾选。
+
+### M19 CI 续验（2026-09-06）
+
+- [x] `MK-1913` 定位 [首次双内核 CI 34035636685](https://github.com/Tabll/ClawXXX/actions/runs/34035636685)：10 个 build 中 5 成功 / 5 失败。DSH 四个非 Windows 目标及 OpenClaw Linux arm64 成功；两个 Windows 下载器因系统 temp 与 checkout 跨盘 `rename` 报 `EXDEV`；其余三个 OpenClaw 目标在真实 Gateway/ACP/Channels 探针通过后，因同一 Lark 加载单测超过默认 5 秒失败。macOS 两内核两架构均通过签名/公证步骤；失败的 OpenClaw macOS build 未产出最终归档。clean-machine 单/双内核验收被跳过，没有 COS 或生产 catalog 发布。[同提交 Electron E2E](https://github.com/Tabll/ClawXXX/actions/runs/34035575245) 的三平台全部通过。
+- [x] `MK-1914` 修复 npm 源码与 Node ZIP 下载器的同盘私有 sibling staging，保留完整性/身份校验后原子 rename 和 `finally` 清理。新增 12 项离线 CLI 回归，旧实现精确复现两处 `EXDEV`，修复后覆盖成功发布、坏摘要、下载失败、空/非空已有目录、npm 非法路径与包身份不符；回归在 CI 构建/签名前执行。
+- [x] `MK-1915` Lark 真正 CommonJS entry 改在异步独立 Node 子进程加载并断言 `register`，60 秒超时强制终止、专用用例上限 75 秒；两个 `import.meta` 修复点独立做 CommonJS 语法断言。无全局 timeout 放宽、mock、retry、skip 或强行成功退出；原真实 packaged-runtime 探针保留。
+- [x] `MK-1916` 本次修复的完整本地回归（Node 24.15.0）：focused **28 passed**；完整宿主 **253 files / 2180 passed / 0 failed / 6 existing pending**（`temp/kernel-ci-repair-vitest.json`）；两内核 CI storage suites 合集 **17 files / 81 passed**（`temp/kernel-ci-repair-storage-contracts.json`）。Lark 独立加载 focused 约 2.2 秒、完整并行套件约 3.7 秒。source hashes、typecheck、lint（0 errors / 7 existing warnings）、comms replay/compare、Harness CI、diff-aware task validate/dry-run、workflow YAML/前置测试顺序和 diff check 全部通过。检查了三语 README，UI/用户安装流程/运行时接口不变，无需翻译变更；约束和证据同步 reference/rule/scenario/task/TODO。Windows 真机、签名、公证和 clean-machine 仍须新 CI，不把本机模拟跨盘测试当远端通过。
+- [ ] `MK-1917` 经审核提交/推送本次 CI 修复并重新执行十目标构建、单/双内核 clean-machine 验收；完成后再单独推进受保护生产发布与 Range。修复请求本身不等于重新构建、审批或生产发布已获执行/已通过。
 
 ## 每个实现 PR 的最低检查
 

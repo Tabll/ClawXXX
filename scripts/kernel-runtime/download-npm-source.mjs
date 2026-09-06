@@ -2,7 +2,6 @@
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { createWriteStream, existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
@@ -21,7 +20,9 @@ if (source.patchBase !== 'npm-tarball') throw new Error(`${kernelId} does not us
 const destination = resolve(destinationArgument);
 if (existsSync(destination)) throw new Error(`Source destination already exists: ${destination}`);
 mkdirSync(dirname(destination), { recursive: true, mode: 0o700 });
-const temporaryRoot = mkdtempSync(join(tmpdir(), 'clawx-npm-source-'));
+// Windows runners keep system temp and the checkout on different volumes.
+// Stage beside the destination so the verified source can be renamed atomically.
+const temporaryRoot = mkdtempSync(join(dirname(destination), '.clawx-npm-source-'));
 try {
   const separator = source.npm.package.lastIndexOf('@');
   const packageName = source.npm.package.slice(0, separator);

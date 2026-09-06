@@ -64,4 +64,11 @@ The durable architecture and release gates are defined in `harness/reference/mul
 
 Both runtimes must satisfy one canonical ClawX UI and storage contract. Upstream-specific models stay inside drivers and bridges. Runtime packages are immutable CI products downloaded on demand, not dependencies installed or patched on the end-user machine. Managed runtimes do not retain a second durable conversation, cron, channel-message, or usage history.
 
+Builder portability includes checkout/system-temp volume separation, verified
+same-volume staging and failure cleanup for both source and Node downloads.
+Complete native Channel entrypoint imports use bounded isolated processes,
+without weakening syntax/export assertions or the real packaged-runtime
+probes. The CI checks and remaining release gates are documented under
+`harness/reference/multi-kernel-runtime.md`.
+
 Skills are canonical immutable packages with per-kernel desired and projection state. OpenClaw and DeepSeek Harness roots must be physically independent: no shared root, nesting, root/package symlink, or cross-root resource reference is allowed. Both-target mutations report each result and retain partial state. DeepSeek Harness registers converted instructions through its process-local `ctx.skills` adapter while SQLite remains the sole metadata authority.

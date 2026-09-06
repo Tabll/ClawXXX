@@ -54,6 +54,8 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Verify all frozen source, lock, patch, overlay and Node inputs
         run: pnpm run kernel:sources:verify
+      - name: Verify atomic download staging and failure cleanup before building
+        run: pnpm exec vitest run tests/unit/kernel-runtime-downloads.test.ts
       - name: Fetch exact OpenClaw npm patch base
         if: matrix.kernel == 'openclaw'
         run: node scripts/kernel-runtime/download-npm-source.mjs --kernel openclaw --destination temp/kernel-source

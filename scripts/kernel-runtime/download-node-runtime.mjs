@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 import { execFileSync } from 'node:child_process';
 import { cpSync, createWriteStream, existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
@@ -21,7 +20,9 @@ if (!asset) throw new Error(`No pinned Node runtime for ${platform}-${arch}`);
 const finalDestination = resolve(destination);
 if (existsSync(finalDestination)) throw new Error(`Node runtime destination already exists: ${finalDestination}`);
 mkdirSync(dirname(finalDestination), { recursive: true, mode: 0o700 });
-const temporaryRoot = mkdtempSync(join(tmpdir(), 'clawx-node-runtime-'));
+// Keep download, extraction and final activation on the destination volume;
+// system temp can be on C: while a Windows runner's checkout is on D:.
+const temporaryRoot = mkdtempSync(join(dirname(finalDestination), '.clawx-node-runtime-'));
 try {
   const archivePath = join(temporaryRoot, asset.filename);
   await downloadAtomic(`${config.source}${asset.filename}`, archivePath, asset.sha256);

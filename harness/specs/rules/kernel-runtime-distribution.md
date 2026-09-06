@@ -32,6 +32,21 @@ License audits must retain compound `AND` expressions and require explicit packa
 
 Frozen inputs must retain LF bytes on Windows; raw upstream and prepared lockfile hashes are checked at their respective stages. DeepSeek Harness Linux builds must compile the pinned native Landlock launcher on each architecture before sandbox tests and include it in the audited runtime payload. Platform reports must be retained even after a later build failure.
 
+Build-time npm source and independent Node downloads must create private staging
+directories beside their destination, not in system temp: Windows CI can place
+the checkout and `%TEMP%` on different volumes. Verify bytes and extracted
+identity before the final same-volume rename, refuse existing destinations and
+clean owned staging on failure. Do not replace atomic publication with a
+cross-volume copy fallback. Offline CLI regression tests must model distinct
+volumes, retain real archive/hash checks and run before expensive build/signing.
+
+Real Channel package entrypoint tests must use a fresh native Node process when
+loading the complete plugin/SDK graph. Bound that child with a kill timeout
+shorter than its dedicated test deadline; retain actual export and syntax
+assertions. Never fix a cold-start timeout with mocks, retries, skipped checks
+or a global timeout increase. Packaged Gateway/ACP/Channel probes remain
+independent mandatory gates.
+
 DeepSeek Harness deployment must derive its closure from the shared lockfile (`inject-workspace-packages=true`); legacy hoisted deployment discards the lock and must not be used. Deploy skips lifecycle scripts, then explicitly invokes only the pinned upstream spawn-helper executable-bit repair. Generated deploy lockfiles, workspace settings, and builder-path manifests are removed or replaced with the reviewed runtime root manifest before archiving. The target-specific native allowlist must cover the actual frozen closure, including Koffi, image codecs, builtin loader, PTY, and the Linux Landlock launcher; non-target binaries are pruned before signing.
 
 Windows runtime CI may explicitly select `artifact-signature-only` while Authenticode is deferred by the repository owner. The hash-bound platform report must record `authenticode: false` and `status: deferred`; all Ed25519 descriptor/catalog, archive integrity, extraction, sandbox, and storage checks remain mandatory. Missing credentials or failed Authenticode verification must never silently fall back to this mode. macOS Developer ID, hardened-runtime, and accepted notarization gates remain mandatory.
