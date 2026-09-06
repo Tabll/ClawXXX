@@ -21,6 +21,8 @@ const scopes = {
   '@node-llama-cpp': /^(mac|linux|win)-(arm64|x64|armv7l)/,
   '@esbuild': /^(darwin|linux|win32|android|freebsd|netbsd|openbsd|sunos|aix|openharmony)-(x64|arm64|arm|ia32|loong64|mips64el|ppc64|riscv64|s390x)/,
   '@openai': /^codex-(darwin|linux|win32)-(x64|arm64)$/,
+  '@koromix': /^koffi-(darwin|linux|win32|freebsd|openbsd)-(x64|arm64|arm|ia32|loong64|riscv64)$/,
+  '@deepseek-ai': /^node-addon-landlock-run-(linux)-(x64|arm64)$/,
 };
 let removed = 0;
 for (const nodeModules of findDirectories(payload, 'node_modules')) {
@@ -38,6 +40,8 @@ for (const nodeModules of findDirectories(payload, 'node_modules')) {
   for (const entry of readdirSync(nodeModules)) {
     const match = /^sqlite-vec-(darwin|linux|windows)-(x64|arm64)$/.exec(entry);
     if (match && (aliases[match[1]] !== platform || match[2] !== arch)) remove(join(nodeModules, entry));
+    const builtin = /^node-addon-require-builtin-(darwin|linux|win32)-(x64|arm64|ia32)(?:-(gnu|msvc))?$/.exec(entry);
+    if (builtin && (builtin[1] !== platform || builtin[2] !== arch)) remove(join(nodeModules, entry));
   }
   const koffi = join(nodeModules, 'koffi', 'build', 'koffi');
   if (existsSync(koffi)) {
@@ -49,6 +53,18 @@ for (const nodeModules of findDirectories(payload, 'node_modules')) {
     for (const entry of readdirSync(prebuilds)) {
       const normalized = entry.replace(/^mac-/, 'darwin-').replace(/^win-/, 'win32-');
       if (!normalized.startsWith(`${platform}-${arch}`)) remove(join(prebuilds, entry));
+    }
+  }
+  const conpty = join(nodeModules, 'node-pty', 'third_party', 'conpty');
+  if (existsSync(conpty)) {
+    if (platform !== 'win32') remove(conpty);
+    else {
+      for (const version of readdirSync(conpty, { withFileTypes: true })) {
+        if (!version.isDirectory()) continue;
+        for (const target of readdirSync(join(conpty, version.name), { withFileTypes: true })) {
+          if (target.isDirectory() && target.name !== `win10-${arch}`) remove(join(conpty, version.name, target.name));
+        }
+      }
     }
   }
 }

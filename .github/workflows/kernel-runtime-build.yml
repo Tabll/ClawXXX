@@ -12,6 +12,11 @@ on:
         description: Immutable staging object prefix
         required: true
         default: https://aq-pub-1252262977.cos.ap-shanghai.tencentcos.cn/clawxxx/kernels
+      windows-signing:
+        description: Windows PE code signing (artifact descriptors are always signed)
+        type: choice
+        options: [artifact-signature-only, authenticode]
+        default: artifact-signature-only
 
 permissions:
   contents: read
@@ -77,13 +82,23 @@ jobs:
       - name: Add OpenClaw plugins to the optional runtime only
         if: matrix.kernel == 'openclaw'
         run: node scripts/kernel-runtime/materialize-openclaw-plugins.mjs --payload build/openclaw
-      - name: Install, build and test DeepSeek Harness overlay workspace
+      - name: Install DeepSeek Harness frozen overlay workspace
+        if: matrix.kernel == 'deepseek-harness'
+        working-directory: temp/kernel-source
+        run: pnpm install --frozen-lockfile
+      - name: Install the Linux native sandbox compiler
+        if: matrix.kernel == 'deepseek-harness' && matrix.target.platform == 'linux'
+        run: sudo apt-get update && sudo apt-get install --yes musl-tools
+      - name: Build the native Landlock sandbox from the frozen upstream source
+        if: matrix.kernel == 'deepseek-harness' && matrix.target.platform == 'linux'
+        working-directory: temp/kernel-source
+        run: pnpm --dir native/landlock-run build:native
+      - name: Build and test DeepSeek Harness overlay workspace
         if: matrix.kernel == 'deepseek-harness'
         working-directory: temp/kernel-source
         env:
           CLAWX_DSH_RUN_SANDBOX_SMOKE: '1'
         run: >-
-          pnpm install --frozen-lockfile &&
           pnpm run build:lib:host &&
           pnpm exec vitest run
           packages/acp/clawx-rich-events/tests
@@ -95,14 +110,20 @@ jobs:
       - name: Deploy DeepSeek Harness runtime-host production closure
         if: matrix.kernel == 'deepseek-harness'
         working-directory: temp/kernel-source
-        run: pnpm --config.node-linker=hoisted --filter @clawx/dsh-runtime-host deploy --prod --legacy ../kernel-payload
+        run: >-
+          pnpm --config.node-linker=hoisted --config.inject-workspace-packages=true
+          --filter @clawx/dsh-runtime-host deploy --prod --ignore-scripts ../kernel-payload
       - name: Materialize DeepSeek Harness deploy links as reviewed regular files
         if: matrix.kernel == 'deepseek-harness'
         run: >-
           node scripts/kernel-runtime/materialize-deploy-tree.mjs
           --payload temp/kernel-payload
           --workspace temp/kernel-source
+          --root-package packages/runtime/clawx-runtime-host
           --platform ${{ matrix.target.platform }}
+      - name: Restore the reviewed node-pty spawn-helper executable bit
+        if: matrix.kernel == 'deepseek-harness'
+        run: node temp/kernel-payload/node_modules/@deepseek-ai/dsh-subprocess-local/scripts/ensure-spawn-helper.mjs
       - name: Select payload path
         shell: bash
         run: |
@@ -153,7 +174,7 @@ jobs:
           xcrun notarytool submit temp/notarization.zip --keychain-profile "$profile" --wait --output-format json > temp/reports/notarization.json
           node scripts/kernel-runtime/write-platform-security-report.mjs --platform darwin --arch ${{ matrix.target.arch }} --signing temp/reports/platform-signing.json --notarization temp/reports/notarization.json --output temp/reports/platform-security.json
       - name: Materialize Windows runtime signing certificate
-        if: matrix.target.platform == 'win32'
+        if: matrix.target.platform == 'win32' && inputs['windows-signing'] == 'authenticode'
         shell: pwsh
         env:
           CLAWX_WINDOWS_SIGNING_CERT_PFX_B64: ${{ secrets.CLAWX_WINDOWS_SIGNING_CERT_PFX_B64 }}
@@ -161,7 +182,7 @@ jobs:
           if (-not $env:CLAWX_WINDOWS_SIGNING_CERT_PFX_B64) { throw "Missing Windows signing certificate" }
           [IO.File]::WriteAllBytes("temp/runtime-signing.pfx", [Convert]::FromBase64String($env:CLAWX_WINDOWS_SIGNING_CERT_PFX_B64))
       - name: Sign and strictly verify every Windows runtime executable
-        if: matrix.target.platform == 'win32'
+        if: matrix.target.platform == 'win32' && inputs['windows-signing'] == 'authenticode'
         shell: pwsh
         env:
           CLAWX_WINDOWS_RUNTIME_CERT_PASSWORD: ${{ secrets.CLAWX_WINDOWS_SIGNING_CERT_PASSWORD }}
@@ -172,11 +193,18 @@ jobs:
           -CertificatePath temp/runtime-signing.pfx
           -ReportPath temp/reports/platform-signing.json
       - name: Finalize Windows platform security evidence
-        if: matrix.target.platform == 'win32'
+        if: matrix.target.platform == 'win32' && inputs['windows-signing'] == 'authenticode'
         run: >-
           node scripts/kernel-runtime/write-platform-security-report.mjs
           --platform win32 --arch ${{ matrix.target.arch }}
           --signing temp/reports/platform-signing.json
+          --output temp/reports/platform-security.json
+      - name: Record the explicitly deferred Windows Authenticode policy
+        if: matrix.target.platform == 'win32' && inputs['windows-signing'] == 'artifact-signature-only'
+        run: >-
+          node scripts/kernel-runtime/write-platform-security-report.mjs
+          --platform win32 --arch ${{ matrix.target.arch }}
+          --windows-signing artifact-signature-only
           --output temp/reports/platform-security.json
       - name: Remove Windows runtime certificate material
         if: always() && matrix.target.platform == 'win32'
@@ -250,6 +278,14 @@ jobs:
           path: temp/artifacts/*
           if-no-files-found: error
           retention-days: 14
+      - name: Preserve runtime build and platform security reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: kernel-build-reports-${{ matrix.kernel }}-${{ matrix.target.platform }}-${{ matrix.target.arch }}
+          path: temp/reports/*.json
+          if-no-files-found: warn
+          retention-days: 30
 
   clean-machine-smoke:
     needs: build

@@ -32,11 +32,12 @@ try {
   await tar.x({ file: tarPath, cwd: extracted, strict: true, preservePaths: false });
   verifyFileManifest(extracted);
   const platformSecurityPath = join(extracted, 'metadata', 'platform-security.json');
+  let platformSecurity;
   if (descriptor.supplyChain.platformSecurityReportSha256) {
     if (sha256File(platformSecurityPath) !== descriptor.supplyChain.platformSecurityReportSha256) {
       throw new Error('Platform security report digest mismatch');
     }
-    const platformSecurity = readJson(platformSecurityPath);
+    platformSecurity = readJson(platformSecurityPath);
     if (platformSecurity.ok !== true || platformSecurity.platform !== descriptor.platform || platformSecurity.arch !== descriptor.arch) {
       throw new Error('Platform security report identity mismatch');
     }
@@ -48,6 +49,7 @@ try {
     kernelRoot: join(extracted, 'runtime', 'kernel'),
     nodeRoot: join(extracted, 'runtime', 'node'),
     platform: descriptor.platform,
+    platformSecurityReport: platformSecurity,
     assessNotarization: true,
   });
   const dataDir = join(managedDataRoot, 'state');

@@ -58,7 +58,8 @@ export function readPatchSeries(path) {
     .filter((line) => line !== '' && !line.startsWith('#'));
 }
 
-export function verifySourceInputs({ repositoryRoot, kernelId, sourceCheckout }) {
+export function verifySourceInputs({ repositoryRoot, kernelId, sourceCheckout, sourceCheckoutState = 'upstream' }) {
+  if (!['upstream', 'prepared'].includes(sourceCheckoutState)) throw new Error('Invalid source checkout state');
   const sourcePath = join(repositoryRoot, 'kernels', kernelId, 'source.json');
   const source = parseSourceManifest(readJson(sourcePath));
   if (source.kernelId !== kernelId) throw new Error(`Kernel identity mismatch: expected ${kernelId}, received ${source.kernelId}`);
@@ -85,11 +86,11 @@ export function verifySourceInputs({ repositoryRoot, kernelId, sourceCheckout })
   if (lockDescriptor.strategy === 'repository-frozen-lockfile') {
     verifyPinnedFile(repositoryRoot, source.lockfile.contentPath, source.lockfile.contentSha256, 'frozen lockfile');
   } else if (sourceCheckout) {
-    const expectedCheckoutHash = lockDescriptor.strategy === 'patched-upstream-lockfile'
+    const expectedCheckoutHash = lockDescriptor.strategy === 'patched-upstream-lockfile' && sourceCheckoutState === 'upstream'
       ? lockDescriptor.upstreamSha256
       : source.lockfile.contentSha256;
     if (!SHA256.test(expectedCheckoutHash ?? '')) throw new Error(`${kernelId} lock descriptor lacks an upstream hash`);
-    verifyPinnedFile(sourceCheckout, source.lockfile.contentPath, expectedCheckoutHash, 'upstream frozen lockfile');
+    verifyPinnedFile(sourceCheckout, source.lockfile.contentPath, expectedCheckoutHash, `${sourceCheckoutState} frozen lockfile`);
   }
 
   if (source.overlay) verifyOverlay(repositoryRoot, source.overlay);

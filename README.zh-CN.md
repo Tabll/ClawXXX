@@ -106,6 +106,8 @@ ClawX 预置了最佳实践的模型供应商配置，原生支持 Windows 平�
 
 0.6.0 不支持 Linux musl/Alpine 与 Windows arm64 运行时，详见[支持矩阵](docs/zh-CN/runtime-security-support.md)。
 
+Windows 可选内核暂缓 Authenticode 代码签名，仍强制校验 Ed25519 制品/目录签名与完整性；macOS 内核仍要求 Developer ID 签名和 Apple 公证。
+
 ### 安装方式
 
 #### 预构建版本（推荐）

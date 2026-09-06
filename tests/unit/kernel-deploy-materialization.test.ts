@@ -7,6 +7,25 @@ import { describe, expect, it } from 'vitest';
 import { materializeDeployTree } from '../../scripts/kernel-runtime/materialize-deploy-tree.mjs';
 
 describe('DSH deploy materialization', () => {
+  it('restores reviewed root metadata and removes generated builder paths', () => {
+    const root = mkdtempSync(join(tmpdir(), 'clawx-deploy-metadata-'));
+    const workspace = join(root, 'workspace');
+    const payload = join(root, 'payload');
+    mkdirSync(join(workspace, 'packages', 'runtime'), { recursive: true });
+    mkdirSync(join(payload, 'node_modules', '.pnpm'), { recursive: true });
+    const reviewed = '{"name":"@clawx/runtime","version":"1.0.0"}\n';
+    writeFileSync(join(workspace, 'packages', 'runtime', 'package.json'), reviewed);
+    writeFileSync(join(payload, 'package.json'), '{"name":"@clawx/runtime","dependencies":{"test":"file:///builder/path"}}');
+    writeFileSync(join(payload, 'pnpm-lock.yaml'), 'builder: /builder/path');
+    writeFileSync(join(payload, 'node_modules', '.pnpm', 'lock.yaml'), 'builder: /builder/path');
+    materializeDeployTree({
+      payloadRoot: payload, workspaceRoot: workspace, platform: process.platform, rootPackage: 'packages/runtime',
+    });
+    expect(readFileSync(join(payload, 'package.json'), 'utf8')).toBe(reviewed);
+    expect(() => lstatSync(join(payload, 'pnpm-lock.yaml'))).toThrow();
+    expect(() => lstatSync(join(payload, 'node_modules', '.pnpm', 'lock.yaml'))).toThrow();
+  });
+
   it('copies reviewed workspace packages without development node_modules', () => {
     const root = mkdtempSync(join(tmpdir(), 'clawx-deploy-'));
     const workspace = join(root, 'workspace');

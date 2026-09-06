@@ -7,7 +7,7 @@
 | Хост | Архитектуры | Обязательная база | Статус |
 | --- | --- | --- | --- |
 | macOS 13.5+ | arm64, x64 | Hardened Runtime, Developer ID, notarization Apple | обязательно |
-| Windows 10 / Server 2016+ | x64 | Authenticode SHA-256 и timestamp | обязательно |
+| Windows 10 / Server 2016+ | x64 | Подпись артефакта Ed25519; Authenticode отложен | обязательно |
 | Ubuntu 24.04 или совместимый glibc | x64, arm64 | glibc >= 2.39, kernel >= 6.8, sandbox smoke | обязательно |
 | Linux musl/Alpine | — | вне контракта glibc | не поддерживается |
 | Windows arm64 | — | нет release artifact | отложено |
@@ -19,7 +19,7 @@
 
 Source manifest фиксирует upstream commit/npm integrity, lockfile, patch series, overlay, дистрибутив Node и воспроизводимый timestamp. На машине пользователя npm/pnpm не запускается. Точный payload проходит contract tests, запрет native history, license audit и platform security; CI создаёт SPDX/CycloneDX, provenance и отчёты.
 
-Mach-O подписываются leaf-first, а notarization всего macOS closure должна иметь статус `Accepted`. Windows `.exe`/`.dll`/`.node` проходят Authenticode. Linux фиксирует и повторно проверяет ABI. Ed25519 artifact key подписывает immutable descriptor, отдельный catalog key — монотонный и ограниченный по времени catalog. Сначала публикуются неизменяемые artifacts в Tencent COS и GitHub, catalog — последним. После этого проверяются идентичность catalog, conditional cache и Range resume с двух независимых hosts.
+Mach-O подписываются leaf-first, а notarization всего macOS closure должна иметь статус `Accepted`. Для Windows можно явно выбрать `artifact-signature-only`: отчёт с проверяемым хешем фиксирует `authenticode: false` и `status: deferred`. Иначе требуется Authenticode; ошибка подписи не включает отложенный режим автоматически. Linux фиксирует и повторно проверяет ABI. Ed25519 artifact key подписывает immutable descriptor, отдельный catalog key — монотонный и ограниченный по времени catalog. Сначала публикуются неизменяемые artifacts в Tencent COS и GitHub, catalog — последним. После этого проверяются идентичность catalog, conditional cache и Range resume с двух независимых hosts.
 
 До activation клиент отклоняет expired/revoked/downgrade/incompatible, non-HTTPS, oversized, traversal/symlink, неверно подписанные или нарушающие storage authority inputs.
 

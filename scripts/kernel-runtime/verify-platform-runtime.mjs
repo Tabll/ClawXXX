@@ -12,7 +12,7 @@ export function verifyPlatformRuntime(input) {
   const kernelRoot = resolve(input.kernelRoot);
   const nodeRoot = resolve(input.nodeRoot);
   if (platform === 'darwin') return verifyMac(kernelRoot, nodeRoot, input.assessNotarization !== false);
-  if (platform === 'win32') return verifyWindows(kernelRoot, nodeRoot);
+  if (platform === 'win32') return verifyWindows(kernelRoot, nodeRoot, input.platformSecurityReport);
   if (platform === 'linux') return verifyLinux(nodeRoot);
   throw new Error(`Unsupported runtime verification platform: ${platform}`);
 }
@@ -27,9 +27,25 @@ function verifyMac(kernelRoot, nodeRoot, assessNotarization) {
   return { schemaVersion: 1, ok: true, platform: 'darwin', signedFiles: files.length, notarizationAssessed: assessNotarization };
 }
 
-function verifyWindows(kernelRoot, nodeRoot) {
+function verifyWindows(kernelRoot, nodeRoot, report) {
   const files = [...peFiles(kernelRoot), ...peFiles(nodeRoot)];
   if (files.length === 0) throw new Error('No PE files found during runtime verification');
+  if (!existsSync(join(nodeRoot, 'node.exe')) || !hasMagic(join(nodeRoot, 'node.exe'), new Set(['4d5a']))) {
+    throw new Error('Windows Node runtime is missing or is not PE');
+  }
+  // Only the archive-hash-bound report may select the explicitly deferred mode.
+  // A failed Authenticode check never falls back to artifact-signature-only.
+  if (report?.codeSigning?.authenticode === false) {
+    if (report.schemaVersion !== 1 || report.ok !== true || report.platform !== 'win32'
+      || report.arch !== 'x64' || report.codeSigning.artifactSignatureOnly !== true
+      || report.codeSigning.status !== 'deferred') {
+      throw new Error('Invalid deferred Windows code-signing report');
+    }
+    return {
+      schemaVersion: 1, ok: true, platform: 'win32', signedFiles: 0,
+      executableFiles: files.length, authenticode: false, artifactSignatureOnly: true,
+    };
+  }
   const script = [
     '$ErrorActionPreference = "Stop"',
     '$files = ConvertFrom-Json $env:CLAWX_RUNTIME_VERIFY_FILES',

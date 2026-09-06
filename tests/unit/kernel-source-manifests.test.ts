@@ -1,7 +1,9 @@
-import { readFileSync } from 'node:fs';
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 import { describe, expect, it } from 'vitest';
+import { verifySourceInputs } from '../../scripts/kernel-runtime/lib/source-manifest.mjs';
 
 type SourceManifest = {
   schemaVersion: number;
@@ -31,6 +33,41 @@ function sha256(path: string): string {
 }
 
 describe('frozen kernel sources', () => {
+  it('uses the prepared lock hash only after strict patch application, and rejects cross-stage bytes', () => {
+    const fixture = mkdtempSync(join(tmpdir(), 'clawx-lock-stage-'));
+    try {
+      const repositoryRoot = join(fixture, 'repo');
+      const sourceCheckout = join(fixture, 'checkout');
+      const kernelRoot = join(repositoryRoot, 'kernels', 'deepseek-harness');
+      mkdirSync(sourceCheckout, { recursive: true });
+      cpSync(join(root, 'kernels', 'deepseek-harness'), kernelRoot, { recursive: true });
+      cpSync(join(root, 'kernels', 'node-runtime.json'), join(repositoryRoot, 'kernels', 'node-runtime.json'));
+      const sourcePath = join(kernelRoot, 'source.json');
+      const manifest = JSON.parse(readFileSync(sourcePath, 'utf8'));
+      const descriptorPath = join(kernelRoot, 'lock.json');
+      const descriptor = JSON.parse(readFileSync(descriptorPath, 'utf8'));
+      const digest = (value: string) => createHash('sha256').update(value).digest('hex');
+      descriptor.upstreamSha256 = digest('upstream\n');
+      descriptor.sha256 = digest('prepared\n');
+      writeFileSync(descriptorPath, JSON.stringify(descriptor));
+      manifest.lockfile.contentSha256 = descriptor.sha256;
+      manifest.lockfile.descriptorSha256 = digest(JSON.stringify(descriptor));
+      writeFileSync(sourcePath, JSON.stringify(manifest));
+      const input = { repositoryRoot, sourceCheckout, kernelId: 'deepseek-harness' };
+      const lockPath = join(sourceCheckout, 'pnpm-lock.yaml');
+      writeFileSync(lockPath, 'upstream\n');
+      expect(() => verifySourceInputs(input)).not.toThrow();
+      expect(() => verifySourceInputs({ ...input, sourceCheckoutState: 'prepared' })).toThrow(/prepared frozen lockfile hash mismatch/);
+      writeFileSync(lockPath, 'prepared\n');
+      expect(() => verifySourceInputs(input)).toThrow(/upstream frozen lockfile hash mismatch/);
+      expect(() => verifySourceInputs({ ...input, sourceCheckoutState: 'prepared' })).not.toThrow();
+      writeFileSync(lockPath, 'prepared\r\n');
+      expect(() => verifySourceInputs({ ...input, sourceCheckoutState: 'prepared' })).toThrow(/hash mismatch/);
+    } finally {
+      rmSync(fixture, { recursive: true, force: true });
+    }
+  });
+
   it.each([
     ['openclaw', '2026.7.1-2'],
     ['deepseek-harness', '0.1.2-alpha.2'],

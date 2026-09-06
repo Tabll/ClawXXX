@@ -5,6 +5,7 @@ import {
   existsSync,
   lstatSync,
   mkdirSync,
+  readFileSync,
   readlinkSync,
   readdirSync,
   realpathSync,
@@ -34,6 +35,26 @@ export function materializeDeployTree(input) {
     const links = symbolicLinks(payloadRoot);
     if (links.length === 0) break;
     for (const path of links) materializeLink({ path, payloadRoot, workspaceRoot, platform, result });
+  }
+  if (input.rootPackage) {
+    const packageRoot = realDirectory(resolve(workspaceRoot, input.rootPackage), 'root workspace package');
+    if (!isInside(workspaceRoot, packageRoot)) throw new Error('Root package escapes reviewed workspace');
+    const manifest = readFileSync(resolve(packageRoot, 'package.json'));
+    const deployedManifest = JSON.parse(readFileSync(resolve(payloadRoot, 'package.json'), 'utf8'));
+    if (JSON.parse(manifest.toString()).name !== deployedManifest.name) throw new Error('Root package identity mismatch');
+    // The generated deploy manifest/lockfiles contain absolute builder paths.
+    // Runtime packages use the reviewed manifest; install metadata is build-only.
+    writeFileSync(resolve(payloadRoot, 'package.json'), manifest);
+    for (const relativePath of [
+      'pnpm-lock.yaml', 'pnpm-workspace.yaml', 'node_modules/.modules.yaml',
+      'node_modules/.pnpm/lock.yaml', 'node_modules/.pnpm-workspace-state-v1.json',
+    ]) {
+      const path = resolve(payloadRoot, relativePath);
+      if (existsSync(path)) {
+        if (!lstatSync(path).isFile()) throw new Error(`Install metadata must be a regular file: ${path}`);
+        rmSync(path);
+      }
+    }
   }
   return { ok: true, ...result };
 }
@@ -129,6 +150,7 @@ async function main() {
     payloadRoot: args.get('--payload'),
     workspaceRoot: args.get('--workspace'),
     platform: args.get('--platform'),
+    rootPackage: args.get('--root-package'),
   });
   process.stdout.write(`${JSON.stringify(result)}\n`);
 }

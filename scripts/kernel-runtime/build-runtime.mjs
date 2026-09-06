@@ -12,7 +12,12 @@ const required = [
 ];
 for (const argument of required) if (!args.get(argument)) throw new Error(`Missing ${argument}`);
 const repositoryRoot = resolve(args.get('--repository') ?? process.cwd());
-verifySourceInputs({ repositoryRoot, kernelId: args.get('--kernel'), sourceCheckout: args.get('--source-checkout') });
+verifySourceInputs({
+  repositoryRoot,
+  kernelId: args.get('--kernel'),
+  sourceCheckout: args.get('--source-checkout'),
+  sourceCheckoutState: 'prepared',
+});
 const result = await assembleKernelArtifact({
   repositoryRoot,
   kernelId: args.get('--kernel'),

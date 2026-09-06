@@ -1,6 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import { generateKeyPairSync } from 'node:crypto';
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { assembleKernelArtifact, validateNativePayloads } from '../../scripts/kernel-runtime/lib/artifact.mjs';
@@ -132,6 +132,45 @@ describe('kernel runtime build supply chain', () => {
       expect(scanRuntimeDataPaths(root)).toMatchObject({ ok: false });
       expect(scanRuntimeDataDirectory(root, successfulScenarios())).toMatchObject({ ok: false });
       expect(() => scanRuntimeDataDirectory(root, { ...successfulScenarios(), restart: false })).toThrow(/restart/);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it.each([
+    ['darwin', 'arm64'], ['darwin', 'x64'], ['linux', 'arm64'], ['linux', 'x64'], ['win32', 'x64'],
+  ])('prunes foreign native addons and ConPTY but preserves the %s/%s closure', (platform, arch) => {
+    const root = mkdtempSync(join(tmpdir(), 'clawx-native-prune-'));
+    try {
+      const payload = join(root, 'payload');
+      const nodeModules = join(payload, 'node_modules');
+      const targets = [['darwin', 'arm64'], ['darwin', 'x64'], ['linux', 'arm64'], ['linux', 'x64'], ['win32', 'x64']];
+      const packages = targets.flatMap(([os, cpu]) => [
+        { path: `@koromix/koffi-${os}-${cpu}`, keep: os === platform && cpu === arch },
+        { path: `node-addon-require-builtin-${os}-${cpu}${os === 'linux' ? '-gnu' : os === 'win32' ? '-msvc' : ''}`, keep: os === platform && cpu === arch },
+        { path: `@img/sharp-${os}-${cpu}`, keep: os === platform && cpu === arch },
+        { path: `node-pty/prebuilds/${os}-${cpu}`, keep: os === platform && cpu === arch },
+      ]).concat([
+        { path: '@deepseek-ai/node-addon-landlock-run-linux-x64', keep: platform === 'linux' && arch === 'x64' },
+        { path: '@deepseek-ai/node-addon-landlock-run-linux-arm64', keep: platform === 'linux' && arch === 'arm64' },
+        { path: 'node-pty/third_party/conpty/1.22.250204002/win10-x64', keep: platform === 'win32' && arch === 'x64' },
+        { path: 'node-pty/third_party/conpty/1.22.250204002/win10-arm64', keep: false },
+        { path: '@deepseek-ai/dsh-subprocess-local', keep: true },
+        { path: '@koromix/unrelated-package', keep: true },
+      ]);
+      for (const entry of packages) {
+        mkdirSync(join(nodeModules, entry.path), { recursive: true });
+        writeFileSync(join(nodeModules, entry.path, 'marker'), entry.path);
+      }
+      const unrelated = join(root, 'outside-payload');
+      mkdirSync(unrelated);
+      writeFileSync(join(unrelated, 'keep'), 'user data');
+      execFileSync(process.execPath, [
+        join(process.cwd(), 'scripts/kernel-runtime/prune-native-payload.mjs'),
+        '--payload', payload, '--platform', platform, '--arch', arch,
+      ], { stdio: 'pipe' });
+      for (const entry of packages) expect(existsSync(join(nodeModules, entry.path)), entry.path).toBe(entry.keep);
+      expect(readFileSync(join(unrelated, 'keep'), 'utf8')).toBe('user data');
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

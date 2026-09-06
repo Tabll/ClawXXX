@@ -21,11 +21,45 @@
     "host": "runtime/kernel/lib/bin.js"
   },
   "nativePayloadAllowlist": {
-    "darwin-arm64": ["runtime/kernel/node_modules/node-pty/prebuilds/darwin-arm64/**"],
-    "darwin-x64": ["runtime/kernel/node_modules/node-pty/prebuilds/darwin-x64/**"],
-    "linux-arm64": ["runtime/kernel/node_modules/node-pty/prebuilds/linux-arm64/**"],
-    "linux-x64": ["runtime/kernel/node_modules/node-pty/prebuilds/linux-x64/**"],
-    "win32-x64": ["runtime/kernel/node_modules/node-pty/prebuilds/win32-x64/**"]
+    "darwin-arm64": [
+      "runtime/kernel/node_modules/node-pty/prebuilds/darwin-arm64/**",
+      "runtime/kernel/node_modules/@koromix/koffi-darwin-arm64/darwin_arm64/koffi.node",
+      "runtime/kernel/node_modules/node-addon-require-builtin-darwin-arm64/prebuilt/*.node",
+      "runtime/kernel/node_modules/@img/sharp-darwin-arm64/lib/*.node",
+      "runtime/kernel/node_modules/@img/sharp-libvips-darwin-arm64/lib/*.dylib"
+    ],
+    "darwin-x64": [
+      "runtime/kernel/node_modules/node-pty/prebuilds/darwin-x64/**",
+      "runtime/kernel/node_modules/@koromix/koffi-darwin-x64/darwin_x64/koffi.node",
+      "runtime/kernel/node_modules/node-addon-require-builtin-darwin-x64/prebuilt/*.node",
+      "runtime/kernel/node_modules/@img/sharp-darwin-x64/lib/*.node",
+      "runtime/kernel/node_modules/@img/sharp-libvips-darwin-x64/lib/*.dylib"
+    ],
+    "linux-arm64": [
+      "runtime/kernel/node_modules/node-pty/prebuilds/linux-arm64/**",
+      "runtime/kernel/node_modules/@koromix/koffi-linux-arm64/linux_arm64/koffi.node",
+      "runtime/kernel/node_modules/node-addon-require-builtin-linux-arm64-gnu/prebuilt/*.node",
+      "runtime/kernel/node_modules/@img/sharp-linux-arm64/lib/*.node",
+      "runtime/kernel/node_modules/@img/sharp-libvips-linux-arm64/lib/*.so*",
+      "runtime/kernel/node_modules/@deepseek-ai/node-addon-landlock-run-linux-arm64/bin/landlock-run"
+    ],
+    "linux-x64": [
+      "runtime/kernel/node_modules/node-pty/prebuilds/linux-x64/**",
+      "runtime/kernel/node_modules/@koromix/koffi-linux-x64/linux_x64/koffi.node",
+      "runtime/kernel/node_modules/node-addon-require-builtin-linux-x64-gnu/prebuilt/*.node",
+      "runtime/kernel/node_modules/@img/sharp-linux-x64/lib/*.node",
+      "runtime/kernel/node_modules/@img/sharp-libvips-linux-x64/lib/*.so*",
+      "runtime/kernel/node_modules/@deepseek-ai/node-addon-landlock-run-linux-x64/bin/landlock-run"
+    ],
+    "win32-x64": [
+      "runtime/kernel/node_modules/node-pty/prebuilds/win32-x64/**",
+      "runtime/kernel/node_modules/node-pty/third_party/conpty/*/win10-x64/*.exe",
+      "runtime/kernel/node_modules/node-pty/third_party/conpty/*/win10-x64/*.dll",
+      "runtime/kernel/node_modules/@koromix/koffi-win32-x64/win32_x64/koffi.node",
+      "runtime/kernel/node_modules/node-addon-require-builtin-win32-x64-msvc/prebuilt/*.node",
+      "runtime/kernel/node_modules/@img/sharp-win32-x64/lib/*.node",
+      "runtime/kernel/node_modules/@img/sharp-win32-x64/lib/*.dll"
+    ]
   },
   "budgets": {
     "compressedBytes": 314572800,

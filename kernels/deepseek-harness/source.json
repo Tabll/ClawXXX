@@ -30,7 +30,7 @@
   },
   "runtime": {
     "path": "kernels/deepseek-harness/runtime.json",
-    "sha256": "4c12cc03bfdf231ea1a256a631df33432f6605b31cb09f410ee833e59737c2b4"
+    "sha256": "921b4be0df460fe75d114db92e3e481a884e09ab0e7eb60a273b24f8a1317855"
   },
   "nodeRuntime": {
     "path": "kernels/node-runtime.json",

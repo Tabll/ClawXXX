@@ -7,7 +7,7 @@ ClawX 0.6.0から、個別にダウンロードされるOpenClawとDeepSeek Harn
 | ホスト | アーキテクチャ | 必須条件 | 状態 |
 | --- | --- | --- | --- |
 | macOS 13.5+ | arm64、x64 | Hardened Runtime、Developer ID署名、Apple notarization | 必須 |
-| Windows 10 / Server 2016+ | x64 | Authenticode SHA-256署名とtimestamp | 必須 |
+| Windows 10 / Server 2016+ | x64 | Ed25519 artifact署名、Authenticodeは延期 | 必須 |
 | Ubuntu 24.04または互換glibc環境 | x64、arm64 | glibc >= 2.39、kernel >= 6.8、sandbox smoke | 必須 |
 | Linux musl/Alpine | — | glibc契約外 | 非対応 |
 | Windows arm64 | — | runtime artifactなし | 延期 |
@@ -32,6 +32,8 @@ macOSのMach-Oはleaf-firstで署名し、closure全体のnotarizationが`Accept
 Rollback keyはofflineかつ`rollback` purpose専用で、通常releaseには使いません。互換性、revocation、digest、platform signature、storage authorityを回避できません。
 
 ## Platform signing、compatibility、EOL
+
+Optional Windows runtimeは`artifact-signature-only`を明示的に選択できます。Hash-bound reportに`authenticode: false`と`status: deferred`を記録し、descriptor/catalog署名、整合性、sandbox検証は維持します。Authenticode失敗による自動fallbackはありません。
 
 macOS host releaseはstrict `codesign`、Gatekeeper、stapled ticketを検証します。WindowsはNSIS完成後の外側だけでなくelectron-builder packaging中に署名し、installed app、installer、electron-updater publisher検証を一貫させます。alpha/beta/stableは同じ署名ゲートです。
 

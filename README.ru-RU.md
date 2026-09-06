@@ -107,6 +107,8 @@ ClawX поставляется с предварительно настроен�
 
 Linux musl/Alpine и Windows arm64 runtimes не поддерживаются в 0.6.0. См. [матрицу](docs/ru-RU/runtime-security-support.md).
 
+Для optional runtimes Windows подпись Authenticode пока отложена; подписи Ed25519 для artifact/catalog и проверка целостности остаются обязательными. Для macOS обязательны Developer ID и нотариализация Apple.
+
 ### Установка
 
 #### Готовые релизы (рекомендуется)

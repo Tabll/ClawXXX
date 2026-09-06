@@ -7,7 +7,7 @@
 | 宿主 | 架构 | 运行时基线 | 状态 |
 | --- | --- | --- | --- |
 | macOS 13.5+ | arm64、x64 | Hardened Runtime、Developer ID 签名、Apple 公证 | 必须 |
-| Windows 10 / Server 2016+ | x64 | Authenticode SHA-256 签名与时间戳 | 必须 |
+| Windows 10 / Server 2016+ | x64 | Ed25519 制品签名；Authenticode 暂缓 | 必须 |
 | Ubuntu 24.04 或兼容 glibc 发行版 | x64、arm64 | glibc >= 2.39、kernel >= 6.8、sandbox smoke | 必须 |
 | Linux musl/Alpine | — | 不满足 glibc 运行时契约 | 不支持 |
 | Windows arm64 | — | 无首发运行时制品 | 延期 |
@@ -20,7 +20,7 @@
 1. Source manifest 固定上游 commit 或 npm integrity、lockfile、补丁序列、overlay manifest、Node 分发包和可复现时间戳。
 2. 受保护 CI 构建逐平台 payload；终端用户机器绝不执行 npm/pnpm 安装内核。
 3. 精确 payload 必须通过领域契约、无原生 history 扫描、许可证审计、平台签名检查，并生成 SPDX、CycloneDX 与 provenance。
-4. macOS 所有 Mach-O 叶子优先签名，完整 closure 的公证结果必须为 `Accepted`；Windows 的 `.exe`、`.dll`、`.node` 必须通过 Authenticode；Linux 固化并复验 ABI/支持基线。
+4. macOS 所有 Mach-O 叶子优先签名，完整 closure 的公证结果必须为 `Accepted`；Windows 明确选择 `artifact-signature-only` 时暂缓 Authenticode，并在哈希绑定的平台报告记录 `authenticode: false`、`status: deferred`，否则必须验证 Authenticode；Linux 固化并复验 ABI/支持基线。签名失败不能自动转入暂缓模式。
 5. Ed25519 artifact key 签不可变 descriptor；独立 Ed25519 catalog key 签单调递增且有期限的生产 catalog。晋级不会重建已批准制品。
 6. 两内核、五目标完整集合通过校验后，先把不可变制品发布到腾讯 COS 和 GitHub，最后发布签名 catalog。
 7. 发布后演练要求两个入口提供完全相同的签名 catalog、正确条件缓存及两个独立支持 Range 的制品主机；失败即停止晋级。

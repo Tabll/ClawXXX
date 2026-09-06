@@ -6,7 +6,7 @@
 >
 > 最近完整本地证据（2026-09-01）：Vitest 243 files / 241 passed / 2 skipped、2116 tests passed / 6 skipped（其中制品依赖项只在真实 CI 制品存在时执行）；Electron E2E 既有证据 151 passed / 3 platform skips；multi-kernel chaos 既有证据 28/28；DSH `0.1.2-alpha.2` 干净精确上游树完成严格 patch/overlay 重放、冻结安装、完整 host build、12 files / 43 focused tests，并在真实 macOS `sandbox-exec` 下通过 3/3 runtime self-tests；typecheck、lint、comms 与本任务 Harness 全绿
 >
-> 远端证据核对（2026-09-01）：实现分支已切换为 `Tabll/ClawXXX` 的 `main`；`kernel-staging` 与 `kernel-production` 均启用 `Tabll` required reviewer 和 selected refs，staging 仅允许 `main`，production 仅允许 `main` 与 `v*`。两个环境已分别写入 runtime/宿主 Developer ID P12、独立 Apple 公证凭据与所需 identity/Team secrets；最终 P12 已轮换为未展示的随机密码，并通过隔离钥匙串导入、Hardened Runtime 和 Apple timestamp 签名验证，两枚 App 专用密码均通过 `notarytool history` 认证。基于旧 DSH 输入 commit `44032823` 的待审批运行不得晋级；`0.1.2-alpha.2+clawx.9` 必须从升级后的新 commit 重新构建，当前仍没有 `Accepted` 公证、生产晋级或分发证据，因此外部证据项目继续保持 `[-]`
+> 远端证据核对（2026-09-06）：实现分支为 `Tabll/ClawXXX` 的 `main`；`kernel-staging` 与 `kernel-production` 均启用 `Tabll` required reviewer 和 selected refs，staging 仅允许 `main`，production 仅允许 `main` 与 `v*`。签名、公证凭据已分别配置到两个环境。旧 DSH 输入运行 `33412268471` 已取消；升级 commit `d68414b4` 的 [运行 `33971358333`](https://github.com/Tabll/ClawXXX/actions/runs/33971358333) 已审批并真实执行五目标构建。两种 macOS 的签名与公证步骤均成功（写报告脚本要求 Apple `Accepted`），随后因 prepared lockfile 校验阶段错误而终止，尚无可发布制品；Linux 缺原生 Landlock 构建，Windows 遇到 CRLF 哈希差异。首次失败没有保留公证报告，后续构建已增加失败时报告归档，仍须取得制品、提交 ID、干净机器校验及生产分发证据；不将步骤成功误记为发布完成。
 >
 > 目标：OpenClaw 与 DeepSeek Harness 可选下载、共享 ClawX UI、能力同构、同时运行，并以单一 SQLite 统一保存 Conversation、Cron、Channel 与 Usage 记录
 
@@ -370,8 +370,8 @@
 ## M16：安全、发布与文档
 
 - [x] `MK-1601` 完成 runtime signing key 管理、rotation、revocation runbook。
-- [-] `MK-1602` 完成 macOS runtime executable 签名/公证验证。（leaf-first Hardened Runtime、notary `Accepted`、制品与宿主校验均已编码；真实 Developer ID P12 已配置到 staging/production，隔离导入、Hardened Runtime、Apple timestamp 与两枚 `notarytool` 凭据认证均已通过；仍等待受保护 CI 对真实 runtime/宿主制品产生 `Accepted`、staple 与 Gatekeeper 日志）
-- [-] `MK-1603` 完成 Windows process tree、文件锁、签名和卸载验证。（实现与 CI 门禁已完成；2026-08-31 决定暂缓配置 Authenticode，正式五目标 promotion/release 仍失败关闭，等待证书和 Windows packaged runner 结果）
+- [-] `MK-1602` 完成 macOS runtime executable 签名/公证验证。（运行 `33971358333` 的 arm64/x64 runtime 签名、公证步骤均成功；后续打包失败且该次未归档公证 JSON，仍等待修复后制品及提交 ID、干净机器 Gatekeeper 和宿主日志，不视为完整完成）
+- [-] `MK-1603` 完成 Windows process tree、文件锁、签名和卸载验证。（遵循 2026-08-31 暂缓 Authenticode 的决定，runtime CI 显式提供 `artifact-signature-only` 模式并写入哈希绑定安全报告；Ed25519、archive hash、沙箱与安装卸载校验不放宽；仍等待 Windows packaged runner 结果，宿主安装包签名另行处理）
 - [-] `MK-1604` 完成 Linux glibc/kernel/sandbox 支持矩阵。（glibc >= 2.39、kernel >= 6.8、x64/arm64 与 DSH sandbox self-test 已固化；等待两个 Linux runner 结果）
 - [-] `MK-1605` 完成腾讯 COS/GitHub 镜像和断点续传运行演练。（COS 已固定 `aq-pub-1252262977/ap-shanghai/clawxxx`，官方 SDK、object-key 边界、SHA-256 metadata、immutable forbid-overwrite 与 catalog-last 已实现；双 catalog/双 artifact host、Range/If-Range、精确 N−1 双镜像连续晋级与重试演练已通过模拟测试，仍须生产 promotion 后取得在线证据）
 - [-] `MK-1606` 完成 supply-chain/SBOM/license/security review。（deterministic artifact、SPDX/CycloneDX、provenance 与审计均已实现；本地 OpenClaw 587/DSH 97 个包审计通过；2026-08-31 决定暂缓许可证/法务，GPL/LGPL/MPL 履约地址和批准仍待发布负责人签字，不能据此完成正式发布门禁）
@@ -405,6 +405,10 @@
 - [x] `MK-1707` 完成仓库 typecheck、lint（0 errors / 7 existing warnings）、241 files / 2116 tests、comms replay/compare 和本任务 Harness fast/comms profiles。
 - [x] `MK-1708` 同步四语言 release notes、架构/reference、THIRD_PARTY_NOTICES 与本清单；README 四版本经复核无需改动功能描述。
 - [-] `MK-1709` 从升级后的 `main` commit 重新执行受保护五目标 runtime build、macOS 公证、COS/GitHub 镜像上传、线上 Range/If-Range 演练与 production promotion；旧 DSH 输入运行禁止审批或晋级。
+  - [x] 取消旧运行 `33412268471`，从升级 commit 启动并审批 `33971358333`；读取所有失败目标的真实日志。
+  - [x] 修复跨平台 LF、upstream/prepared lock 校验、Linux 原生 Landlock 构建与 Windows 显式延后 Authenticode；失败时保留安全报告。
+  - [x] 将会重解析依赖的 legacy hoisted deploy 改为 shared-lock deploy；本机验证锁定 Koffi `3.1.1`，显式执行已审计 spawn-helper 后处理，移除 builder 路径元数据并裁剪/精确白名单化原生包。
+  - [-] 修复提交推送后重新执行五目标 CI，取得全部制品、干净机器和线上分发证据；失败的旧构建不得晋级。
 
 ### M17 Acceptance
 

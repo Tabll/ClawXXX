@@ -107,6 +107,8 @@ AIエージェントの構築にコマンドラインの習得は不要である
 
 0.6.0ではLinux musl/AlpineとWindows arm64 runtimeは非対応です。[Support matrix](docs/ja-JP/runtime-security-support.md)を参照してください。
 
+Windowsのoptional runtimeは現在Authenticode署名を延期していますが、Ed25519によるartifact/catalog署名と整合性検証は必須です。macOS runtimeにはDeveloper ID署名とApple公証が必要です。
+
 ### インストール
 
 #### ビルド済みリリース（推奨）

@@ -106,6 +106,8 @@ Building AI agents shouldn't require mastering the command line. ClawX was desig
 
 Linux musl/Alpine and Windows arm64 runtimes are not supported in 0.6.0. See the [support matrix](docs/en-US/runtime-security-support.md).
 
+Windows optional runtimes currently defer Authenticode code signing; Ed25519 artifact/catalog signatures and integrity checks remain required. macOS runtimes require Developer ID signing and Apple notarization.
+
 ### Installation
 
 #### Pre-built Releases (Recommended)

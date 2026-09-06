@@ -17,6 +17,9 @@ const destination = resolve(destinationArgument);
 if (existsSync(destination)) throw new Error(`Source destination already exists: ${destination}`);
 mkdirSync(dirname(destination), { recursive: true, mode: 0o700 });
 run(['init', '--quiet', destination]);
+// Preserve upstream blob bytes even when the Windows runner enables autocrlf.
+run(['-C', destination, 'config', 'core.autocrlf', 'false']);
+run(['-C', destination, 'config', 'core.eol', 'lf']);
 run(['-C', destination, 'remote', 'add', 'origin', `${source.upstream}.git`]);
 run(['-C', destination, 'fetch', '--depth=1', '--no-tags', 'origin', source.git.commit]);
 run(['-C', destination, 'checkout', '--quiet', '--detach', source.git.commit]);

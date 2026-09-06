@@ -8,6 +8,11 @@ for (let index = 2; index < process.argv.length; index += 2) args.set(process.ar
 const platform = required('--platform');
 const arch = required('--arch');
 const output = resolve(required('--output'));
+const windowsSigning = args.get('--windows-signing') ?? 'authenticode';
+if (!['authenticode', 'artifact-signature-only'].includes(windowsSigning)
+  || (args.has('--windows-signing') && platform !== 'win32')) {
+  throw new Error('Invalid Windows code-signing policy');
+}
 let report;
 if (platform === 'darwin') {
   const signing = successful('--signing');
@@ -22,6 +27,12 @@ if (platform === 'darwin') {
     schemaVersion: 1, ok: true, platform, arch,
     codeSigning: { hardenedRuntime: true, files: signing.files },
     notarization: { status: notarization.status, submissionId: notarization.id },
+  };
+} else if (platform === 'win32' && windowsSigning === 'artifact-signature-only') {
+  if (args.has('--signing')) throw new Error('Deferred Authenticode must not consume a signing report');
+  report = {
+    schemaVersion: 1, ok: true, platform, arch,
+    codeSigning: { authenticode: false, artifactSignatureOnly: true, status: 'deferred' },
   };
 } else if (platform === 'win32') {
   const signing = successful('--signing');
