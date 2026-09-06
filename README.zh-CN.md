@@ -162,7 +162,7 @@ ClawX 采用 **Main-owned 多内核 + Host API 统一接入架构**：React Rend
 
 当前 DSH 源码已适配 `0.1.3-alpha.1+clawx.11` 的 v2 流式与结算接口，仍共用同一 SQLite 历史。它仍是 alpha，上游提示存在性能回退；必须完成新版 CI 制品验证与发布，已安装内核才可更新。详见[升级兼容性说明](harness/reference/deepseek-harness-0.1.3-upgrade.md)。
 
-OpenClaw 源码和开发依赖已切换为 `2026.9.2+clawx.8`。生产桥接按 Run 从统一 SQLite 历史创建独立内存会话，适配新版 Agents/模型/权限配置，并修复 7 个 Channels 插件。独立真实 Gateway/ACP 和打包 payload 测试覆盖工具、取消、崩溃恢复、入站拒绝及无原生历史写入。已安装内核仍须下载新的已验证 CI 制品；五平台签名发布和真实账号验收尚未执行。详见[升级设计与证据](harness/reference/openclaw-2026.9.2-upgrade.md)。
+OpenClaw 源码和开发依赖已切换为 `2026.9.2+clawx.9`。生产桥接按 Run 从统一 SQLite 历史创建独立内存会话，适配新版 Agents/模型/权限配置，并修复 7 个 Channels 插件。独立真实 Gateway/ACP 和打包 payload 测试覆盖工具、取消、崩溃恢复、入站拒绝及无原生历史写入。已安装内核仍须下载新的已验证 CI 制品；五平台签名发布和真实账号验收尚未执行。详见[升级设计与证据](harness/reference/openclaw-2026.9.2-upgrade.md)。
 
 - **进程模型**：Electron Main 管理系统集成、唯一 DataService、Package Manager 和逐内核独立 Supervisor；OpenClaw 与 DSH 可并行运行，Renderer 和 runtime 都不能直接打开 canonical ClawX SQLite 或互相直连。
 - **配置交付**：Gateway 运行时由 Main 使用 `config.get` / `config.set`，停止或启动中则更新解析后的 JSON5 配置；普通 Provider/Agent/Skill/模型修改不会替换进程，凭据通过 `secrets.reload` 热更新。连续三分钟没有已验证的 Gateway 活动后，ClawX 会验证核心 RPC，并且只重启其自身拥有且不可用的 Gateway 进程；外部管理的 Gateway 保留给用户手动恢复。

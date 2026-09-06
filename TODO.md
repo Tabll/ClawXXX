@@ -2,7 +2,7 @@
 
 > 对应设计：[docs/zh-CN/multi-kernel-design.md](docs/zh-CN/multi-kernel-design.md)
 >
-> 状态：M19 已修复 OpenClaw 生产存储桥接、配置及 Channels，并切换本地源码/依赖为 2026.9.2+clawx.7；真实 Gateway/ACP 与 macOS arm64 payload 已有验证记录。受保护五目标签名、公证、真实账号/长上下文、生产镜像演练及法务批准仍是发布门禁，不以本机结果代替
+> 状态：M19 已修复 OpenClaw 生产存储桥接、配置、Channels 及 Windows 路径兼容，本地源码/依赖为 2026.9.2+clawx.9；Windows 隔离执行及 macOS arm64 payload 的真实 Gateway/ACP 已验证。新版受保护五目标构建、clean-machine、真实账号/长上下文、生产镜像演练及法务批准仍是发布门禁，不以本机结果代替
 >
 > 最近完整本地证据（2026-09-01）：Vitest 243 files / 241 passed / 2 skipped、2116 tests passed / 6 skipped（其中制品依赖项只在真实 CI 制品存在时执行）；Electron E2E 既有证据 151 passed / 3 platform skips；multi-kernel chaos 既有证据 28/28；DSH `0.1.2-alpha.2` 干净精确上游树完成严格 patch/overlay 重放、冻结安装、完整 host build、12 files / 43 focused tests，并在真实 macOS `sandbox-exec` 下通过 3/3 runtime self-tests；typecheck、lint、comms 与本任务 Harness 全绿
 >
@@ -476,7 +476,12 @@
 - [x] `MK-1920` artifact fsync 改为非截断 writable r+，保留 fatal flush error/关闭句柄；新增跨平台 Windows 权限模拟与 EIO 回归。Git fixture 明确本地 LF，并用私有 global config 覆盖 autocrlf true/false + CRLF；保留精确字节和 offset 拒绝。DSH driver 使用带空格的 native absolute join/resolve 断言，不改生产路径和 traversal 检查。
 - [x] `MK-1921` OpenClaw 递增不可变 revision 8；同步补丁、24 处 root lock patch-hash 引用、runtime/control overlay/manifest/source/lock 摘要；上游版本和所有依赖版本不变。离线 frozen install（不执行 lifecycle）、干净已验证 npm 基线的 23-target strict preparation、双内核 source verify 通过。新增 registry probe 在每个 OpenClaw payload 的 Gateway/签名前运行，原所有发布闸门保留。
 - [x] `MK-1922` 本轮完整本地验证（2026-09-06～07）：focused **20 passed**；完整宿主 **254 files / 2184 passed / 0 failed / 6 existing pending**（`temp/windows-ci-repair-vitest.json`）；真实 Windows 注册表三次回读及四类变更拒绝通过。新版 macOS arm64 打包 payload 的真实 Gateway/ACP、7 个 Channels、工具审批、取消、崩溃 hydrate、6 次本机 Provider 请求/4 项独立 usage 与无 native history 均通过（`temp/reports/openclaw-windows-ci-payload-probe.json`）。source hashes、typecheck、lint（0 errors / 7 existing warnings）、comms replay/compare、Harness CI、diff-aware task validate/dry-run 和 diff review 通过；同步四语 README/设计/规则/场景。Windows 验证仅操作隔离临时副本，没有接触用户数据；真实平台制品/签名和 clean-machine 仍以新 CI 为准。详细根因与验证边界见 [Windows 修复记录](harness/reference/windows-runtime-ci-repair.md)。
-- [ ] `MK-1923` 经审核提交/推送 +8 修复，用新 SHA 重新 dispatch 两内核五目标 staging（Windows artifact-signature-only），完成环境审批并记录真实 build/clean-machine 结果；不得 rerun 旧 SHA 或提前宣称全绿。COS、catalog promotion 和生产发布不在本次任务范围。
+- [x] `MK-1923` +8 修复已通过 `65a87de9` 提交/推送，并 dispatch/审批 [34044309931](https://github.com/Tabll/ClawXXX/actions/runs/34044309931)：9/10 build 成功，DSH Windows 和 OpenClaw Windows registry 回归通过；仅真实 Gateway 90 秒启动超时。四个 macOS 签名/公证与三平台 E2E 通过，clean-machine 因矩阵失败未执行。不是全绿或生产发布。
+- [x] `MK-1924` 真实 Windows 复现超时并加入上游阶段跟踪：首次进程 bootstrap 56.6 秒、HTTP bind 77 秒、90 秒仍在加载 Channels；发现此前被超时掩盖的 Discord `record-missing`。Windows 插件路径缓存改用 native realpath，统一大小写/短长路径/目录链接的物理身份，保持来源、所有者、边界和严格注册表比较不变。
+- [x] `MK-1925` 扩展真实 registry 回归：物理目录大小写与 junction/symlink 保留官方安装所有者，拒绝不同物理副本、伪造来源与多所有者冲突。Windows 真实 Gateway 专用预算 180 秒、其他平台 90 秒；补迟到响应/进程退出/信号/创建失败与资源释放回归，成功和失败均记录诊断。未调整 App/控制桥预算或跳过发布闸门。
+- [x] `MK-1926` 修复 Windows bare echo 无法绑定可执行文件的测试问题：使用 PATH 首位预置 Node 执行固定私有脚本，只对精确 command 批准一次并断言实际工具输出。真实 Windows 原始探针通过：两次就绪 34.5/21.1 秒，ACP、7 Channels、审批执行、取消、崩溃重建、6 次 Provider/4 usage 与零原生历史均通过。仅为隔离 VM 执行证据，不冒充原生 CI 制品验证。
+- [x] `MK-1927` 冻结 +clawx.9、24-target 严格补丁和完整 hash 链；离线 frozen install 无依赖版本变动。宿主全量 **2191 passed / 0 failed / 6 existing pending**，typecheck、lint（0 errors / 7 existing warnings）、source verify、comms replay/compare 通过；同步四语 README 版本、设计参考、规则、场景与任务规格。
+- [ ] `MK-1928` 审核并提交/推送 +9 修复，使用新提交重新 dispatch 两内核五目标 staging（Windows artifact-signature-only）及环境审批；逐项记录 build 和单/双内核 clean-machine 实际结果。COS/catalog/生产发布不在本轮范围。
 
 ## 每个实现 PR 的最低检查
 

@@ -1,6 +1,6 @@
 # OpenClaw 2026.9.2：生产桥接修复与版本切换
 
-更新：2026-09-06。仓库开发依赖、补丁、源码描述符和 CI 运行时定义已切换为 **2026.9.2+clawx.8**。这不是已发布声明：用户已安装的不可变运行时和在线 catalog 未被修改，签名、公证、五平台 clean-machine 与发布演练仍须通过。
+更新：2026-09-07。仓库开发依赖、补丁、源码描述符和 CI 运行时定义已切换为 **2026.9.2+clawx.9**。+9 修复 Windows 物理路径别名与插件安装所有者关联，并补齐有界冷启动及真实可执行文件审批探针，详见 [Windows CI 修复](windows-runtime-ci-repair.md)。这不是已发布声明：用户已安装的不可变运行时和在线 catalog 未被修改，签名、公证、五平台 clean-machine 与发布演练仍须通过。
 
 任务：harness/specs/tasks/upgrade-openclaw-2026-9-2.md；逐项状态：TODO M19。本文件是架构参考，不可作为 Harness task 运行。
 
@@ -13,7 +13,7 @@
 | 已验证签名 tag object | 87d32a44ab9744903d36a33b399c26cfc2b078d6 |
 | npm | openclaw@2026.9.2 |
 | SHA-512 | sha512-M6C7UsnX815nv26qBJFYGe6aGzv+ftZLRzV6S9oRXUtXg2Yn67eVntpssT94kgkquKVSeUxerUg0j1ONp4WYQg== |
-| runtime | 2026.9.2+clawx.8，patch revision 8 |
+| runtime | 2026.9.2+clawx.9，patch revision 9 |
 | Node | 冻结 24.15.0；上游要求 >=22.22.3 <23 或 >=24.15.0 <25 或 >=25.9.0；本机系统 Node 25.8.1 不满足 |
 | ACP SDK | @agentclientprotocol/sdk@1.4.0，含实际 session/close 客户端方法 |
 

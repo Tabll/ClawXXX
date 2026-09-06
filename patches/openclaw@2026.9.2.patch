@@ -595,3 +595,17 @@ index 7012117de29ddccc3ffc3a13104437fb8d48698c..a7ff36282da632b6fa6403bc75b90beb
  		const installPath = resolveRecordPath(record.installPath);
  		const sourcePath = resolveRecordPath(record.sourcePath);
  		for (const recordedPath of [installPath, sourcePath]) if (recordedPath && pluginCacheExistsSync(recordedPath)) {
+diff --git a/dist/plugin-cache-files-DLPF_Tw2.js b/dist/plugin-cache-files-DLPF_Tw2.js
+--- a/dist/plugin-cache-files-DLPF_Tw2.js
++++ b/dist/plugin-cache-files-DLPF_Tw2.js
+@@ -38,7 +38,9 @@
+ 	const facts = pathFacts(targetPath);
+ 	return facts.exists ??= fs.existsSync(targetPath);
+ }
+-function pluginCacheRealpathSync(targetPath, native = false) {
++// Windows' JS realpath preserves case/8.3 aliases. Match async realpath install
++// records using the OS-resolved identity, without relaxing owner/path checks.
++function pluginCacheRealpathSync(targetPath, native = process.platform === "win32") {
+ 	const facts = pathFacts(targetPath);
+ 	const key = native ? "nativeRealpath" : "realpath";
+ 	if (facts[key] === void 0) try {

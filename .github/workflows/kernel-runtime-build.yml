@@ -148,6 +148,7 @@ jobs:
       - name: Download and verify independent Node 24 runtime
         run: node scripts/kernel-runtime/download-node-runtime.mjs --platform ${{ matrix.target.platform }} --arch ${{ matrix.target.arch }} --destination temp/node-runtime
       - name: Exercise the real OpenClaw Gateway, ACP, storage fence and all Channel modules before sealing
+        timeout-minutes: 15
         if: matrix.kernel == 'openclaw'
         shell: bash
         run: |
@@ -242,7 +243,7 @@ jobs:
             tests/contract/kernels/kernel-driver-contract.test.ts
           )
           if [ "${{ matrix.kernel }}" = "openclaw" ]; then
-            suites+=(tests/contract/kernels/openclaw-conversation-store.test.ts tests/contract/kernels/openclaw-runtime-dir.test.ts tests/unit/openclaw-config-projection.test.ts tests/unit/openclaw-managed-session.test.ts tests/unit/openclaw-managed-storage-fence.test.ts tests/unit/openclaw-channel-handoff.test.ts tests/unit/openclaw-channel-package-patches.test.ts tests/unit/openclaw-native-pruning.test.ts tests/unit/openclaw-plugin-registry.test.ts)
+            suites+=(tests/contract/kernels/openclaw-conversation-store.test.ts tests/contract/kernels/openclaw-runtime-dir.test.ts tests/unit/openclaw-config-projection.test.ts tests/unit/openclaw-managed-session.test.ts tests/unit/openclaw-managed-storage-fence.test.ts tests/unit/openclaw-channel-handoff.test.ts tests/unit/openclaw-channel-package-patches.test.ts tests/unit/openclaw-native-pruning.test.ts tests/unit/openclaw-plugin-registry.test.ts tests/unit/openclaw-probe-lifecycle.test.ts)
           else
             suites+=(tests/contract/kernels/deepseek-harness-driver.test.ts)
           fi

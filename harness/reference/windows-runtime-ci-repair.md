@@ -1,4 +1,4 @@
-# Windows runtime CI repair — OpenClaw +clawx.8
+# Windows runtime CI repair — OpenClaw +clawx.8 / +clawx.9
 
 ## Failure and root cause
 
@@ -68,3 +68,72 @@ or clean-machine installation. The new full workflow must use the repaired SHA,
 both kernels and all five targets, with explicitly deferred Windows Authenticode.
 No COS upload, catalog promotion, installed-kernel replacement or production
 release is authorized by this task.
+
+## Follow-up: real Windows Gateway startup — +clawx.9
+
+[Build 34044309931](https://github.com/Tabll/ClawXXX/actions/runs/34044309931)
+at `65a87de9` passed nine of ten builds: DeepSeek Windows and the real Windows
+registry round-trip probe now passed. The only failure was OpenClaw Windows'
+90-second real Gateway readiness deadline. All four macOS signing/notarization
+jobs and three-platform Electron E2E succeeded; clean-machine was skipped.
+
+An isolated Windows 11 / pinned x64 Node 24.15.0 run reproduced the deadline.
+Upstream startup tracing showed ongoing work, not a stationary deadlock:
+process bootstrap took 56.6 seconds, HTTP bound at 77.0 seconds, and real
+Channels were still loading at 90 seconds. These are diagnostic timings for
+that VM, not CI performance measurements or an application startup SLA.
+
+The same trace revealed a second, previously masked failure: Discord could not
+register its keyed store because its configured-path candidate had no install
+owner (`record-missing`). Windows' JavaScript `realpathSync` preserves case and
+8.3 aliases that asynchronous/native realpath canonicalizes. The two paths can
+refer to one directory yet be treated as different candidates. Sorting from +8
+fixes persistence determinism but cannot restore the missing physical identity.
+
+The +9 patch changes `pluginCacheRealpathSync`'s default to native realpath on
+Windows only. Explicit mode arguments and all other platforms are unchanged.
+No ID-based trust fallback, lowercase string comparison, boundary exception or
+provenance bypass is introduced. Metadata regression now covers uppercase
+physical paths and junction/symlink aliases, a different physical copy claiming
+the same official ID, conflicting provenance, and ambiguous install owners,
+alongside the previous three SQLite round trips and four stale-change cases.
+An in-memory rollback of only the native-realpath default made this Windows
+regression fail with `record-missing` instead of `trusted-official`; the final
+package passes without diagnostic hooks.
+
+Probe lifecycle changes are limited to verification tooling:
+
+- Windows real Gateway readiness is bounded at 180 seconds; macOS/Linux retain
+  90 seconds. The extracted Windows full-probe envelope is 600 seconds (other
+  platforms 300), and pre-seal CI has a 15-minute step limit. Control-bridge and
+  application budgets are unchanged. Readiness still requires successful live
+  HTTP, never a trace message or mock; exited/signalled processes and late
+  success fail, and response bodies/error listeners are released.
+- Reports record both startup measurements and preserve a bounded log tail on
+  failure, with upstream startup tracing enabled in the isolated child.
+- Windows denied bare `echo` before approval because no executable identity
+  could be bound. The fixture now puts the pinned Node first on its private
+  PATH and executes an owned fixed script. It grants `allow_once` only when
+  `toolCall.rawInput.command` exactly matches that command and requires actual
+  `CLAWX_TOOL_OK` tool output. Permission checks are not disabled or weakened.
+- Cleanup closes owned provider connections and retries transient Windows
+  filesystem removal; failed spawns are not awaited as live processes.
+
+The final, uninstrumented probe passed in Windows: 34,486 / 21,127 ms for first
+start/restart; real ACP, seven lazy Channel execution modules, six loopback
+provider calls, exact tool approval/output, cancel, forced-crash rehydration,
+one accepted/one rejected canonical Channel ingress, four distinct usage events
+and zero native durable history. The VM used a copied JavaScript payload and
+the pinned Windows Node; this does not certify a native Windows CI archive,
+platform security, sealed-file integrity or clean-machine installation.
+
+Frozen identity is `2026.9.2+clawx.9` / revision 9, with 24 compiled patch targets.
+The upstream version/commit, all dependency versions and DeepSeek pins remain
+unchanged; patch, root lock's 24 hash references, source, runtime, control overlay
+and manifest hashes are synchronized. Full host verification passed 2191 tests,
+with six existing conditional tests pending. Typecheck, lint (zero errors,
+seven existing warnings), source verification and comms replay/compare passed.
+The rebuilt macOS arm64 payload also passed the same full probe (4,560 / 2,517
+ms readiness), and Harness CI plus the diff-aware task validation/dry-run passed.
+New staging results must still be recorded separately; no COS/catalog write is
+authorized by this repair.

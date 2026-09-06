@@ -102,7 +102,7 @@ describe('kernel runtime build supply chain', () => {
 
       expect(readFileSync(first.archivePath)).toEqual(readFileSync(second.archivePath));
       expect(readFileSync(first.descriptorPath)).toEqual(readFileSync(second.descriptorPath));
-      expect(first.descriptor.artifactVersion).toBe('2026.9.2+clawx.8');
+      expect(first.descriptor.artifactVersion).toBe('2026.9.2+clawx.9');
       expect(first.descriptor.storage).toMatchObject({ authority: 'clawx-data-service', nativeDurableHistory: false });
       expect(first.descriptor.supplyChain).toEqual(expect.objectContaining({
         sourceSha256: expect.stringMatching(/^[a-f0-9]{64}$/),
@@ -214,6 +214,13 @@ describe('kernel runtime build supply chain', () => {
     expect(workflow).toContain('probe-openclaw-plugin-registry.mjs --package-dir build/openclaw --report temp/reports/openclaw-plugin-registry.json');
     expect(workflow.indexOf('probe-openclaw-plugin-registry.mjs')).toBeLessThan(workflow.indexOf('probe-openclaw-managed-runtime.mjs'));
     expect(workflow).toContain('tests/unit/openclaw-plugin-registry.test.ts');
+    expect(workflow).toContain('tests/unit/openclaw-probe-lifecycle.test.ts');
+    expect(smoke).toContain('waitForExit(probe, openClawProbeBudgets().totalMs)');
+    const probe = readFileSync(join(process.cwd(), 'scripts/kernel-runtime/probe-openclaw-managed-runtime.mjs'), 'utf8');
+    expect(probe).toContain("OPENCLAW_GATEWAY_STARTUP_TRACE: '1'");
+    expect(probe).toContain('rawInput?.command === toolCommand');
+    expect(probe).toContain('Approved tool must actually execute the fixed script');
+    expect(probe).toContain('report.startups = startups');
     expect(workflow.indexOf('probe-openclaw-managed-runtime.mjs')).toBeLessThan(workflow.indexOf('scripts/kernel-runtime/sign-macos-runtime.mjs'));
     expect(workflow).toContain('tests/contract/kernels/openclaw-conversation-store.test.ts');
     expect(workflow).toContain('tests/e2e/chat-acp-session-controls.spec.ts');

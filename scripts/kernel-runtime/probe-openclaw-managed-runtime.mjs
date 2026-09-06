@@ -8,17 +8,19 @@ import { existsSync } from 'node:fs';
 import { cp, mkdtemp, mkdir, readFile, readdir, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { delimiter, dirname, join, resolve } from 'node:path';
 import { createInterface } from 'node:readline';
 import { DatabaseSync } from 'node:sqlite';
 import { pathToFileURL } from 'node:url';
 import { projectOpenClawConfigForRuntime } from '../../electron/gateway/config-projection.ts';
 import { fixupPluginManifest } from '../../electron/utils/plugin-manifest.ts';
+import { openClawProbeBudgets, waitForGatewayReady } from './lib/openclaw-probe-lifecycle.mjs';
 
 const args = new Map();
 for (let i = 2; i < process.argv.length; i += 2) args.set(process.argv[i], process.argv[i + 1]);
 const packageDir = resolve(args.get('--package-dir') || 'node_modules/openclaw');
 const node = resolve(args.get('--node') || process.execPath);
+const toolCommand = `${process.platform === 'win32' ? 'node.exe' : 'node'} clawx-tool-probe.cjs`;
 const version = JSON.parse(await readFile(join(packageDir, 'package.json'), 'utf8')).version;
 const { isClawXHistoryTable } = await import(pathToFileURL(join(packageDir, 'dist/clawx-managed-storage.js')).href);
 const root = await mkdtemp(join(tmpdir(), 'clawx-openclaw-managed-'));
@@ -28,6 +30,8 @@ const providerRequests = [];
 const updates = [];
 const handoffs = [];
 const permissions = [];
+const startups = [];
+const probeBudgets = openClawProbeBudgets();
 let rejectHandoff = false;
 let logs = '';
 let provider;
@@ -39,6 +43,7 @@ try {
   const workspace = join(root, 'workspace');
   const cache = join(root, 'cache');
   for (const path of [state, workspace, cache]) await mkdir(path, { mode: 0o700 });
+  await writeFile(join(workspace, 'clawx-tool-probe.cjs'), 'process.stdout.write("CLAWX_TOOL_OK\\n");\n', { mode: 0o600 });
   provider = createServer(async (req, res) => {
     try {
       if (req.url === '/clawx-channel') {
@@ -66,7 +71,7 @@ try {
       const id = `clawx-provider-${providerRequests.length}`;
       const wantsTool = JSON.stringify(request.messages).includes('TOOL_USER_MARKER') && !request.messages.some(item => item.role === 'tool');
       const message = wantsTool
-        ? { role: 'assistant', content: null, tool_calls: [{ index: 0, id: 'clawx-probe-exec', type: 'function', function: { name: 'exec', arguments: JSON.stringify({ command: 'echo CLAWX_TOOL_OK' }) } }] }
+        ? { role: 'assistant', content: null, tool_calls: [{ index: 0, id: 'clawx-probe-exec', type: 'function', function: { name: 'exec', arguments: JSON.stringify({ command: toolCommand }) } }] }
         : { role: 'assistant', content: 'CANONICAL_PROBE_OK' };
       const usage = { prompt_tokens: 11, completion_tokens: 5, total_tokens: 16 };
       if (request.stream) {
@@ -131,7 +136,7 @@ try {
   }
   await writeFile(join(state, 'openclaw.json'), JSON.stringify(projectOpenClawConfigForRuntime(config, true)), { mode: 0o600 });
   const env = {
-    PATH: process.env.PATH, LANG: 'en_US.UTF-8',
+    PATH: [dirname(node), process.env.PATH].filter(Boolean).join(delimiter), LANG: 'en_US.UTF-8',
     ...(process.platform === 'win32' ? { SystemRoot: process.env.SystemRoot, ComSpec: process.env.ComSpec, PATHEXT: process.env.PATHEXT } : {}),
     CLAWX_MANAGED_RUNTIME: '1', CLAWX_OPENCLAW_PACKAGE_DIR: packageDir,
     CLAWX_ISOLATED_RUNTIME_PROBE: '1',
@@ -140,6 +145,7 @@ try {
     CLAWX_CONVERSATION_STORE_PROTOCOL: 'clawx.conversation-store/v1',
     OPENCLAW_STATE_DIR: state, OPENCLAW_CONFIG_PATH: join(state, 'openclaw.json'), OPENCLAW_CACHE_DIR: cache,
     OPENCLAW_GATEWAY_TOKEN: token, OPENCLAW_NO_RESPAWN: '1', OPENCLAW_SKIP_CRON: '1', OPENCLAW_EMBEDDED_IN: 'ClawX',
+    OPENCLAW_GATEWAY_STARTUP_TRACE: '1',
     OPENCLAW_HISTORY_MODE: 'clawx-data-service', OPENCLAW_DISABLE_NATIVE_HISTORY: '1', OPENCLAW_DISABLE_CRON_HISTORY: '1',
     OPENCLAW_DISABLE_TRANSCRIPT_USAGE_SCAN: '1', OPENCLAW_TRAJECTORY_ENABLED: '0',
     CLAWX_DISABLE_NATIVE_HISTORY: '1', CLAWX_DISABLE_NATIVE_SCHEDULER: '1',
@@ -154,16 +160,7 @@ try {
   const startPair = async () => {
   const gateway = launch(['gateway', 'run', '--port', String(gatewayPort), '--bind', 'loopback']);
   gateway.stdout.on('data', bytes => { logs = `${logs}${bytes}`.slice(-16000); });
-  const deadline = Date.now() + 90000;
-  while (true) {
-    if (gateway.exitCode !== null) throw new Error('Gateway exited during startup');
-    if (Date.now() > deadline) throw new Error('Gateway startup timed out');
-    try {
-      const response = await fetch(`http://127.0.0.1:${gatewayPort}/healthz`, { signal: AbortSignal.timeout(500) });
-      if (response.ok) break;
-    } catch {}
-    await new Promise(accept => setTimeout(accept, 200));
-  }
+  startups.push(await waitForGatewayReady(gateway, `http://127.0.0.1:${gatewayPort}/healthz`, { timeoutMs: probeBudgets.gatewayReadyMs }));
   acp = launch(['acp']);
   lines = createInterface({ input: acp.stdout });
   lines.on('line', line => {
@@ -172,8 +169,9 @@ try {
       if (message.method === 'session/update') updates.push(message.params);
       if (message.method === 'session/request_permission') {
         permissions.push(message.params);
-        // Approve only the fixed test echo. Never execute model-selected code.
-        const safe = JSON.stringify(message.params.toolCall).includes('echo CLAWX_TOOL_OK');
+        // Only the fixed owned script, through the pinned Node on PATH. Windows
+        // approval binding correctly refuses a bare shell builtin such as echo.
+        const safe = message.params.toolCall?.rawInput?.command === toolCommand;
         const option = message.params.options.find(item => item.kind === 'allow_once');
         acp.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', id: message.id, result: { outcome: safe && option ? { outcome: 'selected', optionId: option.optionId } : { outcome: 'cancelled' } } })}\n`);
         return;
@@ -216,7 +214,8 @@ try {
   assert.equal((await promptRun(toolRun, 'TOOL_USER_MARKER')).stopReason, 'end_turn');
   assert.ok(updates.some(item => item.sessionId === toolRun.sessionId && item.update.sessionUpdate === 'tool_call'), 'Native tool start did not reach ACP');
   assert.ok(updates.some(item => item.sessionId === toolRun.sessionId && item.update.sessionUpdate === 'tool_call_update'), 'Native tool completion did not reach ACP');
-  assert.ok(permissions.length > 0, 'Guarded execution did not ask for scoped approval');
+  assert.ok(permissions.length > 0, `Guarded execution did not ask for scoped approval: ${JSON.stringify(providerRequests.flatMap(item => item.messages?.filter(message => message.role === 'tool') ?? []))}`);
+  assert.ok(providerRequests.some(item => item.messages?.some(message => message.role === 'tool' && JSON.stringify(message.content).includes('CLAWX_TOOL_OK'))), 'Approved tool must actually execute the fixed script');
   await request('session/close', { sessionId: toolRun.sessionId });
   const cancelRun = await newRun('cancel-turn');
   const cancelling = promptRun(cancelRun, 'DELAY_USER_MARKER');
@@ -297,6 +296,7 @@ try {
   }
   assert.equal(new Set(usage.map(item => item.update._meta.clawx.eventKey)).size, 4);
   const report = { ok: true, version, realGateway: true, realAcp: true, provider: 'loopback-test-only', providerCalls: providerRequests.length, rolesPreserved: true, toolApproval: true, cancel: true, crashRehydrate: true, nativeDurableHistory: false, channelHandoffs: handoffs.length, rejectedChannelFailsClosed: true, channelLoad: channelLoad?.results.map(({ channel, sendCapable }) => ({ channel, sendCapable })), usage: usage.map(item => item.update._meta.clawx), databases };
+  report.startups = startups;
   if (args.has('--report')) {
     const reportPath = resolve(args.get('--report'));
     await mkdir(join(reportPath, '..'), { recursive: true });
@@ -304,13 +304,21 @@ try {
   }
   process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
 } catch (error) {
+  if (args.has('--report')) {
+    const reportPath = resolve(args.get('--report'));
+    await mkdir(join(reportPath, '..'), { recursive: true });
+    await writeFile(reportPath, `${JSON.stringify({ ok: false, version, startups, error: String(error.stack ?? error), logs, providerCalls: providerRequests.length }, null, 2)}\n`, { mode: 0o600 });
+  }
   process.stderr.write(`${error.stack ?? error}\n${logs}\nProvider probe message roles: ${JSON.stringify(providerRequests.map(item => item.messages?.map(message => message.role)))}\n`);
   process.exitCode = 1;
 } finally {
   await stopChildren();
   lines?.close();
-  if (provider) await new Promise(accept => provider.close(accept));
-  await rm(root, { recursive: true, force: true });
+  if (provider) {
+    provider.closeAllConnections();
+    await new Promise(accept => provider.close(accept));
+  }
+  await rm(root, { recursive: true, force: true, maxRetries: 3 });
 }
 
 function request(method, params) {
@@ -328,7 +336,7 @@ function request(method, params) {
 
 async function stopChildren() {
   for (const child of [...children].reverse()) {
-    if (child.exitCode !== null || child.signalCode !== null) continue;
+    if (!child.pid || child.exitCode !== null || child.signalCode !== null) continue;
     const exited = once(child, 'exit');
     child.kill('SIGTERM');
     const timer = setTimeout(() => child.kill('SIGKILL'), 5000);

@@ -22,7 +22,7 @@ Upstream migration/default changes must not widen session visibility or
 permissions. A candidate test must explicitly select its package and exact
 version, never silently test the installed old SDK. Failed real-process storage
 probes block promotion even when host mocks and control smoke pass. The source
-pin is now 2026.9.2+clawx.8; actual per-Run incognito/ACP storage probes run before
+pin is now 2026.9.2+clawx.9; actual per-Run incognito/ACP storage probes run before
 sealing and again against extracted artifacts. Verify the sealed file manifest
 again after first launch, and never let upstream postinstall prune patch files.
 See
@@ -49,6 +49,19 @@ probe before Gateway startup and signing. Archive fsync needs a writable,
 non-truncating handle with fatal flush errors; Git fixture LF bytes and driver
 path assertions must be independent of developer Git policy and host separators.
 See `harness/reference/windows-runtime-ci-repair.md`.
+
+Windows plugin-cache realpath defaults must use native OS canonicalization so
+case, 8.3 and junction aliases agree with async installation records. Preserve
+strict owner, physical-boundary and provenance checks; an official ID alone
+must never confer trust, and ambiguous ownership must still fail closed.
+Full Windows Gateway/ACP/seven-Channel probes have a dedicated finite startup
+budget (180 seconds, other platforms 90), not a change to control-bridge or app
+budgets. Capture startup timings and traces on failure, reject process exit,
+signal termination and late HTTP success, and release health response bodies.
+The guarded tool fixture must resolve the pinned Node executable, approve only
+the exact fixed command and assert actual output, not use a Windows shell
+builtin that fails executable-identity binding before approval. Retain all
+existing conversation, cancellation, crash, Channel and storage assertions.
 
 Real Channel package entrypoint tests must use a fresh native Node process when
 loading the complete plugin/SDK graph. Bound that child with a kill timeout

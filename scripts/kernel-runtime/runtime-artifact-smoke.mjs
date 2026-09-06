@@ -9,6 +9,7 @@ import tar from 'tar';
 import { readJson, sha256File } from './lib/canonical.mjs';
 import { scanRuntimeDataPaths } from './lib/storage-contract.mjs';
 import { verifyPlatformRuntime } from './verify-platform-runtime.mjs';
+import { openClawProbeBudgets } from './lib/openclaw-probe-lifecycle.mjs';
 
 const args = new Map();
 for (let index = 2; index < process.argv.length; index += 2) args.set(process.argv[index], process.argv[index + 1]);
@@ -203,7 +204,7 @@ async function smokeOpenClawManagedEntrypoint({ nodePath, extracted, descriptor,
   probe.stderr.setEncoding('utf8');
   probe.stdout.on('data', chunk => { report += chunk; });
   probe.stderr.on('data', chunk => { probeErrors = `${probeErrors}${chunk}`.slice(-32_768); });
-  await waitForExit(probe, 300_000);
+  await waitForExit(probe, openClawProbeBudgets().totalMs);
   if (probe.exitCode !== 0) throw new Error(`Sealed OpenClaw real Gateway/ACP probe failed: ${probeErrors}`);
   const evidence = JSON.parse(report);
   if (!evidence.ok || evidence.version !== expectedVersion || evidence.nativeDurableHistory !== false) {

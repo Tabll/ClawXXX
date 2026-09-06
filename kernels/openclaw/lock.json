@@ -3,7 +3,7 @@
   "strategy": "repository-frozen-lockfile",
   "packageManager": "pnpm@10.33.4+sha512.1c67b3b359b2d408119ba1ed289f34b8fc3c6873412bec6fd264fbdc82489e510fcbecb9ce9d22dae7f3b76269d8441046014bdca53b9979cd7a561ad631b800",
   "path": "pnpm-lock.yaml",
-  "sha256": "eb3ff7bfa027d8769a63576155ffcaefcfd19158e2f3a96cac8e862101eb3a81",
+  "sha256": "e36b22c7e849e9a2672b5a9eda0677cceb94d8f2b111ac7dd0bcf7a5646c56f7",
   "frozenInstall": true,
   "lifecycleScripts": "ci-build-only"
 }

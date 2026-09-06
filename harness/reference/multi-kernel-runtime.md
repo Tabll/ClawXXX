@@ -3,7 +3,7 @@
 Status: release candidate. M0–M15 have local implementation, contract, full Electron E2E, performance, communication-replay, and Harness coverage. M16's protected five-target signing/notarization/promotion runs, production mirror drill, and legal release approval remain open. This reference does not assert that multi-kernel support is already publicly shipped.
 
 OpenClaw production bridge update (2026-09-06): source/dev pins now select
-`2026.9.2+clawx.8`. Canonical typed history hydrates a new incognito session per
+`2026.9.2+clawx.9`. Canonical typed history hydrates a new incognito session per
 Run; ACP replay and transient delivery/approval state stay in memory, and native
 durable history writes are fenced without deleting old data. Actual Gateway/ACP
 and packaged-payload probes replace host-only evidence for this boundary.

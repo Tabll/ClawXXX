@@ -75,5 +75,9 @@ Windows portability also covers deterministic plugin-registry diagnostics across
 SQLite round trips, writable archive flush handles, LF-exact Git fixtures and
 native driver path assertions. Keep actual metadata/policy changes fail-closed;
 see `harness/reference/windows-runtime-ci-repair.md` for reproduction and gates.
+Case/8.3/junction aliases must retain the same verified physical install owner,
+without trusting a different package by ID. Full real-process startup probes
+must retain bounded platform-specific readiness, failure traces, signal/exit
+checks and exact-command approval plus execution evidence on Windows as well.
 
 Skills are canonical immutable packages with per-kernel desired and projection state. OpenClaw and DeepSeek Harness roots must be physically independent: no shared root, nesting, root/package symlink, or cross-root resource reference is allowed. Both-target mutations report each result and retain partial state. DeepSeek Harness registers converted instructions through its process-local `ctx.skills` adapter while SQLite remains the sole metadata authority.
