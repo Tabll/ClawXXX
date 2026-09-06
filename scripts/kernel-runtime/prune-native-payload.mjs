@@ -47,6 +47,10 @@ for (const nodeModules of findDirectories(payload, 'node_modules')) {
   if (existsSync(koffi)) {
     for (const entry of readdirSync(koffi)) if (entry !== `${platform}_${arch}`) remove(join(koffi, entry));
   }
+  // Scoped Koffi Linux packages ship both glibc and musl in one package.
+  // ClawX's independent Node distribution and support contract are glibc-only.
+  const scopedKoffiMusl = join(nodeModules, '@koromix', `koffi-linux-${arch}`, `musl_${arch}`);
+  if (platform === 'linux' && existsSync(scopedKoffiMusl)) remove(scopedKoffiMusl);
   for (const packageName of ['tree-sitter-bash', 'node-pty']) {
     const prebuilds = join(nodeModules, packageName, 'prebuilds');
     if (!existsSync(prebuilds)) continue;

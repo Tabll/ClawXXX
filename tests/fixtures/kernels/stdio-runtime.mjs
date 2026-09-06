@@ -22,7 +22,7 @@ send({
   type: 'ready',
   pid: process.pid,
   version: process.env.CLAWX_KERNEL_ARTIFACT_VERSION
-    || (kernelId === 'openclaw' ? '2026.7.1-2.clawx.1' : '0.1.2-alpha.2.clawx.9'),
+    || (kernelId === 'openclaw' ? '2026.7.1-2.clawx.1' : '0.1.2-alpha.2.clawx.10'),
   startupDurationMs: performance.now() - bootStartedAt,
   rssBytes: process.memoryUsage().rss,
   capabilities: {

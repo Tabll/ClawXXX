@@ -10,6 +10,8 @@
 >
 > 目标：OpenClaw 与 DeepSeek Harness 可选下载、共享 ClawX UI、能力同构、同时运行，并以单一 SQLite 统一保存 Conversation、Cron、Channel 与 Usage 记录
 
+> 第二轮真实证据（2026-09-06）：[运行 `34005793546`](https://github.com/Tabll/ClawXXX/actions/runs/34005793546) 的 macOS arm64/x64 build 均成功并生成 `.9` runtime；Apple `Accepted` 提交 ID 分别为 `5d2a32bc-4453-4669-b710-602795c04565` / `79531195-6ed4-4e55-9a09-13d7d512bc77`，报告 ZIP 已对照 GitHub SHA-256 核验。本机 arm64 真实制品通过 7 个 Mach-O 的严格签名及在线 notarized requirement、控制桥、完整 sandbox/工具 self-test，RSS 约 49 MiB、ready 1009 ms，无 native durable history；这不是完整 CI/宿主 Gatekeeper/生产分发完成。Linux/Windows 修复继续使用新身份 `.10`，不发布失败集合。
+
 ## 使用约定
 
 - `[ ]` 未开始，`[-]` 进行中，`[x]` 完成，`[!]` 阻塞。
@@ -370,7 +372,7 @@
 ## M16：安全、发布与文档
 
 - [x] `MK-1601` 完成 runtime signing key 管理、rotation、revocation runbook。
-- [-] `MK-1602` 完成 macOS runtime executable 签名/公证验证。（运行 `33971358333` 的 arm64/x64 runtime 签名、公证步骤均成功；后续打包失败且该次未归档公证 JSON，仍等待修复后制品及提交 ID、干净机器 Gatekeeper 和宿主日志，不视为完整完成）
+- [-] `MK-1602` 完成 macOS runtime executable 签名/公证验证。（运行 `34005793546` 已产出两架构制品与 `Accepted` 提交 ID，arm64 本机制品验证通过；独立 Mach-O 使用严格 `codesign --check-notarization -R=notarized`，不能套用 `.app` 的 spctl/staple；新 revision 的完整干净 CI 和宿主 App/DMG Gatekeeper/staple 仍待完成）
 - [-] `MK-1603` 完成 Windows process tree、文件锁、签名和卸载验证。（遵循 2026-08-31 暂缓 Authenticode 的决定，runtime CI 显式提供 `artifact-signature-only` 模式并写入哈希绑定安全报告；Ed25519、archive hash、沙箱与安装卸载校验不放宽；仍等待 Windows packaged runner 结果，宿主安装包签名另行处理）
 - [-] `MK-1604` 完成 Linux glibc/kernel/sandbox 支持矩阵。（glibc >= 2.39、kernel >= 6.8、x64/arm64 与 DSH sandbox self-test 已固化；等待两个 Linux runner 结果）
 - [-] `MK-1605` 完成腾讯 COS/GitHub 镜像和断点续传运行演练。（COS 已固定 `aq-pub-1252262977/ap-shanghai/clawxxx`，官方 SDK、object-key 边界、SHA-256 metadata、immutable forbid-overwrite 与 catalog-last 已实现；双 catalog/双 artifact host、Range/If-Range、精确 N−1 双镜像连续晋级与重试演练已通过模拟测试，仍须生产 promotion 后取得在线证据）
@@ -408,11 +410,15 @@
   - [x] 取消旧运行 `33412268471`，从升级 commit 启动并审批 `33971358333`；读取所有失败目标的真实日志。
   - [x] 修复跨平台 LF、upstream/prepared lock 校验、Linux 原生 Landlock 构建与 Windows 显式延后 Authenticode；失败时保留安全报告。
   - [x] 将会重解析依赖的 legacy hoisted deploy 改为 shared-lock deploy；本机验证锁定 Koffi `3.1.1`，显式执行已审计 spawn-helper 后处理，移除 builder 路径元数据并裁剪/精确白名单化原生包。
+  - [x] 运行 `34005793546` 的两个 Linux 目标均通过原生 Landlock 沙箱 self-test、36 项上游/overlay tests 与 56 项宿主契约测试；制品校验发现 scoped Koffi 包同时携带 musl 文件，补齐 glibc-only 裁剪回归，禁止扩大支持矩阵来掩盖多余文件。
+  - [x] Windows 真实 self-test 已证实只读写入被 `EPERM` 拒绝，但上游英文签名表漏判；将 CI-only 探针改为受控子进程错误码/退出码/精确目标路径加文件未生成校验，8 项正反例回归通过。因 overlay 字节变化将制品 revision 提升为 `0.1.2-alpha.2+clawx.10`，不复用 `.9` 身份。
+  - [x] `.10` 新 checkout 严格 patch/overlay、冻结依赖、完整 host build、36 项 focused tests 及真实 macOS 沙箱自检通过；多入口打包保留根级哈希 JS chunks，避免新 helper 的共享输出被 package files 清单漏掉。
+  - [x] `.10` 宿主回归：243 files / 2135 tests 通过（2 files / 6 tests 按既有平台条件跳过），source manifest、typecheck、lint、comms replay/compare 和任务 Harness 校验通过；新增严格公证票据校验的拒绝分支覆盖。
   - [-] 修复提交推送后重新执行五目标 CI，取得全部制品、干净机器和线上分发证据；失败的旧构建不得晋级。
 
 ### M17 Acceptance
 
-- [x] 最新 DSH 上游版本、ClawX patch revision、所有 descriptor/hash 和文档身份完全一致。
+- [x] 已批准冻结的 DSH 上游版本、ClawX patch revision、所有 descriptor/hash 和文档身份完全一致；9 月 4 日新增的 `0.1.3-alpha.1` 有持久化破坏性变更及已知性能回退，不在构建中静默切换。
 - [x] ClawX 统一 SQLite、并行多内核、凭据、Agent、Skill、权限、取消与 rich event 适配边界未退化。
 - [x] 升级输入可由干净 checkout 严格复现并通过冻结安装、完整 host build、focused tests 与本机沙箱自检。
 - [-] 五平台签名制品、Apple `Accepted`/staple/Gatekeeper、COS/GitHub 双镜像和线上断点续传证据待新 commit 的受保护 CI 完成。

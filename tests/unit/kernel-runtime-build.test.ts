@@ -153,6 +153,10 @@ describe('kernel runtime build supply chain', () => {
       ]).concat([
         { path: '@deepseek-ai/node-addon-landlock-run-linux-x64', keep: platform === 'linux' && arch === 'x64' },
         { path: '@deepseek-ai/node-addon-landlock-run-linux-arm64', keep: platform === 'linux' && arch === 'arm64' },
+        { path: '@koromix/koffi-linux-x64/linux_x64', keep: platform === 'linux' && arch === 'x64' },
+        { path: '@koromix/koffi-linux-arm64/linux_arm64', keep: platform === 'linux' && arch === 'arm64' },
+        { path: '@koromix/koffi-linux-x64/musl_x64', keep: false },
+        { path: '@koromix/koffi-linux-arm64/musl_arm64', keep: false },
         { path: 'node-pty/third_party/conpty/1.22.250204002/win10-x64', keep: platform === 'win32' && arch === 'x64' },
         { path: 'node-pty/third_party/conpty/1.22.250204002/win10-arm64', keep: false },
         { path: '@deepseek-ai/dsh-subprocess-local', keep: true },

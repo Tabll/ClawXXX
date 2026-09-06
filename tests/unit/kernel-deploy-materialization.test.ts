@@ -7,6 +7,19 @@ import { describe, expect, it } from 'vitest';
 import { materializeDeployTree } from '../../scripts/kernel-runtime/materialize-deploy-tree.mjs';
 
 describe('DSH deploy materialization', () => {
+  it('retains hashed JavaScript chunks emitted by the overlay multi-entry builds', () => {
+    const manifest = JSON.parse(readFileSync(join(process.cwd(), 'kernels/deepseek-harness/overlay.manifest.json'), 'utf8')) as {
+      root: string; files: Array<{ path: string }>;
+    };
+    const packages = manifest.files.filter(file => file.path.endsWith('/package.json'));
+    expect(packages.length).toBeGreaterThan(0);
+    for (const file of packages) {
+      const pkg = JSON.parse(readFileSync(join(process.cwd(), manifest.root, file.path), 'utf8')) as { files: string[] };
+      expect(pkg.files, file.path).toContain('lib/*.js');
+      expect(pkg.files, file.path).not.toContain('lib/**');
+    }
+  });
+
   it('restores reviewed root metadata and removes generated builder paths', () => {
     const root = mkdtempSync(join(tmpdir(), 'clawx-deploy-metadata-'));
     const workspace = join(root, 'workspace');

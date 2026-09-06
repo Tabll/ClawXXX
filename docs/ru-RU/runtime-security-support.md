@@ -35,6 +35,8 @@ Offline rollback key имеет только purpose `rollback`, не приме
 
 macOS host CI проверяет strict `codesign`, Gatekeeper и stapled ticket. Windows подписывается во время electron-builder packaging, поэтому подписаны installed app и installer, а electron-updater проверяет publisher. Alpha, beta и stable имеют один gate.
 
+Optional runtime состоит из отдельных Mach-O, а не `.app`: каждый файл проверяется через `codesign --verify --strict --check-notarization -R=notarized`. Stapling app-ticket для этих файлов недоступен; проверка требует онлайн-доступа к Apple. `spctl --type execute` для `.app` не применяется к отдельному Node; проверка Gatekeeper для host app остаётся отдельной. [Рекомендации Apple](https://developer.apple.com/forums/thread/130560).
+
 Compatibility принудительно проверяет host version, protocol, bridge identity, platform/arch и mandatory capabilities. Kernels обновляются независимо; active и предыдущая verified версия сохраняются для atomic rollback. Security revocation может дать немедленный EOL; обычный EOL заранее публикуется в release notes. Удаление из catalog не удаляет установленный runtime или canonical data. Для prerelease DSH поддерживается только точная patched revision.
 
 License audit — инженерный gate, не юридическая консультация. До публичного выпуска обязательны GPL/LGPL/MPL source obligations и юридическое одобрение `libsignal`. QQ QR connector без лицензии исключён; ручная настройка AppID/AppSecret остаётся.

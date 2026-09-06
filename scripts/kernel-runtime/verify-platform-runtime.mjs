@@ -20,11 +20,18 @@ export function verifyPlatformRuntime(input) {
 function verifyMac(kernelRoot, nodeRoot, assessNotarization) {
   const files = [...listMachOFiles(kernelRoot), ...listMachOFiles(nodeRoot)];
   if (files.length === 0) throw new Error('No Mach-O files found during runtime verification');
-  for (const file of files) run('codesign', ['--verify', '--strict', '--verbose=4', file]);
+  // These are standalone Mach-O tools/addons, not application bundles. spctl's
+  // execute assessment rejects even valid notarized tools as "not an app".
+  // Require Apple's online notarized code requirement for every native file.
+  const notarizationArgs = assessNotarization ? ['--check-notarization', '-R=notarized'] : [];
+  for (const file of files) run('codesign', ['--verify', '--strict', '--verbose=4', ...notarizationArgs, file]);
   const node = join(nodeRoot, 'bin', 'node');
   if (!existsSync(node)) throw new Error('Signed macOS Node executable is missing');
-  if (assessNotarization) run('spctl', ['--assess', '--type', 'execute', '--verbose=4', node]);
-  return { schemaVersion: 1, ok: true, platform: 'darwin', signedFiles: files.length, notarizationAssessed: assessNotarization };
+  return {
+    schemaVersion: 1, ok: true, platform: 'darwin', signedFiles: files.length,
+    notarizationAssessed: assessNotarization,
+    notarizationAssessment: assessNotarization ? 'codesign-notarized-requirement' : 'not-requested',
+  };
 }
 
 function verifyWindows(kernelRoot, nodeRoot, report) {

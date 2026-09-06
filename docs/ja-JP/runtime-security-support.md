@@ -37,6 +37,8 @@ Optional Windows runtimeは`artifact-signature-only`を明示的に選択でき�
 
 macOS host releaseはstrict `codesign`、Gatekeeper、stapled ticketを検証します。WindowsはNSIS完成後の外側だけでなくelectron-builder packaging中に署名し、installed app、installer、electron-updater publisher検証を一貫させます。alpha/beta/stableは同じ署名ゲートです。
 
+Optional runtimeは`.app`ではなく独立Mach-Oです。各ファイルを`codesign --verify --strict --check-notarization -R=notarized`で検証します。appのticketをstapleできないため、この検証にはAppleへのオンライン接続が必要です。裸のNodeに`.app`用`spctl --type execute`を使わず、host appのGatekeeperテストとは区別します。[Appleの指針](https://developer.apple.com/forums/thread/130560)。
+
 互換性はhost version、protocol、bridge identity、platform/arch、mandatory capabilitiesで強制します。各kernelは独立更新され、activeと直前のverified versionを保持し、atomic activation失敗時にrollbackします。Security revocationは即時EOLになり得ます。通常EOLはrelease notesで予告します。Catalogからの削除はinstalled bytesやcanonical dataを削除しません。DSHは指定されたpatched prereleaseだけをサポートします。
 
 License auditはengineering gateであり法的助言ではありません。GPL/LGPL/MPLのsource義務と`libsignal`法務承認が公開前に必要です。無licenseのQQ QR connectorは除外し、AppID/AppSecret設定は残します。

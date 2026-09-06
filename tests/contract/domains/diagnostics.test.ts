@@ -7,10 +7,10 @@ describe('canonical kernel diagnostics', () => {
   it('binds artifact patch provenance and protocol data to the exact live generation', async () => {
     const manifest = {
       kernelId: 'deepseek-harness',
-      artifactVersion: '0.1.2-alpha.2+clawx.9',
+      artifactVersion: '0.1.2-alpha.2+clawx.10',
       upstreamVersion: '0.1.2-alpha.2',
       upstreamCommit: '0123456789abcdef',
-      patchRevision: 9,
+      patchRevision: 10,
       platform: 'darwin',
       arch: 'arm64',
       protocols: {
@@ -90,7 +90,7 @@ describe('canonical kernel diagnostics', () => {
       artifact: {
         artifactVersion: manifest.artifactVersion,
         upstreamVersion: '0.1.2-alpha.2',
-        patchRevision: 9,
+        patchRevision: 10,
         fileManifestSha256: 'files-sha',
       },
       protocol: {

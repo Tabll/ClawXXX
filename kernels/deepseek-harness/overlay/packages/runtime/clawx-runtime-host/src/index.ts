@@ -47,6 +47,7 @@ import {
 } from '@clawx/dsh-control-bridge'
 import { acquireDshHomeLock, type DshHomeLock } from './home-lock.ts'
 import { ClawXRuntimeHostBridge } from './host-bridge.ts'
+import { SANDBOX_WRITE_PROBE, sandboxWriteWasDenied } from './sandbox-probe.ts'
 
 export const DSH_RUNTIME_HOST_PROTOCOL = CLAWX_KERNEL_STDIO_PROTOCOL
 export const DSH_RUNTIME_KERNEL_ID = 'deepseek-harness' as const
@@ -146,7 +147,6 @@ async function runConfined(
     status: number | null
     stderr: string
     enforcement: 'full' | 'partial'
-    denialSignatures: readonly string[]
   }> {
   const confined = ctx.sandbox.confine(argv, { mode, workspaceRoot })
   return await new Promise((accept, reject) => {
@@ -177,7 +177,7 @@ async function runConfined(
       clearTimeout(timeout)
       if (!settled) {
         settled = true
-        accept({ status, stderr, enforcement: confined.enforcement, denialSignatures: confined.denialSignatures })
+        accept({ status, stderr, enforcement: confined.enforcement })
       }
     })
   })
@@ -189,7 +189,7 @@ async function runProductionSelfTest(ctx: Context, config: RuntimeHostConfig): P
   const deniedPath = join(root, 'sandbox-read-only.txt')
   const toolPath = join(root, 'tool-round-trip.txt')
   const ambientTempPath = join(tmpdir(), `clawx-dsh-ambient-temp-${process.pid}-${Date.now()}.txt`)
-  const writeScript = "require('node:fs').writeFileSync(process.argv[1], 'sandbox-ok')"
+  const writeScript = SANDBOX_WRITE_PROBE
   await rm(root, { recursive: true, force: true })
   await mkdir(root, { recursive: true, mode: 0o700 })
   try {
@@ -198,10 +198,8 @@ async function runProductionSelfTest(ctx: Context, config: RuntimeHostConfig): P
       throw new Error(`DeepSeek Harness workspace-write sandbox probe failed: ${allowed.stderr}`)
     }
     const denied = await runConfined(ctx, [process.execPath, '-e', writeScript, deniedPath], root, 'read-only')
-    const denialText = denied.stderr.toLowerCase()
-    if (denied.status === 0
-      || await readUtf8OrUndefined(deniedPath) !== undefined
-      || !denied.denialSignatures.some(signature => denialText.includes(signature.toLowerCase()))) {
+    if (!sandboxWriteWasDenied(denied, deniedPath)
+      || await readUtf8OrUndefined(deniedPath) !== undefined) {
       throw new Error(`DeepSeek Harness read-only sandbox did not fail closed: ${denied.stderr}`)
     }
 
@@ -213,10 +211,8 @@ async function runProductionSelfTest(ctx: Context, config: RuntimeHostConfig): P
         root,
         'workspace-write',
       )
-      const ambientShellDenialText = ambientShell.stderr.toLowerCase()
-      if (ambientShell.status === 0
-        || await readUtf8OrUndefined(ambientTempPath) !== undefined
-        || !ambientShell.denialSignatures.some(signature => ambientShellDenialText.includes(signature.toLowerCase()))) {
+      if (!sandboxWriteWasDenied(ambientShell, ambientTempPath)
+        || await readUtf8OrUndefined(ambientTempPath) !== undefined) {
         throw new Error(`DeepSeek Harness Windows shell wrote the ambient temp root: ${ambientShell.stderr}`)
       }
     }

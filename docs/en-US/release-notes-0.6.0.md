@@ -5,7 +5,7 @@ Status: implementation release candidate. Public availability remains conditiona
 ## Highlights
 
 - OpenClaw is removed from the base installer and becomes an optional first-use download.
-- DeepSeek Harness `0.1.2-alpha.2+clawx.9` is the second optional kernel; OpenClaw and DSH can run concurrently and update or fail independently.
+- DeepSeek Harness `0.1.2-alpha.2+clawx.10` is the second optional kernel; OpenClaw and DSH can run concurrently and update or fail independently.
 - Both kernels use the existing ClawX Chat, Providers/Models, Agents, Channels, Cron, Skills, Usage, and Diagnostics UI and the same canonical contracts.
 - One Main-owned SQLite/Blob service stores all new durable history. The same Conversation can continue on another kernel at a turn boundary through a redacted portable context.
 - Kernel runtimes are reproducible, patched CI artifacts with signed expiring metadata, platform security evidence, SBOMs, provenance, license reports, rollback, repair, and two-mirror distribution.

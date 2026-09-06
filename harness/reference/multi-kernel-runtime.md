@@ -56,11 +56,16 @@ DeepSeek ACP, persistence, and control services are logical endpoints of one lon
 ### DeepSeek Harness v1 bridge profile
 
 The frozen DSH base is commit `0a53fb55bea101816fa226bb964ae2bed71c343b`
-(`0.1.2-alpha.2`), currently patched by ClawX as `0.1.2-alpha.2+clawx.9`. CI applies
+(`0.1.2-alpha.2`), currently patched by ClawX as `0.1.2-alpha.2+clawx.10`. CI applies
 an ordered strict patch series (workspace lock/importers and Windows sandbox
 temp parity) plus a byte-manifested overlay. The production deploy
 has one `@clawx/dsh-runtime-host` entrypoint and excludes the DSH Web UI,
 settings-file, JSONL-session and SQLite-session packages.
+
+Patch revision 10 makes the CI-only sandbox write probe report a fixed child
+exit code and an exact target-path-bound `EPERM`/`EACCES`/`EROFS` marker. The
+parent also verifies the denied file is absent. Localized error strings,
+missing paths, full disks and unrelated process failures are not denial proof.
 
 The host owns one DSH-home writer lock and a map of live per-run Agent leases.
 `session.new` creates no durable native session. `session.prompt` validates the
@@ -256,7 +261,7 @@ Concrete v1 implementation details, strict patch-base rules, key separation and 
 - Artifacts are split by kernel, OS, and architecture. A universal app does not imply a universal runtime artifact.
 - Each archive contains a signed manifest with kernel ID, upstream version/commit, ClawX patch revision, platform, architecture, protocol versions, capability contract version, minimum app version, size, file integrity, build provenance, licenses, and entrypoints. Catalog metadata additionally carries a monotonic sequence, issue/expiry times, and signing-key identity so clients can reject rollback or frozen metadata.
 - The manifest declares Conversation Store protocol and checkpoint codecs. CI runs clean-directory tests proving managed prompt, cancel, compact, restart, cron, and channel flows do not create native durable history.
-- Runtime versions use an immutable upstream-plus-patch identity such as the current DSH `0.1.2-alpha.2+clawx.9`.
+- Runtime versions use an immutable upstream-plus-patch identity such as the current DSH `0.1.2-alpha.2+clawx.10`.
 - The app verifies manifest signature, archive digest, unpacked file integrity, platform/architecture, compatibility, and entrypoint allowlists before activation.
 - Artifact signing, catalog promotion, and hosting credentials are separated. Key rotation and any emergency downgrade use explicit signed authorization rather than lowering the stored sequence implicitly.
 - Catalog promotion binds the executing GitHub repository/release tag and every descriptor URL to the reviewed distribution mirrors, then extends only the exact signed N-1 catalog returned identically by all configured HTTPS mirrors. Sequence 1 is an explicit protected bootstrap that first proves every mirror is absent. A retry may idempotently repair only an exact trusted N/N-1 partial publication with matching request and staged artifacts; same-sequence forks fail closed. Promotion verifies the new catalog, retained artifacts, and signing keys at issue time and immediately before catalog expiry.

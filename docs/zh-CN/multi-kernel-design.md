@@ -1,6 +1,6 @@
 # ClawX 多内核统一架构设计
 
-> 状态：实现候选（M0–M15 已完成本地实现、契约与相关 Electron E2E；M16 的供应链/安全/文档实现已接入，真实五目标签名晋级与三平台 packaged 证据仍以 `TODO.md` 为准）；实现基线：ClawX 0.6.0、OpenClaw 2026.7.1-2+clawx.6、DeepSeek Harness 0.1.2-alpha.2+clawx.9；最后更新：2026-09-01
+> 状态：实现候选（M0–M15 已完成本地实现、契约与相关 Electron E2E；M16 的供应链/安全/文档实现已接入，真实五目标签名晋级与三平台 packaged 证据仍以 `TODO.md` 为准）；实现基线：ClawX 0.6.0、OpenClaw 2026.7.1-2+clawx.6、DeepSeek Harness 0.1.2-alpha.2+clawx.10；最后更新：2026-09-01
 >
 > 实施清单：[TODO.md](../../TODO.md)
 >
@@ -509,7 +509,7 @@ DeepSeek SessionEvent 是实时输入，不是持久化事实来源。`dsh-runti
 
 M8 的冻结实现采用上游 commit
 `0a53fb55bea101816fa226bb964ae2bed71c343b`，制品版本为
-`0.1.2-alpha.2+clawx.9`。CI 只允许应用严格有序 patch series（lock/project
+`0.1.2-alpha.2+clawx.10`。CI 只允许应用严格有序 patch series（lock/project
 importer 与 Windows sandbox 临时目录权限同构修复）和逐文件 SHA-256
 overlay；生产 deploy 只有一个长生命周期
 `@clawx/dsh-runtime-host`，不会包含 DSH Web、settings-file、JSONL session
@@ -607,7 +607,7 @@ type KernelProviderProjection = {
 - Bridge 断开或 kernel identity 不匹配时 fail closed。
 - Provider 更新必须独立返回每个 kernel projection 结果，不允许一个内核失败回滚另一个已经成功使用的 keychain metadata。
 
-M9 的落地实现还要求：Renderer 只持有凭据是否已填写和一次性 `credential-stage://` 句柄；OpenClaw 与 DSH 默认账号/模型分别记录；Main 按 kernel/generation/PID/artifact/account/purpose 逐次授权，进程断开或 generation 替换立即撤销；Models 页面同时显示 ready/partial/failed/unsupported 以及可重试错误。当前 DSH 累积补丁制品版本为 `0.1.2-alpha.2+clawx.9`，冻结 lockfile 同时包含只读、request-scoped 的 `@clawx/dsh-credential-provider`、Agent/Preset 支持和保留 unknown Usage 字段的 live SessionEvent 投影。
+M9 的落地实现还要求：Renderer 只持有凭据是否已填写和一次性 `credential-stage://` 句柄；OpenClaw 与 DSH 默认账号/模型分别记录；Main 按 kernel/generation/PID/artifact/account/purpose 逐次授权，进程断开或 generation 替换立即撤销；Models 页面同时显示 ready/partial/failed/unsupported 以及可重试错误。当前 DSH 累积补丁制品版本为 `0.1.2-alpha.2+clawx.10`，冻结 lockfile 同时包含只读、request-scoped 的 `@clawx/dsh-credential-provider`、Agent/Preset 支持和保留 unknown Usage 字段的 live SessionEvent 投影。
 
 ## 8. Agents 同构
 
@@ -847,7 +847,7 @@ scripts/kernel-runtime/
 
 ```text
 openclaw/2026.7.1-2+clawx.1
-deepseek-harness/0.1.2-alpha.2+clawx.9
+deepseek-harness/0.1.2-alpha.2+clawx.10
 ```
 
 上游版本不变但补丁、bridge 或组装内容变化时必须增加 `clawx.N`，禁止覆盖已发布 artifact。
@@ -877,7 +877,7 @@ deepseek-harness/0.1.2-alpha.2+clawx.9
   "kernelId": "deepseek-harness",
   "kernelVersion": "0.1.2-alpha.2",
   "patchRevision": 1,
-  "artifactVersion": "0.1.2-alpha.2+clawx.9",
+  "artifactVersion": "0.1.2-alpha.2+clawx.10",
   "platform": "darwin",
   "arch": "arm64",
   "minHostVersion": "0.6.0",

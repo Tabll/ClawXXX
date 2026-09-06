@@ -54,6 +54,8 @@ The rollback key is not used for normal releases. It is kept offline, has the `r
 
 Protected macOS release CI verifies the ClawX app with strict `codesign`, Gatekeeper assessment, and a stapled notarization ticket. Runtime executables use their dedicated entitlements only where the standalone Node runtime requires JIT/unsigned executable memory; those entitlements are not granted to arbitrary payload files.
 
+Optional runtime tools/addons are standalone Mach-O files, not `.app` bundles: verify each with `codesign --verify --strict --check-notarization -R=notarized`. They cannot carry a stapled app ticket and require online Apple ticket retrieval for this check. Do not apply `.app`-only `spctl --type execute` to bare Node tools or describe this check as a completed host-app Gatekeeper test. See [Apple's testing guidance](https://developer.apple.com/forums/thread/130560).
+
 Protected Windows release CI signs during electron-builder packaging, not after wrapping. This covers the installed app and installer and enables electron-updater publisher verification. The packaged smoke performs install, process-tree/file-lock update, signature checks, uninstall, and user-data preservation. Alpha, beta, and stable releases use the same signing gate.
 
 ## Compatibility, updates, rollback, and EOL

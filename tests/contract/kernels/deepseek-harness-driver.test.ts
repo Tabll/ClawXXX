@@ -22,8 +22,8 @@ function descriptor(overrides: Partial<KernelArtifactDescriptorV1> = {}): Kernel
     displayName: 'DeepSeek Harness',
     upstreamVersion: '0.1.2-alpha.2',
     upstreamCommit: '0a53fb55bea101816fa226bb964ae2bed71c343b',
-    patchRevision: 9,
-    artifactVersion: '0.1.2-alpha.2+clawx.9',
+    patchRevision: 10,
+    artifactVersion: '0.1.2-alpha.2+clawx.10',
     platform: 'win32',
     arch: 'x64',
     minHostVersion: '0.6.0',
@@ -78,7 +78,7 @@ describe('DeepSeek Harness managed driver/runtime contract', () => {
       platform: 'win32',
       requireFiles: false,
     });
-    expect(location.entryPath).toBe('/managed/kernels/deepseek-harness/installs/0.1.2-alpha.2+clawx.9/runtime/kernel/lib/bin.js');
+    expect(location.entryPath).toBe('/managed/kernels/deepseek-harness/installs/0.1.2-alpha.2+clawx.10/runtime/kernel/lib/bin.js');
     expect(location.nodeExecutable).toMatch(/runtime\/node\/node\.exe$/);
     expect(location.capabilitiesDigest).toBe(hash);
     expect(buildDeepSeekHarnessEnvironment(location, 9)).toMatchObject({
@@ -126,7 +126,8 @@ describe('DeepSeek Harness managed driver/runtime contract', () => {
       control: 'runtime/kernel/node_modules/@clawx/dsh-control-bridge/lib/bin.js',
       host: 'runtime/kernel/lib/bin.js',
     });
-    expect(hostPackage.files).toEqual(expect.arrayContaining(['lib/bin.js', 'lib/home-lock.js', 'lib/invariant.js']));
+    // Public entries and their hashed shared chunks must all survive deploy.
+    expect(hostPackage.files).toContain('lib/*.js');
     expect(hostPackage.dependencies).not.toHaveProperty('@deepseek-ai/dsh-session-persistence-jsonl');
     expect(hostPackage.dependencies).not.toHaveProperty('@deepseek-ai/dsh-session-persistence-sqlite');
     expect(hostPackage.dependencies).not.toHaveProperty('@deepseek-ai/dsh-settings-file');

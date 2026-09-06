@@ -11,6 +11,10 @@ touchedAreas:
   - scripts/kernel-runtime/**
   - kernels/deepseek-harness/**
   - tests/unit/kernel-*.test.ts
+  - tests/unit/deepseek-*.test.ts
+  - tests/fixtures/kernels/**
+  - tests/contract/domains/diagnostics.test.ts
+  - tests/unit/credential-broker.test.ts
   - tests/contract/kernels/**
   - harness/specs/tasks/first-deepseek-runtime-ci.md
   - harness/specs/rules/kernel-runtime-distribution.md
@@ -32,7 +36,9 @@ requiredRules:
   - docs-sync
 requiredTests:
   - pnpm exec vitest run tests/unit/kernel-platform-security.test.ts tests/unit/kernel-runtime-build.test.ts
+  - pnpm exec vitest run tests/unit/kernel-platform-verification.test.ts
   - pnpm exec vitest run tests/unit/kernel-source-manifests.test.ts tests/unit/kernel-deploy-materialization.test.ts
+  - pnpm exec vitest run tests/unit/deepseek-sandbox-probe.test.ts tests/unit/deepseek-sandbox-temp-parity-patch.test.ts
   - pnpm run kernel:sources:verify
   - pnpm run typecheck:node
   - git diff --check
@@ -41,12 +47,13 @@ acceptance:
   - Windows artifact-signature-only mode is explicit in CI inputs and recorded in hash-bound metadata; absent or invalid Authenticode results never silently select that mode.
   - Source tests, clean-machine verification, and publication evidence are reported according to actual results.
   - Frozen deployment preserves locked dependency versions, builds the native Linux launcher, removes non-target native files and generated builder metadata, and passes the exact native allowlist.
+  - Sandbox write self-tests require a known filesystem denial code from the controlled child, a nonzero exit, and absence of the output file; unrelated startup or tool errors never count as a successful denial.
   - Remaining external requirements are recorded without marking incomplete notarization or publication successful.
 docs:
   required: true
 ---
 
-Continue the protected build of DeepSeek Harness `0.1.2-alpha.2+clawx.9`
+Continue the protected build of DeepSeek Harness `0.1.2-alpha.2+clawx.10`
 from the reviewed upgrade. Use the signing/runtime policy in
 `harness/reference/multi-kernel-runtime.md`. The explicit user decision on
 2026-08-31 defers Windows code signing, but not the Ed25519 artifact/catalog

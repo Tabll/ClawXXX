@@ -54,6 +54,8 @@ Rollback key 不参与日常发布，只离线保存并具有 `rollback` purpose
 
 受保护 macOS 发布 CI 对 ClawX app 执行严格 `codesign`、Gatekeeper assessment 和 stapled ticket 校验。独立 Node 运行时只有确需 JIT/unsigned executable memory 的二进制获得专用 entitlements，普通 payload 不继承。
 
+可选内核的工具/插件是独立 Mach-O，并非 `.app`：逐个使用 `codesign --verify --strict --check-notarization -R=notarized` 强制验证。它们不能附加 app staple ticket，此检查需要在线获取 Apple 票据；不能对裸 Node 工具套用 `.app` 的 `spctl --type execute`，也不能把它描述为宿主 App 已通过完整 Gatekeeper 测试。参见 [Apple 测试指引](https://developer.apple.com/forums/thread/130560)。
+
 受保护 Windows CI 在 electron-builder 打包阶段签名，而不是只重签 NSIS 外壳，从而覆盖安装后的程序与安装器并启用 electron-updater 发布者校验。Packaged smoke 覆盖安装、带进程树/文件锁的更新、签名、卸载和用户数据保留；alpha、beta、stable 使用同一闸门。
 
 ## 兼容、更新、回滚与 EOL
