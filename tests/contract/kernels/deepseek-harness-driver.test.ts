@@ -1,7 +1,7 @@
 // @vitest-environment node
 
 import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import {
@@ -71,15 +71,18 @@ function installation(manifest = descriptor()): KernelInstallationRecord {
 
 describe('DeepSeek Harness managed driver/runtime contract', () => {
   it('binds launch paths and capability identity to the verified installation', () => {
+    const packageRoot = resolve('managed fixture', 'kernels');
+    const userDataRoot = resolve('managed fixture', 'user-data');
+    const installRoot = join(packageRoot, 'deepseek-harness', 'installs', descriptor().artifactVersion);
     const location = resolveDeepSeekHarnessRuntimeLocation({
       installation: installation(),
-      packageRoot: '/managed/kernels',
-      userDataRoot: '/managed/user-data',
+      packageRoot,
+      userDataRoot,
       platform: 'win32',
       requireFiles: false,
     });
-    expect(location.entryPath).toBe('/managed/kernels/deepseek-harness/installs/0.1.2-alpha.2+clawx.10/runtime/kernel/lib/bin.js');
-    expect(location.nodeExecutable).toMatch(/runtime\/node\/node\.exe$/);
+    expect(location.entryPath).toBe(join(installRoot, 'runtime', 'kernel', 'lib', 'bin.js'));
+    expect(location.nodeExecutable).toBe(join(installRoot, 'runtime', 'node', 'node.exe'));
     expect(location.capabilitiesDigest).toBe(hash);
     expect(buildDeepSeekHarnessEnvironment(location, 9)).toMatchObject({
       CLAWX_KERNEL_ID: 'deepseek-harness',
@@ -93,8 +96,8 @@ describe('DeepSeek Harness managed driver/runtime contract', () => {
 
     expect(() => resolveDeepSeekHarnessRuntimeLocation({
       installation: installation(descriptor({ entrypoints: { host: '../escape.js' } })),
-      packageRoot: '/managed/kernels',
-      userDataRoot: '/managed/user-data',
+      packageRoot,
+      userDataRoot,
       requireFiles: false,
     })).toThrow(/escapes the verified/);
   });

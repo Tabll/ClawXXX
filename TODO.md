@@ -454,7 +454,7 @@
 - [-] `MK-1911` 真实 Gateway/ACP + 可控本机 Provider 已通过多轮历史角色、工具/审批、模型/权限、取消、SIGKILL/新 generation 恢复、Channels admission 成功/拒绝、四次完整 usage 与无 native history；已接入 CI pre-seal 和 extracted-artifact 双重闸门。仍须真实 Provider 长上下文/自动压缩/异常重试、真实 Channel QR/媒体/收发及五目标 canonical Cron 端到端验收，不能用 SDK 或 UI mock 代替。
 - [ ] `MK-1912` 从审核提交完成新的五目标 CI、双制品同库 clean-machine、macOS 签名公证、COS/GitHub 发布与线上 Range；不沿用旧制品证据或替换运行中的版本。
 
-当前仓库 OpenClaw 为 `2026.9.2+clawx.7`，DSH 保持 `0.1.3-alpha.1+clawx.11`。源码升级已通过 `ae066914` 提交并推送至 `main`，首次双内核 CI 尚未全绿，见下方续验；没有替换已安装内核或发布生产 catalog。旧安装包在启动前必须通过 managed protocol 校验；开发模式使用新 root dependency，正式应用需下载新的已验证制品。详细架构、旧补丁处置及验证边界见[升级设计](harness/reference/openclaw-2026.9.2-upgrade.md)。
+当前仓库 OpenClaw 为 `2026.9.2+clawx.8`，DSH 保持 `0.1.3-alpha.1+clawx.11`。原始源码升级已通过 `ae066914` 提交并推送至 `main`，`84ae366c` 的双内核 CI 为 8/10 build 成功，Windows 后续修复见下方续验；没有替换已安装内核或发布生产 catalog。旧安装包在启动前必须通过 managed protocol 校验；开发模式使用新 root dependency，正式应用需下载新的已验证制品。详细架构、旧补丁处置及验证边界见[升级设计](harness/reference/openclaw-2026.9.2-upgrade.md)。
 
 本地最终验证记录（2026-09-06）：
 
@@ -470,7 +470,13 @@
 - [x] `MK-1914` 修复 npm 源码与 Node ZIP 下载器的同盘私有 sibling staging，保留完整性/身份校验后原子 rename 和 `finally` 清理。新增 12 项离线 CLI 回归，旧实现精确复现两处 `EXDEV`，修复后覆盖成功发布、坏摘要、下载失败、空/非空已有目录、npm 非法路径与包身份不符；回归在 CI 构建/签名前执行。
 - [x] `MK-1915` Lark 真正 CommonJS entry 改在异步独立 Node 子进程加载并断言 `register`，60 秒超时强制终止、专用用例上限 75 秒；两个 `import.meta` 修复点独立做 CommonJS 语法断言。无全局 timeout 放宽、mock、retry、skip 或强行成功退出；原真实 packaged-runtime 探针保留。
 - [x] `MK-1916` 本次修复的完整本地回归（Node 24.15.0）：focused **28 passed**；完整宿主 **253 files / 2180 passed / 0 failed / 6 existing pending**（`temp/kernel-ci-repair-vitest.json`）；两内核 CI storage suites 合集 **17 files / 81 passed**（`temp/kernel-ci-repair-storage-contracts.json`）。Lark 独立加载 focused 约 2.2 秒、完整并行套件约 3.7 秒。source hashes、typecheck、lint（0 errors / 7 existing warnings）、comms replay/compare、Harness CI、diff-aware task validate/dry-run、workflow YAML/前置测试顺序和 diff check 全部通过。检查了三语 README，UI/用户安装流程/运行时接口不变，无需翻译变更；约束和证据同步 reference/rule/scenario/task/TODO。Windows 真机、签名、公证和 clean-machine 仍须新 CI，不把本机模拟跨盘测试当远端通过。
-- [ ] `MK-1917` 经审核提交/推送本次 CI 修复并重新执行十目标构建、单/双内核 clean-machine 验收；完成后再单独推进受保护生产发布与 Range。修复请求本身不等于重新构建、审批或生产发布已获执行/已通过。
+- [-] `MK-1917` 前轮修复已通过 `84ae366c` 提交/推送并重跑 [34040448610](https://github.com/Tabll/ClawXXX/actions/runs/34040448610)：8/10 build 成功，Windows 两项失败，单/双内核 clean-machine 未运行。三平台 Electron E2E 成功。生产发布与 Range 仍单独跟踪，不将本次 staging 修复视为生产授权。
+- [x] `MK-1918` 确认 Windows 新失败：OpenClaw 在注册表持久化回读失败；DeepSeek 在共享 artifact fsync、严格 patch LF 和 Unix 路径断言三处失败。前轮两个下载器 EXDEV 和 Lark 冷启动问题未复现。
+- [x] `MK-1919` 用真实 Windows 11 / Node 24.15.0、8.3 短路径及异步 realpath 长路径复现注册表问题：SQLite 按 owner 序列化后重复诊断顺序变化、每个插件内容不变，导致 stale-source。改为扫描前按 owner 确定性排序，同一 Windows 夹具回读为 persisted；不改变比较、路径安全、插件优先级、迁移 lease 或 checkpoint。增加真实 registry/SQLite 跨平台回归：三次 fresh-cache 回读、拒绝 manifest/source/policy/diagnostic 实质变更；旧 +7 payload 稳定失败，新版通过。
+- [x] `MK-1920` artifact fsync 改为非截断 writable r+，保留 fatal flush error/关闭句柄；新增跨平台 Windows 权限模拟与 EIO 回归。Git fixture 明确本地 LF，并用私有 global config 覆盖 autocrlf true/false + CRLF；保留精确字节和 offset 拒绝。DSH driver 使用带空格的 native absolute join/resolve 断言，不改生产路径和 traversal 检查。
+- [x] `MK-1921` OpenClaw 递增不可变 revision 8；同步补丁、24 处 root lock patch-hash 引用、runtime/control overlay/manifest/source/lock 摘要；上游版本和所有依赖版本不变。离线 frozen install（不执行 lifecycle）、干净已验证 npm 基线的 23-target strict preparation、双内核 source verify 通过。新增 registry probe 在每个 OpenClaw payload 的 Gateway/签名前运行，原所有发布闸门保留。
+- [x] `MK-1922` 本轮完整本地验证（2026-09-06～07）：focused **20 passed**；完整宿主 **254 files / 2184 passed / 0 failed / 6 existing pending**（`temp/windows-ci-repair-vitest.json`）；真实 Windows 注册表三次回读及四类变更拒绝通过。新版 macOS arm64 打包 payload 的真实 Gateway/ACP、7 个 Channels、工具审批、取消、崩溃 hydrate、6 次本机 Provider 请求/4 项独立 usage 与无 native history 均通过（`temp/reports/openclaw-windows-ci-payload-probe.json`）。source hashes、typecheck、lint（0 errors / 7 existing warnings）、comms replay/compare、Harness CI、diff-aware task validate/dry-run 和 diff review 通过；同步四语 README/设计/规则/场景。Windows 验证仅操作隔离临时副本，没有接触用户数据；真实平台制品/签名和 clean-machine 仍以新 CI 为准。详细根因与验证边界见 [Windows 修复记录](harness/reference/windows-runtime-ci-repair.md)。
+- [ ] `MK-1923` 经审核提交/推送 +8 修复，用新 SHA 重新 dispatch 两内核五目标 staging（Windows artifact-signature-only），完成环境审批并记录真实 build/clean-machine 结果；不得 rerun 旧 SHA 或提前宣称全绿。COS、catalog promotion 和生产发布不在本次任务范围。
 
 ## 每个实现 PR 的最低检查
 

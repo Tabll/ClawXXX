@@ -22,7 +22,7 @@ Upstream migration/default changes must not widen session visibility or
 permissions. A candidate test must explicitly select its package and exact
 version, never silently test the installed old SDK. Failed real-process storage
 probes block promotion even when host mocks and control smoke pass. The source
-pin is now 2026.9.2+clawx.7; actual per-Run incognito/ACP storage probes run before
+pin is now 2026.9.2+clawx.8; actual per-Run incognito/ACP storage probes run before
 sealing and again against extracted artifacts. Verify the sealed file manifest
 again after first launch, and never let upstream postinstall prune patch files.
 See
@@ -39,6 +39,16 @@ identity before the final same-volume rename, refuse existing destinations and
 clean owned staging on failure. Do not replace atomic publication with a
 cross-volume copy fallback. Offline CLI regression tests must model distinct
 volumes, retain real archive/hash checks and run before expensive build/signing.
+
+Installed plugin paths must be scanned in a deterministic owner order before
+SQLite serialization. Windows short/long aliases can produce duplicate diagnostics;
+changes in insertion order must not produce a false stale registry. Keep strict
+freshness and migration checkpoints: real manifest, entrypoint, policy and
+diagnostic-content changes must still fail. Run the real isolated registry/SQLite
+probe before Gateway startup and signing. Archive fsync needs a writable,
+non-truncating handle with fatal flush errors; Git fixture LF bytes and driver
+path assertions must be independent of developer Git policy and host separators.
+See `harness/reference/windows-runtime-ci-repair.md`.
 
 Real Channel package entrypoint tests must use a fresh native Node process when
 loading the complete plugin/SDK graph. Bound that child with a kill timeout

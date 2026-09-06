@@ -580,3 +580,18 @@ index 1ea73e1..e77b0a8 100644
 -}
 \ No newline at end of file
 +}
+diff --git a/dist/discovery-D_VDsZuY.js b/dist/discovery-D_VDsZuY.js
+index 7012117de29ddccc3ffc3a13104437fb8d48698c..a7ff36282da632b6fa6403bc75b90bebf4a497b0 100644
+--- a/dist/discovery-D_VDsZuY.js
++++ b/dist/discovery-D_VDsZuY.js
+@@ -638,7 +638,9 @@ function prepareInstalledPluginPaths(installRecords, env, diagnostics) {
+ 	const installedPluginDirKeys = /* @__PURE__ */ new Set();
+ 	const managedPluginDirs = /* @__PURE__ */ new Set();
+ 	const resolveRecordPath = (rawPath) => typeof rawPath === "string" && rawPath.trim() ? resolveUserPath(rawPath, env) : void 0;
+-	for (const [installOwner, record] of Object.entries(installRecords ?? {})) {
++	// SQLite serializes install records by owner, so discovery (including
++	// duplicate-path diagnostics on Windows) must not depend on insertion order.
++	for (const [installOwner, record] of Object.entries(installRecords ?? {}).toSorted(([left], [right]) => left < right ? -1 : left > right ? 1 : 0)) {
+ 		const installPath = resolveRecordPath(record.installPath);
+ 		const sourcePath = resolveRecordPath(record.sourcePath);
+ 		for (const recordedPath of [installPath, sourcePath]) if (recordedPath && pluginCacheExistsSync(recordedPath)) {

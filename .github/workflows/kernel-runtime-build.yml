@@ -152,6 +152,7 @@ jobs:
         shell: bash
         run: |
           if [ "${{ matrix.target.platform }}" = "win32" ]; then node_bin=temp/node-runtime/node.exe; else node_bin=temp/node-runtime/bin/node; fi
+          "$node_bin" scripts/kernel-runtime/probe-openclaw-plugin-registry.mjs --package-dir build/openclaw --report temp/reports/openclaw-plugin-registry.json
           "$node_bin" scripts/kernel-runtime/probe-openclaw-managed-runtime.mjs --package-dir build/openclaw --node "$node_bin" --plugins-root build/openclaw/clawx-plugins --report temp/reports/openclaw-managed-runtime.json
       - name: Import macOS runtime signing certificate
         if: matrix.target.platform == 'darwin'
@@ -241,7 +242,7 @@ jobs:
             tests/contract/kernels/kernel-driver-contract.test.ts
           )
           if [ "${{ matrix.kernel }}" = "openclaw" ]; then
-            suites+=(tests/contract/kernels/openclaw-conversation-store.test.ts tests/contract/kernels/openclaw-runtime-dir.test.ts tests/unit/openclaw-config-projection.test.ts tests/unit/openclaw-managed-session.test.ts tests/unit/openclaw-managed-storage-fence.test.ts tests/unit/openclaw-channel-handoff.test.ts tests/unit/openclaw-channel-package-patches.test.ts tests/unit/openclaw-native-pruning.test.ts)
+            suites+=(tests/contract/kernels/openclaw-conversation-store.test.ts tests/contract/kernels/openclaw-runtime-dir.test.ts tests/unit/openclaw-config-projection.test.ts tests/unit/openclaw-managed-session.test.ts tests/unit/openclaw-managed-storage-fence.test.ts tests/unit/openclaw-channel-handoff.test.ts tests/unit/openclaw-channel-package-patches.test.ts tests/unit/openclaw-native-pruning.test.ts tests/unit/openclaw-plugin-registry.test.ts)
           else
             suites+=(tests/contract/kernels/deepseek-harness-driver.test.ts)
           fi

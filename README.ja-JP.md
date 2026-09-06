@@ -161,7 +161,7 @@ ClawXは **Main-owned multi-kernel + unified Host API architecture**を採用し
 
 DSH の現在のソースは `0.1.3-alpha.1+clawx.11` に対応し、v2 ストリームと確定イベントを共有 SQLite に接続します。まだ alpha であり、上流は性能低下を報告しています。インストール済み runtime の更新には新しい CI artifact の検証・公開が必要です。[互換性の詳細](harness/reference/deepseek-harness-0.1.3-upgrade.md)。
 
-OpenClaw のソースと開発依存関係は `2026.9.2+clawx.7` に更新済みです。本番 bridge は共有 SQLite 履歴から Run ごとのメモリ session を作成し、新しい Agents・モデル・権限設定と 7 種の Channel plugin に対応します。隔離した実 Gateway/ACP と packaged payload でツール、キャンセル、クラッシュ復旧、入場拒否、native 履歴の非永続化を検証しました。インストール済み runtime の更新には新しい検証済み CI artifact が必要です。5 プラットフォームの署名・公開と実アカウント検証は未実施です。[設計と検証結果](harness/reference/openclaw-2026.9.2-upgrade.md)。
+OpenClaw のソースと開発依存関係は `2026.9.2+clawx.8` に更新済みです。本番 bridge は共有 SQLite 履歴から Run ごとのメモリ session を作成し、新しい Agents・モデル・権限設定と 7 種の Channel plugin に対応します。隔離した実 Gateway/ACP と packaged payload でツール、キャンセル、クラッシュ復旧、入場拒否、native 履歴の非永続化を検証しました。インストール済み runtime の更新には新しい検証済み CI artifact が必要です。5 プラットフォームの署名・公開と実アカウント検証は未実施です。[設計と検証結果](harness/reference/openclaw-2026.9.2-upgrade.md)。
 
 - **プロセスモデル**：Electron Mainがsystem integration、one DataService、Package Manager、kernel別Supervisorを管理します。OpenClawとDSHは並行実行でき、Renderer/runtimeはcanonical ClawX SQLiteを直接開かず相互接続しません。
 - **設定の配信**：Gateway実行中は `config.get` / `config.set` を使い、停止中または起動中は解決済みJSON5設定を更新します。通常のプロバイダー、Agent、スキル、モデル変更ではプロセスを置き換えず、認証情報は `secrets.reload` でホットリロードされます。検証済みのGatewayアクティビティが3分間ない場合、ClawXはコアRPCを検証し、自身が所有する利用不能なGatewayプロセスだけを再起動します。外部管理のGatewayは手動で復旧します。

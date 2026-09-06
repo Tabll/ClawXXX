@@ -3,17 +3,36 @@ import { generateKeyPairSync } from 'node:crypto';
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { assembleKernelArtifact, validateNativePayloads } from '../../scripts/kernel-runtime/lib/artifact.mjs';
+import { assembleKernelArtifact, fsyncFile, validateNativePayloads } from '../../scripts/kernel-runtime/lib/artifact.mjs';
 import {
   scanRuntimeDataDirectory,
   scanRuntimeDataPaths,
 } from '../../scripts/kernel-runtime/lib/storage-contract.mjs';
 import { applyStrictPatchSeries } from '../../scripts/kernel-runtime/lib/source-manifest.mjs';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 const officialNodeSha256 = 'af5cfaeafe603aaf7599f287fd9d100bb41f16794f49788fa59dd3f25546930f';
 
 describe('kernel runtime build supply chain', () => {
+  it.each([false, true])('flushes sealed bytes with a writable non-truncating handle and always closes it (failure=%s)', (failure) => {
+    const root = mkdtempSync(join(tmpdir(), 'clawx-artifact-fsync-'));
+    const path = join(root, 'sealed.tar.zst');
+    const bytes = Buffer.from('already sealed archive bytes');
+    try {
+      writeFileSync(path, bytes, { flag: 'wx' });
+      const audit = JSON.parse(execFileSync(process.execPath, [
+        join(process.cwd(), 'tests/fixtures/kernels/artifact-fsync-probe.mjs'), path, String(failure),
+      ], { encoding: 'utf8', timeout: 10_000, windowsHide: true }));
+      expect(audit).toEqual({ flags: ['r+'], flushes: 1, closes: 1, error: failure ? 'EIO' : null });
+      expect(readFileSync(path)).toEqual(bytes);
+      const missing = join(root, 'missing.tar.zst');
+      expect(() => fsyncFile(missing)).toThrow(/ENOENT/);
+      expect(existsSync(missing)).toBe(false);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it('keeps optional kernel payloads out of the base Electron package pipeline', () => {
     const builder = readFileSync(join(process.cwd(), 'electron-builder.yml'), 'utf8');
     const packageJson = JSON.parse(readFileSync(join(process.cwd(), 'package.json'), 'utf8')) as {
@@ -83,7 +102,7 @@ describe('kernel runtime build supply chain', () => {
 
       expect(readFileSync(first.archivePath)).toEqual(readFileSync(second.archivePath));
       expect(readFileSync(first.descriptorPath)).toEqual(readFileSync(second.descriptorPath));
-      expect(first.descriptor.artifactVersion).toBe('2026.9.2+clawx.7');
+      expect(first.descriptor.artifactVersion).toBe('2026.9.2+clawx.8');
       expect(first.descriptor.storage).toMatchObject({ authority: 'clawx-data-service', nativeDurableHistory: false });
       expect(first.descriptor.supplyChain).toEqual(expect.objectContaining({
         sourceSha256: expect.stringMatching(/^[a-f0-9]{64}$/),
@@ -192,6 +211,9 @@ describe('kernel runtime build supply chain', () => {
     expect(smoke.match(/verifyFileManifest\(extracted\);/g)).toHaveLength(2);
     expect(smoke.lastIndexOf('verifyFileManifest(extracted);')).toBeGreaterThan(smoke.indexOf('? await smokeOpenClawManagedEntrypoint'));
     expect(workflow).toContain('--plugins-root build/openclaw/clawx-plugins --report temp/reports/openclaw-managed-runtime.json');
+    expect(workflow).toContain('probe-openclaw-plugin-registry.mjs --package-dir build/openclaw --report temp/reports/openclaw-plugin-registry.json');
+    expect(workflow.indexOf('probe-openclaw-plugin-registry.mjs')).toBeLessThan(workflow.indexOf('probe-openclaw-managed-runtime.mjs'));
+    expect(workflow).toContain('tests/unit/openclaw-plugin-registry.test.ts');
     expect(workflow.indexOf('probe-openclaw-managed-runtime.mjs')).toBeLessThan(workflow.indexOf('scripts/kernel-runtime/sign-macos-runtime.mjs'));
     expect(workflow).toContain('tests/contract/kernels/openclaw-conversation-store.test.ts');
     expect(workflow).toContain('tests/e2e/chat-acp-session-controls.spec.ts');
@@ -272,9 +294,13 @@ describe('kernel runtime build supply chain', () => {
     }
   });
 
-  it('applies only exact recorded patches and rejects offset application', () => {
+  it.each(['false', 'true'])('applies LF-exact patches and rejects offsets under inherited core.autocrlf=%s', (autocrlf) => {
     const root = mkdtempSync(join(tmpdir(), 'clawx-patch-test-'));
     try {
+      // Model Windows global Git policy without editing the developer's config.
+      const globalConfig = join(root, 'global.gitconfig');
+      writeFileSync(globalConfig, `[core]\n\tautocrlf = ${autocrlf}\n\teol = crlf\n`);
+      vi.stubEnv('GIT_CONFIG_GLOBAL', globalConfig);
       const clean = createGitFixture(join(root, 'clean'), 'head\nalpha\none\nomega\ntail\n');
       const patchPath = join(root, 'change.patch');
       writeFileSync(patchPath, patchText());
@@ -285,6 +311,7 @@ describe('kernel runtime build supply chain', () => {
       const shifted = createGitFixture(join(root, 'shifted'), 'zero\nhead\nalpha\none\nomega\ntail\n');
       expect(() => applyStrictPatchSeries({ repositoryRoot: root, checkoutRoot: shifted, source })).toThrow(/fuzz or offset/);
     } finally {
+      vi.unstubAllEnvs();
       rmSync(root, { recursive: true, force: true });
     }
   });
@@ -334,6 +361,8 @@ function vitestProof(suites: string[]) {
 function createGitFixture(path: string, content: string) {
   mkdirSync(path, { recursive: true });
   execFileSync('git', ['init', '--quiet'], { cwd: path });
+  execFileSync('git', ['config', 'core.autocrlf', 'false'], { cwd: path });
+  execFileSync('git', ['config', 'core.eol', 'lf'], { cwd: path });
   execFileSync('git', ['config', 'user.name', 'ClawX Test'], { cwd: path });
   execFileSync('git', ['config', 'user.email', 'tests@claw-x.invalid'], { cwd: path });
   writeFileSync(join(path, 'value.txt'), content);

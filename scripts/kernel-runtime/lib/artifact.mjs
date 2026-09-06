@@ -507,8 +507,10 @@ function uuidFromHash(hash) {
   return `${value.slice(0, 8)}-${value.slice(8, 12)}-${value.slice(12, 16)}-${value.slice(16, 20)}-${value.slice(20)}`;
 }
 
-function fsyncFile(path) {
-  const descriptor = openSync(path, 'r');
+export function fsyncFile(path) {
+  // Windows FlushFileBuffers requires a writable handle. r+ neither truncates
+  // the just-sealed archive nor creates a missing file; flush errors stay fatal.
+  const descriptor = openSync(path, 'r+');
   try {
     fsyncSync(descriptor);
   } finally {
