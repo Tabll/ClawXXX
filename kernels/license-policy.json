@@ -5,6 +5,7 @@
     "(MIT AND Zlib)",
     "(MIT OR GPL-3.0-or-later)",
     "Apache-2.0",
+    "Apache-2.0 AND LGPL-3.0-or-later",
     "BlueOak-1.0.0",
     "BSD-2-Clause",
     "BSD-3-Clause",
@@ -12,6 +13,7 @@
     "ISC",
     "LGPL-3.0-or-later",
     "MIT",
+    "MIT AND MPL-2.0",
     "MIT OR Apache",
     "MPL-2.0",
     "Python-2.0",
@@ -20,7 +22,7 @@
   "overrides": [
     {
       "name": "@larksuite/openclaw-lark",
-      "version": "2026.7.9",
+      "version": "2026.7.16",
       "license": "MIT",
       "evidence": "The frozen npm payload contains LICENSE with the MIT License and Lark Technologies copyright."
     },
@@ -46,12 +48,34 @@
   "inheritance": [
     {
       "namePattern": "^@openclaw/",
-      "versionPattern": "^2026\\.7\\.1$",
+      "versionPattern": "^2026\\.(7\\.1|9\\.2)$",
       "license": "MIT",
       "evidence": "Internal extension packages are built from the frozen MIT-licensed openclaw/openclaw source tree recorded in kernels/openclaw/source.json."
     }
   ],
   "obligations": [
+    {
+      "id": "cua-native-mpl-source",
+      "packagePattern": "^@trycua/cua-driver-(?:darwin|linux|win32)-",
+      "licensePattern": "^MIT AND MPL-2\\.0$",
+      "actions": [
+        "Preserve both MIT and MPL-2.0 license notices, including node-runtime-NOTICE.md; AND does not allow selecting only MIT.",
+        "Provide the exact MPL-covered native runtime source and modifications with the corresponding runtime release; retain separate release counsel approval."
+      ],
+      "source": "https://github.com/trycua/cua",
+      "evidence": "The frozen @trycua/cua-driver-darwin-arm64@0.22.0 declares MIT AND MPL-2.0 for the native SDK and Node runtime."
+    },
+    {
+      "id": "ubjs-mpl-source",
+      "packagePattern": "^@ubjs/(?:node(?:-.+)?|core)$",
+      "licensePattern": "^MPL-2\\.0$",
+      "actions": [
+        "Preserve MPL-2.0 license texts and copyright notices from the frozen UniFFI runtime packages.",
+        "Make the exact MPL-covered source files and any modifications available with the corresponding runtime release; machine audit is not legal approval."
+      ],
+      "source": "https://github.com/jhugman/uniffi-bindgen-react-native",
+      "evidence": "The frozen @ubjs/node@0.31.0-3 payload declares MPL-2.0 and the runtimes/napi source repository."
+    },
     {
       "id": "libsignal-gpl-source",
       "packagePattern": "^libsignal$",
@@ -82,6 +106,18 @@
         "Publish exact corresponding source/build scripts and preserve dynamic replacement/relinking ability."
       ],
       "source": "https://github.com/lovell/sharp-libvips"
+    },
+    {
+      "id": "sharp-win32-libvips-lgpl",
+      "packagePattern": "^@img/sharp-win32-x64$",
+      "licensePattern": "^Apache-2\\.0 AND LGPL-3\\.0-or-later$",
+      "actions": [
+        "Preserve the combined package's Apache license, third-party README notices and LGPL/GPL license texts; AND does not permit choosing only Apache.",
+        "Publish the exact libvips and bundled-library corresponding source/build scripts and preserve dynamic replacement/relinking ability.",
+        "Track release counsel approval separately; recognizing this package metadata does not certify legal compliance."
+      ],
+      "source": "https://github.com/lovell/sharp-libvips",
+      "evidence": "The @img/sharp-win32-x64@0.35.3 npm archive, verified against the frozen lockfile SHA-512, declares this compound license and bundles libvips DLLs, LICENSE, versions.json and README.md third-party notices."
     },
     {
       "id": "web-push-mpl-source",

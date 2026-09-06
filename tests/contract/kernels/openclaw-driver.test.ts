@@ -1,6 +1,6 @@
 // @vitest-environment node
 
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -11,6 +11,7 @@ import {
   type OpenClawGatewayAdapter,
 } from '@electron/kernels/openclaw/openclaw-driver';
 import {
+  assertManagedOpenClawRuntimeProtocol,
   buildManagedOpenClawEnvironment,
   clearOpenClawRuntimeLocation,
   getManagedOpenClawDataRoots,
@@ -77,6 +78,30 @@ function runtimeFixture() {
 }
 
 describe('OpenClaw optional runtime driver', () => {
+  it('rejects an old or incomplete managed protocol without changing config or the installed payload', () => {
+    const { root, runtime } = runtimeFixture();
+    try {
+      mkdirSync(runtime.configRoot, { recursive: true });
+      const configPath = join(runtime.configRoot, 'openclaw.json');
+      const config = '{"agents":{"list":[{"id":"main"}]},"channels":{"telegram":{"tokenRef":"keep"}}}';
+      writeFileSync(configPath, config);
+      const packagePath = join(runtime.packageDir, 'package.json');
+      for (const clawx of [undefined, { managedSessionProtocol: 'clawx.openclaw-session/v1' }, { managedSessionProtocol: 'clawx.openclaw-session/v2', storageFenceVersion: 1 }]) {
+        const pkg = JSON.stringify({ name: 'openclaw', version: '2026.9.2', clawx });
+        writeFileSync(packagePath, pkg);
+        expect(() => assertManagedOpenClawRuntimeProtocol(runtime)).toThrow('Install the updated verified OpenClaw runtime');
+        expect(readFileSync(packagePath, 'utf8')).toBe(pkg);
+        expect(readFileSync(configPath, 'utf8')).toBe(config);
+        expect(existsSync(runtime.cacheRoot)).toBe(false);
+      }
+      writeFileSync(packagePath, JSON.stringify({ clawx: { managedSessionProtocol: 'clawx.openclaw-session/v1', storageFenceVersion: 1 } }));
+      expect(() => assertManagedOpenClawRuntimeProtocol(runtime)).not.toThrow();
+      expect(readFileSync(configPath, 'utf8')).toBe(config);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it('resolves only an active installation record and creates no managed data before start', async () => {
     const { runtime, userDataRoot } = runtimeFixture();
     const roots = getManagedOpenClawDataRoots(userDataRoot);

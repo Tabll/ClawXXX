@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
-  "upstreamCommit": "0a53fb55bea101816fa226bb964ae2bed71c343b",
-  "upstreamLockSha256": "6cc109a574218f51762474455c8d72e5f7c2625aedf25e85569dba1af7adcef0",
-  "preparedLockSha256": "444dff876e39411451544e0c2617168eb816053ca0ff4663060750bf8777d4c1",
+  "upstreamCommit": "d347e703908d0406b7a7ef80e3a0e594d86b2215",
+  "upstreamLockSha256": "2c903ab870f821ee2db62fa9417d11b1c2b9c65fbeec30e851ddc53c4cc8c383",
+  "preparedLockSha256": "9571cbbc78ef405cc44f1dc845e86cc8463f4a6b5a387db9ec1ba231085a2556",
   "workspacePackages": [
     "@clawx/dsh-rich-events",
     "@clawx/dsh-acp-bridge",
@@ -16,8 +16,8 @@
   "commands": [
     "pnpm install --frozen-lockfile",
     "pnpm run build:lib:host",
-    "pnpm exec vitest run packages/acp/clawx-rich-events/tests packages/acp/clawx-acp-bridge/tests packages/agents/clawx-dsh-agent-catalog/tests packages/control/clawx-control-bridge/tests packages/credentials/clawx-dsh-credential-provider/tests packages/runtime/clawx-runtime-host/tests packages/session/session-persistence-clawx/tests",
-    "pnpm --filter @clawx/dsh-runtime-host deploy --prod --legacy ../kernel-payload"
+    "pnpm exec vitest run packages/acp/clawx-rich-events/tests packages/acp/clawx-acp-bridge/tests packages/agents/clawx-dsh-agent-catalog/tests packages/control/clawx-control-bridge/tests packages/credentials/clawx-dsh-credential-provider/tests packages/runtime/clawx-runtime-host/tests packages/session/session-persistence-clawx/tests packages/skills/clawx-dsh-skill-catalog/tests packages/sandbox/sandbox/tests/roots.spec.ts",
+    "pnpm --config.node-linker=hoisted --config.inject-workspace-packages=true --filter @clawx/dsh-runtime-host deploy --prod --ignore-scripts ../kernel-payload"
   ],
   "requiredStorageScenarios": [
     "new",

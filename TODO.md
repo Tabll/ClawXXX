@@ -2,7 +2,7 @@
 
 > 对应设计：[docs/zh-CN/multi-kernel-design.md](docs/zh-CN/multi-kernel-design.md)
 >
-> 状态：本地 release candidate 已完成 M0–M15 与 M16 可在仓库内完成的实现/验证；受保护五目标运行时签名、公证、生产镜像演练及许可证法务批准仍是公开发布阻断项，不以本机结果代替
+> 状态：M19 已修复 OpenClaw 生产存储桥接、配置及 Channels，并切换本地源码/依赖为 2026.9.2+clawx.7；真实 Gateway/ACP 与 macOS arm64 payload 已有验证记录。受保护五目标签名、公证、真实账号/长上下文、生产镜像演练及法务批准仍是发布门禁，不以本机结果代替
 >
 > 最近完整本地证据（2026-09-01）：Vitest 243 files / 241 passed / 2 skipped、2116 tests passed / 6 skipped（其中制品依赖项只在真实 CI 制品存在时执行）；Electron E2E 既有证据 151 passed / 3 platform skips；multi-kernel chaos 既有证据 28/28；DSH `0.1.2-alpha.2` 干净精确上游树完成严格 patch/overlay 重放、冻结安装、完整 host build、12 files / 43 focused tests，并在真实 macOS `sandbox-exec` 下通过 3/3 runtime self-tests；typecheck、lint、comms 与本任务 Harness 全绿
 >
@@ -27,7 +27,7 @@
 - [x] `MK-0002` 冻结首发平台矩阵：macOS arm64/x64、Windows x64、Linux x64/arm64；确认 RPM arm64 是否延期。
 - [x] `MK-0003` 冻结首发 OpenClaw 与 DeepSeek Harness 上游精确版本/commit/integrity。
 - [x] `MK-0004` 建立上游许可证、再分发、补丁和 THIRD_PARTY_NOTICES 审核记录。
-- [x] `MK-0005` 完成 OpenClaw Conversation Store spike：new/prompt/cancel/compact/branch/restart 全部从 SQLite hydrate/persist，且不产生 durable session/trajectory JSONL。
+- [x] `MK-0005` 完成 OpenClaw Conversation Store SDK spike：new/prompt/cancel/compact/branch/restart 从 SQLite hydrate/persist，且不产生 durable session/trajectory JSONL。（仅 SDK/adapter 证据，不代表真实生产 ACP/Gateway；生产接入缺口见 M19。）
 - [x] `MK-0006` 完成 DSH rich ACP + ClawX persistence spike：tool、permission、cancel、resume、config、usage 从 SQLite hydrate/persist，且不产生 durable JSONL。
 - [x] `MK-0007` 完成两个内核同时运行和同时 prompt 的 process/stdio spike。
 - [x] `MK-0008` 测量 base app、OpenClaw artifact、DSH artifact 的 compressed/unpacked/file-count/startup/RSS 基线。
@@ -39,7 +39,7 @@
 
 - [x] DSH spike 使用当前 ClawX ACP timeline 渲染完整真实回合，不依赖官方 Web UI。
 - [x] cancel 真正中断 DSH live agent，而不是杀掉整个 runtime。
-- [x] OpenClaw 与 DSH 都能在进程重启后只从 ClawX SQLite 恢复，并通过 runtime-dir scan 证明没有第二份 durable history。
+- [-] OpenClaw 与 DSH 都能在进程重启后只从 ClawX SQLite 恢复，并通过真实进程/制品检查证明没有第二份 durable history。（2026-09-06 重新打开 OpenClaw 验收：当前 July 与 September 候选的真实 ACP session/new 都写入原生 replay SQLite；SDK/宿主目录 fixture 不足以证明生产路径。）
 - [x] 两个 runtime 同时运行时 conversation/run/event/request identity 不串线。
 - [x] 同一 Conversation 可在 turn 边界从 OpenClaw 切到 DSH，再切回 OpenClaw；private/secret blocks 不进入错误内核上下文。
 - [-] 三个主平台至少完成一轮 CI artifact 启动验证。（五目标 clean-machine workflow 已绑定真实制品入口、生产 Package Manager 完整安装链路、双真实制品并发/故障隔离、runtime-dir scan、共享 UI E2E 与 comms；等待受保护 runner 首轮结果）
@@ -186,7 +186,7 @@
 
 - [x] 主安装包不包含 OpenClaw runtime/node_modules/plugins payload。
 - [-] 首次安装 OpenClaw 后所有新 Conversation/Agents/Channels/Cron/Skills/Usage 使用统一契约和 SQLite。（本地 package-manager/driver/domain/E2E 已通过；真实签名制品首次安装、卸载保留 SQLite 与双制品同库验证已接入五目标 CI，等待首轮证据）
-- [-] OpenClaw 从 SQLite portable context/checkpoint 完成 restart/resume/compaction，且不读取旧 history。（真实 OpenClaw adapter/运行目录 contract 已通过；五目标 clean-machine 结果待 CI）
+- [-] OpenClaw 从 SQLite portable context 完成重建，且不读取旧 history。（M19 已接通生产 per-Run incognito hydrate、强制崩溃/新 generation 恢复；生产不使用原生 opaque checkpoint。SDK compact/branch 合约保留，五目标及真实 Provider 长上下文/自动压缩仍待验收。）
 - [x] OpenClaw 未安装时不执行任何 OpenClaw 文件写入或 Gateway 启动副作用。
 
 ## M7：ConversationRouter、统一 Chat History 与跨内核续接
@@ -316,7 +316,7 @@
 - [x] `MK-1305` 在 SQLite 实现 jobs/admissions/runs、manual trigger、cancel/timeout diagnostics。
 - [x] `MK-1306` 实现 `(jobId, scheduledFor)` 幂等 due admission，先提交 canonical run 再 dispatch。
 - [x] `MK-1307` 实现 `reuse`/`new-per-run`/`new-per-day` Conversation policy。
-- [x] `MK-1308` 在 ClawX-managed OpenClaw/DSH 中禁用原生 schedulers 和 native run-history writes。
+- [-] `MK-1308` 在 ClawX-managed OpenClaw/DSH 中禁用原生 schedulers 和 native run-history writes。（M19 已用真实 incognito/内存 ACP ledger、SQLite 写入栅栏与 Cron guard 修复 OpenClaw 本地执行路径，不再依赖无效 history 标记；五目标制品验收仍待完成。DSH 既有独立证据保留。）
 - [x] `MK-1309` 明确不扫描或导入旧 OpenClaw Cron/DSH Schedule/history。
 - [x] `MK-1310` Cron 页面添加 kernel/agent/concurrency fields，保持统一交互。
 - [x] `MK-1311` 添加双内核同时到期、重启、更新中、内核缺失和 duplicate prevention tests。
@@ -414,7 +414,10 @@
   - [x] Windows 真实 self-test 已证实只读写入被 `EPERM` 拒绝，但上游英文签名表漏判；将 CI-only 探针改为受控子进程错误码/退出码/精确目标路径加文件未生成校验，8 项正反例回归通过。因 overlay 字节变化将制品 revision 提升为 `0.1.2-alpha.2+clawx.10`，不复用 `.9` 身份。
   - [x] `.10` 新 checkout 严格 patch/overlay、冻结依赖、完整 host build、36 项 focused tests 及真实 macOS 沙箱自检通过；多入口打包保留根级哈希 JS chunks，避免新 helper 的共享输出被 package files 清单漏掉。
   - [x] `.10` 宿主回归：243 files / 2135 tests 通过（2 files / 6 tests 按既有平台条件跳过），source manifest、typecheck、lint、comms replay/compare 和任务 Harness 校验通过；新增严格公证票据校验的拒绝分支覆盖。
-  - [-] 修复提交推送后重新执行五目标 CI，取得全部制品、干净机器和线上分发证据；失败的旧构建不得晋级。
+  - [x] 运行 `34007295656` 的两种 macOS（均含公证）和两种 Linux 构建通过；Windows 沙箱 self-test 通过，后续审计发现 sharp 合包的复合许可证漏识别。核验官方 `0.35.3` npm 包与冻结 SHA-512 后补齐精确 `AND` 表达式和独立履约记录；实包审计与 2137 项全量测试通过，不降级为仅 Apache，也不冒充法务批准。
+    - `.10` 公证报告 ZIP 已按 GitHub artifact SHA-256 核验：arm64 `8cf9ffaa-acd3-4ba5-90db-1ae6734d70b0`、x64 `7913dfdf-979d-4f67-a054-3431f9df95f9` 均为 Apple `Accepted`；本轮 clean-machine matrix 因 Windows build 失败而跳过，不能记为通过。
+  - [x] 上轮真实 macOS arm64 `.9` 制品通过生产 PackageManager 安装链路：注入中断后的 Range/If-Range 续传、签名、解包、控制桥、激活、重扫、卸载与 SQLite 保留全部通过（本机证据，不替代五平台 clean runner）。
+  - [-] 修复提交推送后重新执行五目标 CI，取得全部制品、干净机器和线上分发证据；失败的旧构建不得晋级。2026-09-06 自动审批将 Windows 许可证元数据/履约记录修复判为超出此前“暂不处理法务”的授权，已拦截提交与推送；6 个相关文件仅保留在本地，远端仍为 `878f53c7`，需用户明确授权该最小修复后继续。COS 上传与线上 Range 演练尚未执行。
 
 ### M17 Acceptance
 
@@ -422,6 +425,44 @@
 - [x] ClawX 统一 SQLite、并行多内核、凭据、Agent、Skill、权限、取消与 rich event 适配边界未退化。
 - [x] 升级输入可由干净 checkout 严格复现并通过冻结安装、完整 host build、focused tests 与本机沙箱自检。
 - [-] 五平台签名制品、Apple `Accepted`/staple/Gatekeeper、COS/GitHub 双镜像和线上断点续传证据待新 commit 的受保护 CI 完成。
+
+## M18：DeepSeek Harness 0.1.3-alpha.1 破坏性接口升级
+
+- [x] `MK-1801` 重新核验最新发布 `dsh-v0.1.3-alpha.1` 和完整提交 `d347e703908d0406b7a7ef80e3a0e594d86b2215`，建立独立任务规格并保留旧版 CI/公证记录。
+- [x] `MK-1802` 用 ClawX 自有、等待加载完成的服务组合替代已删除的 agent-spine-demo；接入代理启动/关闭与失败清理，不引入上游 UI、原生业务日志、调度器或凭据库。
+- [x] `MK-1803` 适配 agent/assistant-stream 与 v2 settlement；覆盖成功、失败重试、取消（含 Agent 创建/附件准备竞态）、重复事件、并发 Run、最终回答和结算用量去重；投递失败不能报成功。
+- [x] `MK-1804` 将可选 RPC 持久化接缝升级为 SessionHandle，验证跨客户端单写所有权、顺序、失败批次保留、flush、取消、关闭与冷 resume；生产路径仍不挂载原生 session store，业务历史只由 ClawX SQLite 管理。
+- [x] `MK-1805` 重建冻结依赖/工程补丁和 Windows sandbox 补丁，更新 source/runtime/lock/61-file overlay 摘要与不可变身份 `0.1.3-alpha.1+clawx.11`；从干净 `d347e703` 严格准备和 frozen install 通过。
+- [x] `MK-1806` 完成完整 host build（含固定 Node 24.15.0）、69 项 overlay/真实 macOS sandbox 测试，以及 production deploy、native allowlist、106 包许可证元数据审计、本地未签名 tar 打包/解包后的独立 Host 与存储边界检查。此项不包含签名制品/跨平台验收。
+- [x] `MK-1807` 宿主 typecheck、lint（0 error / 7 既有 warning）、全量 2141 passed / 6 skipped、focused 27 passed、4 项 Electron 时间线 E2E、comms replay/compare、Harness CI、task validate/dry-run 与 diff check 通过；同步四语 README/release notes、设计与[升级契约](harness/reference/deepseek-harness-0.1.3-upgrade.md)。
+- [ ] `MK-1808` 后续从审核后的提交执行五目标 CI、macOS 签名公证、clean-machine、COS/镜像发布和 Range 演练；本地升级不等于这些发布步骤已经完成。
+
+本轮证据日期为 2026-09-06；未提交/推送、未触发远端 CI、未替换用户已安装内核。上游仍为 alpha 且公告存在性能回退，发布前还需代表性真实 Provider/长上下文验收。6 个未运行用例是既有条件性/真实制品闸门，不以本地 mock 或未签名包冒充通过。
+
+## M19：OpenClaw 2026.9.2 兼容升级（本地源码已切换，远端发布未执行）
+
+- [x] `MK-1901` 核验 GitHub/npm 最新稳定版 `2026.9.2`、完整 commit `3928bad9badfcb6c7d140530435e806fb8092190`、签名 tag 与 npm SHA-512；隔离下载/安装，不修改正式 pin、旧补丁或用户 runtime。
+- [x] `MK-1902` 兼容 SessionManager 的 getSessionFile/getSessionTarget；未知持久化接口或非严格内存状态 fail closed；适配新 Agent 的隐藏取消标记断言。
+- [x] `MK-1903` 新增显式版本的 candidate SDK 测试入口与真实 ACP/模拟 Gateway 存储探针；新版和旧版均复现 `acp_replay_sessions=1 / acp_replay_events=2`，该结果是阻断证据，不是通过项。
+- [x] `MK-1904` 验证本轮有限的 guard/测试改动：宿主 2145 passed / 6 existing skipped，新版真实 SDK 7 passed；typecheck、lint（0 errors / 7 existing warnings）、source hash、comms replay/compare、Harness CI/task validate/dry-run、diff check 通过；同步四语 README、设计、规则及[升级审查](harness/reference/openclaw-2026.9.2-upgrade.md)。不以这些绿色检查宣称内核升级完成。
+- [x] `MK-1905` 接通生产逐 Run incognito session + canonical typed-history hydrate；ACP replay/临时审批/传输状态仅内存，native SQLite 历史写入被阻止；真实 close/delete、取消后 terminal 排序和崩溃后新 generation 重建通过。不删除 combined SQLite，不把 SDK spike 当生产接入，不使用 native opaque checkpoint/历史恢复。
+- [x] `MK-1906` 完成 agents.list ↔ keyed entries、默认 Agent、凭据/工作区保留与 CAS 重试投影；保留旧 exec 硬禁止，拒绝旧/不完整 managed 协议且不改写其配置；ACP provider/model/permission 使用真实 sessions.create/patch 和 ClawX 扩展。UI/宿主 canonical 合约保持统一。
+- [x] `MK-1907` 完成旧 14-target patch 的逐组处置记录：usage/工具/订阅/Cron schema 重基，已上游实现的审批身份不重复覆盖，managed native replay/recovery/grace 由 per-Run hydrate + 明确中断替代；补丁严格准备和实际工具审批通过。新增文件纳入上游 postinstall inventory。
+- [x] `MK-1908` 冻结 7 个 Channels 输入；修复 SDK 导出、Lark CJS metadata/import.meta、Baileys ESM、钉钉持久缓存和旧 plugin mirror；7 个真实 lazy outbound 模块加载及 canonical admission 成功/拒绝通过，补并发附件隔离与宿主投递合约回归。真实账号登录/收发不包含在本项，见 MK-1911。
+- [x] `MK-1909` 显式限制 native session visibility/agent-to-agent/swarm/elevated、Cron、heartbeat、dreaming；保留 ClawX 统一服务。typed history/Run/generation 校验、scoped permission、排队取消与晚到事件回归通过。
+- [x] `MK-1910` 更新 package/lock/patch/source/runtime/6-file overlay 和不可变身份 2026.9.2+clawx.7；干净官方 npm 严格准备、macOS arm64 payload、裁剪/import/native allowlist 和 622 包许可证元数据审计通过。新增五目标 native family/ABI 策略及嵌套裁剪回归；非本机平台/签名与归档预算实测仍属 MK-1912。
+- [-] `MK-1911` 真实 Gateway/ACP + 可控本机 Provider 已通过多轮历史角色、工具/审批、模型/权限、取消、SIGKILL/新 generation 恢复、Channels admission 成功/拒绝、四次完整 usage 与无 native history；已接入 CI pre-seal 和 extracted-artifact 双重闸门。仍须真实 Provider 长上下文/自动压缩/异常重试、真实 Channel QR/媒体/收发及五目标 canonical Cron 端到端验收，不能用 SDK 或 UI mock 代替。
+- [ ] `MK-1912` 从审核提交完成新的五目标 CI、双制品同库 clean-machine、macOS 签名公证、COS/GitHub 发布与线上 Range；不沿用旧制品证据或替换运行中的版本。
+
+当前仓库 OpenClaw 为 `2026.9.2+clawx.7`，DSH 保持 `0.1.3-alpha.1+clawx.11`。本轮没有提交/推送/触发远端 CI，也没有替换已安装内核。旧安装包在启动前必须通过 managed protocol 校验；开发模式使用新 root dependency，正式应用需下载新的已验证制品。详细架构、旧补丁处置及验证边界见[升级设计](harness/reference/openclaw-2026.9.2-upgrade.md)。
+
+本地最终验证记录（2026-09-06）：
+
+- 宿主 Vitest：252 个测试文件，**2167 passed / 0 failed / 6 existing pending**；6 个条件性/真实制品用例仍未执行。报告：`temp/openclaw-upgrade-vitest-final.json`。
+- Electron E2E：**9 passed**，覆盖跨内核同一对话续聊、进程 timeline/失败重试及 Channels、Agents、Cron、Skills 共享 UI；这些是 UI fixture，不代替真实平台账号。
+- 真实 macOS arm64 打包 payload：Gateway + ACP + 本机可控 Provider、固定 echo 审批/工具流、取消、SIGKILL 与新 generation hydrate、7 个 Channels 模块、canonical admission 接受/拒绝均通过；6 次 Provider 请求产生 4 个独立 usage 身份，不伪造缺失 cost，**无 native durable history**。报告：`temp/reports/openclaw-2026.9.2-payload-probe.json`。
+- 干净官方 npm 严格 patch/overlay 准备、两内核冻结摘要、native allowlist/架构检查、622 包许可证元数据审计通过；本机裁剪后 payload 为 **40,412 个文件 / 644,888,037 bytes**（不含独立 Node/签名/归档开销，不是完整归档预算验收）。
+- typecheck、lint（0 errors / 7 existing warnings）、Vite + Electron 构建、comms replay/compare、Harness CI、当前 diff-aware task validate/dry-run、`git diff --check` 通过。实际外部账号、长上下文和远端/签名制品项目继续按 MK-1911 / MK-1912 跟踪，未执行的不勾选。
 
 ## 每个实现 PR 的最低检查
 

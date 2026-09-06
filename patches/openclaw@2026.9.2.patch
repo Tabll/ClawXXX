@@ -1,0 +1,582 @@
+diff --git a/dist/builtin-openclaw-B_H1oNzF.js b/dist/builtin-openclaw-B_H1oNzF.js
+index 0064346..d79a940 100644
+--- a/dist/builtin-openclaw-B_H1oNzF.js
++++ b/dist/builtin-openclaw-B_H1oNzF.js
+@@ -9921,6 +9921,8 @@ function preserveAssistantUsage(message, pending) {
+ /** Owns model facts at event ingress, independently of queued reply delivery. */
+ function createEmbeddedModelState(params, log) {
+ 	const totals = createUsageAccumulator();
++	const clawxUsageScope = randomUUID();
++	let clawxUsageSequence = 0;
+ 	let pending;
+ 	let lastUsage;
+ 	let retryUsage;
+@@ -9936,8 +9938,15 @@ function createEmbeddedModelState(params, log) {
+ 		if (pending?.cost?.totalOrigin === "provider-billed" && cost?.totalOrigin !== "provider-billed") next.cost = pending.cost;
+ 		pending = next;
+ 	};
+-	const recordModelUsage = (usage) => {
++	const recordModelUsage = (usage, message) => {
+ 		if (!hasObservedModelUsage(usage)) return;
++		// Configured pricing / SDK zero defaults are not provider-billed cost.
++		const clawxUsage = { ...usage };
++		if (clawxUsage.cost?.totalOrigin !== "provider-billed") delete clawxUsage.cost;
++		if (process.env.CLAWX_MANAGED_RUNTIME === "1" && params.lifecycleGeneration && (hasNonzeroUsage(usage) || usage.cost?.totalOrigin === "provider-billed")) emitAgentEvent({
++			runId: params.runId, lifecycleGeneration: params.lifecycleGeneration, sessionKey: params.sessionKey,
++			stream: "clawx_usage", data: { ...clawxUsage, ...(message?.provider ? { provider: message.provider } : {}), ...(message?.model ? { model: message.model } : {}), eventKey: `openclaw:${params.runId}:${clawxUsageScope}:${++clawxUsageSequence}`, source: "provider-response" }
++		});
+ 		mergeUsageIntoAccumulator(totals, usage);
+ 		if (!hasNonzeroUsage(usage) || !params.lifecycleGeneration) return;
+ 		const data = emitAgentRunOutputTokens({
+@@ -9978,7 +9987,7 @@ function createEmbeddedModelState(params, log) {
+ 					recordPendingUsage(message.usage);
+ 					preserveAssistantUsage(message, pending);
+ 					if (hasNonzeroUsage(pending)) lastUsage = { ...pending };
+-					recordModelUsage(pending);
++					recordModelUsage(pending, message);
+ 					pending = void 0;
+ 					completed = structuredClone(message);
+ 					lastUsage ??= message.stopReason === "error" ? retryUsage : void 0;
+diff --git a/dist/clawx-managed-storage.js b/dist/clawx-managed-storage.js
+new file mode 100644
+index 0000000..689ca17
+--- /dev/null
++++ b/dist/clawx-managed-storage.js
+@@ -0,0 +1,35 @@
++// ClawX business history is owned by DataService. These connection-local
++// fences preserve configuration, credentials and rebuildable memory indexes.
++// TEMP triggers never alter another process/kernel's schema or old records.
++export function isClawXHistoryTable(name, kind) {
++  if (kind === "agent") return /^(?:sessions$|session_(?!key_contract$)|conversations$|conversation_deliveries$|transcript_|trajectory_runtime_events$|acp_parent_stream_events$|context_engine_turn_outbox$|heartbeat_outcomes$|message_tool_run_outcomes$)/.test(name);
++  return /^(?:acp_(?:replay_|sessions$)|cron_|session_(?:state_|upstream_links$|watch_cursors$)|task_runs$|subagent_runs$|flow_runs$|meeting_transcript_|worker_transcript_|worker_inference_turns$)/.test(name) || CLAWX_TRANSIENT_TRANSPORT_TABLES.has(name);
++}
++
++// Transport receipts, approvals and component handles may be needed during a
++// live delivery, but cannot become another persisted message/run authority.
++const CLAWX_TRANSIENT_TRANSPORT_TABLES = new Set([
++  "channel_ingress_events", "plugin_state_entries", "delivery_queue_entries",
++  "outbound_message_execution_bindings", "outbound_message_progress",
++  "operator_approvals", "operator_approval_execution_identities",
++  "execution_identity_contexts", "execution_decision_facts", "execution_owner_lifecycle_bindings",
++  "plugin_binding_approvals", "task_delivery_state"
++]);
++
++export function installClawXStorageFence(db, kind, env = process.env) {
++  if (env.CLAWX_MANAGED_RUNTIME !== "1") return;
++  const primary = db.prepare("PRAGMA database_list").all().find(row => row.name === "main");
++  if (!primary?.file) return; // Native incognito execution is intentionally in memory.
++  db.exec("PRAGMA temp_store=MEMORY");
++  for (const { name, sql } of db.prepare("SELECT name, sql FROM sqlite_master WHERE type = 'table'").all()) {
++    if (!isClawXHistoryTable(name, kind) || /\bVIRTUAL\s+TABLE\b/i.test(sql ?? "") || /_fts(?:_|$)/.test(name)) continue;
++    if (!/^[a-z0-9_]+$/.test(name)) throw new Error("Unexpected managed storage table identity");
++    if (kind === "state" && CLAWX_TRANSIENT_TRANSPORT_TABLES.has(name)) {
++      if (!/^CREATE TABLE\s/i.test(sql ?? "")) throw new Error("Unexpected transient transport schema");
++      // Preserve PKs/CHECKs and the upstream queue state machine. Start empty;
++      // no SELECT/copy from native records, including a previous installation.
++      db.exec(sql.replace(/^CREATE TABLE\s+(?:IF NOT EXISTS\s+)?/i, "CREATE TEMP TABLE IF NOT EXISTS "));
++    }
++    for (const operation of ["INSERT", "UPDATE", "DELETE"]) db.exec(`CREATE TEMP TRIGGER IF NOT EXISTS clawx_no_${operation.toLowerCase()}_${name} BEFORE ${operation} ON main."${name}" BEGIN SELECT RAISE(ABORT, 'ClawX canonical history cannot persist in native OpenClaw storage'); END`);
++  }
++}
+diff --git a/dist/cron-tool-DbVyRyAj.js b/dist/cron-tool-DbVyRyAj.js
+index 11cd5d6..d857fb5 100644
+--- a/dist/cron-tool-DbVyRyAj.js
++++ b/dist/cron-tool-DbVyRyAj.js
+@@ -440,8 +440,7 @@ function createCronPayloadSchema(params) {
+ function createCronTriggerSchema() {
+ 	const trigger = Type.Object({
+ 		script: Type.String({
+-			minLength: 1,
+-			maxLength: 65536
++			minLength: 1
+ 		}),
+ 		once: Type.Optional(Type.Boolean())
+ 	}, { additionalProperties: false });
+diff --git a/dist/dashboard-session-title-DoHAIULX.js b/dist/dashboard-session-title-DoHAIULX.js
+index e43628e..00c2f8a 100644
+--- a/dist/dashboard-session-title-DoHAIULX.js
++++ b/dist/dashboard-session-title-DoHAIULX.js
+@@ -87,6 +87,7 @@ function normalizeDashboardSessionTitle(raw) {
+ 	return normalized ? truncateUtf16Safe(normalized, DASHBOARD_SESSION_TITLE_MAX_CHARS) : null;
+ }
+ async function generateDashboardSessionTitle(params) {
++	if (process.env.CLAWX_MANAGED_RUNTIME === "1") return null;
+ 	const sourceText = buildDashboardSessionTitleSource({
+ 		message: params.userMessage,
+ 		attachments: params.attachments
+@@ -177,6 +178,7 @@ async function maybeGenerateDashboardSessionTitle(params) {
+ 	})).kind === "persisted";
+ }
+ async function maybeGenerateSessionTitle(params) {
++	if (process.env.CLAWX_MANAGED_RUNTIME === "1") return { kind: "skipped" };
+ 	const sessionKey = resolveStoredSessionKeyForAgentStore(params);
+ 	const scope = {
+ 		agentId: params.agentId,
+diff --git a/dist/dispatch-from-config-Djp-96vr.js b/dist/dispatch-from-config-Djp-96vr.js
+index ede4b78..7a3d4af 100644
+--- a/dist/dispatch-from-config-Djp-96vr.js
++++ b/dist/dispatch-from-config-Djp-96vr.js
+@@ -734,6 +734,8 @@ async function chooseDispatchRoute(state) {
+ 			...queuedFinal && dispatcherOutcome ? { dispatcherOutcome } : {}
+ 		};
+ 	};
++	const clawxCanonicalIngress = process.env.CLAWX_MANAGED_RUNTIME === "1" && runtimeTakeoverHooksAllowed(params.replyOptions?.admittedSessionSettings);
++	if (clawxCanonicalIngress && !hookRunner?.hasHooks("before_dispatch")) throw new Error("ClawX canonical Channel admission is unavailable");
+ 	if (runtimeTakeoverHooksAllowed(params.replyOptions?.admittedSessionSettings) && hookRunner?.hasHooks("before_dispatch")) {
+ 		const beforeDispatchSessionKey = sessionStoreEntry.sessionKey ?? sessionKey;
+ 		const pluginSubagentRequester = createPluginSubagentRequesterContext({
+@@ -746,6 +748,7 @@ async function chooseDispatchRoute(state) {
+ 			}
+ 		});
+ 		const beforeDispatchResult = await traceReplyPhase("reply.before_dispatch_hooks", () => runWithDispatchLifecycleAdmission(async () => await runWithDispatchAbortSignal(getPreDispatchAbortSignal(), () => hookRunner.runBeforeDispatch({
++			...(process.env.CLAWX_MANAGED_RUNTIME === "1" ? { metadata: toPluginMessageReceivedEvent(state.hookState.hookContext).metadata } : {}),
+ 			messageId: state.hookState.hookContext.messageId,
+ 			content: state.hookState.hookContext.content,
+ 			body: state.hookState.hookContext.bodyForAgent ?? state.hookState.hookContext.body,
+@@ -772,6 +775,7 @@ async function chooseDispatchRoute(state) {
+ 			replyToSender: state.hookState.hookContext.replyToSender,
+ 			replyToIsQuote: state.hookState.hookContext.replyToIsQuote
+ 		}, pluginSubagentRequester), trackDispatchLifecycleWork)));
++		if (clawxCanonicalIngress && beforeDispatchResult?.clawxCanonicalAccepted !== true) throw new Error("ClawX canonical Channel admission did not accept this delivery");
+ 		if (beforeDispatchResult?.handled) {
+ 			const text = beforeDispatchResult.text;
+ 			let queuedFinal = false;
+diff --git a/dist/openclaw-agent-db-CWtDoRbC.js b/dist/openclaw-agent-db-CWtDoRbC.js
+index 18caabf..235cbc3 100644
+--- a/dist/openclaw-agent-db-CWtDoRbC.js
++++ b/dist/openclaw-agent-db-CWtDoRbC.js
+@@ -437,6 +437,7 @@ function* openOpenClawAgentDatabaseSteps(options, pending) {
+ 				});
+ 				openedWalMaintenance = maintenance;
+ 				if (!isValidatedReopen) ensureAgentSchema(db, agentId, pathname);
++				installClawXStorageFence(db, "agent", options.env ?? process.env);
+ 				return maintenance;
+ 			} catch (err) {
+ 				maintenance?.close();
+@@ -652,3 +653,4 @@ function closeOpenClawAgentDatabasesForTest(rootPath) {
+ }
+ //#endregion
+ export { inspectOpenClawAgentDatabaseOwner as C, closeOpenClawAgentDatabasesAsync as S, withAgentDatabaseMaintenanceLease as _, confirmOpenClawAgentDatabaseIntegrity as a, closeOpenClawAgentDatabaseByPath as b, getOpenClawAgentDatabaseIfOpen as c, listOpenClawAgentDatabasesForTest as d, listOpenIncognitoAgentDatabases as f, runOpenClawAgentWriteTransaction as g, recordOpenClawAgentDatabaseOpenFailure as h, closeOpenClawAgentDatabasesForTest as i, isIncognitoOpenClawAgentDatabase as l, readOpenIncognitoAgentDatabaseGeneration as m, borrowOpenClawAgentDatabase as n, deferOpenClawAgentPostCommitPublication as o, openOpenClawAgentDatabase as p, clearOpenClawAgentDatabaseOpenFailure as r, disposeOpenClawAgentDatabaseByPath as s, IncognitoAgentDatabasePathCollisionError as t, isOpenClawAgentDatabaseOpen as u, withOpenClawAgentDatabaseAsync as v, settleOpenClawAgentDatabaseWorkerClose as w, closeOpenClawAgentDatabases as x, OPENCLAW_AGENT_DB_OPEN_HANDLE_CAP as y };
++import { installClawXStorageFence } from "./clawx-managed-storage.js";
+diff --git a/dist/openclaw-state-db-BRTnL-D8.js b/dist/openclaw-state-db-BRTnL-D8.js
+index 9ccba9d..9dda97e 100644
+--- a/dist/openclaw-state-db-BRTnL-D8.js
++++ b/dist/openclaw-state-db-BRTnL-D8.js
+@@ -3856,6 +3856,7 @@ function openOpenClawStateDatabaseWithBusyTimeout(options = {}, busyTimeoutMs =
+ 				recordOpenFailure: recordOpenClawStateDatabaseOpenFailure
+ 			});
+ 		});
++		installClawXStorageFence(unpublished.db, "state", env);
+ 	} catch (error) {
+ 		if (lockFailureReporting === "report" || !isOpenClawStateWriteContentionError(error)) openClawStateDatabaseCache.recordOpenClawStateDatabaseLifecycleOpenError(pathname, error);
+ 		if (!unpublished) throw error;
+@@ -3922,3 +3923,4 @@ function getOpenClawStateDatabaseIfOpen(options = {}) {
+ }
+ //#endregion
+ export { normalizeAgentRunTerminalReplySnapshot as $, ensureSecretStoreSchema as A, formatUnknownError as At, loadDeliveryQueueEntryInDatabase as B, resolveAdmittedCronCompletionStatus as Bt, ensureConfigRevisionKeySchema as C, cronTaskRecordToRunLogEntry as Ct, ensureGitHubPublicationSchema as D, isCronRunStatus as Dt, ensureDevicePairingJoinCodeSchema as E, isCronDeliveryStatus as Et, projectDeliveryQueueTerminalEntry as F, tailText as Ft, ANNOUNCE_SKIP_TOKEN as G, verifyAndRepairCanonicalSqliteIndexSteps as Gt, pruneDeliveryQueueTombstones as H, deferSqlitePostCommitPublication as Ht, bindDeliveryQueueEntry as I, CRON_JOB_EXECUTION_TIMEOUT_ERROR as It, isNonDeliverableSessionsReply as J, REPLY_SKIP_TOKEN as K, verifyAndRepairCanonicalSqliteIndexes as Kt, deliveryQueueEntriesQuery as L, CRON_PRE_EXECUTION_TIMEOUT_ERROR as Lt, hasLiveDeliveryQueueClaim as M, normalizeCronRunDiagnosticsCore as Mt, inferDeliveryQueueFailureRetention as N, normalizeDiagnosticToolName as Nt, ensureMcpOAuthPendingSchema as O, parseCronRunLogEntryObject as Ot, parseDeliveryQueueCompletionRetention as P, normalizeExitCode as Pt, mergeAgentRunTerminalReplySnapshot as Q, deliveryQueueMetadata as R, CRON_SETUP_TIMEOUT_ERROR as Rt, ensureAgentDeletionJournalSchema as S, cronTaskRecordStoreKey as St, ensureDevicePairSetupCompletionSchema as T, cronTaskRecordToTriggerEval as Tt, terminalizeBoundDeliveryQueueEntry as U, withSqlitePostCommitPublications as Ut, pruneDeliveryQueueTombstoneAges as V, resolveCronCompletionStatus as Vt, upsertBoundDeliveryQueueEntryInDatabase as W, repairCanonicalSqliteIndexes as Wt, selectDeliverableSessionsReply as X, isReplySkip as Y, buildAgentRunTerminalReplySnapshot as Z, isOpenClawStateWriteContentionError as _, coerceRequiredSqliteNumber as _t, repairOpenClawStateDatabaseSchema as a, stripUserEnvelopeForDisplay as at, runWithOpenClawStateWriteAccess as b, cronRunLogEntryToTaskDetail as bt, runWithOpenClawStateBusyTimeout as c, ensureOpenClawStatePermissions as ct, OpenClawStateOwnershipMetadataError as d, resolveSqliteDatabaseFilePaths as dt, sanitizeAgentRunTerminalReplyText as et, STATE_SUPERVISION_KEY as f, detectOpenClawStateDatabaseSchemaMigrations as ft, inspectOpenClawStateOwnershipFromDatabase as g, migrateLegacyCronRunLogsToTaskRuns as gt, inspectOpenClawStateOwnershipAtPath as h, SESSION_WATCH_PROVENANCE_EXPLICIT as ht, openOpenClawStateDatabase as i, stripInternalMetadataForDisplay as it, ensureWorkerEnvironmentNodeEnrollmentSchema as j, normalizeCronRunDiagnosticSummary as jt, ensurePersonalGitHubPublicationSchema as k, resolveCronTaskRecordTimestamp as kt, withOpenClawStateStartupMigrationCheckpointDatabase as l, SQLITE_SIDECAR_SUFFIXES as lt, assertOpenClawStateWriteAllowedAtPath as m, SESSION_WATCH_PROVENANCE_AMBIENT_GROUP as mt, initializeNativeOpenClawStateDatabase as n, normalizeAgentRunRouteChange as nt, repairOpenClawStateDatabaseSchemaIfNeeded as o, stripEnvelope as ot, assertOpenClawStateWriteAllowed as p, detectOpenClawStateDatabaseSchemaMigrationsFromDatabase as pt, isAnnounceSkip as q, openExistingOpenClawStateDatabaseReadOnly as r, normalizeAgentRunTerminalReceipt as rt, runOpenClawStateWriteTransaction as s, stripMessageIdHints as st, confirmOpenClawStateDatabaseIntegrity as t, formatAgentRunRouteChange as tt, OpenClawStateOwnershipError as u, quarantineOrphanedSqliteSidecars as ut, normalizeOpenClawStateManagerId as v, normalizeSqliteNumber as vt, ensureDevicePairSetupBootstrapSchema as w, cronTaskRecordToScriptRunResult as wt, ensureAgentDatabaseLeaseSchema as x, cronRunStatusToTaskStatus as xt, runWithOpenClawStateOwnershipCoordinator as y, cronQuietTriggerTaskDetail as yt, inflateDeliveryQueueRow as z, isCronTimeoutErrorText as zt };
++import { installClawXStorageFence } from "./clawx-managed-storage.js";
+diff --git a/dist/plugin-sdk/channel-runtime.js b/dist/plugin-sdk/channel-runtime.js
+new file mode 100644
+index 0000000..c913ca2
+--- /dev/null
++++ b/dist/plugin-sdk/channel-runtime.js
+@@ -0,0 +1,3 @@
++// Lark 2026.7.16 uses the former entry point for these two unchanged helpers.
++import { createReplyPrefixContext, createTypingCallbacks } from "./channel-reply-pipeline.js";
++export { createReplyPrefixContext, createTypingCallbacks };
+diff --git a/dist/plugin-sdk/clawx-legacy-core.js b/dist/plugin-sdk/clawx-legacy-core.js
+new file mode 100644
+index 0000000..ae88139
+--- /dev/null
++++ b/dist/plugin-sdk/clawx-legacy-core.js
+@@ -0,0 +1,3 @@
++// Narrow compatibility surface for the frozen Lark connector, not the removed SDK barrel.
++import { emptyPluginConfigSchema } from "./plugin-entry.js";
++export { emptyPluginConfigSchema };
+diff --git a/dist/plugin-sdk/config-runtime.js b/dist/plugin-sdk/config-runtime.js
+index c61041b..25e2712 100644
+--- a/dist/plugin-sdk/config-runtime.js
++++ b/dist/plugin-sdk/config-runtime.js
+@@ -32,3 +32,6 @@ import { n as resolveDefaultContextVisibility, t as resolveChannelContextVisibil
+ import { a as warnMissingProviderGroupPolicyFallbackOnce, i as resolveOpenProviderRuntimeGroupPolicy, n as resolveAllowlistProviderRuntimeGroupPolicy, r as resolveDefaultGroupPolicy, t as GROUP_POLICY_BLOCKED_LABEL } from "../runtime-group-policy-DK3DaKoG.js";
+ import { n as resolveNativeCommandsEnabled, r as resolveNativeSkillsEnabled, t as isNativeCommandsExplicitlyDisabled } from "../commands-s2epsQSN.js";
+ export { GROUP_POLICY_BLOCKED_LABEL, applyModelOverrideToSessionEntry, canonicalizeMainSessionAlias, clearConfigCache, clearRuntimeConfigSnapshot, clearSessionStoreCacheForTest, coerceSecretRef, evaluateSessionFreshness, evaluateSupplementalContextVisibility, filterSupplementalContextItems, getRuntimeConfig, getRuntimeConfigSnapshot, getRuntimeConfigSourceSnapshot, getSessionEntry, isDangerousNameMatchingEnabled, isNativeCommandsExplicitlyDisabled, listSessionEntries, loadConfig, loadCronStore, logConfigUpdated, mutateConfigFile, patchSessionEntry, readConfigFileSnapshotForWrite, readSessionUpdatedAt, recordInboundSessionMeta as recordSessionMetaFromInbound, replaceConfigFile, requireRuntimeConfig, resolveActiveTalkProviderConfig, resolveAgentMaxConcurrent, resolveAllowlistProviderRuntimeGroupPolicy, resolveChannelContextVisibilityMode, resolveChannelGroupPolicy, resolveChannelGroupRequireMention, resolveChannelModelOverride, resolveChannelResetConfig, resolveConfiguredSecretInputString, resolveConfiguredSecretInputWithFallback, resolveCronStorePath, resolveDangerousNameMatchingEnabled, resolveDefaultAgentId, resolveDefaultContextVisibility, resolveDefaultGroupPolicy, resolveGroupSessionKey, resolveLivePluginConfigObject, resolveMarkdownTableMode, resolveNativeCommandsEnabled, resolveNativeSkillsEnabled, resolveOpenProviderRuntimeGroupPolicy, resolvePluginConfigObject, resolveRequiredConfiguredSecretRefInputString, resolveSessionKey, resolveSessionResetPolicy, resolveSessionResetType, resolveSessionStorePathCore as resolveStorePath, resolveThreadFlag, resolveToolsBySender, saveCronStore, setRuntimeConfigSnapshot, updateConfig, updateSessionLastRoute as updateLastRoute, updateSessionStoreEntry, upsertSessionEntry, warnMissingProviderGroupPolicyFallbackOnce, writeConfigFile };
++// Frozen Lark connector compatibility; both implementations remain upstream-owned.
++import { loadSessionStore, resolveSessionStoreEntry } from "./session-store-runtime.js";
++export { loadSessionStore, resolveSessionStoreEntry };
+diff --git a/dist/plugin-sdk/conversation-binding-runtime.js b/dist/plugin-sdk/conversation-binding-runtime.js
+index d2fef7b..9e9d324 100644
+--- a/dist/plugin-sdk/conversation-binding-runtime.js
++++ b/dist/plugin-sdk/conversation-binding-runtime.js
+@@ -3,3 +3,6 @@ import { n as isPluginOwnedSessionBindingRecord } from "../conversation-binding-
+ import { t as buildPairingReply } from "../pairing-messages-D9xr66Yq.js";
+ import { n as resolveConfiguredBindingRoute, r as resolveRuntimeConversationBindingRoute, t as ensureConfiguredBindingRouteReady } from "../binding-routing-tBOwxKrx.js";
+ export { buildPairingReply, ensureConfiguredBindingRouteReady, getSessionBindingService, isPluginOwnedSessionBindingRecord, resolveConfiguredBindingRoute, resolveRuntimeConversationBindingRoute };
++// Discord 2026.9.2 still imports this unchanged helper from the former surface.
++import { parsePluginBindingApprovalCustomId } from "./conversation-runtime.js";
++export { parsePluginBindingApprovalCustomId };
+diff --git a/dist/plugin-sdk/text-runtime.js b/dist/plugin-sdk/text-runtime.js
+new file mode 100644
+index 0000000..1f28fb9
+--- /dev/null
++++ b/dist/plugin-sdk/text-runtime.js
+@@ -0,0 +1,3 @@
++// DingTalk 3.6.10 still imports this parser from the former text-runtime entry.
++import { t as parseInlineDirectives } from "../directive-tags-Wp1S72ap.js";
++export { parseInlineDirectives };
+diff --git a/dist/postinstall-inventory.json b/dist/postinstall-inventory.json
+index 0bf4f16..adaf6be 100644
+--- a/dist/postinstall-inventory.json
++++ b/dist/postinstall-inventory.json
+@@ -1,4 +1,8 @@
+ [
++  "dist/clawx-managed-storage.js",
++  "dist/plugin-sdk/channel-runtime.js",
++  "dist/plugin-sdk/clawx-legacy-core.js",
++  "dist/plugin-sdk/text-runtime.js",
+   "dist/a2ui-Dq3zGoUt.js",
+   "dist/a2ui-Eo1MVhP5.js",
+   "dist/a2ui-shared-BVnsAcOM.js",
+diff --git a/dist/row-codec-Bv7_IRNO.js b/dist/row-codec-Bv7_IRNO.js
+index d6dde85..6675f8a 100644
+--- a/dist/row-codec-Bv7_IRNO.js
++++ b/dist/row-codec-Bv7_IRNO.js
+@@ -230,6 +230,7 @@ function countUnpersistableCronJobs(store) {
+ }
+ /** Fails before replacing SQLite rows when any config job cannot round-trip. */
+ function assertCronStoreCanPersist(store) {
++	if (process.env.CLAWX_MANAGED_RUNTIME === "1") throw new Error("Managed Cron persistence belongs to ClawX DataService");
+ 	const invalidJobs = countUnpersistableCronJobs(store);
+ 	if (invalidJobs > 0) throw new Error(`Cannot persist cron store with ${invalidJobs} invalid job(s)`);
+ }
+diff --git a/dist/server-chat-DhlqkrkS.js b/dist/server-chat-DhlqkrkS.js
+index 400bd28..c5c5f4e 100644
+--- a/dist/server-chat-DhlqkrkS.js
++++ b/dist/server-chat-DhlqkrkS.js
+@@ -116,7 +116,7 @@ function shouldMirrorAssistantEventToHiddenSessionMessages(data) {
+ 	return resolveAssistantEventPhase(data) === "commentary";
+ }
+ function shouldMirrorAgentEventToHiddenSessionMessages(evt) {
+-	return evt.stream === "thinking" || evt.stream === "approval" || evt.stream === "lifecycle";
++	return evt.stream === "thinking" || evt.stream === "approval" || evt.stream === "lifecycle" || evt.stream === "clawx_usage";
+ }
+ function normalizeHeartbeatChatFinalText(params) {
+ 	if (!shouldHideHeartbeatChatOutput(params.runId, params.sourceRunId)) return {
+diff --git a/dist/server-cron-DTke_0YP.js b/dist/server-cron-DTke_0YP.js
+index f171e36..0f939c1 100644
+--- a/dist/server-cron-DTke_0YP.js
++++ b/dist/server-cron-DTke_0YP.js
+@@ -2606,6 +2606,7 @@ function dispatchGatewayCronFinishedNotifications(params) {
+ //#endregion
+ //#region src/gateway/server-cron-skill-review-jobs.ts
+ async function reconcileSkillCollectionReviewJobs(params) {
++	if (process.env.CLAWX_MANAGED_RUNTIME === "1") return { ok: true };
+ 	let ok = true;
+ 	let jobs;
+ 	try {
+diff --git a/dist/server-zrB9dRww.js b/dist/server-zrB9dRww.js
+index a0bc88d..bba80e8 100644
+--- a/dist/server-zrB9dRww.js
++++ b/dist/server-zrB9dRww.js
+@@ -906,6 +906,13 @@ var AcpTranslatorAgentEvents = class {
+ 		const data = payload.data;
+ 		const sessionKey = payload.sessionKey;
+ 		if (!stream || !data || !sessionKey) return;
++		if (stream === "clawx_usage") {
++			const pending = this.findPendingBySessionKey(sessionKey, runId);
++			if (!pending || typeof data.eventKey !== "string") return;
++			await this.sessionUpdates.emit({ sessionId: pending.sessionId, sessionKey, runId: pending.idempotencyKey,
++				record: true, update: { sessionUpdate: "usage_update", used: Math.max(0, data.total ?? 0), size: Math.max(1, data.total ?? 0), _meta: { clawx: data } } });
++			return;
++		}
+ 		if (stream === "approval") {
+ 			await this.handleApprovalEvent({
+ 				sessionKey,
+@@ -1320,6 +1327,12 @@ var AcpTranslatorPromptStream = class {
+ 		this.disconnects.handleGatewayReconnect();
+ 	}
+ 	handleGatewayDisconnect(reason) {
++		if (process.env.CLAWX_MANAGED_RUNTIME === "1") {
++			// A restarted Gateway has lost its incognito state. Only ClawX may
++			// admit the next run and rehydrate it; never recover from native disk.
++			for (const pending of this.pendingPrompts.values()) void this.rejectPendingPrompt(pending, new Error("Managed OpenClaw Gateway disconnected; canonical run interrupted"));
++			return;
++		}
+ 		this.disconnects.handleGatewayDisconnect(reason);
+ 	}
+ 	async handleGatewayEvent(evt) {
+@@ -1331,7 +1344,7 @@ var AcpTranslatorPromptStream = class {
+ 			this.agentEvents.handleExecApprovalRequestEvent(evt);
+ 			return;
+ 		}
+-		if (evt.event === "agent") await this.agentEvents.handleAgentEvent(evt);
++		if (evt.event === "agent" || evt.event === "session.tool") await this.agentEvents.handleAgentEvent(evt);
+ 	}
+ 	async prompt(params) {
+ 		const session = this.sessionStore.getSession(params.sessionId);
+@@ -1363,6 +1376,8 @@ var AcpTranslatorPromptStream = class {
+ 		}
+ 	}
+ 	submitPrompt(params, session) {
++		if (process.env.CLAWX_MANAGED_RUNTIME === "1" && (!session.clawx || session.clawxPrompted || params._meta?.messageId !== session.clawx.runId)) throw new Error("Managed prompt requires a fresh canonical run admission");
++		if (session.clawx) session.clawxPrompted = true;
+ 		const meta = parseSessionMeta(params["_meta"]);
+ 		const userText = extractTextFromPrompt(params.prompt, MAX_PROMPT_BYTES);
+ 		const attachments = extractAttachmentsFromPrompt(params.prompt);
+@@ -1378,10 +1393,11 @@ var AcpTranslatorPromptStream = class {
+ 		}) : void 0;
+ 		if (Buffer.byteLength(message, "utf-8") > MAX_PROMPT_BYTES) throw new Error(`Prompt exceeds maximum allowed size of ${MAX_PROMPT_BYTES} bytes`);
+ 		const abortController = new AbortController();
+-		const runId = randomUUID();
++		const runId = session.clawx?.runId ?? randomUUID();
+ 		this.sessionStore.setActiveRun(params.sessionId, runId, abortController);
+ 		const requestParams = {
+ 			sessionKey: session.sessionKey,
++			...(session.clawx ? { suppressCommandInterpretation: true } : {}),
+ 			message,
+ 			attachments: attachments.length > 0 ? attachments : void 0,
+ 			idempotencyKey: runId,
+@@ -1540,6 +1556,10 @@ var AcpTranslatorPromptStream = class {
+ 			return;
+ 		}
+ 		if (state === "error") {
++			if (process.env.CLAWX_MANAGED_RUNTIME === "1") {
++				await this.rejectPendingPrompt(pending, new Error(payload.errorMessage || "Managed OpenClaw run failed"));
++				return;
++			}
+ 			const stopReason = payload.errorKind === "refusal" ? "refusal" : "end_turn";
+ 			this.finishPrompt(pending.sessionId, pending, stopReason);
+ 		}
+@@ -1761,11 +1781,31 @@ var AcpTranslatorSessionLifecycle = class {
+ 			meta,
+ 			fallbackKey: `acp-bridge:${sessionId}`
+ 		});
++		let clawx;
++		if (process.env.CLAWX_MANAGED_RUNTIME === "1") {
++			clawx = params._meta?.clawx;
++			if (clawx?.protocol !== "clawx.openclaw-session/v1" || !/^agent:[a-z0-9_-]+:dashboard:incognito-clawx-[a-f0-9]{64}$/.test(sessionKey) || !["workspace", "guarded", "read-only"].includes(clawx.permissionMode)) throw new Error("Managed session requires canonical context and bounded permissions");
++			const created = await this.gateway.request("sessions.create", {
++				key: sessionKey, agentId: clawx.agentId, incognito: true,
++				cwd: params.cwd, permissionMode: clawx.permissionMode,
++				...clawx.model ? { model: clawx.model } : {}
++			});
++			if (created?.key !== sessionKey || created?.entry?.incognito !== true || !created?.sessionId) throw new Error("Gateway did not create the requested incognito session");
++			try {
++				await this.gateway.request("clawx.session.hydrate", { sessionKey, sessionId: created.sessionId, cwd: params.cwd, clawx });
++				await this.gateway.request("sessions.messages.subscribe", { key: sessionKey });
++			} catch (error) {
++				await this.gateway.request("sessions.delete", { key: sessionKey }).catch(() => {});
++				throw error;
++			}
++			clawx = { runId: clawx.runId, generation: clawx.generation, nativeSessionId: created.sessionId };
++		}
+ 		const session = this.sessionStore.createSession({
+ 			sessionId,
+ 			sessionKey,
+ 			cwd: params.cwd
+ 		});
++		if (clawx) session.clawx = clawx;
+ 		await this.sessionUpdates.startLedgerSession(session, {
+ 			complete: true,
+ 			reset: true
+@@ -1785,6 +1825,7 @@ var AcpTranslatorSessionLifecycle = class {
+ 		};
+ 	}
+ 	async loadSession(params) {
++		if (process.env.CLAWX_MANAGED_RUNTIME === "1") throw new Error("Managed history must be hydrated by ClawX through session/new");
+ 		this.assertSupportedSessionSetup(params.mcpServers);
+ 		if (!this.sessionStore.hasSession(params.sessionId)) this.enforceSessionCreateRateLimit("loadSession");
+ 		const meta = parseSessionMeta(params["_meta"]);
+@@ -1832,6 +1873,7 @@ var AcpTranslatorSessionLifecycle = class {
+ 		};
+ 	}
+ 	async listSessions(params) {
++		if (process.env.CLAWX_MANAGED_RUNTIME === "1") return { sessions: [] };
+ 		const requestedCwd = normalizeOptionalString(params.cwd);
+ 		if (requestedCwd) assertAbsoluteCwd(requestedCwd, "session/list");
+ 		const fallbackCwd = requestedCwd ?? process.cwd();
+@@ -1864,6 +1906,7 @@ var AcpTranslatorSessionLifecycle = class {
+ 		};
+ 	}
+ 	async resumeSession(params) {
++		if (process.env.CLAWX_MANAGED_RUNTIME === "1") throw new Error("Managed runs cannot resume native session history");
+ 		this.assertSupportedSessionSetup(params.mcpServers ?? []);
+ 		assertAbsoluteCwd(params.cwd, "session/resume");
+ 		const existingSession = this.sessionStore.getSession(params.sessionId);
+@@ -1897,6 +1940,7 @@ var AcpTranslatorSessionLifecycle = class {
+ 		const session = this.sessionStore.getSession(params.sessionId);
+ 		if (!session) throw new Error(`Session ${params.sessionId} not found`);
+ 		await this.cancelSessionWork(session);
++		if (session.clawx) await this.gateway.request("sessions.delete", { key: session.sessionKey });
+ 		this.sessionStore.deleteSession(params.sessionId);
+ 		this.log(`closeSession: ${params.sessionId}`);
+ 		return {};
+@@ -1928,7 +1972,10 @@ var AcpTranslatorSessionLifecycle = class {
+ 	async setSessionConfigOption(params) {
+ 		const session = this.sessionStore.getSession(params.sessionId);
+ 		if (!session) throw new Error(`Session ${params.sessionId} not found`);
+-		const sessionPatch = this.sessionState.resolveConfigPatch(params.configId, params.value);
++		let sessionPatch;
++		if (session.clawx && params.configId === "clawx_model" && typeof params.value === "string" && params.value.trim()) sessionPatch = { patch: { model: params.value } };
++		else if (session.clawx && params.configId === "clawx_permission_mode" && ["workspace", "guarded", "read-only"].includes(params.value)) sessionPatch = { patch: { permissionMode: params.value } };
++		else sessionPatch = this.sessionState.resolveConfigPatch(params.configId, params.value);
+ 		try {
+ 			if (sessionPatch.patch) await this.gateway.request("sessions.patch", {
+ 				key: session.sessionKey,
+@@ -2178,7 +2225,7 @@ var AcpTranslatorSessionState = class {
+ 					row,
+ 					sessionKey
+ 				}),
+-				usage: buildSessionUsageSnapshot(row)
++				usage: process.env.CLAWX_MANAGED_RUNTIME === "1" ? void 0 : buildSessionUsageSnapshot(row)
+ 			};
+ 		} catch (err) {
+ 			this.log(`session presentation fallback for ${sessionKey}: ${String(err)}`);
+@@ -2197,7 +2244,7 @@ var AcpTranslatorSessionState = class {
+ 				row,
+ 				sessionKey
+ 			}),
+-			usage: buildSessionUsageSnapshot(row)
++			usage: process.env.CLAWX_MANAGED_RUNTIME === "1" ? void 0 : buildSessionUsageSnapshot(row)
+ 		};
+ 	}
+ 	mapGatewaySession(session, fallbackCwd) {
+@@ -2571,7 +2618,7 @@ var AcpTranslatorSessionUpdates = class {
+ 			record: options.record,
+ 			update: {
+ 				sessionUpdate: "available_commands_update",
+-				availableCommands: getAvailableCommands()
++				availableCommands: session.clawx ? [] : getAvailableCommands()
+ 			}
+ 		});
+ 	}
+@@ -2887,7 +2934,9 @@ async function serveAcpGateway(opts = {}) {
+ 	const readable = stream.readable.pipeThrough(new TransformStream({ transform(message, controller) {
+ 		controller.enqueue(normalizeAcpInitializeProtocolVersion(message));
+ 	} }));
+-	const eventLedger = createSqliteAcpEventLedger();
++	// ClawX owns durable conversation/replay history. Keep ACP retry/delivery
++	// bookkeeping bounded and process-local; no native transcript read fallback.
++	const eventLedger = process.env.CLAWX_MANAGED_RUNTIME === "1" ? createInMemoryAcpEventLedger() : createSqliteAcpEventLedger();
+ 	new AgentSideConnection((conn) => {
+ 		agent = new AcpGatewayAgent(conn, gateway, {
+ 			...opts,
+diff --git a/dist/service-CWPJ5f9M.js b/dist/service-CWPJ5f9M.js
+index 6a1dad7..e59f857 100644
+--- a/dist/service-CWPJ5f9M.js
++++ b/dist/service-CWPJ5f9M.js
+@@ -6136,6 +6136,7 @@ var CronService = class {
+ 		this.state = createCronServiceState(deps);
+ 	}
+ 	async start() {
++		if (process.env.CLAWX_MANAGED_RUNTIME === "1") return;
+ 		const generation = this.state.lifecycleGeneration;
+ 		const pending = this.startState;
+ 		if (pending) {
+@@ -6195,6 +6196,7 @@ var CronService = class {
+ 		return await listPage(this.state, opts);
+ 	}
+ 	async add(input, opts) {
++		if (process.env.CLAWX_MANAGED_RUNTIME === "1") throw new Error("Managed Cron admission belongs to ClawX DataService");
+ 		return await add(this.state, input, opts);
+ 	}
+ 	async removeStaleJobFamily(family, opts) {
+@@ -6213,9 +6215,11 @@ var CronService = class {
+ 		return await removeAgentJobsTransactional(this.state, agentId, commit);
+ 	}
+ 	async run(id, mode, opts) {
++		if (process.env.CLAWX_MANAGED_RUNTIME === "1") throw new Error("Managed Cron execution belongs to ClawX DataService");
+ 		return await run(this.state, id, mode, opts);
+ 	}
+ 	async enqueueRun(id, mode, opts) {
++		if (process.env.CLAWX_MANAGED_RUNTIME === "1") throw new Error("Managed Cron execution belongs to ClawX DataService");
+ 		const result = await enqueueRun(this.state, id, mode, opts);
+ 		if (result.ok && "runnable" in result) throw new Error("cron enqueueRun returned unresolved runnable disposition");
+ 		return result;
+diff --git a/dist/session-CGo-oQbb.js b/dist/session-CGo-oQbb.js
+index f75934a..79bea01 100644
+--- a/dist/session-CGo-oQbb.js
++++ b/dist/session-CGo-oQbb.js
+@@ -15,6 +15,7 @@ function shouldSkipPinnedMainDmRouteUpdate(pin) {
+ 	return true;
+ }
+ async function recordInboundSession(params) {
++	if (process.env.CLAWX_MANAGED_RUNTIME === "1") return;
+ 	const { storePath, sessionKey, ctx, groupResolution, createIfMissing } = params;
+ 	const canonicalSessionKey = normalizeSessionKeyPreservingOpaquePeerIds(sessionKey);
+ 	const runtime = await loadInboundSessionRuntime();
+diff --git a/dist/session-accessor.sqlite-entry-CWk3jL7s.js b/dist/session-accessor.sqlite-entry-CWk3jL7s.js
+index a7a1798..33d0196 100644
+--- a/dist/session-accessor.sqlite-entry-CWk3jL7s.js
++++ b/dist/session-accessor.sqlite-entry-CWk3jL7s.js
+@@ -688,6 +688,7 @@ async function patchSqliteSessionEntrySnapshot(params) {
+ 	return committed;
+ }
+ async function recordInboundSessionMeta(params) {
++	if (process.env.CLAWX_MANAGED_RUNTIME === "1") return null;
+ 	normalizeInternalTurnContext(params.ctx);
+ 	const createIfMissing = params.createIfMissing ?? true;
+ 	return await patchSessionEntryCore({
+diff --git a/dist/src-BiL5aQto.js b/dist/src-BiL5aQto.js
+index 5836570..828f439 100644
+--- a/dist/src-BiL5aQto.js
++++ b/dist/src-BiL5aQto.js
+@@ -6304,17 +6304,17 @@ const CronDeliveryStatusSchema = Type.Union([
+ ]);
+ const NonBlankString = Type.String({
+ 	minLength: 1,
+-	pattern: "\\S"
++	pattern: "^(.|\\n|\\r|\\u2028|\\u2029)*[^\\u0009-\\u000D\\u0020\\u00A0\\u1680\\u2000-\\u200A\\u2028\\u2029\\u202F\\u205F\\u3000\\uFEFF](.|\\n|\\r|\\u2028|\\u2029)*$"
+ });
+ const CronDeclarationKeySchema = Type.String({
+ 	minLength: 1,
+ 	maxLength: 200,
+-	pattern: "\\S"
++	pattern: "^(.|\\n|\\r|\\u2028|\\u2029)*[^\\u0009-\\u000D\\u0020\\u00A0\\u1680\\u2000-\\u200A\\u2028\\u2029\\u202F\\u205F\\u3000\\uFEFF](.|\\n|\\r|\\u2028|\\u2029)*$"
+ });
+ const CronDisplayNameSchema = Type.String({
+ 	minLength: 1,
+ 	maxLength: 200,
+-	pattern: "\\S"
++	pattern: "^(.|\\n|\\r|\\u2028|\\u2029)*[^\\u0009-\\u000D\\u0020\\u00A0\\u1680\\u2000-\\u200A\\u2028\\u2029\\u202F\\u205F\\u3000\\uFEFF](.|\\n|\\r|\\u2028|\\u2029)*$"
+ });
+ const CronOwnerSchema = closedObject({
+ 	agentId: Type.Optional(NonEmptyString),
+@@ -6422,8 +6422,7 @@ const CronScheduleSchema = Type.Union([
+ /** Headless condition script evaluated before a recurring cron payload runs. */
+ const CronTriggerSchema = closedObject({
+ 	script: Type.String({
+-		minLength: 1,
+-		maxLength: 65536
++		minLength: 1
+ 	}),
+ 	once: Type.Optional(Type.Boolean())
+ });
+diff --git a/package.json b/package.json
+index 1ea73e1..e77b0a8 100644
+--- a/package.json
++++ b/package.json
+@@ -1,5 +1,6 @@
+ {
+   "name": "openclaw",
++  "clawx": { "managedSessionProtocol": "clawx.openclaw-session/v1", "storageFenceVersion": 1 },
+   "version": "2026.9.2",
+   "openclaw": {
+     "schemaVersions": {
+@@ -401,6 +402,9 @@
+   "type": "module",
+   "main": "dist/index.js",
+   "exports": {
++    "./plugin-sdk": "./dist/plugin-sdk/clawx-legacy-core.js",
++    "./plugin-sdk/channel-runtime": "./dist/plugin-sdk/channel-runtime.js",
++    "./plugin-sdk/text-runtime": "./dist/plugin-sdk/text-runtime.js",
+     ".": "./dist/index.js",
+     "./plugin-sdk/core": {
+       "types": "./dist/plugin-sdk/core.d.ts",
+@@ -2227,4 +2231,4 @@
+     "ui:install": "node scripts/ui.js install",
+     "verify": "node --import ./scripts/tsx.mjs scripts/verify.mts"
+   }
+-}
+\ No newline at end of file
++}

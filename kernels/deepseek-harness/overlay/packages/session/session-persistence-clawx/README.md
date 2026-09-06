@@ -1,8 +1,10 @@
 # @clawx/dsh-clawx-persistence
 
-ClawX-owned DeepSeek Harness persistence provider. It composes the upstream `PersistenceCoordinator` with a narrow RPC client whose server is the single ClawX DataService. The package never opens SQLite and never writes JSONL.
+ClawX-owned DeepSeek Harness v2 `SessionHandle` compatibility provider. It uses a narrow authenticated RPC client, never opens SQLite, and never writes JSONL. The removed upstream coordinator is not used.
 
-The runtime host supplies an authenticated client already scoped to one `kernelId`, process generation, Conversation and Run. Every request is validated again by the DataService before it reaches the canonical database.
+This is an optional, contract-tested seam, not a second production store. The production host does not mount this provider: it hydrates transient Agents from canonical context and writes normalized events through the existing Main API. No native-session RPC server or migration is introduced by this upgrade.
+
+A future mount must supply a server scoped to the authenticated kernel/generation with atomic single-writer acquire, capability-fenced reads/appends/flush/release, current-format event validation, typed errors and reconciliation of uncertain RPC outcomes. Retried acquisition and identical append batches must not duplicate ownership or events. A client-only mutex cannot satisfy this contract. Release drains materialized writes even after failure and is idempotent.
 
 This package is injected into the frozen DSH source tree by the ClawX CI runtime build. It is not published as a standalone end-user package.
 
@@ -12,4 +14,4 @@ This storage adapter adds no direct model-facing text. It persists and restores 
 
 ## Known Limitations and Deferred Work
 
-The first protocol version uses complete immutable event values. Transport-level compression and incremental checkpoint compaction may be introduced under a negotiated minor protocol version without changing the DSH persistence seam.
+The internal protocol is `clawx.dsh-session-store/v2`; it is separate from the unchanged canonical Conversation Store v1 and opaque checkpoint v1. Handles serialize accepted operations, route live Session events, retain failed live batches, drain on checkpoint/close, reject stale owners and closed handles, and roll back late acquisitions after cancellation or teardown. Tests exercise the upstream handle contract, cross-client writer exclusion and cold Agent resume. Compression and a production native-session transport remain out of scope.

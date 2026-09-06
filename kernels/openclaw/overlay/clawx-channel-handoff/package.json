@@ -1,6 +1,7 @@
 {
   "name": "@clawx/openclaw-channel-handoff",
   "version": "1.0.0",
+  "license": "MIT",
   "private": true,
   "type": "module",
   "main": "./index.mjs"

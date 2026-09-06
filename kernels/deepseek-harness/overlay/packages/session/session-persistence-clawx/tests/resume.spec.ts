@@ -50,7 +50,7 @@ class ScriptedAdapter extends LlmAdapter {
 async function runtime(client: MemoryClawXClient, answers: string[]) {
   const ctx = new Context()
   await mountAgentLoopTestDependencies(ctx)
-  await ctx.plugin(ClawXSessionPersistence, { client, writeBatchMaxDelayMs: 1 })
+  await ctx.plugin(ClawXSessionPersistence, { client })
   await ctx.plugin(CheckpointPolicy)
   await ctx.plugin(SessionProjectionRegistry)
   await ctx.plugin(AgentLoop, { agents: [] })

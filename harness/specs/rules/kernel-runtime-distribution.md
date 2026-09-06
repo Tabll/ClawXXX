@@ -11,7 +11,24 @@ requiredProfiles:
 
 OpenClaw and DeepSeek Harness runtime packages must be reproducible, immutable, platform-and-architecture-specific CI artifacts. End-user installations must not run package-manager installation, source builds, or patch application.
 
+For DSH 0.1.3+, use ClawX's explicit awaited service composition, not the removed demo spine or upstream app profiles. Capture the process launch environment and own proxy-dispatcher teardown. Live assistant frames and durable v2 message/attempt settlements have separate identities: failed attempts replace transient answer text (including an empty snapshot), and only settled request usage is persisted, keyed by run and stable settlement sequence. Never sum intermediate usage snapshots or replay durable streams as live deltas. A failed usage delivery must not result in a successful terminal run. The optional SessionHandle seam requires server-side single-writer fencing, retained failed batches and drain/release lifecycle tests; it must not enable a second production history store. See `harness/reference/deepseek-harness-0.1.3-upgrade.md`.
+
 CI must pin and verify upstream inputs, apply reviewed repository patches, run runtime smoke and contract tests, generate license notices, and emit a signed manifest containing artifact integrity, build provenance, capability contract, Conversation Store protocol/checkpoint codecs, entrypoints, and app compatibility.
+
+For OpenClaw upgrades, keep production pins unchanged until every existing
+compiled patch has a reviewed semantic disposition and the candidate's actual
+SDK, ACP/Gateway, Agents config and bundled channel imports are compatible.
+Upstream migration/default changes must not widen session visibility or
+permissions. A candidate test must explicitly select its package and exact
+version, never silently test the installed old SDK. Failed real-process storage
+probes block promotion even when host mocks and control smoke pass. The source
+pin is now 2026.9.2+clawx.7; actual per-Run incognito/ACP storage probes run before
+sealing and again against extracted artifacts. Verify the sealed file manifest
+again after first launch, and never let upstream postinstall prune patch files.
+See
+`harness/reference/openclaw-2026.9.2-upgrade.md`.
+
+License audits must retain compound `AND` expressions and require explicit package-scoped copyleft obligation records, including Windows sharp's bundled libvips. Do not replace the declaration with a permissive component or interpret a machine-readable obligation record as legal approval.
 
 Frozen inputs must retain LF bytes on Windows; raw upstream and prepared lockfile hashes are checked at their respective stages. DeepSeek Harness Linux builds must compile the pinned native Landlock launcher on each architecture before sandbox tests and include it in the audited runtime payload. Platform reports must be retained even after a later build failure.
 

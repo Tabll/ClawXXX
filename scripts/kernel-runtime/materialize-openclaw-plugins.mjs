@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { cpSync, existsSync, mkdirSync, readdirSync } from 'node:fs';
 import { basename, join, resolve } from 'node:path';
+import { fixupPluginManifest } from '../../electron/utils/plugin-manifest.ts';
 
 const args = new Map();
 for (let index = 2; index < process.argv.length; index += 2) args.set(process.argv[index], process.argv[index + 1]);
@@ -22,6 +23,7 @@ for (const sourceRoot of sources) {
     const target = join(destination, basename(entry.name));
     if (existsSync(target)) throw new Error(`Duplicate OpenClaw plugin mirror: ${entry.name}`);
     cpSync(join(sourceRoot, entry.name), target, { recursive: true, dereference: true, errorOnExist: true });
+    fixupPluginManifest(target);
     copied += 1;
   }
 }

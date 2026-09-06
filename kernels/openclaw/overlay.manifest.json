@@ -4,7 +4,11 @@
   "files": [
     {
       "path": "clawx-channel-handoff/index.mjs",
-      "sha256": "427ff83a342a417a460fb96ec28b2e60e03a633a31ab1dc9ab7399b91bcc1f2f"
+      "sha256": "3a2ce8648a767ffbd2d5cf05deaf55161352d290e5baabaab5374ca08f94b97c"
+    },
+    {
+      "path": "clawx-channel-handoff/managed-session.mjs",
+      "sha256": "726e97980123fc62ce0bcacb598fb2d5b2bd8caca096a1b83eda9877cd2ff36d"
     },
     {
       "path": "clawx-channel-handoff/openclaw.plugin.json",
@@ -12,15 +16,15 @@
     },
     {
       "path": "clawx-channel-handoff/package.json",
-      "sha256": "c98112483b1a4fdeaac17ca6f252fef0e3968c19b062d68e09b46f6532c5b035"
+      "sha256": "4c42eb94e454c181440772a7e03dc0cf4b26abe8fd0b2b68d103530382573543"
     },
     {
       "path": "clawx-control-bridge.mjs",
-      "sha256": "8784e02ffe0c80c5ca7b609b74369d7639865a36b23f25401573c90ea380bcee"
+      "sha256": "fc453b00232ea8311a29e2007db164730d2fca1a8ecd30da8c3e8ad96f3b80a0"
     },
     {
       "path": "clawx-openclaw.mjs",
-      "sha256": "7926657c9fc234dba62716b22e5605ce25b9a20777f22b15ec8513e69954f7eb"
+      "sha256": "aea293ef2a223df95405a968e80ceb7d81ff9bc1b1ae7a806eb91b4dbf8cb59a"
     }
   ]
 }

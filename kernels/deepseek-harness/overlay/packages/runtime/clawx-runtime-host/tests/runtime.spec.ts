@@ -1,7 +1,10 @@
-import { mkdtemp, readFile, rm } from 'node:fs/promises'
+import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { installProxyFromEnvironment } from '@deepseek-ai/dsh-http-proxy'
+import { Context } from '@deepseek-ai/cordis'
+import * as ClawXAgentServices from '../src/composition.ts'
 import { ClawXDshControlBridge } from '@clawx/dsh-control-bridge'
 import type { ClawXDshPromptInput, ClawXDshPromptResult, ClawXRunIdentity, PermissionResolution } from '@clawx/dsh-acp-bridge'
 import {
@@ -11,6 +14,11 @@ import {
   type RuntimeEngine,
 } from '../src/index.ts'
 import { acquireDshHomeLock, type DshHomeLock } from '../src/home-lock.ts'
+
+vi.mock('@deepseek-ai/dsh-http-proxy', async (original) => {
+  const actual = await original<typeof import('@deepseek-ai/dsh-http-proxy')>()
+  return { ...actual, installProxyFromEnvironment: vi.fn(actual.installProxyFromEnvironment) }
+})
 
 class FakeEngine implements RuntimeEngine {
   readonly runs = new Set<string>()
@@ -174,7 +182,54 @@ describe('ClawX DSH runtime host', () => {
       }
       await host.close()
       expect(await readFile(join(root, 'data', 'clawx-runtime.lock'), 'utf8').catch(() => undefined)).toBeUndefined()
+      const files = await readdir(root, { recursive: true })
+      expect(files.filter(path => /(?:\.jsonl|\.jsonl\.zst|\.sqlite|sessions\.json)$/.test(path))).toEqual([])
     } finally {
+      if (priorHome === undefined) delete process.env.DSH_HOME
+      else process.env.DSH_HOME = priorHome
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  it('composes an executable AgentLoop without upstream business stores', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'clawx-dsh-composition-'))
+    const ctx = new Context()
+    try {
+      await ctx.plugin(ClawXAgentServices, { dataDir: root, configDir: root })
+      expect(ctx.get('agentLoop')).toBeDefined()
+      expect(ctx.get('sessionProjections')).toBeDefined()
+      expect(ctx.get('sessionPersistence')).toBeUndefined()
+      expect(ctx.get('settings')).toBeUndefined()
+      expect(ctx.get('credentials')).toBeUndefined()
+    } finally {
+      await ctx.fiber.dispose()
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  it('passes the launch proxy snapshot and cleans proxy/home ownership on failure and repeated close', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'clawx-dsh-proxy-'))
+    const priorHome = process.env.DSH_HOME
+    const disposeProxy = vi.fn(async () => undefined)
+    const config = {
+      kernelId: 'deepseek-harness' as const, generation: 5, artifactVersion: '0.1.3-alpha.1+clawx.11',
+      dataDir: join(root, 'data'), configDir: join(root, 'config'), cacheDir: join(root, 'cache'),
+    }
+    try {
+      vi.stubEnv('HTTP_PROXY', 'http://127.0.0.1:9999')
+      vi.mocked(installProxyFromEnvironment).mockRejectedValueOnce(new Error('proxy initialization failed'))
+      await expect(createProductionRuntime({ config, output: () => undefined, diagnostic: () => undefined }))
+        .rejects.toThrow('proxy initialization failed')
+      expect(await readFile(join(root, 'data', 'clawx-runtime.lock'), 'utf8').catch(() => undefined)).toBeUndefined()
+      vi.mocked(installProxyFromEnvironment).mockResolvedValueOnce(disposeProxy)
+      const { host } = await createProductionRuntime({ config, output: () => undefined, diagnostic: () => undefined })
+      expect(vi.mocked(installProxyFromEnvironment).mock.calls.at(-1)?.[0].get('HTTP_PROXY'))
+        .toEqual({ value: 'http://127.0.0.1:9999', source: 'process' })
+      await host.close()
+      await host.close()
+      expect(disposeProxy).toHaveBeenCalledTimes(1)
+    } finally {
+      vi.unstubAllEnvs()
       if (priorHome === undefined) delete process.env.DSH_HOME
       else process.env.DSH_HOME = priorHome
       await rm(root, { recursive: true, force: true })

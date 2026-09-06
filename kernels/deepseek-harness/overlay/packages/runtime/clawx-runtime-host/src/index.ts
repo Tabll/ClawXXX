@@ -5,7 +5,8 @@ import { join, resolve } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
 import Include from '@deepseek-ai/cordis-plugin-include'
 import Loader from '@deepseek-ai/cordis-plugin-loader'
-import * as AgentSpine from '@deepseek-ai/dsh-agent-spine-demo'
+import { installProxyFromEnvironment } from '@deepseek-ai/dsh-http-proxy'
+import { createLaunchEnvironmentSnapshot, DSH_LAUNCH_ENVIRONMENT_KEY } from '@deepseek-ai/dsh-launch-environment'
 import AgentPresets from '@deepseek-ai/dsh-agent-presets'
 import LocalAttachmentStore from '@deepseek-ai/dsh-attachment-local'
 import BashSandbox from '@deepseek-ai/dsh-bash-sandbox'
@@ -48,6 +49,7 @@ import {
 import { acquireDshHomeLock, type DshHomeLock } from './home-lock.ts'
 import { ClawXRuntimeHostBridge } from './host-bridge.ts'
 import { SANDBOX_WRITE_PROBE, sandboxWriteWasDenied } from './sandbox-probe.ts'
+import * as ClawXAgentServices from './composition.ts'
 
 export const DSH_RUNTIME_HOST_PROTOCOL = CLAWX_KERNEL_STDIO_PROTOCOL
 export const DSH_RUNTIME_KERNEL_ID = 'deepseek-harness' as const
@@ -455,11 +457,27 @@ export async function createProductionRuntime(input: {
     mkdir(join(config.dataDir, 'skills'), { recursive: true, mode: 0o700 }),
   ])
   const lock = await acquireDshHomeLock(join(config.dataDir, 'clawx-runtime.lock'))
+  const ctx = new Context()
+  let disposeProxy: (() => Promise<void>) | undefined
+  let cleanup: Promise<void> | undefined
+  const closeResources = (): Promise<void> => cleanup ??= (async () => {
+    // Every resource is released even if a preceding teardown fails.
+    try { await ctx.fiber.dispose() }
+    finally {
+      try { await disposeProxy?.() }
+      finally { await lock.release() }
+    }
+  })()
   try {
     // The runtime is its own process, so constraining DSH_HOME here cannot leak
     // into Electron or another kernel generation.
     process.env.DSH_HOME = config.configDir
-    const ctx = new Context()
+    const values = Object.fromEntries(Object.entries(process.env).filter(
+      (entry): entry is [string, string] => entry[1] !== undefined,
+    ))
+    const environment = createLaunchEnvironmentSnapshot([{ source: 'process', values }])
+    ctx[DSH_LAUNCH_ENVIRONMENT_KEY] = environment
+    disposeProxy = await installProxyFromEnvironment(environment, message => input.diagnostic('warn', message))
     ctx.baseUrl = import.meta.url
     // AgentPresets uses the upstream loader to compose user-authored native
     // presets under the managed DSH_HOME. No preset is mounted unless a
@@ -483,22 +501,7 @@ export async function createProductionRuntime(input: {
     await ctx.plugin(BashSandbox, { timeoutMs: 60_000 })
     await ctx.plugin(ApprovalService, { policy: 'ask' })
     await ctx.plugin(UserQuestionService)
-    await ctx.plugin(AgentSpine, {
-      agents: [],
-      dshHome: config.configDir,
-      workspaceContext: { maxBytes: 65_536 },
-      goals: false,
-      tools: { mode: 'native' },
-      skills: {
-        enabled: true,
-        filesystem: {
-          dshHome: config.configDir,
-          includeDefaultRoots: false,
-          customSkillDirs: [join(config.dataDir, 'skills')],
-          watchFollowSymlinks: false,
-        },
-      },
-    })
+    await ctx.plugin(ClawXAgentServices, { dataDir: config.dataDir, configDir: config.configDir })
     await ctx.plugin(LlmDeepSeek, {
       thinking: 'enabled',
       reasoningEffort: 'max',
@@ -586,16 +589,14 @@ export async function createProductionRuntime(input: {
       engine,
       control,
       input.output,
-      async () => {
-        await ctx.fiber.dispose()
-        await lock.release()
-      },
+      closeResources,
       () => runProductionSelfTest(ctx, config),
       hostBridge,
     )
     return { host, lock }
   } catch (error) {
-    await lock.release()
+    try { await closeResources() }
+    catch (cleanupError) { throw new AggregateError([error, cleanupError], 'DSH startup and cleanup failed', { cause: cleanupError }) }
     throw error
   }
 }

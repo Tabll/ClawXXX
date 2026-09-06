@@ -9,7 +9,7 @@ import { createHash, randomUUID } from 'node:crypto'
 import { fileURLToPath } from 'node:url'
 import { isAbsolute, resolve } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
-import { installModelSelection, type AgentHandle, type ModelSelectionRef } from '@deepseek-ai/dsh-agent'
+import { installModelSelection, type Agent, type AgentHandle, type AssistantStreamFrame, type ModelSelectionRef } from '@deepseek-ai/dsh-agent'
 import type { ImageMediaType } from '@deepseek-ai/dsh-attachment'
 import { createUserMessage, type ContentBlock } from '@deepseek-ai/dsh-llm'
 import { SessionId, type Session, type SessionEvent } from '@deepseek-ai/dsh-session'
@@ -20,7 +20,7 @@ import type {
   AskUserQuestionRequest,
 } from '@deepseek-ai/dsh-user-questions'
 import type {} from '@deepseek-ai/dsh-agent-presets/types'
-import { projectSessionEvent } from '@clawx/dsh-rich-events'
+import { projectAssistantStreamFrame, projectSessionEvent } from '@clawx/dsh-rich-events'
 
 export const CLAWX_DSH_ACP_BRIDGE_PROTOCOL = 'clawx.dsh-acp-bridge/v1' as const
 export const CLAWX_DSH_CHECKPOINT_CODEC = 'deepseek-harness-agent' as const
@@ -126,9 +126,13 @@ type Lease = {
   input: ClawXDshPromptInput
   sessionId: ReturnType<typeof SessionId>
   handle?: AgentHandle
+  preparationAbort: AbortController
+  deliveryFailure?: Error
   selection: ModelSelectionRef
   eventSeq: number
   assistantText: string
+  streamRevision: number
+  seenSessionEvents: Set<number>
   terminal: 'completed' | 'cancelled' | 'failed' | 'interrupted'
   pending: Map<string, PendingInteraction>
   outputAttachments: ClawXDshOutputAttachment[]
@@ -250,6 +254,9 @@ export class ClawXDshAcpBridge {
     this.disposers.push(ctx.on('session/event', (session: Session, event: SessionEvent) => {
       this.onSessionEvent(session, event)
     }))
+    this.disposers.push(ctx.on('agent/assistant-stream', ({ agent, frame }) => {
+      this.onAssistantStream(agent, frame)
+    }))
     this.disposers.push(ctx.on('approval/request', (request: ApprovalRequest) => this.onApproval(request)))
     this.disposers.push(ctx.on('user-questions/request', request => this.onQuestions(request)))
   }
@@ -270,6 +277,7 @@ export class ClawXDshAcpBridge {
     const lease: Lease = {
       input: structuredClone(input),
       sessionId,
+      preparationAbort: new AbortController(),
       selection: {
         current: input.providerId && input.modelId
           ? { provider: input.providerId, model: input.modelId }
@@ -278,6 +286,8 @@ export class ClawXDshAcpBridge {
       },
       eventSeq: 0,
       assistantText: '',
+      streamRevision: 0,
+      seenSessionEvents: new Set(),
       terminal: 'completed',
       pending: new Map(),
       outputAttachments: [],
@@ -295,6 +305,7 @@ export class ClawXDshAcpBridge {
       }
       lease.handle = await this.ctx.agents.create({
         sessionId,
+        signal: lease.preparationAbort.signal,
         meta: { cwd },
         agentOptions: {
           ...(input.providerId ? { provider: input.providerId } : {}),
@@ -319,13 +330,13 @@ export class ClawXDshAcpBridge {
         setApprovalPolicy(lease.handle.agent.session, input.permissionMode === 'deny' ? 'never' : 'ask')
       }
       const content = await this.hydrateContent(lease)
+      lease.preparationAbort.signal.throwIfAborted()
       lease.handle.agent.followup(createUserMessage({ content, source: { kind: 'user' } }))
       await lease.handle.agent.whenIdle()
       await lease.outputTail
       await lease.eventTail
-      if (lease.assistantText.length > 0) {
-        await this.emit(lease, 'assistant.final', { text: lease.assistantText })
-      }
+      if (lease.deliveryFailure !== undefined) throw lease.deliveryFailure
+      await this.emit(lease, 'assistant.final', { text: lease.assistantText })
       await this.emit(lease, 'run.terminal', { outcome: lease.terminal })
       const completedAt = new Date().toISOString()
       return {
@@ -345,7 +356,8 @@ export class ClawXDshAcpBridge {
         outputAttachments: lease.outputAttachments.map(value => structuredClone(value)),
       }
     } catch (error) {
-      lease.terminal = lease.terminal === 'cancelled' ? 'cancelled' : 'failed'
+      lease.terminal = lease.terminal === 'cancelled' || lease.terminal === 'interrupted' ? lease.terminal : 'failed'
+      await this.emit(lease, 'assistant.final', { text: lease.assistantText }).catch(() => undefined)
       await this.emit(lease, 'diagnostic', {
         level: 'error',
         category: 'runtime',
@@ -369,6 +381,7 @@ export class ClawXDshAcpBridge {
   async cancel(identity: ClawXRunIdentity): Promise<{ acknowledged: boolean }> {
     const lease = this.requireLease(identity)
     lease.terminal = 'cancelled'
+    lease.preparationAbort.abort(new Error('DeepSeek Harness preparation cancelled'))
     lease.handle?.agent.cancel({ kind: 'user' })
     this.rejectPending(lease, new Error('DeepSeek Harness run was cancelled'))
     await this.emit(lease, 'cancel.acknowledged', { acknowledged: true })
@@ -418,6 +431,7 @@ export class ClawXDshAcpBridge {
     this.closed = true
     for (const lease of this.leases.values()) {
       lease.terminal = 'interrupted'
+      lease.preparationAbort.abort(new Error('DeepSeek Harness preparation interrupted'))
       lease.handle?.agent.cancel({ kind: 'disposed' })
       this.rejectPending(lease, new Error('DeepSeek Harness bridge is shutting down'))
     }
@@ -462,12 +476,39 @@ export class ClawXDshAcpBridge {
     return content
   }
 
+  private onAssistantStream(agent: Agent, frame: AssistantStreamFrame): void {
+    const lease = this.leasesBySession.get(agent.session.id)
+    if (lease === undefined || lease.handle?.agent !== agent || frame.revision <= lease.streamRevision) return
+    lease.streamRevision = frame.revision
+    if (frame.type === 'end' && frame.outcome.kind === 'abandoned') {
+      this.deliverProjection(lease, 'assistant.final', { text: lease.assistantText }, `dsh-live:${agent.session.id}:${frame.revision}:abandoned`)
+    }
+    for (const update of projectAssistantStreamFrame(frame)) {
+      const projected = this.projectRichUpdate(update as unknown as Record<string, unknown>)
+      if (projected !== undefined) this.deliverProjection(
+        lease, projected.kind, projected.payload,
+        `dsh-live:${agent.session.id}:${frame.attemptId}:${frame.revision}:${projected.kind}`,
+      )
+    }
+  }
+
+  private deliverProjection(lease: Lease, kind: string, payload: unknown, nativeEventId: string): void {
+    void this.emit(lease, kind, payload, nativeEventId)
+      .catch((error: unknown) => this.sink.diagnostic?.('warn', 'Rich event delivery failed', {
+        runId: lease.input.identity.runId,
+        error: error instanceof Error ? error.message : String(error),
+      }))
+  }
+
   private onSessionEvent(session: Session, event: SessionEvent): void {
     const lease = this.leasesBySession.get(session.header.id)
     if (lease === undefined || lease.handle?.agent.session !== session) return
-    if (event.type === 'assistant/chunk') {
-      const chunk = event.data.chunk
-      if (chunk.type === 'text-delta') lease.assistantText += chunk.text
+    if (lease.seenSessionEvents.has(event.seq)) return
+    lease.seenSessionEvents.add(event.seq)
+    if (event.type === 'assistant/attempt') {
+      // Failed/retried attempts remain diagnostic events, not portable answer
+      // text. An explicit empty snapshot must clear even the first attempt.
+      this.deliverProjection(lease, 'assistant.final', { text: lease.assistantText }, `dsh:${session.id}:${event.seq}:discard`)
     }
     if (event.type === 'turn/end') {
       if (event.data.reason.kind === 'aborted') lease.terminal = 'cancelled'
@@ -475,6 +516,8 @@ export class ClawXDshAcpBridge {
       else if (event.data.reason.kind === 'interrupted') lease.terminal = 'interrupted'
     }
     if (event.type === 'assistant/message') {
+      lease.assistantText += event.data.message.content
+        .filter(block => block.type === 'text').map(block => block.text).join('')
       for (const [index, block] of event.data.message.content.entries()) {
         if (block.type !== 'image') continue
         lease.outputTail = lease.outputTail.then(
@@ -485,11 +528,7 @@ export class ClawXDshAcpBridge {
     for (const update of projectSessionEvent(event)) {
       const projected = this.projectRichUpdate(update as unknown as Record<string, unknown>)
       if (projected !== undefined) {
-        void this.emit(lease, projected.kind, projected.payload, `dsh:${session.header.id}:${event.seq}:${projected.kind}`)
-          .catch((error: unknown) => this.sink.diagnostic?.('warn', 'Rich event delivery failed', {
-            runId: lease.input.identity.runId,
-            error: error instanceof Error ? error.message : String(error),
-          }))
+        this.deliverProjection(lease, projected.kind, projected.payload, `dsh:${session.header.id}:${event.seq}:${projected.kind}`)
       }
     }
   }
@@ -524,7 +563,7 @@ export class ClawXDshAcpBridge {
         }
       case 'usage_update': {
         const meta = isRecord(update._meta) && isRecord(update._meta.clawx) ? update._meta.clawx : {}
-        return { kind: 'usage', payload: { ...meta, eventKey: `dsh-usage-${String(meta.turn ?? 'unknown')}-${String(meta.step ?? 'unknown')}` } }
+        return { kind: 'usage', payload: { ...meta, eventKey: `dsh-usage-v2-${String(meta.eventSeq)}` } }
       }
       case 'plan':
         return { kind: 'diagnostic', payload: { category: 'plan', entries: update.entries } }
@@ -667,7 +706,9 @@ export class ClawXDshAcpBridge {
     const delivery = lease.eventTail.then(() => this.sink.emit(event))
     // A failed sink call rejects the caller that emitted it, while the queue is
     // recovered so a diagnostic/terminal event still gets a delivery attempt.
-    lease.eventTail = delivery.catch(() => undefined)
+    lease.eventTail = delivery.catch((error: unknown) => {
+      lease.deliveryFailure ??= error instanceof Error ? error : new Error(String(error))
+    })
     await delivery
   }
 }

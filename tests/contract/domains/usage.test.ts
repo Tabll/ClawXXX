@@ -81,11 +81,11 @@ describe('canonical Usage adapters and repository', () => {
     });
   });
 
-  it('deduplicates provider retries/multi-delivery and never adds a terminal double charge', async () => {
+  it.each(['openclaw', 'deepseek-harness'] as const)('%s deduplicates settled retries/multi-delivery without a terminal double charge', async (kernelId) => {
     const root = mkdtempSync(join(tmpdir(), 'clawx-usage-contract-'));
     const service = new ClawXDataService(join(root, 'clawx.sqlite'));
     const main = service.connect({ role: 'main' });
-    const kernel = service.connect({ role: 'kernel', kernelId: 'openclaw', generation: 1 });
+    const kernel = service.connect({ role: 'kernel', kernelId, generation: 1 });
     const conversationId = asConversationId('usage-conversation');
     const turnId = asTurnId('usage-turn');
     const runId = asRunId('usage-run');
@@ -96,10 +96,10 @@ describe('canonical Usage adapters and repository', () => {
         turnId,
         runId,
         routing: {
-          kernelId: 'openclaw',
-          kernelVersion: '2026.7.1-2+clawx.6',
+          kernelId,
+          kernelVersion: kernelId === 'openclaw' ? '2026.7.1-2+clawx.6' : '0.1.3-alpha.1+clawx.11',
           generation: 1,
-          ...testAgentRouting('openclaw', { providerId: 'openai-primary', modelId: 'gpt-5' }),
+          ...testAgentRouting(kernelId, { providerId: 'openai-primary', modelId: 'gpt-5' }),
           contextCompilerVersion: 'clawx.portable-context/v1',
         },
         userBlocks: [{ id: 'usage-user', type: 'text', visibility: 'portable', text: 'measure this' }],
@@ -116,7 +116,7 @@ describe('canonical Usage adapters and repository', () => {
         conversationId,
         turnId,
         runId,
-        kernelId: 'openclaw',
+        kernelId,
         generation: 1,
         eventSeq,
         emittedAt: at(eventSeq + 2),
@@ -133,16 +133,16 @@ describe('canonical Usage adapters and repository', () => {
         },
       });
       await kernel.appendEvents([
-        usageEvent(1, 'provider-request-stable', 10, 2),
-        usageEvent(2, 'provider-request-stable', 10, 2),
-        usageEvent(3, 'provider-request-second', 5, 1),
+        usageEvent(1, 'dsh-usage-v2-7', 10, 2),
+        usageEvent(2, 'dsh-usage-v2-7', 10, 2),
+        usageEvent(3, 'dsh-usage-v2-11', 5, 1),
       ]);
       await kernel.commitTerminalRun({
         conversationId,
         userTurnId: turnId,
         assistantTurnId: asTurnId('usage-assistant'),
         runId,
-        kernelId: 'openclaw',
+        kernelId,
         generation: 1,
         outcome: 'completed',
         assistantBlocks: [{ id: 'usage-answer', type: 'text', visibility: 'portable', text: 'done' }],
@@ -153,17 +153,17 @@ describe('canonical Usage adapters and repository', () => {
       const rows = await main.listUsage({ from: at(0), to: at(20) });
       expect(rows).toHaveLength(2);
       expect(rows[0]).toMatchObject({
-        eventKey: 'provider-request-stable',
-        requestId: 'provider-request-stable',
-        kernelId: 'openclaw',
+        eventKey: 'dsh-usage-v2-7',
+        requestId: 'dsh-usage-v2-7',
+        kernelId,
         agentId: 'main',
         inputTokens: 10,
         outputTokens: 2,
         source: 'provider-response',
       });
       expect(rows[1]).toMatchObject({
-        eventKey: 'provider-request-second',
-        requestId: 'provider-request-second',
+        eventKey: 'dsh-usage-v2-11',
+        requestId: 'dsh-usage-v2-11',
         inputTokens: 5,
         outputTokens: 1,
       });

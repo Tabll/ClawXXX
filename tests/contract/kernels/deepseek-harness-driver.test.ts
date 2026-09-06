@@ -110,6 +110,8 @@ describe('DeepSeek Harness managed driver/runtime contract', () => {
       'kernels/deepseek-harness/overlay/packages/runtime/clawx-runtime-host/src/index.ts'), 'utf8');
     const binSource = readFileSync(join(root,
       'kernels/deepseek-harness/overlay/packages/runtime/clawx-runtime-host/src/bin.ts'), 'utf8');
+    const composition = readFileSync(join(root,
+      'kernels/deepseek-harness/overlay/packages/runtime/clawx-runtime-host/src/composition.ts'), 'utf8');
     const artifactSmoke = readFileSync(join(root,
       'scripts/kernel-runtime/runtime-artifact-smoke.mjs'), 'utf8');
     const buildWorkflow = readFileSync(join(root,
@@ -119,7 +121,7 @@ describe('DeepSeek Harness managed driver/runtime contract', () => {
       files: string[]; dependencies: Record<string, string>;
     };
 
-    expect(source.git.commit).toBe('0a53fb55bea101816fa226bb964ae2bed71c343b');
+    expect(source.git.commit).toBe('d347e703908d0406b7a7ef80e3a0e594d86b2215');
     expect(runtime.artifactVersion).toBe(source.artifactVersion);
     expect(runtime.entrypoints).toEqual({
       chat: 'runtime/kernel/node_modules/@clawx/dsh-acp-bridge/lib/index.js',
@@ -132,7 +134,10 @@ describe('DeepSeek Harness managed driver/runtime contract', () => {
     expect(hostPackage.dependencies).not.toHaveProperty('@deepseek-ai/dsh-session-persistence-sqlite');
     expect(hostPackage.dependencies).not.toHaveProperty('@deepseek-ai/dsh-settings-file');
     expect(hostSource).not.toMatch(/dsh-web|session-persistence-jsonl|session-persistence-sqlite|settings-file/);
-    expect(hostSource).toContain("tools: { mode: 'native' }");
+    expect(hostPackage.dependencies).not.toHaveProperty('@deepseek-ai/dsh-agent-spine-demo');
+    expect(hostSource).toContain('await ctx.plugin(ClawXAgentServices');
+    expect(hostSource).toContain('installProxyFromEnvironment(environment');
+    expect(composition).toContain("await ctx.plugin(ToolRuntime, { mode: 'native' })");
     expect(hostSource).toContain("request.method === 'session.new'");
     expect(hostSource).toContain("request.method === 'runtime.selfTest'");
     expect(binSource).toContain('process.stdout.write =');

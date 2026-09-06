@@ -23,8 +23,8 @@ describe('DeepSeek Harness Windows ambient-temp parity patch', () => {
       .map((match) => [match[1], match[2]]);
 
     expect(source).toMatchObject({
-      artifactVersion: '0.1.2-alpha.2+clawx.10',
-      patchRevision: 10,
+      artifactVersion: '0.1.3-alpha.1+clawx.11',
+      patchRevision: 11,
     });
     expect(source.patches.map((entry) => entry.path)).toEqual([
       'kernels/deepseek-harness/patches/0001-clawx-overlay-lockfile.patch',
@@ -36,7 +36,7 @@ describe('DeepSeek Harness Windows ambient-temp parity patch', () => {
     ]);
     expect(patch).toContain("process.platform === 'win32'");
     expect(patch).toContain('? [policy.workspaceRoot]');
-    expect(patch).toContain('expect(roots).toEqual([realpathSync.native(ws)])');
+    expect(patch).toContain('expect(writable).toEqual([realpathSync.native(ws)])');
     expect(patch).not.toContain('sandbox-windows-acl/src');
   });
 

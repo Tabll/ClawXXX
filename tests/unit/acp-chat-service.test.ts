@@ -68,6 +68,7 @@ function createConnection() {
     loadSession: vi.fn().mockResolvedValue({}),
     prompt: vi.fn().mockResolvedValue({ stopReason: 'end_turn' }),
     cancel: vi.fn().mockResolvedValue(undefined),
+    closeSession: vi.fn().mockResolvedValue({}),
     setSessionConfigOption: vi.fn().mockResolvedValue({ configOptions: [] }),
   };
 }
@@ -335,6 +336,19 @@ describe('AcpChatService', () => {
     expect(connection.loadSession).not.toHaveBeenCalled();
   });
 
+  it('passes canonical managed admission and closes the native transient session after the prompt', async () => {
+    const { service, connection } = await createService();
+    const sessionKey = `agent:main:dashboard:incognito-clawx-${'a'.repeat(64)}`;
+    const managedSession = { protocol: 'clawx.openclaw-session/v1' as const, conversationId: 'conversation', runId: 'run', turnId: 'turn', generation: 1, agentId: 'main', history: [], permissionMode: 'read-only' as const };
+    await service.loadSession({ sessionKey, workspaceRoot: '/repo', cwd: '/repo', createIfMissing: true, managedSession });
+    expect(connection.newSession).toHaveBeenCalledWith({ cwd: '/repo', mcpServers: [], _meta: { sessionKey, prefixCwd: false, clawx: managedSession } });
+    await service.sendPrompt({ sessionKey, cwd: '/repo', message: '/not-a-native-command', messageId: 'run' });
+    expect(connection.prompt).toHaveBeenCalledWith(expect.objectContaining({ _meta: { sessionKey, prefixCwd: false, messageId: 'run' } }));
+    await expect(service.closeManagedSession({ sessionKey })).resolves.toMatchObject({ success: true });
+    expect(connection.closeSession).toHaveBeenCalledWith({ sessionId: 'acp-session-1' });
+    await expect(service.sendPrompt({ sessionKey, cwd: '/repo', message: 'late' })).resolves.toMatchObject({ success: false });
+  });
+
   it('routes fresh-session prompts through the ACP session id returned by session/new', async () => {
     const { service, connection } = await createService();
 
@@ -344,7 +358,7 @@ describe('AcpChatService', () => {
       cwd: '/repo',
       message: 'hello',
       messageId: 'msg-1',
-    })).resolves.toEqual({ success: true, generation: 1 });
+    })).resolves.toEqual({ success: true, generation: 1, stopReason: 'end_turn' });
 
     expect(connection.prompt).toHaveBeenCalledWith({
       sessionId: 'acp-session-1',
@@ -365,7 +379,7 @@ describe('AcpChatService', () => {
       cwd: '/repo',
       message,
       messageId: 'msg-command',
-    })).resolves.toEqual({ success: true, generation: 1 });
+    })).resolves.toEqual({ success: true, generation: 1, stopReason: 'end_turn' });
 
     expect(connection.prompt).toHaveBeenCalledWith({
       sessionId: 'acp-session-1',
@@ -505,7 +519,7 @@ describe('AcpChatService', () => {
     expect(connection.loadSession).toHaveBeenCalledTimes(2);
 
     prompt.resolve({ stopReason: 'end_turn' });
-    await expect(sendPrompt).resolves.toEqual({ success: true, generation: 1 });
+    await expect(sendPrompt).resolves.toEqual({ success: true, generation: 1, stopReason: 'end_turn' });
     await expect(service.loadSession({
       sessionKey: 'agent:pi:s2', workspaceRoot: '/repo', cwd: '/repo',
     })).resolves.toEqual({ success: true, generation: 3 });
@@ -1269,7 +1283,7 @@ describe('AcpChatService', () => {
           { filePath: imagePath, stagingId: 'staged-image', mimeType: 'image/png', fileName: 'image.png' },
           { filePath, stagingId: 'staged-notes', mimeType: 'text/plain', fileName: 'notes.txt' },
         ],
-      })).resolves.toEqual({ success: true, generation: 1 });
+      })).resolves.toEqual({ success: true, generation: 1, stopReason: 'end_turn' });
 
       expect(connection.prompt).toHaveBeenCalledWith({
         sessionId: 'agent:pi:s1',

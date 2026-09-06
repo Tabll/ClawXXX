@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import { type GenerateOptions, LlmAdapter, type LlmResolvedModelInfo, type StreamChunk } from '@deepseek-ai/dsh-llm'
 import AgentLoop from '@deepseek-ai/dsh-agent-loop'
@@ -128,6 +128,128 @@ describe('ClawX DeepSeek Harness bridge', () => {
     await bridge.close()
   })
 
+  it('replaces failed attempt text and counts each settled attempt once despite replayed delivery', async () => {
+    const failure: StreamChunk[] = [
+      { type: 'block-start', index: 0, blockType: 'text' },
+      { type: 'text-delta', index: 0, text: 'doomed partial' },
+      { type: 'usage', usage: { inputTokens: 5, outputTokens: 1 } },
+      { type: 'usage', usage: { inputTokens: 5, outputTokens: 2 } },
+      { type: 'finish', reason: { kind: 'error', failure: { message: 'retry', code: 'SERVER_ERROR' } } },
+    ]
+    const { bridge, events } = await setup([failure, response('recovered')])
+    ctx!.on('agent/request-error', async () => ({ kind: 'retry' as const }))
+    // Re-deliver each native notification once through Cordis, like a transport
+    // replay. Neither durable settlement nor transient chunks may double apply.
+    let replaying = false
+    ctx!.on('agent/assistant-stream', payload => {
+      if (replaying) return
+      replaying = true
+      ctx!.emit('agent/assistant-stream', payload)
+      replaying = false
+    })
+    ctx!.on('session/event', (session, event) => {
+      if (replaying) return
+      replaying = true
+      ctx!.emit('session/event', session, event)
+      replaying = false
+    })
+    await bridge.prompt({
+      identity: { conversationId: 'conversation', turnId: 'turn', runId: 'retry-run' },
+      context: [], agentId: 'default', workspaceUri: process.cwd(), providerId: 'mock', modelId: 'mock',
+    })
+    expect(events.filter(event => event.event.kind === 'assistant.delta').map(event => event.event.payload))
+      .toEqual([{ type: 'text', text: 'doomed partial' }, { type: 'text', text: 'recovered' }])
+    expect(events.filter(event => event.event.kind === 'assistant.final').map(event => event.event.payload))
+      .toEqual([{ text: '' }, { text: 'recovered' }])
+    const usage = events.filter(event => event.event.kind === 'usage').map(event => event.event.payload as Record<string, unknown>)
+    expect(usage).toHaveLength(2)
+    expect(usage[0]).toMatchObject({ inputTokens: 5, outputTokens: 2 })
+    expect(usage[1]).toMatchObject({ inputTokens: 3, outputTokens: 2 })
+    expect(new Set(usage.map(value => value.eventKey)).size).toBe(2)
+    expect(events.at(-1)?.event).toEqual({ kind: 'run.terminal', payload: { outcome: 'completed' } })
+    await bridge.close()
+  })
+
+  it('isolates simultaneous prompt identities even when settlement sequence keys coincide', async () => {
+    const { bridge, events } = await setup([response('first'), response('second')])
+    await Promise.all(['one', 'two'].map(runId => bridge.prompt({
+      identity: { conversationId: runId, turnId: runId, runId },
+      context: [], agentId: 'default', workspaceUri: process.cwd(), providerId: 'mock', modelId: 'mock',
+    })))
+    for (const runId of ['one', 'two']) {
+      const run = events.filter(event => event.identity.runId === runId)
+      expect(run.every(event => event.identity.conversationId === runId)).toBe(true)
+      expect(run.filter(event => event.event.kind === 'usage')).toHaveLength(1)
+      expect(run.at(-1)?.event.payload).toEqual({ outcome: 'completed' })
+      expect(run.map(event => event.eventSeq)).toEqual(run.map((_, index) => index + 1))
+    }
+    expect(new Set(events.filter(event => event.event.kind === 'usage').map(event => event.nativeEventId)).size).toBe(2)
+    expect(ctx!.agents.roots()).toEqual([])
+    await bridge.close()
+  })
+
+  it('keeps an interrupted visible prefix on cancel, without synthesizing missing usage', async () => {
+    const { bridge, events } = await setup(['hang'])
+    const identity = { conversationId: 'conversation', turnId: 'turn', runId: 'partial-cancel' }
+    const pending = bridge.prompt({ identity, context: [], agentId: 'default', workspaceUri: process.cwd(), providerId: 'mock', modelId: 'mock' })
+    await vi.waitFor(() => expect(events.some(event => event.event.kind === 'assistant.delta')).toBe(true))
+    await bridge.cancel(identity)
+    await pending
+    expect(events.filter(event => event.event.kind === 'assistant.final').at(-1)?.event.payload).toEqual({ text: 'partial' })
+    expect(events.filter(event => event.event.kind === 'usage')).toEqual([])
+    expect(events.at(-1)?.event.payload).toEqual({ outcome: 'cancelled' })
+    await bridge.close()
+  })
+
+  it('cancels before the asynchronous agent factory publishes a handle', async () => {
+    const { adapter, bridge, events } = await setup([response('must not request')])
+    const identity = { conversationId: 'conversation', turnId: 'turn', runId: 'early-cancel' }
+    const pending = bridge.prompt({ identity, context: [], agentId: 'default', workspaceUri: process.cwd(), providerId: 'mock', modelId: 'mock' })
+    const rejected = expect(pending).rejects.toThrow(/cancelled|aborted/)
+    await bridge.cancel(identity)
+    await rejected
+    expect(adapter.requests).toEqual([])
+    expect(events.at(-1)?.event.payload).toEqual({ outcome: 'cancelled' })
+    expect(ctx!.agents.roots()).toEqual([])
+    await bridge.close()
+  })
+
+  it('does not start a model request after cancellation during attachment hydration', async () => {
+    const { adapter, bridge, events } = await setup([response('must not request')])
+    const saved = Promise.withResolvers<never[]>()
+    const saveImages = vi.fn(() => saved.promise)
+    ctx!.provide('attachments', { saveImages } as never)
+    const identity = { conversationId: 'conversation', turnId: 'turn', runId: 'hydration-cancel' }
+    const pending = bridge.prompt({
+      identity, context: [], agentId: 'default', workspaceUri: process.cwd(), providerId: 'mock', modelId: 'mock',
+      attachments: [{ blockId: 'image', blobHash: 'hash', mimeType: 'image/png', data: 'aW1hZ2U=' }],
+    })
+    const rejected = expect(pending).rejects.toThrow('preparation cancelled')
+    await vi.waitFor(() => expect(saveImages).toHaveBeenCalledTimes(1))
+    await bridge.cancel(identity)
+    saved.resolve([])
+    await rejected
+    expect(adapter.requests).toEqual([])
+    expect(events.at(-1)?.event.payload).toEqual({ outcome: 'cancelled' })
+    await bridge.close()
+  })
+
+  it('fails the run if settled usage cannot be delivered, even if later envelopes succeed', async () => {
+    const { bridge: unused } = await setup([response('done')])
+    await unused.close()
+    const events: ClawXDshKernelEvent[] = []
+    const bridge = new ClawXDshAcpBridge(ctx!, { emit: event => {
+      if (event.event.kind === 'usage') throw new Error('usage sink unavailable')
+      events.push(event)
+    } })
+    await expect(bridge.prompt({
+      identity: { conversationId: 'conversation', turnId: 'turn', runId: 'delivery-failure' },
+      context: [], agentId: 'default', workspaceUri: process.cwd(), providerId: 'mock', modelId: 'mock',
+    })).rejects.toThrow('usage sink unavailable')
+    expect(events.at(-1)?.event.payload).toEqual({ outcome: 'failed' })
+    await bridge.close()
+  })
+
   it('scopes the admitted canonical persona to the exact run system prompt', async () => {
     const { adapter, bridge } = await setup([response('persona applied')])
     await bridge.prompt({
@@ -209,7 +331,7 @@ describe('ClawX DeepSeek Harness bridge', () => {
     }
     expect(agent).toBeDefined()
     for (let attempt = 0; attempt < 100
-      && !agent!.session.events.some(event => event.type === 'turn/start'); attempt += 1) {
+      && !agent!.session.snapshotEvents().some(event => event.type === 'turn/start'); attempt += 1) {
       await new Promise(resolve => setTimeout(resolve, 2))
     }
     const approval = ctx!.approval.request({ agent: agent!, toolName: 'bash', reason: 'permission smoke' })

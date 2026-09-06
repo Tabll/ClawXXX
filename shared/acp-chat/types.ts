@@ -5,7 +5,7 @@ import type {
   SessionConfigOption,
   SessionNotification,
 } from '@agentclientprotocol/sdk';
-import type { ConversationId, RunId, TurnId } from '../conversations/contracts';
+import type { ConversationId, KernelContextBlock, RunId, TurnId } from '../conversations/contracts';
 import type { KernelId } from '../kernels/contracts';
 
 export type AcpJsonRecord = Record<string, unknown>;
@@ -23,6 +23,18 @@ export type AcpChatLoadPayload = AcpSessionKeyPayload & {
   workspaceRoot: string;
   cwd: string;
   createIfMissing?: boolean;
+  /** Main-owned, one-run context. Never populated from renderer/session history. */
+  managedSession?: {
+    protocol: 'clawx.openclaw-session/v1';
+    conversationId: string;
+    runId: string;
+    turnId: string;
+    generation: number;
+    agentId: string;
+    history: KernelContextBlock[];
+    model?: string;
+    permissionMode: 'read-only' | 'guarded' | 'workspace';
+  };
 };
 
 export type AcpPromptMediaItem = {
@@ -60,6 +72,7 @@ export type AcpChatRespondPermissionPayload = AcpSessionKeyPayload & {
 
 export type AcpChatOperationResult = {
   success: boolean;
+  stopReason?: string;
   error?: string;
   generation?: number;
   /** The requested session still has a live prompt and was reactivated without history replay. */

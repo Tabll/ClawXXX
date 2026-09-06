@@ -11,8 +11,11 @@ import { asConversationId, asRunId, asTurnId } from '@shared/conversations/contr
 import { asAgentId, asCronJobId } from '@shared/domains/identity';
 import { testAgentRouting } from '../../helpers/canonical-agent';
 
-describe('managed OpenClaw runtime directory regression', () => {
-  it('keeps prompt/cancel/compact/restart/Cron/Channel durable history in DataService only', async () => {
+// This is a host DataService/guard fixture, not an OpenClaw ACP/Gateway process.
+// Native persistence acceptance needs the real-process storage probe and the
+// full prompt/cancel/restart/Cron/Channel packaged flows as separate evidence.
+describe('managed OpenClaw host data and directory-guard contract', () => {
+  it('preserves canonical run/checkpoint/Cron records across a DataService restart', async () => {
     const root = mkdtempSync(join(tmpdir(), 'clawx-openclaw-runtime-dir-'));
     const managed = getManagedOpenClawDataRoots(join(root, 'user-data'));
     mkdirSync(managed.configRoot, { recursive: true });

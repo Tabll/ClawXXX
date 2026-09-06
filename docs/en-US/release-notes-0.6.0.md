@@ -1,11 +1,13 @@
 # ClawX 0.6.0 Multi-Kernel Release Notes
 
+DSH 0.1.3 adapts breaking Agent composition, streaming settlements and SessionHandle interfaces. Failed attempt text is replaced and Usage is counted once per settled request; shared history is unchanged. Upstream warns of a performance regression. The `.11` source upgrade is not evidence of a published, notarized runtime; see [the compatibility contract](../../harness/reference/deepseek-harness-0.1.3-upgrade.md).
+
 Status: implementation release candidate. Public availability remains conditional on the protected five-target runtime build/promotion and signed packaged-app gates.
 
 ## Highlights
 
 - OpenClaw is removed from the base installer and becomes an optional first-use download.
-- DeepSeek Harness `0.1.2-alpha.2+clawx.10` is the second optional kernel; OpenClaw and DSH can run concurrently and update or fail independently.
+- DeepSeek Harness `0.1.3-alpha.1+clawx.11` is the second optional kernel; OpenClaw and DSH can run concurrently and update or fail independently.
 - Both kernels use the existing ClawX Chat, Providers/Models, Agents, Channels, Cron, Skills, Usage, and Diagnostics UI and the same canonical contracts.
 - One Main-owned SQLite/Blob service stores all new durable history. The same Conversation can continue on another kernel at a turn boundary through a redacted portable context.
 - Kernel runtimes are reproducible, patched CI artifacts with signed expiring metadata, platform security evidence, SBOMs, provenance, license reports, rollback, repair, and two-mirror distribution.

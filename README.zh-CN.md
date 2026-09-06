@@ -160,12 +160,16 @@ ClawX 采用 **Main-owned 多内核 + Host API 统一接入架构**：React Rend
 
 > ClawX 0.6 已实现可选 CI 预制 OpenClaw 与 DeepSeek Harness，并以 Main 独占 SQLite/Blob 为统一数据权威；公开发布仍会在受保护的跨平台签名、晋级与 packaged-test 证据不足时 fail closed。参见[多内核设计](docs/zh-CN/multi-kernel-design.md)、[实施清单](TODO.md)、[运行时安全/支持](docs/zh-CN/runtime-security-support.md)和[数据策略](docs/zh-CN/data-security-retention.md)。
 
-- **进程模型**：Electron Main 管理系统集成、唯一 DataService、Package Manager 和逐内核独立 Supervisor；OpenClaw 与 DSH 可并行运行，Renderer 和 runtime 都不能直接打开 SQLite 或互相直连。
+当前 DSH 源码已适配 `0.1.3-alpha.1+clawx.11` 的 v2 流式与结算接口，仍共用同一 SQLite 历史。它仍是 alpha，上游提示存在性能回退；必须完成新版 CI 制品验证与发布，已安装内核才可更新。详见[升级兼容性说明](harness/reference/deepseek-harness-0.1.3-upgrade.md)。
+
+OpenClaw 源码和开发依赖已切换为 `2026.9.2+clawx.7`。生产桥接按 Run 从统一 SQLite 历史创建独立内存会话，适配新版 Agents/模型/权限配置，并修复 7 个 Channels 插件。独立真实 Gateway/ACP 和打包 payload 测试覆盖工具、取消、崩溃恢复、入站拒绝及无原生历史写入。已安装内核仍须下载新的已验证 CI 制品；五平台签名发布和真实账号验收尚未执行。详见[升级设计与证据](harness/reference/openclaw-2026.9.2-upgrade.md)。
+
+- **进程模型**：Electron Main 管理系统集成、唯一 DataService、Package Manager 和逐内核独立 Supervisor；OpenClaw 与 DSH 可并行运行，Renderer 和 runtime 都不能直接打开 canonical ClawX SQLite 或互相直连。
 - **配置交付**：Gateway 运行时由 Main 使用 `config.get` / `config.set`，停止或启动中则更新解析后的 JSON5 配置；普通 Provider/Agent/Skill/模型修改不会替换进程，凭据通过 `secrets.reload` 热更新。连续三分钟没有已验证的 Gateway 活动后，ClawX 会验证核心 RPC，并且只重启其自身拥有且不可用的 Gateway 进程；外部管理的 Gateway 保留给用户手动恢复。
 - **统一 Provider**：Provider 元数据、模型选择、每内核默认项和独立 projection 状态都由 SQLite 统一记录。密钥保留在 OS 安全存储，只从 preload 持有的 closed-shadow 输入框以一次性句柄交给 Main；经过身份认证的内核进程只能按已选账号和授权用途向 Credential Broker 请求。单个内核投影失败不会回滚另一个已 ready 的投影。
 - **统一 Skills**：一个 Skills catalog 统一保存不可变 package metadata、逐内核安装/启用意图、兼容性、projection 诊断和重试状态。OpenClaw 与 DeepSeek Harness 使用相互独立的物理副本，禁止交叉软链接；Both 操作保留并展示 partial success。DSH 只通过隔离的 `ctx.skills` adapter 注册兼容 instruction body，含未支持辅助文件的包会显示明确原因。
 - **统一 Channels**：一个 SQLite catalog 统一保存账号、kernel/agent binding、owner lease、消息到 Conversation 的映射、附件、重试及投递历史，凭据只进 OS 安全存储。OpenClaw 使用带认证的 native handoff adapter，DeepSeek Harness 使用 Main-owned 的八类 connector Relay；不同账号可并发运行，同一账号不会被双重消费，也不会生成 connector-native 历史。
-- **统一 Cron**：Main-owned ClawXScheduler 在 SQLite 统一保存 job、唯一 due admission、run 诊断、Conversation 目标和 Channel delivery 关联。OpenClaw 与 DeepSeek Harness 任务可并行执行，并明确选择 kernel/agent、时区、misfire、overlap、timeout 与 Conversation policy；managed runtime 的原生 scheduler/history 已禁用。
+- **统一 Cron**：Main-owned ClawXScheduler 在 SQLite 统一保存 job、唯一 due admission、run 诊断、Conversation 目标和 Channel delivery 关联。OpenClaw 与 DeepSeek Harness 任务可并行执行，并明确选择 kernel/agent、时区、misfire、overlap、timeout 与 Conversation policy；managed runtime 的原生 scheduler 已禁用，OpenClaw 原生历史隔离仍须完成上述发布验收。
 - **统一 Chat**：Chat 历史、run events、权限、Usage 和附件引用全部读取 Main 独占的 SQLite Conversation Store；ACP 与未来 runtime bridge 只负责实时执行。每个实时事件都携带 conversation/run/kernel/generation/sequence 完整身份，因此页面导航可保留后台流，同一 Conversation 也可在 turn 边界切换内核，不再依赖 runtime transcript fallback。
 - **统一 Usage 与诊断**：OpenClaw provider response 和 DeepSeek Harness SessionEvent 以逐调用、幂等记录写入同一 SQLite；Dashboard 可比较全部/OpenClaw/DSH，缺失 Token 或费用保持未知而不是伪装成 0。逐内核诊断可定位精确 artifact、补丁修订、协议、进程 generation、健康与能力；持久化和导出日志使用隔离目录及统一的密钥/路径脱敏。
 - **Dreams**：开发者专用的原生 Dreams 页只通过类型化 Host API 调用 OpenClaw `doctor.memory.*` 和受保护的 `config.patch`；带认证的 Control UI URL 由 Electron Main 构造并将 Dreams 视图映射到 `/dreaming`，渲染层不直连 Gateway。

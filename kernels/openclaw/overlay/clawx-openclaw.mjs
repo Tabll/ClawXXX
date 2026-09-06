@@ -1,11 +1,13 @@
 #!/usr/bin/env node
 // ClawX managed OpenClaw entrypoint. The original openclaw.mjs remains an
 // immutable upstream file beside this wrapper for provenance and patch review.
+import { fileURLToPath } from 'node:url';
 if (process.env.CLAWX_MANAGED_RUNTIME !== '1') {
   throw new Error('ClawX OpenClaw runtime must be launched in managed mode');
 }
 
 Object.assign(process.env, {
+  CLAWX_OPENCLAW_PACKAGE_DIR: fileURLToPath(new URL('.', import.meta.url)),
   OPENCLAW_NO_RESPAWN: '1',
   OPENCLAW_EMBEDDED_IN: 'ClawX',
   OPENCLAW_HISTORY_MODE: 'clawx-data-service',

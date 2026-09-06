@@ -89,6 +89,12 @@ The proposed multi-kernel evolution keeps this scenario authoritative for every 
 
 Coordinator-owned OpenClaw config mutations and their `config.get`/`config.set` transaction contract are documented in `harness/reference/openclaw-config-delivery.md`.
 
+Breaking OpenClaw runtime upgrades must additionally follow
+`harness/reference/openclaw-2026.9.2-upgrade.md`: verify the actual candidate SDK,
+ACP/Gateway storage and configuration contracts, preserve trusted approval/run
+lineage, and validate bundled channel imports. Host-only fixtures cannot prove
+native persistence is disabled or serve as candidate activation evidence.
+
 Allowed flow:
 Renderer page/component -> `src/lib/host-api.ts` or `src/lib/api-client.ts` -> Electron Main typed host service or IPC handler -> Main-owned OpenClaw Gateway WebSocket -> runtime result -> store/UI.
 

@@ -208,6 +208,37 @@ describe('ConversationRouter', () => {
     ]);
   });
 
+  it.each([
+    { snapshot: { text: '' }, suffix: 'recovered', expected: 'recovered' },
+    { snapshot: { text: '' }, suffix: '', expected: '' },
+    { snapshot: { resources: [] }, suffix: '', expected: 'partial' },
+  ])('settles explicit empty answer snapshots without erasing attachment-only finals: $expected', async ({ snapshot, suffix, expected }) => {
+    const { main, drivers, supervisors, router } = await fixture();
+    const gate = Promise.withResolvers<void>();
+    drivers.get('deepseek-harness')!.executionGate = gate.promise;
+    const identity = { conversationId: 'retry-conversation', turnId: 'retry-turn', runId: 'retry-run' };
+    const prompt = router.prompt({
+      conversationId: asConversationId(identity.conversationId),
+      turnId: asTurnId(identity.turnId), runId: asRunId(identity.runId),
+      kernelId: 'deepseek-harness', agentId: 'main', workspaceUri: 'file:///workspace', message: 'retry',
+    });
+    await vi.waitFor(() => expect(drivers.get('deepseek-harness')?.requests).toHaveLength(1));
+    for (const [index, event] of [
+      { kind: 'assistant.final', payload: { text: '' } },
+      { kind: 'assistant.delta', payload: { text: 'partial' } },
+      { kind: 'assistant.final', payload: snapshot },
+      { kind: 'assistant.delta', payload: { text: suffix } },
+    ].entries()) {
+      supervisors.emit('event', stdioEvent({ ...identity, kernelId: 'deepseek-harness', eventSeq: index + 2, ...event }));
+    }
+    gate.resolve();
+    await prompt;
+    const history = await main.exportConversation(asConversationId(identity.conversationId));
+    const assistantText = history.turns.filter(turn => turn.role === 'assistant')
+      .flatMap(turn => turn.blocks).filter(block => block.type === 'text').map(block => block.text ?? '').join('');
+    expect(assistantText).toBe(expected);
+  });
+
   it('persists and deduplicates kernel-scoped workspace resources in unified history', async () => {
     const { main, drivers, supervisors, router } = await fixture();
     const gate = Promise.withResolvers<void>();

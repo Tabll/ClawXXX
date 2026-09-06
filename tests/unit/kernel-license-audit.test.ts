@@ -55,4 +55,28 @@ describe('kernel runtime license audit', () => {
       payloadRoot: payload([{ name: 'other-gpl', version: '1.0.0', license: 'GPL-3.0' }]), kernelId: 'fixture', policy: basePolicy,
     })).toThrow(/no explicit redistribution obligation/);
   });
+
+  it('retains the Windows sharp compound license and explicit bundled-libvips obligation', () => {
+    const report = auditRuntimeLicenses({
+      payloadRoot: payload([{
+        name: '@img/sharp-win32-x64', version: '0.35.3', license: 'Apache-2.0 AND LGPL-3.0-or-later',
+      }]),
+      kernelId: 'deepseek-harness',
+    });
+    expect(report).toMatchObject({ ok: true, obligationIds: ['sharp-win32-libvips-lgpl'] });
+    expect(report.packages).toEqual([expect.objectContaining({
+      name: '@img/sharp-win32-x64', version: '0.35.3',
+      license: 'Apache-2.0 AND LGPL-3.0-or-later', resolution: 'declared',
+      obligationId: 'sharp-win32-libvips-lgpl',
+    })]);
+  });
+
+  it('never treats an Apache AND LGPL expression as an optional permissive branch', () => {
+    for (const name of ['unreviewed-bundle', '@img/sharp-win32-arm64', '@img/sharp-win32-x64-extra']) {
+      expect(() => auditRuntimeLicenses({
+        payloadRoot: payload([{ name, version: '0.35.3', license: 'Apache-2.0 AND LGPL-3.0-or-later' }]),
+        kernelId: 'deepseek-harness',
+      })).toThrow(/no explicit redistribution obligation/);
+    }
+  });
 });

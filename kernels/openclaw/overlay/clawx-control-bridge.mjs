@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { createInterface } from 'node:readline';
 
-const artifactVersion = process.env.CLAWX_KERNEL_ARTIFACT_VERSION ?? '2026.7.1-2+clawx.6';
+const artifactVersion = process.env.CLAWX_KERNEL_ARTIFACT_VERSION ?? '2026.9.2+clawx.7';
 const generation = Number.parseInt(process.env.CLAWX_KERNEL_GENERATION ?? '0', 10);
 const startedAt = Date.now();
 let initialized = false;

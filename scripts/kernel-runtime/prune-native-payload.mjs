@@ -23,9 +23,15 @@ const scopes = {
   '@openai': /^codex-(darwin|linux|win32)-(x64|arm64)$/,
   '@koromix': /^koffi-(darwin|linux|win32|freebsd|openbsd)-(x64|arm64|arm|ia32|loong64|riscv64)$/,
   '@deepseek-ai': /^node-addon-landlock-run-(linux)-(x64|arm64)$/,
+  '@openclaw': /^fs-safe-(darwin|linux|win32)-(x64|arm64)(?:-(gnu|musl|msvc))?$/,
+  '@trycua': /^cua-driver-(darwin|linux|win32)-(x64|arm64)(?:-(gnu|musl|msvc))?$/,
+  '@ubjs': /^node-(darwin|linux|win32)-(x64|arm64)(?:-(gnu|musl|msvc))?$/,
+  '@wecom': /^cli-(darwin|linux|win32)-(x64|arm64)$/,
 };
 let removed = 0;
 for (const nodeModules of findDirectories(payload, 'node_modules')) {
+  if (!existsSync(nodeModules)) continue; // A parent non-target package was pruned.
+  if (platform !== 'darwin' && existsSync(join(nodeModules, 'fsevents'))) remove(join(nodeModules, 'fsevents'));
   for (const [scope, pattern] of Object.entries(scopes)) {
     const scopeRoot = join(nodeModules, scope);
     if (!existsSync(scopeRoot)) continue;
@@ -34,7 +40,8 @@ for (const nodeModules of findDirectories(payload, 'node_modules')) {
       if (!match) continue;
       const candidatePlatform = aliases[match[1]] ?? match[1];
       const candidateArch = match[2].split('-')[0];
-      if (candidatePlatform !== platform || (candidateArch !== arch && candidateArch !== 'universal')) remove(join(scopeRoot, entry));
+      if (candidatePlatform !== platform || (candidateArch !== arch && candidateArch !== 'universal')
+        || (platform === 'linux' && /(?:^|-)musl(?:-|$)/.test(entry))) remove(join(scopeRoot, entry));
     }
   }
   for (const entry of readdirSync(nodeModules)) {
@@ -51,12 +58,24 @@ for (const nodeModules of findDirectories(payload, 'node_modules')) {
   // ClawX's independent Node distribution and support contract are glibc-only.
   const scopedKoffiMusl = join(nodeModules, '@koromix', `koffi-linux-${arch}`, `musl_${arch}`);
   if (platform === 'linux' && existsSync(scopedKoffiMusl)) remove(scopedKoffiMusl);
-  for (const packageName of ['tree-sitter-bash', 'node-pty']) {
+  for (const packageName of ['tree-sitter-bash', 'node-pty', 'bare-fs', 'bare-os', 'bare-url']) {
     const prebuilds = join(nodeModules, packageName, 'prebuilds');
     if (!existsSync(prebuilds)) continue;
     for (const entry of readdirSync(prebuilds)) {
       const normalized = entry.replace(/^mac-/, 'darwin-').replace(/^win-/, 'win32-');
       if (!normalized.startsWith(`${platform}-${arch}`)) remove(join(prebuilds, entry));
+    }
+  }
+  const tuiNative = join(nodeModules, '@earendil-works', 'pi-tui', 'native');
+  if (existsSync(tuiNative)) {
+    for (const nativePlatform of ['darwin', 'win32']) {
+      const platformRoot = join(tuiNative, nativePlatform);
+      if (!existsSync(platformRoot)) continue;
+      if (nativePlatform !== platform) { remove(platformRoot); continue; }
+      const prebuilds = join(platformRoot, 'prebuilds');
+      if (existsSync(prebuilds)) for (const target of readdirSync(prebuilds)) {
+        if (target !== `${platform}-${arch}`) remove(join(prebuilds, target));
+      }
     }
   }
   const conpty = join(nodeModules, 'node-pty', 'third_party', 'conpty');
@@ -81,7 +100,9 @@ function findDirectories(root, name) {
       if (!entry.isDirectory()) continue;
       const path = join(directory, entry.name);
       if (entry.name === name) found.push(path);
-      else visit(path);
+      // Flattened mirrors can retain nested, version-conflicting packages.
+      // Every node_modules subtree must obey the same target/ABI policy.
+      visit(path);
     }
   };
   visit(root);

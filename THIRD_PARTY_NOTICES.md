@@ -15,8 +15,8 @@ This file records the redistribution review for optional ClawX kernel runtime ar
 ## DeepSeek Harness
 
 - Project: `deepseek-ai/deepseek-harness`
-- Frozen release: `0.1.2-alpha.2`
-- Upstream commit: `0a53fb55bea101816fa226bb964ae2bed71c343b`
+- Frozen release: `0.1.3-alpha.1` (`dsh-v0.1.3-alpha.1`)
+- Upstream commit: `d347e703908d0406b7a7ef80e3a0e594d86b2215`
 - License: MIT
 - Distribution model: a separately downloadable, immutable runtime artifact produced by ClawX CI.
 - Modifications: ClawX persistence/ACP/control bridge packages and any patch series are declared in `kernels/deepseek-harness/source.json` and the artifact provenance.

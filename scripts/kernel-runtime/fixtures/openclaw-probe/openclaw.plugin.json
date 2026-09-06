@@ -1,0 +1,6 @@
+{
+  "id": "clawx-runtime-probe",
+  "name": "ClawX isolated runtime probe (not distributed)",
+  "activation": { "onStartup": true },
+  "configSchema": { "type": "object", "additionalProperties": false, "properties": {} }
+}

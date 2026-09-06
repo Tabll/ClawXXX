@@ -84,7 +84,8 @@ import {
 import { OpenClawKernelDriver } from '../kernels/openclaw/openclaw-driver';
 import { OpenClawAcpChatAdapter } from '../kernels/openclaw/acp-chat-adapter';
 import { createOpenClawGatewayControlPlane } from '../kernels/openclaw/gateway-control-plane';
-import { purgeForbiddenOpenClawHistory } from '../kernels/openclaw/managed-history-guard';
+import { assertNoForbiddenOpenClawHistory } from '../kernels/openclaw/managed-history-guard';
+import { assertManagedOpenClawRuntimeProtocol } from '../kernels/openclaw/runtime-location';
 import { RemoteConversationStoreProtocolClient } from '../data/conversation-store-client';
 import { AcpSessionAccessRegistry } from '../services/acp-session-access-registry';
 import { createAcpChatService, type AcpChatService } from '../services/acp-chat-service';
@@ -316,7 +317,7 @@ async function registerManagedOpenClawRuntime(window: BrowserWindow): Promise<vo
     const revokeCredentials = credentialBroker.registerProcess(credentialIdentity);
     const chat = new OpenClawAcpChatAdapter(
       service,
-      async () => { await purgeForbiddenOpenClawHistory(openClawRuntimeLocation!); },
+      async () => { await assertNoForbiddenOpenClawHistory(openClawRuntimeLocation!); },
     );
     const driver = new OpenClawKernelDriver({
       generation,
@@ -326,7 +327,8 @@ async function registerManagedOpenClawRuntime(window: BrowserWindow): Promise<vo
       control: createOpenClawGatewayControlPlane(gatewayManager),
       hooks: {
         beforeStart: async () => {
-          await purgeForbiddenOpenClawHistory(openClawRuntimeLocation!);
+          assertManagedOpenClawRuntimeProtocol(openClawRuntimeLocation!);
+          await assertNoForbiddenOpenClawHistory(openClawRuntimeLocation!);
           await syncAllProviderAuthToRuntime();
           await ensureClawXDefaultIdentity();
           await repairClawXOnlyBootstrapFiles();
@@ -346,7 +348,7 @@ async function registerManagedOpenClawRuntime(window: BrowserWindow): Promise<vo
         },
         afterStop: async () => {
           revokeCredentials();
-          await purgeForbiddenOpenClawHistory(openClawRuntimeLocation!);
+          await assertNoForbiddenOpenClawHistory(openClawRuntimeLocation!);
           await dataClient.disconnect();
           if (activeKernelDrivers.get('openclaw') === driver) activeKernelDrivers.delete('openclaw');
         },

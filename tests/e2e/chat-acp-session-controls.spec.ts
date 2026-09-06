@@ -27,8 +27,8 @@ test.describe('canonical multi-kernel chat session controls', () => {
               {
                 kernelId: 'openclaw',
                 displayName: 'OpenClaw',
-                installation: { kernelId: 'openclaw', state: 'installed', activeVersion: '2026.8.1-clawx.1', updatedAt: '2026-08-24T00:00:00.000Z' },
-                runtime: { kernelId: 'openclaw', state: 'ready', generation: 1, artifactVersion: '2026.8.1-clawx.1', diagnostics: [] },
+                installation: { kernelId: 'openclaw', state: 'installed', activeVersion: '2026.9.2+clawx.7', updatedAt: '2026-08-24T00:00:00.000Z' },
+                runtime: { kernelId: 'openclaw', state: 'ready', generation: 1, artifactVersion: '2026.9.2+clawx.7', diagnostics: [] },
                 updateAvailable: false,
                 installAllowed: true,
                 compatibilityFailures: [],
@@ -36,8 +36,8 @@ test.describe('canonical multi-kernel chat session controls', () => {
               {
                 kernelId: 'deepseek-harness',
                 displayName: 'DeepSeek Harness',
-                installation: { kernelId: 'deepseek-harness', state: 'installed', activeVersion: '0.1.0-clawx.1', updatedAt: '2026-08-24T00:00:00.000Z' },
-                runtime: { kernelId: 'deepseek-harness', state: 'ready', generation: 1, artifactVersion: '0.1.0-clawx.1', diagnostics: [] },
+                installation: { kernelId: 'deepseek-harness', state: 'installed', activeVersion: '0.1.3-alpha.1+clawx.11', updatedAt: '2026-08-24T00:00:00.000Z' },
+                runtime: { kernelId: 'deepseek-harness', state: 'ready', generation: 1, artifactVersion: '0.1.3-alpha.1+clawx.11', diagnostics: [] },
                 updateAvailable: false,
                 installAllowed: true,
                 compatibilityFailures: [],
@@ -45,8 +45,8 @@ test.describe('canonical multi-kernel chat session controls', () => {
             ],
           },
           runtimes: [
-            { kernelId: 'openclaw', state: 'ready', generation: 1, artifactVersion: '2026.8.1-clawx.1', diagnostics: [] },
-            { kernelId: 'deepseek-harness', state: 'ready', generation: 1, artifactVersion: '0.1.0-clawx.1', diagnostics: [] },
+            { kernelId: 'openclaw', state: 'ready', generation: 1, artifactVersion: '2026.9.2+clawx.7', diagnostics: [] },
+            { kernelId: 'deepseek-harness', state: 'ready', generation: 1, artifactVersion: '0.1.3-alpha.1+clawx.11', diagnostics: [] },
           ],
         },
       });
@@ -142,7 +142,7 @@ test.describe('canonical multi-kernel chat session controls', () => {
             turnId: 'turn-user-history',
             assistantTurnId: 'turn-assistant-history',
             kernelId: 'openclaw',
-            kernelVersion: '2026.8.1-clawx.1',
+            kernelVersion: '2026.9.2+clawx.7',
             generation: 1,
             agentId: 'main',
             agentSnapshot: {
@@ -332,7 +332,7 @@ test.describe('canonical multi-kernel chat session controls', () => {
       await page.getByTestId('acp-assistant-message').hover();
       const provenance = page.getByTestId('acp-assistant-kernel-provenance');
       await expect(provenance).toContainText('openclaw');
-      await expect(provenance).toHaveAttribute('title', 'openclaw · 2026.8.1-clawx.1');
+      await expect(provenance).toHaveAttribute('title', 'openclaw · 2026.9.2+clawx.7');
       await expect(page.getByTestId('acp-assistant-metadata')).toContainText('openai/gpt-5.5');
       await expect(page.getByTestId('acp-assistant-metadata')).toContainText('12K');
       await expect(page.getByTestId('acp-assistant-metadata')).toContainText('2.5K');
@@ -466,6 +466,10 @@ test.describe('canonical multi-kernel chat session controls', () => {
         && typeof entry.payload?.runId === 'string'
         && typeof entry.payload?.turnId === 'string'
       ))).toBe(true);
+      // September OpenClaw creates a fresh, transient native session per run;
+      // the shared UI must retain one Conversation but never reuse run/turn IDs.
+      expect(new Set(promptRequests.map(entry => entry.payload?.runId)).size).toBe(promptRequests.length);
+      expect(new Set(promptRequests.map(entry => entry.payload?.turnId)).size).toBe(promptRequests.length);
       expect(promptRequests.map(entry => entry.payload?.kernelId)).toEqual([
         'deepseek-harness',
         'openclaw',

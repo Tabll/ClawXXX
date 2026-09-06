@@ -1,13 +1,18 @@
 import { Buffer } from 'node:buffer';
-import { readFile } from 'fs/promises';
+import { mkdir, mkdtemp, readFile, rm } from 'fs/promises';
+import { tmpdir } from 'node:os';
 import { join } from 'path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 const repoRoot = process.cwd();
 
 describe('ClawX OpenAI image plugin request shape', () => {
-  afterEach(() => {
+  let isolatedRoot: string | undefined;
+  afterEach(async () => {
     vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
+    if (isolatedRoot) await rm(isolatedRoot, { recursive: true, force: true });
+    isolatedRoot = undefined;
   });
 
   it('does not force deprecated OpenAI Images response_format', async () => {
@@ -24,6 +29,13 @@ describe('ClawX OpenAI image plugin request shape', () => {
   });
 
   it('omits response_format from generated OpenAI-compatible requests', async () => {
+    // The SDK now consults machine-state ownership before resolving credentials.
+    // Never inspect the developer's live OpenClaw state from this unit test.
+    isolatedRoot = await mkdtemp(join(tmpdir(), 'clawx-image-sdk-'));
+    const agentDir = join(isolatedRoot, 'agents', 'main', 'agent');
+    await mkdir(agentDir, { recursive: true });
+    vi.stubEnv('OPENCLAW_STATE_DIR', isolatedRoot);
+    vi.stubEnv('OPENCLAW_CONFIG_PATH', join(isolatedRoot, 'openclaw.json'));
     let requestBody = '';
     vi.stubGlobal('fetch', vi.fn(async (_input: unknown, init?: RequestInit) => {
       requestBody = String(init?.body ?? '');
@@ -68,7 +80,7 @@ describe('ClawX OpenAI image plugin request shape', () => {
             },
           },
         },
-        agentDir: '/tmp/clawx-openai-image-test-agent',
+        agentDir,
         ssrfPolicy: { dangerouslyAllowPrivateNetwork: true },
     });
 

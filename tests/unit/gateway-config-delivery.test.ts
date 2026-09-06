@@ -11,8 +11,13 @@ import {
   resetOpenClawConfigCoordinatorForTests,
 } from '@electron/gateway/config-delivery';
 
-const { renameMock } = vi.hoisted(() => ({
+const { renameMock, runtimeState } = vi.hoisted(() => ({
   renameMock: vi.fn(),
+  runtimeState: { version: undefined as string | undefined },
+}));
+
+vi.mock('@electron/kernels/openclaw/runtime-location', () => ({
+  getOpenClawRuntimeLocation: () => runtimeState.version ? { artifactVersion: runtimeState.version } : undefined,
 }));
 
 vi.mock('node:fs/promises', async (importOriginal) => {
@@ -45,6 +50,7 @@ describe('OpenClaw config delivery coordinator', () => {
 
   beforeEach(async () => {
     renameMock.mockClear();
+    runtimeState.version = undefined;
     resetOpenClawConfigCoordinatorForTests();
     testDir = await mkdtemp(join(tmpdir(), 'clawx-config-delivery-'));
     configPath = join(testDir, 'configured-openclaw.json5');
@@ -106,6 +112,43 @@ describe('OpenClaw config delivery coordinator', () => {
     });
     expect(gatewayManager.rpc).toHaveBeenCalledOnce();
     expect(gatewayManager.rpc).toHaveBeenCalledWith('config.get', {});
+  });
+
+  it('rebases keyed roster edits on a fresh CAS snapshot without losing provider credentials or reviving a deleted agent', async () => {
+    runtimeState.version = '2026.9.2+clawx.7';
+    const gatewayManager = createGatewayManager();
+    let reads = 0;
+    const writes: Array<{ raw: string; baseHash: string }> = [];
+    gatewayManager.rpc.mockImplementation(async (method: string, params: { raw: string; baseHash: string }) => {
+      if (method === 'config.get') {
+        reads++;
+        return { hash: `hash-${reads}`, config: {
+          agents: { ownership: 'explicit', defaults: { systemAgent: { agentId: 'work' } }, entries: { main: { workspace: '/main' }, work: { workspace: '/work' } } },
+          models: { providers: { custom: { apiKey: `test-key-${reads}` } } },
+          channels: { telegram: { accounts: { primary: { botToken: `test-bot-${reads}` } } } }, future: reads,
+        } };
+      }
+      if (method === 'config.set') {
+        writes.push(params);
+        if (writes.length === 1) throw new Error('config changed since last load; re-run config.get and retry');
+        return { ok: true };
+      }
+      throw new Error(`Unexpected ${method}`);
+    });
+    registerOpenClawConfigCoordinator(gatewayManager);
+    await mutateOpenClawConfig(config => {
+      const agents = config.agents as { list: Array<Record<string, unknown>> };
+      agents.list = agents.list.filter(entry => entry.id !== 'work').map(entry => ({ ...entry, default: true, workspace: '/changed' }));
+    });
+    expect(writes.map(item => item.baseHash)).toEqual(['hash-1', 'hash-2']);
+    const final = JSON.parse(writes[1].raw);
+    expect(final.agents.entries).toEqual({ main: expect.objectContaining({ workspace: '/changed' }) });
+    expect(final.agents).not.toHaveProperty('list');
+    expect(final.agents.defaults.systemAgent.agentId).toBe('main');
+    expect(final.models.providers.custom.apiKey).toBe('test-key-2');
+    expect(final.channels.telegram.accounts.primary.botToken).toBe('test-bot-2');
+    expect(final.future).toBe(2);
+    expect(final.cron.enabled).toBe(false);
   });
 
   it('reads JSON5 from the resolved file while the Gateway is stopped', async () => {

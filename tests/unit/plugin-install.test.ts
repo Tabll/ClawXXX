@@ -235,6 +235,36 @@ describe('plugin installer diagnostics', () => {
     expect(mockLoggerWarn).not.toHaveBeenCalled();
   });
 
+  it('refreshes a same-version dev mirror after patch identity changes and reuses it only after recording that identity', async () => {
+    mockApp.isPackaged = false;
+    const source = '/mock/app/node_modules/@soimy/dingtalk';
+    const target = '/home/test/.clawx/kernel-config/openclaw/extensions/dingtalk';
+    let marker = '{}';
+    mockExistsSync.mockImplementation((input: string) => [
+      `${source}/openclaw.plugin.json`, `${source}/package.json`,
+      `${target}/openclaw.plugin.json`, `${target}/package.json`,
+    ].includes(String(input)));
+    mockReadFileSync.mockImplementation((input: string) => {
+      if (String(input).endsWith('.clawx-mirror.json')) return marker;
+      if (String(input).endsWith('package.json')) return JSON.stringify({ name: '@soimy/dingtalk', version: '3.6.10' });
+      return '{}';
+    });
+    mockWriteFileSync.mockImplementation((input, value) => {
+      if (String(input).endsWith('.clawx-mirror.json')) marker = String(value);
+    });
+    const { ensurePluginInstalled } = await import('@electron/utils/plugin-install');
+    await expect(ensurePluginInstalled('dingtalk', ['/missing-bundle'], 'DingTalk')).resolves.toMatchObject({ installed: true });
+    expect(mockCpSync).toHaveBeenCalledWith(source, target, expect.anything());
+    expect(JSON.parse(marker).sourceIdentity).toMatch(/^[a-f0-9]{64}$/);
+    mockCpSync.mockClear();
+    await ensurePluginInstalled('dingtalk', ['/missing-bundle'], 'DingTalk');
+    expect(mockCpSync).not.toHaveBeenCalled();
+    // Same npm version, different reviewed patch realization.
+    mockRealpathSync.mockImplementation((input: string) => input === source ? `${source}-new-patch-hash` : input);
+    await ensurePluginInstalled('dingtalk', ['/missing-bundle'], 'DingTalk');
+    expect(mockCpSync).toHaveBeenCalled();
+  });
+
   it('retries once on Windows and logs diagnostic details when bundled copy fails', async () => {
     setPlatform('win32');
     mockHomedir.mockReturnValue('C:\\Users\\test');

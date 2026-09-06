@@ -9,7 +9,7 @@ import {
   useMultiFileAuthState as loadMultiFileAuthState,
   type WAMessage,
   type WASocket,
-} from '@whiskeysockets/baileys';
+} from 'baileys';
 import { canonicalChannelAccountKey } from '@shared/domains/channels';
 import {
   captureChannelAuthBundle,

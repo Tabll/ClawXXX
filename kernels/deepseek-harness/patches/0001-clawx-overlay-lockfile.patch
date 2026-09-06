@@ -1,8 +1,8 @@
 diff --git a/pnpm-lock.yaml b/pnpm-lock.yaml
-index 828cd597..9e0ba9d1 100644
+index a286e8db0adb8a0178b3b845a52e057f4ef9046b..9f816c180df8e31bb1d5a3f5e26fee16638444c8 100644
 --- a/pnpm-lock.yaml
 +++ b/pnpm-lock.yaml
-@@ -625,6 +625,76 @@ importers:
+@@ -629,6 +629,85 @@ importers:
          specifier: workspace:^
          version: link:../../interaction/user-approval
  
@@ -55,9 +55,15 @@ index 828cd597..9e0ba9d1 100644
 +      '@deepseek-ai/cordis':
 +        specifier: workspace:^
 +        version: link:../../../vendor/cordis
++      '@deepseek-ai/dsh-agent':
++        specifier: workspace:^
++        version: link:../../core/agent
 +      '@deepseek-ai/dsh-agent-loop':
 +        specifier: workspace:^
 +        version: link:../../core/agent-loop
++      '@deepseek-ai/dsh-agent-loop-testkit':
++        specifier: workspace:^
++        version: link:../../test-support/agent-loop-testkit
 +      '@deepseek-ai/dsh-invariants':
 +        specifier: workspace:^
 +        version: link:../../runtime-diagnostics/invariants
@@ -67,6 +73,9 @@ index 828cd597..9e0ba9d1 100644
 +      '@deepseek-ai/dsh-session':
 +        specifier: workspace:^
 +        version: link:../../core/session
++      '@deepseek-ai/dsh-session-projection':
++        specifier: workspace:^
++        version: link:../../session/session-projection
 +      '@deepseek-ai/dsh-tool-todo':
 +        specifier: workspace:^
 +        version: link:../../todo/tool-todo
@@ -79,7 +88,7 @@ index 828cd597..9e0ba9d1 100644
    packages/api/gateway:
      dependencies:
        '@deepseek-ai/dsh-deque':
-@@ -4345,6 +4415,8 @@ importers:
+@@ -4251,6 +4330,8 @@ importers:
          specifier: workspace:^
          version: link:../../core/system-prompt
  
@@ -88,7 +97,7 @@ index 828cd597..9e0ba9d1 100644
    packages/core/agent:
      devDependencies:
        '@deepseek-ai/cordis':
-@@ -4594,6 +4666,19 @@ importers:
+@@ -4494,6 +4575,19 @@ importers:
          specifier: workspace:^
          version: link:../../llm/llm
  
@@ -108,7 +117,7 @@ index 828cd597..9e0ba9d1 100644
    packages/credentials/credentials:
      dependencies:
        '@deepseek-ai/dsh-brand':
-@@ -7038,6 +7123,235 @@ importers:
+@@ -6692,6 +6786,235 @@ importers:
          specifier: workspace:^
          version: link:../../../vendor/cordis
  
@@ -156,9 +165,6 @@ index 828cd597..9e0ba9d1 100644
 +      '@deepseek-ai/dsh-agent-presets':
 +        specifier: workspace:^
 +        version: link:../../preset/agent-presets
-+      '@deepseek-ai/dsh-agent-spine-demo':
-+        specifier: workspace:^
-+        version: link:../../examples/agent-spine-demo
 +      '@deepseek-ai/dsh-anonymous-user-id':
 +        specifier: workspace:^
 +        version: link:../../identity/anonymous-user-id
@@ -216,6 +222,9 @@ index 828cd597..9e0ba9d1 100644
 +      '@deepseek-ai/dsh-home-paths':
 +        specifier: workspace:^
 +        version: link:../../util/home-paths
++      '@deepseek-ai/dsh-http-proxy':
++        specifier: workspace:^
++        version: link:../../util/http-proxy
 +      '@deepseek-ai/dsh-invariants':
 +        specifier: workspace:^
 +        version: link:../../runtime-diagnostics/invariants
@@ -344,7 +353,7 @@ index 828cd597..9e0ba9d1 100644
    packages/sandbox/sandbox:
      dependencies:
        '@deepseek-ai/dsh-util-values':
-@@ -7566,6 +7880,39 @@ importers:
+@@ -7260,6 +7583,39 @@ importers:
          specifier: workspace:^
          version: link:../../util/timeout
  
@@ -383,8 +392,8 @@ index 828cd597..9e0ba9d1 100644
 +
    packages/session/session-persistence-jsonl:
      dependencies:
-       '@deepseek-ai/schemastery':
-@@ -8497,6 +8844,15 @@ importers:
+       '@deepseek-ai/dsh-session-format':
+@@ -8119,6 +8475,15 @@ importers:
          specifier: workspace:^
          version: link:../../core/tools
  
@@ -400,7 +409,7 @@ index 828cd597..9e0ba9d1 100644
    packages/spill/spill:
      devDependencies:
        '@deepseek-ai/cordis':
-@@ -10939,6 +11295,11 @@ importers:
+@@ -10411,6 +10776,11 @@ importers:
  
  packages:
  
@@ -412,7 +421,7 @@ index 828cd597..9e0ba9d1 100644
    '@agentclientprotocol/sdk@1.4.0':
      resolution: {integrity: sha512-/eufudw+aFY1LKLolT6yFE6UMmYRl7fMJ/DEONSIyR6wI3slHWITBsANRGqXEY8FRzqUxwh7QEaGiZHcJPVThg==}
      peerDependencies:
-@@ -16638,6 +16999,10 @@ packages:
+@@ -16371,6 +16741,10 @@ packages:
  
  snapshots:
  
@@ -424,13 +433,13 @@ index 828cd597..9e0ba9d1 100644
      dependencies:
        zod: 4.4.3
 diff --git a/tsconfig.host.json b/tsconfig.host.json
-index f8166642..f7e77a52 100644
+index 85ae2dac00220e10500a274fb14202a8749240f9..fe18dda11dd6470f42578c755ee1249ca3bb0ae9 100644
 --- a/tsconfig.host.json
 +++ b/tsconfig.host.json
-@@ -329,6 +329,14 @@
-     { "path": "./packages/lsp/lsp" },
-     { "path": "./packages/lsp/lsp-stdio" },
-     { "path": "./packages/lsp/tool-lsp" },
+@@ -121,6 +121,14 @@
+     "scripts/client-bundle-purity.spec.ts"
+   ],
+   "references": [
 +    { "path": "./packages/acp/clawx-rich-events" },
 +    { "path": "./packages/acp/clawx-acp-bridge" },
 +    { "path": "./packages/agents/clawx-dsh-agent-catalog" },
@@ -439,6 +448,6 @@ index f8166642..f7e77a52 100644
 +    { "path": "./packages/session/session-persistence-clawx" },
 +    { "path": "./packages/skills/clawx-dsh-skill-catalog" },
 +    { "path": "./packages/runtime/clawx-runtime-host" },
-     { "path": "./apps/cli" }
-   ]
- }
+     { "path": "./vendor/cosmokit" },
+     { "path": "./vendor/schemastery" },
+     { "path": "./vendor/cordis" },

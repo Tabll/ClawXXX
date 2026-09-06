@@ -574,7 +574,12 @@ export class ConversationRouter extends EventEmitter {
     if (kind === 'assistant.delta') state.assistantText += textPayload(payload);
     if (kind === 'assistant.final') {
       const text = textPayload(payload);
-      if (text) state.assistantText = text;
+      // An explicit empty snapshot discards failed-attempt streaming text.
+      // Attachment-only final events still preserve the accumulated answer.
+      const explicitText = typeof payload === 'string'
+        || (payload !== null && typeof payload === 'object'
+          && typeof (payload as Record<string, unknown>).text === 'string');
+      if (text || explicitText) state.assistantText = text;
     }
     if ((kind === 'assistant.delta' || kind === 'assistant.final') && payload && typeof payload === 'object') {
       const payloadRecord = payload as Record<string, unknown>;

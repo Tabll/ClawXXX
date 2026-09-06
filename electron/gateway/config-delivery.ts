@@ -7,6 +7,8 @@ import JSON5 from 'json5';
 import type { GatewayManager } from './manager';
 import { withConfigLock } from '../utils/config-mutex';
 import { resolveOpenClawConfigPath } from '../utils/paths';
+import { getOpenClawRuntimeLocation } from '../kernels/openclaw/runtime-location';
+import { projectOpenClawConfigForHost, projectOpenClawConfigForRuntime } from './config-projection';
 
 export type OpenClawConfig = Record<string, unknown>;
 /** Mutators may be replayed after a compare-and-swap conflict and must not perform external writes. */
@@ -47,16 +49,18 @@ function parseConfig(raw: string): OpenClawConfig {
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
     throw new Error('OpenClaw config must be an object');
   }
-  return parsed as OpenClawConfig;
+  return projectOpenClawConfigForHost(parsed as OpenClawConfig);
 }
 
 function serializeConfig(config: OpenClawConfig): string {
-  return `${JSON.stringify(config, null, 2)}\n`;
+  const version = getOpenClawRuntimeLocation()?.artifactVersion.match(/^(\d+)\.(\d+)\./);
+  const keyedRoster = !!version && (Number(version[1]) > 2026 || (Number(version[1]) === 2026 && Number(version[2]) >= 9));
+  return `${JSON.stringify(projectOpenClawConfigForRuntime(config, keyedRoster), null, 2)}\n`;
 }
 
 function parseRunningConfigSnapshot(snapshot: ConfigSnapshot | undefined): OpenClawConfig {
   if (snapshot?.config && typeof snapshot.config === 'object' && !Array.isArray(snapshot.config)) {
-    return structuredClone(snapshot.config) as OpenClawConfig;
+    return projectOpenClawConfigForHost(snapshot.config as OpenClawConfig);
   }
   const raw = typeof snapshot?.raw === 'string' ? snapshot.raw : '';
   if (!raw.trim()) {
@@ -81,7 +85,7 @@ function isConfigSetResponseLost(error: unknown): boolean {
 
 async function acceptPersistedConfigSetCommitIfMatched(config: OpenClawConfig): Promise<boolean> {
   const persisted = await readFileConfig(resolveOpenClawConfigPath());
-  return isDeepStrictEqual(persisted.config, config);
+  return isDeepStrictEqual(persisted.config, parseConfig(serializeConfig(config)));
 }
 
 async function mutateRunningConfig(
@@ -96,7 +100,8 @@ async function mutateRunningConfig(
     }
 
     const config = parseRunningConfigSnapshot(snapshot);
-    if (!await applyMutator(config, mutator, true)) return false;
+    const changed = await applyMutator(config, mutator, true);
+    if (!changed && isDeepStrictEqual(config, parseConfig(serializeConfig(config)))) return false;
 
     try {
       await manager.rpc('config.set', {
@@ -187,7 +192,7 @@ async function mutateFileConfig(
       if (manager?.getStatus().state === 'running') {
         return await mutateRunningConfig(manager, mutator);
       }
-      if (!changed) return false;
+      if (!changed && isDeepStrictEqual(snapshot.config, parseConfig(serializeConfig(snapshot.config)))) return false;
 
       await mkdir(dirname(configPath), { recursive: true });
       const temporaryPath = `${configPath}.${process.pid}.${randomUUID()}.tmp`;

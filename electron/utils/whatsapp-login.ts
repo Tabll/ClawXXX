@@ -1,5 +1,6 @@
 import { dirname, join } from 'path';
 import { createRequire } from 'module';
+import { pathToFileURL } from 'node:url';
 import { EventEmitter } from 'events';
 import { existsSync, mkdirSync, rmSync, readdirSync } from 'fs';
 import { deflateSync } from 'zlib';
@@ -22,20 +23,23 @@ let baileysExports: BaileysExports | null = null;
 let baileysPackageDir: string | null = null;
 
 /** Load Baileys on demand so a missing packaged dependency does not crash app startup. */
-function loadBaileys(): BaileysExports {
-    if (baileysExports) {
+async function loadBaileys(): Promise<BaileysExports> {
+    const packageJsonPath = resolveOpenClawRuntimeModulePath('baileys/package.json');
+    const nextPackageDir = dirname(packageJsonPath);
+    if (baileysExports && baileysPackageDir === nextPackageDir) {
         return baileysExports;
     }
 
-    const packageJsonPath = resolveOpenClawRuntimeModulePath('@whiskeysockets/baileys/package.json');
-    baileysPackageDir = dirname(packageJsonPath);
-    baileysExports = require(baileysPackageDir) as BaileysExports;
+    // rc14 is ESM; resolve relative to the selected verified runtime, never
+    // reuse an older kernel's module after a runtime switch.
+    baileysExports = await import(/* @vite-ignore */ pathToFileURL(join(nextPackageDir, 'lib/index.js')).href) as BaileysExports;
+    baileysPackageDir = nextPackageDir;
     return baileysExports;
 }
 
 function getBaileysPackageDir(): string {
     if (!baileysPackageDir) {
-        loadBaileys();
+        throw new Error('Baileys must be loaded before resolving its logger');
     }
     return baileysPackageDir!;
 }
@@ -276,7 +280,7 @@ export class WhatsAppLoginManager extends EventEmitter {
                 useMultiFileAuthState: initAuth,
                 DisconnectReason,
                 fetchLatestBaileysVersion,
-            } = loadBaileys();
+            } = await loadBaileys();
 
             // Path where OpenClaw expects WhatsApp credentials
             const authDir = join(getOpenClawConfigDir(), 'credentials', 'whatsapp', accountId);

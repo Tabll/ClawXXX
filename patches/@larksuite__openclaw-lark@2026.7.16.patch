@@ -1,0 +1,155 @@
+diff --git a/package.json b/package.json
+--- a/package.json
++++ b/package.json
+@@ -1,63 +1,63 @@
+-{
+-  "name": "@larksuite/openclaw-lark",
+-  "version": "2026.7.16",
+-  "description": "OpenClaw Lark/Feishu channel plugin",
+-  "exports": {
+-    ".": {
+-      "import": {
+-        "types": "./dist/index.d.mts",
+-        "default": "./dist/index.mjs"
+-      }
+-    }
+-  },
+-  "main": "./dist/index.js",
+-  "types": "./dist/index.d.ts",
+-  "bin": {
+-    "openclaw-lark": "bin/openclaw-lark.js"
+-  },
+-  "files": [
+-    "**/*"
+-  ],
+-  "packageManager": "pnpm@10.32.1",
+-  "engines": {
+-    "node": ">=22"
+-  },
+-  "dependencies": {
+-    "@larksuiteoapi/node-sdk": "^1.64.0",
+-    "@sinclair/typebox": "0.34.49",
+-    "image-size": "^2.0.2",
+-    "undici-types": "^8.1.0",
+-    "zod": "^4.3.6"
+-  },
+-  "peerDependencies": {
+-    "openclaw": ">=2026.5.4"
+-  },
+-  "peerDependenciesMeta": {
+-    "openclaw": {
+-      "optional": true
+-    }
+-  },
+-  "openclaw": {
+-    "extensions": [
+-      "./index.js"
+-    ],
+-    "channel": {
+-      "id": "openclaw-lark",
+-      "label": "Feishu",
+-      "selectionLabel": "Lark/Feishu (飞书)",
+-      "docsPath": "/channels/feishu",
+-      "docsLabel": "feishu",
+-      "blurb": "飞书/Lark enterprise messaging with doc/wiki/drive/task/calendar tools.",
+-      "aliases": [
+-        "lark"
+-      ],
+-      "order": 35,
+-      "quickstartAllowFrom": true
+-    },
+-    "install": {
+-      "npmSpec": "@larksuite/openclaw-lark",
+-      "localPath": "extensions/feishu",
+-      "defaultChoice": "npm"
+-    }
+-  }
+-}
++{
++  "name": "@larksuite/openclaw-lark",
++  "version": "2026.7.16",
++  "description": "OpenClaw Lark/Feishu channel plugin",
++  "exports": {
++    ".": {
++      "types": "./index.d.ts",
++      "require": "./index.js",
++      "default": "./index.js"
++    }
++  },
++  "main": "./index.js",
++  "types": "./index.d.ts",
++  "bin": {
++    "openclaw-lark": "bin/openclaw-lark.js"
++  },
++  "files": [
++    "**/*"
++  ],
++  "packageManager": "pnpm@10.32.1",
++  "engines": {
++    "node": ">=22"
++  },
++  "dependencies": {
++    "@larksuiteoapi/node-sdk": "^1.64.0",
++    "@sinclair/typebox": "0.34.49",
++    "image-size": "^2.0.2",
++    "undici-types": "^8.1.0",
++    "zod": "^4.3.6"
++  },
++  "peerDependencies": {
++    "openclaw": ">=2026.5.4"
++  },
++  "peerDependenciesMeta": {
++    "openclaw": {
++      "optional": true
++    }
++  },
++  "openclaw": {
++    "extensions": [
++      "./index.js"
++    ],
++    "channel": {
++      "id": "openclaw-lark",
++      "label": "Feishu",
++      "selectionLabel": "Lark/Feishu (飞书)",
++      "docsPath": "/channels/feishu",
++      "docsLabel": "feishu",
++      "blurb": "飞书/Lark enterprise messaging with doc/wiki/drive/task/calendar tools.",
++      "aliases": [
++        "lark"
++      ],
++      "order": 35,
++      "quickstartAllowFrom": true
++    },
++    "install": {
++      "npmSpec": "@larksuite/openclaw-lark",
++      "localPath": "extensions/feishu",
++      "defaultChoice": "npm"
++    }
++  },
++  "type": "commonjs"
++}
+diff --git a/src/core/version.js b/src/core/version.js
+--- a/src/core/version.js
++++ b/src/core/version.js
+@@ -26,8 +26,7 @@
+         return cachedVersion;
+     try {
+         // 当前文件: src/core/version.ts → 向上两级到达项目根目录
+-        const __filename = (0, node_url_1.fileURLToPath)(import.meta.url);
+-        const __dirname = (0, node_path_1.dirname)(__filename);
++        // Published CJS must use the native __dirname, not import.meta.
+         const packageJsonPath = (0, node_path_1.join)(__dirname, '..', '..', 'package.json');
+         const raw = (0, node_fs_1.readFileSync)(packageJsonPath, 'utf8');
+         const pkg = JSON.parse(raw);
+diff --git a/src/core/token-store.js b/src/core/token-store.js
+--- a/src/core/token-store.js
++++ b/src/core/token-store.js
+@@ -34,7 +34,7 @@
+ const log = (0, lark_logger_1.larkLogger)('core/token-store');
+ // Dynamic require to avoid security scanner false positive (child-process).
+ // CJS (tsc output) has __filename; ESM (tsdown output) has import.meta.url.
+-const _require = (0, node_module_1.createRequire)(typeof __filename !== 'undefined' ? __filename : import.meta.url);
++const _require = (0, node_module_1.createRequire)(__filename);
+ const _cpMod = ['child', 'process'].join('_');
+ const _cp = _require(`node:${_cpMod}`);
+ const execFile = (0, node_util_1.promisify)(_cp.execFile);

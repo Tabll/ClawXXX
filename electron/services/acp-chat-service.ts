@@ -41,7 +41,7 @@ import {
 type AcpConnection = Pick<
   ClientSideConnection,
   'initialize' | 'newSession' | 'loadSession' | 'prompt' | 'cancel' | 'setSessionConfigOption'
->;
+> & { closeSession?: (params: { sessionId: string }) => Promise<unknown> };
 type MainWindowLike = {
   webContents: Pick<BrowserWindow['webContents'], 'send'>;
 };
@@ -329,7 +329,11 @@ export class AcpChatService {
         const created = await connection.newSession({
           cwd: preparedAccessGrant.executionCwd,
           mcpServers: [],
-          _meta: { sessionKey: payload.sessionKey, prefixCwd: true },
+          _meta: {
+            sessionKey: payload.sessionKey,
+            prefixCwd: !payload.managedSession,
+            ...(payload.managedSession ? { clawx: payload.managedSession } : {}),
+          },
         });
         acpSessionId = created.sessionId;
         if (created.configOptions) initialConfigOptions = created.configOptions;
@@ -429,21 +433,21 @@ export class AcpChatService {
       this.permissionsEnabled = true;
       const messageId = payload.messageId ?? randomUUID();
       const isSlashCommand = payload.message?.trimStart().startsWith('/') === true;
-      await connection.prompt({
+      const prompted = await connection.prompt({
         sessionId: acpSessionId,
         prompt,
         // ACP 1.1 removed messageId from the PromptRequest wire shape. Keep
         // ClawX correlation metadata in the protocol extension envelope.
         // OpenClaw must receive slash commands without its textual cwd prefix
         // so the Gateway can classify and fold command replies into chat final.
-        _meta: { sessionKey: payload.sessionKey, prefixCwd: !isSlashCommand, messageId },
+        _meta: { sessionKey: payload.sessionKey, prefixCwd: !isSlashCommand && !payload.sessionKey.includes(':dashboard:incognito-clawx-'), messageId },
       });
       this.trace('session/prompt:success', {
         sessionKey: payload.sessionKey,
         generation,
         details: { blockCount: prompt.length, acpSessionId },
       });
-      return ok(generation);
+      return { ...ok(generation), stopReason: prompted.stopReason };
     } catch (error) {
       logger.error(`[acp-chat] prompt failed: ${String(error)}`);
       this.trace('session/prompt:failed', {
@@ -458,6 +462,22 @@ export class AcpChatService {
       }
       this.permissionsEnabled = this.activeSessionKey != null && this.livePrompts.has(this.activeSessionKey);
     }
+  }
+
+  async closeManagedSession(payload: AcpChatCancelPayload): Promise<AcpChatOperationResult> {
+    if (payload.sessionKey !== this.loadedSessionKey || !this.loadedAcpSessionId) return fail('ACP session is not loaded');
+    if (this.livePrompts.has(payload.sessionKey)) return fail('Cannot release an active ACP prompt');
+    try {
+      const connection = await this.ensureConnection();
+      if (!connection.closeSession) throw new Error('OpenClaw requires ACP session/close support');
+      await connection.closeSession({ sessionId: this.loadedAcpSessionId });
+      this.resolvePermissionWaitersForSession(payload.sessionKey, cancelledPermissionResponse());
+      this.activeSessionKey = this.activeAcpSessionId = this.loadedSessionKey = this.loadedAcpSessionId = null;
+      this.historicalSessionKey = this.historicalGeneration = null;
+      this.permissionsEnabled = false;
+      this.accessRegistry.restore(null);
+      return ok(this.generation);
+    } catch (error) { return fail(error); }
   }
 
   async cancelSession(payload: AcpChatCancelPayload): Promise<AcpChatOperationResult> {

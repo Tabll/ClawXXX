@@ -1,6 +1,6 @@
 # OpenClaw Config Delivery
 
-ClawX bundles OpenClaw 2026.7.1-2. OpenClaw owns the field-level decision between a no-op snapshot update, hot application, subsystem restart, and in-process Gateway restart.
+ClawX's optional runtime source is OpenClaw 2026.9.2+clawx.7. OpenClaw owns the field-level decision between a no-op snapshot update, hot application, subsystem restart, and in-process Gateway restart.
 
 Provider, Agent, Channel, skill, proxy, image-generation, and plugin-install helpers express config changes as mutators. One Main-owned coordinator owns selection of the authoritative baseline and the commit:
 
@@ -11,6 +11,17 @@ Provider, Agent, Channel, skill, proxy, image-generation, and plugin-install hel
 5. If Gateway is stopped or starting, apply the same mutator to `resolveOpenClawConfigPath()` under the shared config lock and do not start the Gateway.
 
 This is not a write-then-notify design. No provider, Agent, Channel, skill, proxy, image-generation, or plugin-install helper may write the active config independently. The coordinator prevents a locally read stale snapshot from overwriting concurrent Gateway or CLI config changes.
+
+For September runtimes, the coordinator projects keyed `agents.entries` into
+the existing host `agents.list` view and serializes the edited roster back to
+entries. Deleted agents must not be resurrected from stale entries. The default
+agent becomes `defaults.systemAgent.agentId` with explicit ownership. Both RPC
+and file paths preserve provider/Channel credentials, workspaces and unknown
+fields. CAS retries rebuild from the fresh native baseline, including secret
+redaction placeholders; response-loss comparisons normalize the same projection.
+Native scheduler, heartbeat, dreaming and cross-session autonomy are explicitly
+bounded without disabling canonical ClawX services. See
+`harness/reference/openclaw-2026.9.2-upgrade.md` for protocol and regression details.
 
 Gateway WebSocket tracing must redact the complete serialized `raw` payload for `config.set`, `config.patch`, and `config.apply`; key-based structural redaction cannot inspect secrets embedded inside that string.
 

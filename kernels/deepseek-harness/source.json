@@ -3,26 +3,26 @@
   "kernelId": "deepseek-harness",
   "displayName": "DeepSeek Harness",
   "upstream": "https://github.com/deepseek-ai/deepseek-harness",
-  "version": "0.1.2-alpha.2",
+  "version": "0.1.3-alpha.1",
   "patchBase": "git-checkout",
   "git": {
     "branch": "master",
-    "commit": "0a53fb55bea101816fa226bb964ae2bed71c343b",
-    "tree": "64ccbfa8e0caa4711cd4a75717ef9e022657961b"
+    "commit": "d347e703908d0406b7a7ef80e3a0e594d86b2215",
+    "tree": "699dd8bb33bd13fddca68f39e6544bb272c39275"
   },
   "sourceEvidence": {
-    "pnpmLockSha256": "6cc109a574218f51762474455c8d72e5f7c2625aedf25e85569dba1af7adcef0",
-    "thirdPartyNoticesSha256": "45c3d5ad23ea58fe6aaa2703488f74f03ea53cc0fa80c1024c24d63670570779"
+    "pnpmLockSha256": "2c903ab870f821ee2db62fa9417d11b1c2b9c65fbeec30e851ddc53c4cc8c383",
+    "thirdPartyNoticesSha256": "b6879a24b019418cf22ab7b03746e20c5f45d27852786d3896b87eee2032b5a7"
   },
   "license": "MIT",
-  "artifactVersion": "0.1.2-alpha.2+clawx.10",
-  "patchRevision": 10,
-  "sourceDateEpoch": 1788097073,
+  "artifactVersion": "0.1.3-alpha.1+clawx.11",
+  "patchRevision": 11,
+  "sourceDateEpoch": 1788513383,
   "lockfile": {
     "descriptor": "kernels/deepseek-harness/lock.json",
-    "descriptorSha256": "040b898bb7abf6a73f5d87ee97ee6ba3ace1e9c882ee5dcefc9cf2efcaaa6d41",
+    "descriptorSha256": "b1e5139232e290268e8ace823b896901ca58093d687a1dc4ede9ec8f7b00e30a",
     "contentPath": "pnpm-lock.yaml",
-    "contentSha256": "444dff876e39411451544e0c2617168eb816053ca0ff4663060750bf8777d4c1"
+    "contentSha256": "9571cbbc78ef405cc44f1dc845e86cc8463f4a6b5a387db9ec1ba231085a2556"
   },
   "patchSeries": {
     "path": "kernels/deepseek-harness/patches/series",
@@ -30,7 +30,7 @@
   },
   "runtime": {
     "path": "kernels/deepseek-harness/runtime.json",
-    "sha256": "30966df93b877d6dba8f593db83c8f25aa32f90e8ae47ddbac8b2d5fb5693605"
+    "sha256": "d1f8921f94c6de6ef702a303069d89bbe0a3fba0d5affc10dcdafd305c06a9e2"
   },
   "nodeRuntime": {
     "path": "kernels/node-runtime.json",
@@ -39,16 +39,16 @@
   "overlay": {
     "root": "kernels/deepseek-harness/overlay",
     "manifest": "kernels/deepseek-harness/overlay.manifest.json",
-    "manifestSha256": "22d7fb6837d5e07b08c58aea68db71c9641f7be639ad77bb581e43b4961e716e"
+    "manifestSha256": "0f25f26148ab845662529bffd3b2ecd1a6592915fb80152877309d74834e588d"
   },
   "patches": [
     {
       "path": "kernels/deepseek-harness/patches/0001-clawx-overlay-lockfile.patch",
-      "sha256": "391d8644f2e09dcd066eb8634cbf1b84d15ce96bbb2b90b3c917990b584f4464"
+      "sha256": "0050f3c77dd827b9f852f0e5ed885013cca780a83eaf46e8e3c3e2ebb609c094"
     },
     {
       "path": "kernels/deepseek-harness/patches/0002-clawx-windows-sandbox-temp-parity.patch",
-      "sha256": "d99d090999f5d66e9a0007d35057c02a81b8ef53a6491f7f34afa9db05116380"
+      "sha256": "255163e1b3f14b7aeb06a9d78f8fb03240ae881fa7493d8dad6e27130eb295e6"
     }
   ]
 }

@@ -1,0 +1,103 @@
+diff --git a/src/persistence-store.ts b/src/persistence-store.ts
+index 76c3c3b7..f0c8ca09 100644
+--- a/src/persistence-store.ts
++++ b/src/persistence-store.ts
+@@ -29,6 +29,25 @@ export interface WriteNamespaceJsonOptions<T> extends ResolveNamespacePathOption
+ }
+ 
+ const NAMESPACE_ROOT_DIR = "dingtalk-state";
++// ClawX owns durable conversation/interaction state. These connector caches
++// are disposable, bounded and never read from a previous native history file.
++const clawxNamespaceCache = new Map<string, string>();
++let clawxNamespaceBytes = 0;
++function cacheManagedNamespace(key: string, data: unknown): void {
++  const serialized = JSON.stringify(data);
++  const previous = clawxNamespaceCache.get(key);
++  if (previous) clawxNamespaceBytes -= Buffer.byteLength(previous);
++  clawxNamespaceCache.delete(key);
++  const bytes = Buffer.byteLength(serialized);
++  if (bytes > 32 * 1024 * 1024) return;
++  clawxNamespaceCache.set(key, serialized);
++  clawxNamespaceBytes += bytes;
++  while (clawxNamespaceCache.size > 1024 || clawxNamespaceBytes > 32 * 1024 * 1024) {
++    const oldest = clawxNamespaceCache.keys().next().value!;
++    clawxNamespaceBytes -= Buffer.byteLength(clawxNamespaceCache.get(oldest)!);
++    clawxNamespaceCache.delete(oldest);
++  }
++}
+ 
+ function toErrorMessage(err: unknown): string {
+   if (err instanceof Error) {
+@@ -84,6 +103,10 @@ export function readNamespaceJson<T>(
+   options: ReadNamespaceJsonOptions<T>,
+ ): T {
+   const filePath = resolveNamespacePath(namespace, options);
++  if (process.env.CLAWX_MANAGED_RUNTIME === "1") {
++    const cached = clawxNamespaceCache.get(filePath);
++    return cached === undefined ? structuredClone(options.fallback) : JSON.parse(cached) as T;
++  }
+   try {
+     if (!fs.existsSync(filePath)) {
+       return options.fallback;
+@@ -106,6 +129,10 @@ export function writeNamespaceJsonAtomic<T>(
+   options: WriteNamespaceJsonOptions<T>,
+ ): void {
+   const filePath = resolveNamespacePath(namespace, options);
++  if (process.env.CLAWX_MANAGED_RUNTIME === "1") {
++    cacheManagedNamespace(filePath, options.data);
++    return;
++  }
+   const tempPath = `${filePath}.tmp-${process.pid}-${Date.now()}`;
+   try {
+     fs.mkdirSync(path.dirname(filePath), { recursive: true });
+diff --git a/dist/index.js b/dist/index.js
+index 0a9253d1..f3acb125 100644
+--- a/dist/index.js
++++ b/dist/index.js
+@@ -1702,6 +1702,24 @@ function resolveOriginalPeerId(id) {
+ import * as fs2 from "node:fs";
+ import * as path3 from "node:path";
+ var NAMESPACE_ROOT_DIR = "dingtalk-state";
++// ClawX owns durable history; connector caches are process-local only.
++var clawxNamespaceCache = new Map();
++var clawxNamespaceBytes = 0;
++function cacheManagedNamespace(key, data) {
++  const serialized = JSON.stringify(data);
++  const previous = clawxNamespaceCache.get(key);
++  if (previous) clawxNamespaceBytes -= Buffer.byteLength(previous);
++  clawxNamespaceCache.delete(key);
++  const bytes = Buffer.byteLength(serialized);
++  if (bytes > 32 * 1024 * 1024) return;
++  clawxNamespaceCache.set(key, serialized);
++  clawxNamespaceBytes += bytes;
++  while (clawxNamespaceCache.size > 1024 || clawxNamespaceBytes > 32 * 1024 * 1024) {
++    const oldest = clawxNamespaceCache.keys().next().value;
++    clawxNamespaceBytes -= Buffer.byteLength(clawxNamespaceCache.get(oldest));
++    clawxNamespaceCache.delete(oldest);
++  }
++}
+ function toErrorMessage(err) {
+   if (err instanceof Error) {
+     return err.message;
+@@ -1744,6 +1762,10 @@ function resolveNamespacePath(namespace, options) {
+ }
+ function readNamespaceJson(namespace, options) {
+   const filePath = resolveNamespacePath(namespace, options);
++  if (process.env.CLAWX_MANAGED_RUNTIME === "1") {
++    const cached = clawxNamespaceCache.get(filePath);
++    return cached === undefined ? structuredClone(options.fallback) : JSON.parse(cached);
++  }
+   try {
+     if (!fs2.existsSync(filePath)) {
+       return options.fallback;
+@@ -1762,6 +1784,10 @@ function readNamespaceJson(namespace, options) {
+ }
+ function writeNamespaceJsonAtomic(namespace, options) {
+   const filePath = resolveNamespacePath(namespace, options);
++  if (process.env.CLAWX_MANAGED_RUNTIME === "1") {
++    cacheManagedNamespace(filePath, options.data);
++    return;
++  }
+   const tempPath = `${filePath}.tmp-${process.pid}-${Date.now()}`;
+   try {
+     fs2.mkdirSync(path3.dirname(filePath), { recursive: true });

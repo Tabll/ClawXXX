@@ -1,13 +1,13 @@
 /**
  * Lossless rich presentation projection for ClawX's DeepSeek Harness bridge.
  *
- * Upstream DSH ACP intentionally exposes an automation-only final-text surface.
- * This companion consumes the same durable SessionEvent stream and emits the
- * richer ACP updates required by the existing ClawX timeline. It owns no
- * history and writes no files.
+ * Live assistant frames drive incrementality; v2 Session settlements supply
+ * tools and provider usage. This companion owns no history and writes no files.
  */
 import type { Context } from '@deepseek-ai/cordis'
 import type { SessionEvent, SessionId, Session } from '@deepseek-ai/dsh-session'
+import type { AssistantStreamFrame } from '@deepseek-ai/dsh-agent'
+import type { TokenUsage } from '@deepseek-ai/dsh-llm'
 import type {} from '@deepseek-ai/dsh-tool-todo'
 import type { SessionUpdate, ToolKind } from '@agentclientprotocol/sdk'
 
@@ -44,8 +44,17 @@ function parseArguments(value: string): unknown {
   }
 }
 
-function usageUpdate(event: Extract<SessionEvent, { type: 'assistant/message' }>, contextWindow: number): SessionUpdate | undefined {
-  const usage = event.data.usage
+type AssistantSettlement = Extract<SessionEvent, { type: 'assistant/message' | 'assistant/attempt' }>
+
+function usageUpdate(event: AssistantSettlement, contextWindow: number): SessionUpdate | undefined {
+  let usage: TokenUsage | undefined = event.type === 'assistant/message' ? event.data.usage : undefined
+  // A failed attempt has no surface message, but may still report billable
+  // usage. Repeated usage chunks are snapshots of one request, not additions.
+  if (event.type === 'assistant/attempt') {
+    for (const record of event.data.stream) {
+      if (record.type === 'chunk' && record.chunk.type === 'usage') usage = record.chunk.usage
+    }
+  }
   if (usage === undefined) return undefined
   const input = usage.inputTokens
   const output = usage.outputTokens
@@ -59,37 +68,44 @@ function usageUpdate(event: Extract<SessionEvent, { type: 'assistant/message' }>
       clawx: {
         turn: event.data.turn,
         step: event.data.step,
+        eventSeq: event.seq,
         inputTokens: input,
         outputTokens: output,
         ...(cacheRead === undefined ? {} : { cacheReadTokens: cacheRead }),
         ...(cacheWrite === undefined ? {} : { cacheWriteTokens: cacheWrite }),
+        ...(usage.totalTokens === undefined ? {} : { totalTokens: usage.totalTokens }),
+        ...(usage.reasoningTokens === undefined ? {} : { reasoningTokens: usage.reasoningTokens }),
         source: 'runtime-event',
       },
     },
   }
 }
 
+/** Project a transient assistant frame without re-emitting its durable stream. */
+export function projectAssistantStreamFrame(frame: AssistantStreamFrame): SessionUpdate[] {
+  if (frame.type !== 'chunk') return []
+  const chunk = frame.chunk
+  const meta = { attemptId: frame.attemptId, revision: frame.revision, index: frame.index }
+  if (chunk.type === 'text-delta') {
+    return [{
+      sessionUpdate: 'agent_message_chunk',
+      content: { type: 'text', text: chunk.text },
+      _meta: { clawx: meta },
+    }]
+  }
+  if (chunk.type === 'reasoning-delta') {
+    return [{
+      sessionUpdate: 'agent_thought_chunk',
+      content: { type: 'text', text: chunk.text },
+      _meta: { clawx: { ...meta, visibility: 'private' } },
+    }]
+  }
+  return []
+}
+
 /** Map one DSH durable event to zero or more strict ACP session updates. */
 export function projectSessionEvent(event: SessionEvent, contextWindow = 0): SessionUpdate[] {
   switch (event.type) {
-    case 'assistant/chunk': {
-      const chunk = event.data.chunk
-      if (chunk.type === 'text-delta') {
-        return [{
-          sessionUpdate: 'agent_message_chunk',
-          content: { type: 'text', text: chunk.text },
-          _meta: { clawx: { turn: event.data.turn, step: event.data.step, eventSeq: event.seq } },
-        }]
-      }
-      if (chunk.type === 'reasoning-delta') {
-        return [{
-          sessionUpdate: 'agent_thought_chunk',
-          content: { type: 'text', text: chunk.text },
-          _meta: { clawx: { turn: event.data.turn, step: event.data.step, eventSeq: event.seq, visibility: 'private' } },
-        }]
-      }
-      return []
-    }
     case 'tool/call':
       return [{
         sessionUpdate: 'tool_call',
@@ -118,7 +134,8 @@ export function projectSessionEvent(event: SessionEvent, contextWindow = 0): Ses
           },
         },
       }]
-    case 'assistant/message': {
+    case 'assistant/message':
+    case 'assistant/attempt': {
       const update = usageUpdate(event, contextWindow)
       return update === undefined ? [] : [update]
     }
@@ -151,9 +168,9 @@ export function projectSessionEvent(event: SessionEvent, contextWindow = 0): Ses
 export function apply(ctx: Context, config: Config): void {
   if (config.sink === undefined) throw new Error('ClawX rich events requires a sink')
   const tails = new Map<SessionId, Promise<void>>()
-  ctx.on('session/event', (session: Session, event: SessionEvent) => {
+  const revisions = new WeakMap<object, number>()
+  const deliver = (session: Session, updates: SessionUpdate[]): void => {
     if (config.ownsSession !== undefined && !config.ownsSession(session.header.id)) return
-    const updates = projectSessionEvent(event, config.contextWindow ?? 0)
     if (updates.length === 0) return
     const previous = tails.get(session.header.id) ?? Promise.resolve()
     const next = previous.then(async () => {
@@ -162,6 +179,14 @@ export function apply(ctx: Context, config: Config): void {
       ctx.logger.warn(`clawx rich event delivery failed for ${session.header.id}: ${String(error)}`)
     })
     tails.set(session.header.id, next)
+  }
+  ctx.on('session/event', (session: Session, event: SessionEvent) => {
+    deliver(session, projectSessionEvent(event, config.contextWindow ?? 0))
+  })
+  ctx.on('agent/assistant-stream', ({ agent, frame }) => {
+    if (frame.revision <= (revisions.get(agent) ?? 0)) return
+    revisions.set(agent, frame.revision)
+    deliver(agent.session, projectAssistantStreamFrame(frame))
   })
   ctx.on('session/disposed', (session: Session) => { tails.delete(session.header.id) })
 }

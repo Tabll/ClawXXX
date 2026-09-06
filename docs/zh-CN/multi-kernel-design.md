@@ -1,6 +1,6 @@
 # ClawX 多内核统一架构设计
 
-> 状态：实现候选（M0–M15 已完成本地实现、契约与相关 Electron E2E；M16 的供应链/安全/文档实现已接入，真实五目标签名晋级与三平台 packaged 证据仍以 `TODO.md` 为准）；实现基线：ClawX 0.6.0、OpenClaw 2026.7.1-2+clawx.6、DeepSeek Harness 0.1.2-alpha.2+clawx.10；最后更新：2026-09-01
+> 状态：实现候选（M19 已修复 OpenClaw 生产桥接、配置和 Channels，并完成本地新版切换；五平台签名制品/真实账号/发布证据仍以 `TODO.md` M19/M16 为准）；实现基线：ClawX 0.6.0、OpenClaw 2026.9.2+clawx.7、DeepSeek Harness 0.1.3-alpha.1+clawx.11；最后更新：2026-09-06
 >
 > 实施清单：[TODO.md](../../TODO.md)
 >
@@ -9,6 +9,8 @@
 ## 1. 摘要
 
 ### 1.1 当前落地状态
+
+**OpenClaw 新版实现：** 源码和开发依赖已固定 `2026.9.2+clawx.7`。生产 ACP adapter 逐 Run 从 canonical typed blocks hydrate 新 incognito session，模型只接收一次历史与本轮输入；ACP replay/传输/审批状态保持内存，原生历史表写入被拦截而不是事后删除。Gateway 崩溃时中断当前 Run，新 generation 从统一 SQLite 重建，不依赖 native autorecovery/opaque checkpoint。Main 投影适配 keyed Agents、模型及权限，7 个 Channels 插件已完成加载兼容和受控 admission 测试。真实 Gateway/ACP 与本地 payload 证据见 [升级设计](../../harness/reference/openclaw-2026.9.2-upgrade.md) 和 TODO M19；这不等于已签名发布或真实账号验收。
 
 设计中的领域边界已映射到 `shared/{kernels,conversations,domains,data}`、`electron/{kernels,conversations,domains,data,scheduler,channels,security}` 和统一 Host API；Renderer、OpenClaw legacy adapter 与 DSH bridges 都不能直接拥有 canonical history。主包 `afterPack` 有硬闸门拒绝任何可选 runtime，Setup/Settings 已提供双内核安装、运行、修复、更新、回滚、卸载与无内核离线历史流程。
 
@@ -35,7 +37,7 @@ CI 供应链已覆盖两内核 × 五目标：冻结源码/lock/patch/overlay、
 
 - Renderer 只能通过 `src/lib/host-api.ts` 和 `src/lib/api-client.ts` 调用后端。
 - Electron Main 拥有 OpenClaw Gateway、ACP 子进程、生命周期、重试和传输选择。
-- 改造前 Chat 的实时交互以 ACP 为主，但历史内容来自 OpenClaw JSONL/session store；Usage 扫描 JSONL，Cron history 则读取 Gateway/OpenClaw SQLite 或旧 JSONL fallback，事实来源并不统一。M2/M6/M7 已移除这些新数据路径，现行实现以 ClawX SQLite 为唯一权威。
+- 改造前 Chat 实时交互以 ACP 为主，但历史来自 OpenClaw JSONL/session store，Usage/Cron 也有原生历史回退。M2/M6/M7 统一了宿主业务读取；M19 进一步修复真实 ACP/Gateway 的原生回放写入。SDK、宿主 fixture、真实进程和五平台签名制品的验证层级仍须分别记录。
 - 改造前 Agents、Channels、Cron、Skills、Providers、Sessions 和 Usage 包含大量 OpenClaw 文件格式或 Gateway RPC 假设；现行 Renderer 与 canonical services 已改用共享领域契约，OpenClaw 假设被收敛到 adapter/driver 内。
 - 当前 OpenClaw 构建运行时约 415 MB、约 3.3 万个文件，适合从主安装包拆出。
 - 现有扩展系统的 Main context 直接暴露 `GatewayManager`，不能作为多内核基础抽象。
@@ -507,15 +509,22 @@ CI 内核包需要提供：
 
 DeepSeek SessionEvent 是实时输入，不是持久化事实来源。`dsh-runtime-host` 必须把事件规范化后提交 DataService；其 private home 只允许配置和可删除 cache。进程重启后只从 ClawX SQLite 恢复。
 
-M8 的冻结实现采用上游 commit
-`0a53fb55bea101816fa226bb964ae2bed71c343b`，制品版本为
-`0.1.2-alpha.2+clawx.10`。CI 只允许应用严格有序 patch series（lock/project
+当前 M18 升级后的冻结实现采用上游 commit
+`d347e703908d0406b7a7ef80e3a0e594d86b2215`，制品版本为
+`0.1.3-alpha.1+clawx.11`。CI 只允许应用严格有序 patch series（lock/project
 importer 与 Windows sandbox 临时目录权限同构修复）和逐文件 SHA-256
 overlay；生产 deploy 只有一个长生命周期
 `@clawx/dsh-runtime-host`，不会包含 DSH Web、settings-file、JSONL session
 或 SQLite session backend。
 
 运行时行为如下：
+
+0.1.3 的破坏性变更详见[升级兼容性说明](../../harness/reference/deepseek-harness-0.1.3-upgrade.md)：
+显式且等待完成的服务组合替代已删除 demo spine；实时 assistant frames 与
+v2 message/attempt 结算分开；失败前缀通过可为空的最终快照替换，用量只在
+结算时按 Run + event sequence 去重。可选持久化接缝适配 SessionHandle，
+但生产仍不挂载原生历史 RPC 服务。Canonical Store/opaque checkpoint 保持 v1。
+上游 alpha 提示性能回退，必须保留既有可用制品并重新完成发布前验证。
 
 - 一个进程独占 DSH home writer lock；每个 `RunId` 有一个 live Agent lease，
   terminal/cancel/crash 时均释放。
@@ -607,7 +616,7 @@ type KernelProviderProjection = {
 - Bridge 断开或 kernel identity 不匹配时 fail closed。
 - Provider 更新必须独立返回每个 kernel projection 结果，不允许一个内核失败回滚另一个已经成功使用的 keychain metadata。
 
-M9 的落地实现还要求：Renderer 只持有凭据是否已填写和一次性 `credential-stage://` 句柄；OpenClaw 与 DSH 默认账号/模型分别记录；Main 按 kernel/generation/PID/artifact/account/purpose 逐次授权，进程断开或 generation 替换立即撤销；Models 页面同时显示 ready/partial/failed/unsupported 以及可重试错误。当前 DSH 累积补丁制品版本为 `0.1.2-alpha.2+clawx.10`，冻结 lockfile 同时包含只读、request-scoped 的 `@clawx/dsh-credential-provider`、Agent/Preset 支持和保留 unknown Usage 字段的 live SessionEvent 投影。
+M9 的落地实现还要求：Renderer 只持有凭据是否已填写和一次性 `credential-stage://` 句柄；OpenClaw 与 DSH 默认账号/模型分别记录；Main 按 kernel/generation/PID/artifact/account/purpose 逐次授权，进程断开或 generation 替换立即撤销；Models 页面同时显示 ready/partial/failed/unsupported 以及可重试错误。当前 DSH 累积补丁制品版本为 `0.1.3-alpha.1+clawx.11`，冻结 lockfile 同时包含只读、request-scoped 的 `@clawx/dsh-credential-provider`、Agent/Preset 支持和保留 unknown Usage 字段的 live SessionEvent 投影。
 
 ## 8. Agents 同构
 
@@ -847,7 +856,7 @@ scripts/kernel-runtime/
 
 ```text
 openclaw/2026.7.1-2+clawx.1
-deepseek-harness/0.1.2-alpha.2+clawx.10
+deepseek-harness/0.1.3-alpha.1+clawx.11
 ```
 
 上游版本不变但补丁、bridge 或组装内容变化时必须增加 `clawx.N`，禁止覆盖已发布 artifact。
@@ -875,9 +884,9 @@ deepseek-harness/0.1.2-alpha.2+clawx.10
 {
   "schemaVersion": 1,
   "kernelId": "deepseek-harness",
-  "kernelVersion": "0.1.2-alpha.2",
+  "kernelVersion": "0.1.3-alpha.1",
   "patchRevision": 1,
-  "artifactVersion": "0.1.2-alpha.2+clawx.10",
+  "artifactVersion": "0.1.3-alpha.1+clawx.11",
   "platform": "darwin",
   "arch": "arm64",
   "minHostVersion": "0.6.0",

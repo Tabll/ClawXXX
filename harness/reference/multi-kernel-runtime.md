@@ -2,6 +2,16 @@
 
 Status: release candidate. M0–M15 have local implementation, contract, full Electron E2E, performance, communication-replay, and Harness coverage. M16's protected five-target signing/notarization/promotion runs, production mirror drill, and legal release approval remain open. This reference does not assert that multi-kernel support is already publicly shipped.
 
+OpenClaw production bridge update (2026-09-06): source/dev pins now select
+`2026.9.2+clawx.7`. Canonical typed history hydrates a new incognito session per
+Run; ACP replay and transient delivery/approval state stay in memory, and native
+durable history writes are fenced without deleting old data. Actual Gateway/ACP
+and packaged-payload probes replace host-only evidence for this boundary.
+Versioned Agents/config projection and seven Channel plugins are adapted. See
+TODO M19 and `harness/reference/openclaw-2026.9.2-upgrade.md` for exact evidence
+and pending real-provider/five-platform/publication gates. Installed runtimes
+are not modified by changing these source pins.
+
 ## Scope
 
 ClawX has been refactored from an OpenClaw-specific desktop client into a host for optional OpenClaw and DeepSeek Harness runtimes. Both runtimes use the same ClawX Renderer, can be installed independently, and can run concurrently. The 0.6.0 base-installer candidate no longer contains OpenClaw bytes; public distribution of that candidate remains blocked until the optional-runtime release gates pass.
@@ -18,7 +28,7 @@ Renderer
         -> OpenClaw or DeepSeek Harness runtime
 ```
 
-Upstream protocols are adapter details. Renderer stores and pages consume only canonical ClawX contracts. Upstream durable conversation, cron, channel-message, and usage persistence is disabled or replaced; it is not a second adapter-owned source.
+Upstream protocols are adapter details. Renderer stores and pages consume only canonical ClawX contracts. Upstream durable conversation, cron, channel-message, and usage persistence must be disabled or replaced; it must not become a second adapter-owned source.
 
 ## Identity and routing invariants
 
@@ -55,8 +65,12 @@ DeepSeek ACP, persistence, and control services are logical endpoints of one lon
 
 ### DeepSeek Harness v1 bridge profile
 
-The frozen DSH base is commit `0a53fb55bea101816fa226bb964ae2bed71c343b`
-(`0.1.2-alpha.2`), currently patched by ClawX as `0.1.2-alpha.2+clawx.10`. CI applies
+The outer ClawX protocol remains v1; the embedded DSH session format is v2.
+See [the 0.1.3 upgrade contract](deepseek-harness-0.1.3-upgrade.md) for the
+breaking API adaptations, local evidence and remaining publication gates.
+
+The frozen DSH base is commit `d347e703908d0406b7a7ef80e3a0e594d86b2215`
+(`0.1.3-alpha.1`), currently patched by ClawX as `0.1.3-alpha.1+clawx.11`. CI applies
 an ordered strict patch series (workspace lock/importers and Windows sandbox
 temp parity) plus a byte-manifested overlay. The production deploy
 has one `@clawx/dsh-runtime-host` entrypoint and excludes the DSH Web UI,
@@ -76,7 +90,11 @@ settlement. Cold continuation repeats that process and may pass an opaque
 provenance match. DSH SessionEvents are normalized into ordered ClawX runtime
 events; they never become a second catalog.
 
-The rich bridge projects assistant text, private reasoning visibility, tool
+Live `agent/assistant-stream` frames project text and private reasoning. Durable
+`assistant/message`/`assistant/attempt` settlements project provider usage once
+per request; failed attempts replace the visible answer with the committed
+prefix (even empty). Durable compact streams are never replayed as live text.
+The rich bridge also projects assistant text, private reasoning visibility, tool
 start/result/status, plan, title/session metadata, usage, output images,
 permissions and ask-user questions. Event delivery is serialized so `eventSeq`
 is also observable order, and terminal delivery waits for prior events and
@@ -84,7 +102,7 @@ attachment reads. Cancellation addresses the exact live lease and does not kill
 the whole runtime. Configuration changes are run-scoped.
 
 `@clawx/dsh-clawx-persistence` is the tested upstream `SessionPersistence`
-compatibility seam: it accepts only an authenticated DataService client and
+compatibility seam using v2 `SessionHandle`: it requires an authenticated host client and
 never opens SQLite or files. The v1 production prompt path uses the narrower
 canonical context/event RPC directly and therefore does not mount a native DSH
 session catalog at all. Both paths preserve the same authority rule: only
@@ -261,7 +279,7 @@ Concrete v1 implementation details, strict patch-base rules, key separation and 
 - Artifacts are split by kernel, OS, and architecture. A universal app does not imply a universal runtime artifact.
 - Each archive contains a signed manifest with kernel ID, upstream version/commit, ClawX patch revision, platform, architecture, protocol versions, capability contract version, minimum app version, size, file integrity, build provenance, licenses, and entrypoints. Catalog metadata additionally carries a monotonic sequence, issue/expiry times, and signing-key identity so clients can reject rollback or frozen metadata.
 - The manifest declares Conversation Store protocol and checkpoint codecs. CI runs clean-directory tests proving managed prompt, cancel, compact, restart, cron, and channel flows do not create native durable history.
-- Runtime versions use an immutable upstream-plus-patch identity such as the current DSH `0.1.2-alpha.2+clawx.10`.
+- Runtime versions use an immutable upstream-plus-patch identity such as the current DSH `0.1.3-alpha.1+clawx.11`.
 - The app verifies manifest signature, archive digest, unpacked file integrity, platform/architecture, compatibility, and entrypoint allowlists before activation.
 - Artifact signing, catalog promotion, and hosting credentials are separated. Key rotation and any emergency downgrade use explicit signed authorization rather than lowering the stored sequence implicitly.
 - Catalog promotion binds the executing GitHub repository/release tag and every descriptor URL to the reviewed distribution mirrors, then extends only the exact signed N-1 catalog returned identically by all configured HTTPS mirrors. Sequence 1 is an explicit protected bootstrap that first proves every mirror is absent. A retry may idempotently repair only an exact trusted N/N-1 partial publication with matching request and staged artifacts; same-sequence forks fail closed. Promotion verifies the new catalog, retained artifacts, and signing keys at issue time and immediately before catalog expiry.
@@ -271,6 +289,7 @@ Concrete v1 implementation details, strict patch-base rules, key separation and 
 - Every clean-machine target sends the actual signed descriptor/archive through the production package manager, including an injected interrupted transfer and exact Range/If-Range resume, signature verification, safe extraction, control-bridge smoke, atomic activation, rescan, uninstall, and canonical SQLite preservation.
 - When both kernels are built, a separate five-target job installs both actual artifacts into one package manager and SQLite, starts their control bridges concurrently, injects and repairs one artifact integrity failure while the other stays healthy, and then independently uninstalls both. This control-plane evidence does not claim a paid model conversation occurred in CI.
 - Runtime signing, notarization, antivirus, license, and third-party notice requirements are part of the release gate, not post-release work.
+- Windows `@img/sharp-win32-x64@0.35.3` combines the sharp addon and libvips DLLs in one package. Its frozen npm archive declares `Apache-2.0 AND LGPL-3.0-or-later`; audit records retain that exact expression and a package-scoped bundled-library obligation. This is metadata coverage, not completed source-offer or legal approval evidence.
 - A host release reruns the complete unit/contract/type/lint/chaos/comms/Harness gates, Electron E2E on macOS/Windows/Linux, and a live two-catalog/two-artifact-host Range drill before packaging can proceed.
 
 ## Compatibility and projection rules

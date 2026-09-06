@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, realpathSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, realpathSync } from 'node:fs';
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import type { KernelInstallationRecord } from '@shared/kernels/package-manager';
 import { KernelPackageLayout } from '../package-manager/layout';
@@ -168,6 +168,14 @@ export function requireOpenClawRuntimeLocation(): OpenClawRuntimeLocation {
   return activeLocation;
 }
 
+/** Refuse old installed payloads before they can mutate config or create history. */
+export function assertManagedOpenClawRuntimeProtocol(location: OpenClawRuntimeLocation): void {
+  const pkg = JSON.parse(readFileSync(join(resolveOpenClawPackageRealPath(location), 'package.json'), 'utf8'));
+  if (pkg.clawx?.managedSessionProtocol !== 'clawx.openclaw-session/v1' || pkg.clawx?.storageFenceVersion !== 1) {
+    throw new Error('This OpenClaw runtime predates the canonical session bridge. Install the updated verified OpenClaw runtime before starting it.');
+  }
+}
+
 export function getManagedOpenClawDataRoots(userDataRoot: string): ReturnType<typeof runtimeDataRoots> {
   return runtimeDataRoots(userDataRoot);
 }
@@ -185,6 +193,7 @@ export function buildManagedOpenClawEnvironment(
   return {
     ...base,
     CLAWX_MANAGED_RUNTIME: '1',
+    CLAWX_OPENCLAW_PACKAGE_DIR: resolveOpenClawPackageRealPath(location),
     CLAWX_CONVERSATION_STORE_PROTOCOL: 'clawx.conversation-store/v1',
     OPENCLAW_STATE_DIR: location.configRoot,
     OPENCLAW_CONFIG_PATH: join(location.configRoot, 'openclaw.json'),

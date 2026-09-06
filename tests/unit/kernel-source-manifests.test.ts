@@ -69,8 +69,8 @@ describe('frozen kernel sources', () => {
   });
 
   it.each([
-    ['openclaw', '2026.7.1-2'],
-    ['deepseek-harness', '0.1.2-alpha.2'],
+    ['openclaw', '2026.9.2'],
+    ['deepseek-harness', '0.1.3-alpha.1'],
   ] as const)('pins %s to an exact reviewed source', (kernelId, version) => {
     const manifest = readJson<SourceManifest>(`kernels/${kernelId}/source.json`);
     expect(manifest).toMatchObject({

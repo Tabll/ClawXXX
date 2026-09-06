@@ -8,15 +8,17 @@ import ClawXSessionPersistence, {
 } from '../src/index.ts'
 import { MemoryClawXClient } from './memory-client.ts'
 
-runPersistenceContract('clawx-rpc', async (): Promise<ContractBackend> => {
+async function backend(client: MemoryClawXClient): Promise<ContractBackend> {
   const ctx = new Context()
   await ctx.plugin(SessionStore)
   const fiber = await ctx.plugin(ClawXSessionPersistence, {
-    client: new MemoryClawXClient(),
-    writeBatchMaxDelayMs: 1,
+    client,
   })
   return {
     persistence: ctx.sessionPersistence,
-    dispose: async () => { await fiber.dispose() },
+    dispose: async () => { await fiber.dispose(); await ctx.fiber.dispose() },
+    reopen: () => backend(client.fork()),
   }
-})
+}
+
+runPersistenceContract('clawx-rpc', () => backend(new MemoryClawXClient()))

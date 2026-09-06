@@ -10,6 +10,12 @@ owns the DSH home lock and every live Agent handle, speaks
 `clawx.kernel-stdio/v1`, sends diagnostics only to stderr, and never mounts a
 native durable conversation backend.
 
+For DSH 0.1.3-alpha.1, ClawX explicitly mounts and awaits the services in
+`src/composition.ts`; the removed demo spine is not a dependency. Launch-time
+HTTP proxy configuration comes from the captured process environment, without
+loading a user `.env` or upstream app profile. Shutdown and failed startup
+dispose the plugin world, proxy dispatcher and home lock.
+
 `session.new` only validates the ClawX run identity; `session.prompt` creates a
 transient per-run Agent from the canonical context supplied by Main. Terminal
 settlement returns a versioned opaque checkpoint, disposes the Agent and leaves

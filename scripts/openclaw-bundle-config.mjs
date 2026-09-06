@@ -1,5 +1,5 @@
 export const EXTRA_BUNDLED_PACKAGES = [
-  '@whiskeysockets/baileys',
+  'baileys',
 
   // Built-in channel/runtime extension deps that are not always pulled in by the
   // OpenClaw package's own transitive dependency graph, but are required in
@@ -37,6 +37,6 @@ export const EXTRA_BUNDLED_PACKAGES = [
 
 /** Subset required by the Electron main process (verified after bundle + afterPack). */
 export const ELECTRON_MAIN_RUNTIME_PACKAGES = [
-  '@whiskeysockets/baileys',
+  'baileys',
   'qrcode-terminal',
 ];

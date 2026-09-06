@@ -117,6 +117,9 @@ try {
   const deepSeekHarnessSelfTest = descriptor.kernelId === 'deepseek-harness'
     ? await smokeDeepSeekHarnessHost({ nodePath, extracted, descriptor, managedDataRoot })
     : undefined;
+  // The sealed runtime must remain immutable even on its first real launch.
+  // In particular, upstream postinstall cleanup must not remove overlay files.
+  verifyFileManifest(extracted);
   const runtimeDataScan = scanRuntimeDataPaths(managedDataRoot);
   if (!runtimeDataScan.ok) {
     throw new Error(`Managed runtime wrote forbidden durable history:\n${runtimeDataScan.violations.join('\n')}`);
@@ -188,7 +191,25 @@ async function smokeOpenClawManagedEntrypoint({ nodePath, extracted, descriptor,
   if (!versionOutput.includes(expectedVersion)) {
     throw new Error(`OpenClaw managed entrypoint version mismatch: expected ${expectedVersion}, output=${versionOutput}`);
   }
-  return { managed: true, version: expectedVersion };
+  const probe = spawn(nodePath, [
+    resolve('scripts/kernel-runtime/probe-openclaw-managed-runtime.mjs'),
+    '--package-dir', join(extracted, 'runtime', 'kernel'),
+    '--node', nodePath,
+    '--plugins-root', join(extracted, 'runtime', 'kernel', 'clawx-plugins'),
+  ], { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
+  let report = '';
+  let probeErrors = '';
+  probe.stdout.setEncoding('utf8');
+  probe.stderr.setEncoding('utf8');
+  probe.stdout.on('data', chunk => { report += chunk; });
+  probe.stderr.on('data', chunk => { probeErrors = `${probeErrors}${chunk}`.slice(-32_768); });
+  await waitForExit(probe, 300_000);
+  if (probe.exitCode !== 0) throw new Error(`Sealed OpenClaw real Gateway/ACP probe failed: ${probeErrors}`);
+  const evidence = JSON.parse(report);
+  if (!evidence.ok || evidence.version !== expectedVersion || evidence.nativeDurableHistory !== false) {
+    throw new Error('Sealed OpenClaw real runtime evidence is invalid');
+  }
+  return { managed: true, version: expectedVersion, realRuntime: evidence };
 }
 
 async function smokeDeepSeekHarnessHost({ nodePath, extracted, descriptor, managedDataRoot }) {

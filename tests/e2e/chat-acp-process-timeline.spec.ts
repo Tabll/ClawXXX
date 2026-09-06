@@ -47,6 +47,34 @@ const longRunProcessSegments = Array.from({ length: 9 }, (_, index) => `Checked 
 const longRunSummary = 'Here is the summary.';
 
 test.describe('canonical chat process timeline', () => {
+  test('replaces a failed DSH attempt with an explicit empty snapshot before retrying', async ({ launchElectronApp }) => {
+    const app = await launchElectronApp({ skipSetup: true });
+    try {
+      const fixture = await installAttachmentHostFixture(app, {
+        sessions: [{ key: SESSION_KEY, title: 'Main session' }],
+      });
+      await fixture.deferPromptResponse('retry stream');
+      const page = await openChat(app);
+      await page.getByTestId('chat-composer-input').fill('retry stream');
+      await page.getByTestId('chat-composer-send').click();
+      await expect(page.getByTestId('chat-composer-send')).toHaveAttribute('title', 'Stop');
+      await fixture.emitAcpSessionUpdates({ sessionKey: SESSION_KEY, updates: [
+        { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'Failed attempt prefix' } },
+      ] });
+      await expect(page.getByText('Failed attempt prefix', { exact: true })).toBeVisible();
+      await fixture.emitAcpSessionUpdates({ sessionKey: SESSION_KEY, updates: [
+        { sessionUpdate: 'agent_message', content: [] },
+        { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'Recovered answer' } },
+        { sessionUpdate: 'agent_message', content: [{ type: 'text', text: 'Recovered answer' }] },
+      ] });
+      await expect(page.getByText('Failed attempt prefix', { exact: true })).toHaveCount(0);
+      await expect(page.getByText('Recovered answer', { exact: true })).toHaveCount(1);
+      await fixture.releasePromptResponse('retry stream');
+    } finally {
+      await closeElectronApp(app);
+    }
+  });
+
   test('renders thought, tool, plan, and final blocks from one SQLite conversation export', async ({ launchElectronApp }) => {
     const app = await launchElectronApp({ skipSetup: true });
     try {

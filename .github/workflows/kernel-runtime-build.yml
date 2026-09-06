@@ -107,6 +107,9 @@ jobs:
           packages/runtime/clawx-runtime-host/tests
           packages/sandbox/sandbox/tests/roots.spec.ts
           packages/session/session-persistence-clawx/tests
+          packages/credentials/clawx-dsh-credential-provider/tests
+          packages/agents/clawx-dsh-agent-catalog/tests
+          packages/skills/clawx-dsh-skill-catalog/tests
       - name: Deploy DeepSeek Harness runtime-host production closure
         if: matrix.kernel == 'deepseek-harness'
         working-directory: temp/kernel-source
@@ -142,6 +145,12 @@ jobs:
           --report temp/reports/licenses.json
       - name: Download and verify independent Node 24 runtime
         run: node scripts/kernel-runtime/download-node-runtime.mjs --platform ${{ matrix.target.platform }} --arch ${{ matrix.target.arch }} --destination temp/node-runtime
+      - name: Exercise the real OpenClaw Gateway, ACP, storage fence and all Channel modules before sealing
+        if: matrix.kernel == 'openclaw'
+        shell: bash
+        run: |
+          if [ "${{ matrix.target.platform }}" = "win32" ]; then node_bin=temp/node-runtime/node.exe; else node_bin=temp/node-runtime/bin/node; fi
+          "$node_bin" scripts/kernel-runtime/probe-openclaw-managed-runtime.mjs --package-dir build/openclaw --node "$node_bin" --plugins-root build/openclaw/clawx-plugins --report temp/reports/openclaw-managed-runtime.json
       - name: Import macOS runtime signing certificate
         if: matrix.target.platform == 'darwin'
         uses: apple-actions/import-codesign-certs@v3
@@ -230,7 +239,7 @@ jobs:
             tests/contract/kernels/kernel-driver-contract.test.ts
           )
           if [ "${{ matrix.kernel }}" = "openclaw" ]; then
-            suites+=(tests/contract/kernels/openclaw-conversation-store.test.ts tests/contract/kernels/openclaw-runtime-dir.test.ts)
+            suites+=(tests/contract/kernels/openclaw-conversation-store.test.ts tests/contract/kernels/openclaw-runtime-dir.test.ts tests/unit/openclaw-config-projection.test.ts tests/unit/openclaw-managed-session.test.ts tests/unit/openclaw-managed-storage-fence.test.ts tests/unit/openclaw-channel-handoff.test.ts tests/unit/openclaw-channel-package-patches.test.ts tests/unit/openclaw-native-pruning.test.ts)
           else
             suites+=(tests/contract/kernels/deepseek-harness-driver.test.ts)
           fi

@@ -10,6 +10,7 @@ touchedAreas:
   - .github/workflows/kernel-runtime-build.yml
   - scripts/kernel-runtime/**
   - kernels/deepseek-harness/**
+  - kernels/license-policy.json
   - tests/unit/kernel-*.test.ts
   - tests/unit/deepseek-*.test.ts
   - tests/fixtures/kernels/**
@@ -37,6 +38,7 @@ requiredRules:
 requiredTests:
   - pnpm exec vitest run tests/unit/kernel-platform-security.test.ts tests/unit/kernel-runtime-build.test.ts
   - pnpm exec vitest run tests/unit/kernel-platform-verification.test.ts
+  - pnpm exec vitest run tests/unit/kernel-license-audit.test.ts
   - pnpm exec vitest run tests/unit/kernel-source-manifests.test.ts tests/unit/kernel-deploy-materialization.test.ts
   - pnpm exec vitest run tests/unit/deepseek-sandbox-probe.test.ts tests/unit/deepseek-sandbox-temp-parity-patch.test.ts
   - pnpm run kernel:sources:verify

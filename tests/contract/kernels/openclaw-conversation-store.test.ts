@@ -18,6 +18,7 @@ import {
   OPENCLAW_CHECKPOINT_CODEC,
   OPENCLAW_CHECKPOINT_SCHEMA_VERSION,
   OpenClawConversationSession,
+  assertInMemoryOpenClawSessionManager,
   type OpenClawSessionManagerFactory,
 } from '@electron/kernels/openclaw/conversation-store-adapter';
 import {
@@ -120,11 +121,20 @@ describe('OpenClaw unified conversation store spike', () => {
     await prompt;
 
     expect(agent.signal).toBeUndefined();
-    expect(agent.state.messages.at(-1)).toMatchObject({
+    // September adds a hidden turn-aborted control marker after the cancelled
+    // assistant. It is not an answer and must not become the terminal selector.
+    const assistantIndex = agent.state.messages.findLastIndex(message => message.role === 'assistant');
+    expect(assistantIndex).toBeGreaterThanOrEqual(0);
+    expect(agent.state.messages[assistantIndex]).toMatchObject({
       role: 'assistant',
       stopReason: 'aborted',
       errorMessage: 'cancelled by ClawX',
     });
+    for (const message of agent.state.messages.slice(assistantIndex + 1)) {
+      expect(message).toMatchObject({
+        role: 'custom', customType: 'openclaw:turn-aborted', display: false,
+      });
+    }
 
     // The same runtime object remains usable after a run-level cancellation.
     agent.reset();
@@ -159,7 +169,7 @@ describe('OpenClaw unified conversation store spike', () => {
     const snapshot = await kernel.compileContext({ conversationId, runId });
     const session = OpenClawConversationSession.hydrate({ factory: factory(), cwd, snapshot });
     expect(session.manager.isPersisted()).toBe(false);
-    expect(session.manager.getSessionFile()).toBeUndefined();
+    expect(() => assertInMemoryOpenClawSessionManager(session.manager)).not.toThrow();
     expect(session.manager.buildSessionContext().messages).toHaveLength(1);
 
     const firstEntry = session.manager.getEntries()[0]!;
@@ -241,7 +251,7 @@ describe('OpenClaw unified conversation store spike', () => {
     });
 
     expect(restored.manager.isPersisted()).toBe(false);
-    expect(restored.manager.getSessionFile()).toBeUndefined();
+    expect(() => assertInMemoryOpenClawSessionManager(restored.manager)).not.toThrow();
     expect(restored.manager.getEntries().some((entry) => entry.type === 'compaction')).toBe(true);
     expect(restored.manager.getTree().length).toBeGreaterThanOrEqual(1);
     const contextText = JSON.stringify(restored.manager.buildSessionContext().messages);

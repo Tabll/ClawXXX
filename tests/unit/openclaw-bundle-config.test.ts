@@ -8,21 +8,21 @@ import { describe, expect, it } from 'vitest';
 const require = createRequire(import.meta.url);
 
 describe('openclaw bundle config', () => {
-  it('pins the OpenClaw 2026.7.1-2 runtime compatibility matrix', () => {
+  it('pins the OpenClaw 2026.9.2 runtime compatibility matrix', () => {
     const packageJson = JSON.parse(readFileSync(resolve(process.cwd(), 'package.json'), 'utf8')) as {
       dependencies?: Record<string, string>;
       devDependencies?: Record<string, string>;
     };
-    expect(packageJson.dependencies?.['@agentclientprotocol/sdk']).toBe('1.1.0');
+    expect(packageJson.dependencies?.['@agentclientprotocol/sdk']).toBe('1.4.0');
     expect(packageJson.devDependencies).toMatchObject({
-      openclaw: '2026.7.1-2',
+      openclaw: '2026.9.2',
       electron: '43.4.0',
-      '@openclaw/discord': '2026.7.1',
+      '@openclaw/discord': '2026.9.2',
       '@openclaw/qqbot': '2026.7.1',
-      '@openclaw/whatsapp': '2026.7.1',
-      '@soimy/dingtalk': '3.6.6',
-      '@wecom/wecom-openclaw-plugin': '2026.7.2',
-      '@larksuite/openclaw-lark': '2026.7.9',
+      '@openclaw/whatsapp': '2026.9.2',
+      '@soimy/dingtalk': '3.6.10',
+      '@wecom/wecom-openclaw-plugin': '2026.8.17',
+      '@larksuite/openclaw-lark': '2026.7.16',
     });
 
     const nodeDownloadScript = readFileSync(
@@ -67,18 +67,18 @@ describe('openclaw bundle config', () => {
     expect(lockfile).not.toContain("'@wecom/wecom-openclaw-plugin@2026.6.23':");
     expect(lockfile).not.toContain("'@larksuite/openclaw-lark@2026.6.10':");
     expect(lockfile).not.toContain("'@openclaw/ai@2026.7.1':");
-    expect(lockfile).toContain("'@openclaw/ai@2026.7.1-2':");
+    expect(lockfile).toContain("'@openclaw/ai@2026.9.2':");
   });
 
   it('includes Electron runtime-only packages needed in packaged builds', async () => {
     const { ELECTRON_MAIN_RUNTIME_PACKAGES, EXTRA_BUNDLED_PACKAGES } = await import('../../scripts/openclaw-bundle-config.mjs');
 
     expect(ELECTRON_MAIN_RUNTIME_PACKAGES).toEqual([
-      '@whiskeysockets/baileys',
+      'baileys',
       'qrcode-terminal',
     ]);
     expect(EXTRA_BUNDLED_PACKAGES).toEqual(expect.arrayContaining([
-      '@whiskeysockets/baileys',
+      'baileys',
       '@larksuiteoapi/node-sdk',
       '@grammyjs/runner',
       '@grammyjs/transformer-throttler',

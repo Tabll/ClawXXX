@@ -49,6 +49,7 @@ function fixture(overrides: Partial<Record<string, unknown>> = {}) {
     setSessionConfigOption: vi.fn(async () => ({ success: true, generation: 1, configOptions: [] })),
     sendPrompt: vi.fn(async () => ({ success: true, generation: 1 })),
     cancelSession: vi.fn(async () => ({ success: true, generation: 1 })),
+    closeManagedSession: vi.fn(async () => ({ success: true, generation: 1 })),
     respondPermission: vi.fn(async () => ({ success: true, generation: 1 })),
     shutdown: vi.fn(async () => undefined),
     ...overrides,
@@ -81,6 +82,46 @@ function runtime() {
 }
 
 describe('OpenClaw ACP execution adapter', () => {
+  it('waits for final usage and native close before emitting a cancelled terminal', async () => {
+    const prompt = Promise.withResolvers<{ success: boolean; generation: number; stopReason: string }>();
+    const close = Promise.withResolvers<{ success: boolean; generation: number }>();
+    const f = fixture({ sendPrompt: vi.fn(() => prompt.promise), closeManagedSession: vi.fn(() => close.promise) });
+    const host = createFakeHost();
+    const adapter = new OpenClawAcpChatAdapter(f.acp);
+    await adapter.initialize({ host, generation: 1, runtime: runtime() });
+    const input = request('cancel-active');
+    const running = adapter.execute(input);
+    await vi.waitFor(() => expect(f.acp.sendPrompt).toHaveBeenCalled());
+    const key = vi.mocked(f.acp.sendPrompt).mock.calls[0][0].sessionKey;
+    await expect(adapter.cancel(input)).resolves.toEqual({ acknowledged: true });
+    expect(host.events.map(event => event.event.kind)).toEqual(['cancel.acknowledged']);
+    await f.update({ sessionKey: key, generation: 1, notification: { sessionId: key, update: { sessionUpdate: 'usage_update', inputTokens: 2 } } } as never);
+    prompt.resolve({ success: true, generation: 1, stopReason: 'cancelled' });
+    await vi.waitFor(() => expect(f.acp.closeManagedSession).toHaveBeenCalled());
+    expect(host.events.some(event => event.event.kind === 'run.terminal')).toBe(false);
+    close.resolve({ success: true, generation: 1 });
+    await running;
+    expect(host.events.map(event => event.event.kind)).toEqual(['cancel.acknowledged', 'usage', 'run.terminal']);
+    expect(host.events.at(-1)?.event.payload).toEqual({ outcome: 'cancelled' });
+    await f.update({ sessionKey: key, generation: 1, notification: { sessionId: key, update: { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'late' } } } } as never);
+    expect(host.events).toHaveLength(3);
+    await expect(adapter.cancel(input)).resolves.toEqual({ acknowledged: false });
+  });
+
+  it('cleans up on prompt failure and does not claim completion when native cleanup fails', async () => {
+    const f = fixture({ sendPrompt: vi.fn(async () => ({ success: false, error: 'provider failed' })) });
+    const host = createFakeHost();
+    const adapter = new OpenClawAcpChatAdapter(f.acp);
+    await adapter.initialize({ host, generation: 1, runtime: runtime() });
+    await expect(adapter.execute(request('failure'))).rejects.toThrow('provider failed');
+    expect(f.acp.closeManagedSession).toHaveBeenCalledOnce();
+    expect(host.events.some(event => event.event.kind === 'run.terminal')).toBe(false);
+    vi.mocked(f.acp.sendPrompt).mockResolvedValue({ success: true, generation: 1 });
+    vi.mocked(f.acp.closeManagedSession).mockResolvedValue({ success: false, error: 'close failed' });
+    await expect(adapter.execute(request('close-failure'))).rejects.toThrow('close failed');
+    expect(host.events.some(event => event.event.kind === 'run.terminal')).toBe(false);
+  });
+
   it('normalizes live ACP events and materializes grant-scoped attachments only for the prompt', async () => {
     let fixtureRef: ReturnType<typeof fixture>;
     let stagedPath = '';

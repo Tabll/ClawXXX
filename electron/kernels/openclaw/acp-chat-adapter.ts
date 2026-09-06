@@ -14,25 +14,11 @@ import type { AcpChatService } from '../../services/acp-chat-service';
 import type { AcpPermissionRequestEnvelope, AcpSessionUpdateEnvelope } from '@shared/acp-chat/types';
 import type { OpenClawChatAdapter } from './openclaw-driver';
 import type { OpenClawRuntimeLocation } from './runtime-location';
+import { compileManagedOpenClawSession, managedOpenClawSessionKey, openClawModelRef, openClawPermissionMode } from './managed-session';
 
 function workspacePath(uri: string): string {
   if (uri.startsWith('file:')) return fileURLToPath(uri);
   return uri;
-}
-
-function sessionKey(input: Pick<KernelRunIdentity, 'conversationId'> & { agentId?: string }): string {
-  if (String(input.conversationId).startsWith('agent:')) return String(input.conversationId);
-  return `agent:${input.agentId || 'main'}:clawx-${input.conversationId}`;
-}
-
-function promptText(input: KernelRunRequest): string {
-  const parts = input.context.map(block => {
-    if (block.text !== undefined) return block.text;
-    if (block.json !== undefined) return JSON.stringify(block.json);
-    if (block.blobHash) return `[ClawX attachment ${block.blobHash}]`;
-    return '';
-  }).filter(Boolean);
-  return parts.join('\n\n');
 }
 
 function requireSuccess(result: { success: boolean; error?: string }, operation: string): void {
@@ -87,49 +73,53 @@ export class OpenClawAcpChatAdapter implements OpenClawChatAdapter {
     } finally {
       if (this.activeRunId === input.runId) this.activeRunId = undefined;
       this.cancelledBeforePrompt.delete(input.runId);
+      this.eventSeqByRun.delete(input.runId);
+      this.terminalRuns.delete(input.runId);
       release();
     }
   }
 
   private async executeInActiveSlot(input: KernelRunRequest): Promise<KernelRunAcceptance> {
     if (this.cancelledBeforePrompt.has(input.runId)) return this.acceptance(input);
-    const key = sessionKey(input);
+    const key = managedOpenClawSessionKey(input);
     const cwd = workspacePath(input.workspaceUri);
+    const compiled = compileManagedOpenClawSession(input);
     const loaded = await this.acp.loadSession({
       sessionKey: key,
       workspaceRoot: cwd,
       cwd,
       // Managed sessions are always transient and hydrate from canonical input.
       createIfMissing: true,
+      managedSession: compiled.managedSession,
     });
     requireSuccess(loaded, 'session/new');
     this.sessionsByRun.set(input.runId, key);
     this.runsBySession.set(key, input);
-    if (this.cancelledBeforePrompt.has(input.runId)) return this.acceptance(input, key);
-    const configuration: Array<[string, string]> = [];
-    if (input.providerId) configuration.push(['provider', input.providerId]);
-    if (input.modelId) configuration.push(['model', input.modelId]);
-    if (input.permissionMode) configuration.push(['permission_mode', input.permissionMode]);
-    for (const [configId, value] of configuration) {
-      const configured = await this.acp.setSessionConfigOption({ sessionKey: key, configId, value });
-      requireSuccess(configured, `set ${configId}`);
-    }
-    if (this.cancelledBeforePrompt.has(input.runId)) return this.acceptance(input, key);
-    const staged = await this.materializeAttachments(input);
+    let outcome: 'completed' | 'cancelled' = 'completed';
     try {
-      const prompted = await this.acp.sendPrompt({
-        sessionKey: key,
-        cwd,
-        message: promptText(input),
-        messageId: input.runId,
-        ...(staged.media.length > 0 ? { media: staged.media } : {}),
-      });
-      requireSuccess(prompted, 'session/prompt');
-      await this.emit(input, 'run.terminal', { outcome: 'completed' });
+      if (this.cancelledBeforePrompt.has(input.runId)) return this.acceptance(input, key);
+      const staged = await this.materializeAttachments(input);
+      try {
+        const prompted = await this.acp.sendPrompt({
+          sessionKey: key,
+          cwd,
+          message: compiled.prompt,
+          messageId: input.runId,
+          ...(staged.media.length > 0 ? { media: staged.media } : {}),
+        });
+        requireSuccess(prompted, 'session/prompt');
+        if (prompted.stopReason === 'cancelled') outcome = 'cancelled';
+      } finally { await staged.cleanup(); }
     } finally {
-      await staged.cleanup();
-      await this.afterOperation?.();
+      try {
+        requireSuccess(await this.acp.closeManagedSession({ sessionKey: key }), 'session/close');
+        await this.afterOperation?.();
+      } finally {
+        this.sessionsByRun.delete(input.runId);
+        this.runsBySession.delete(key);
+      }
     }
+    await this.emit(input, 'run.terminal', { outcome });
     return this.acceptance(input, key);
   }
 
@@ -143,18 +133,21 @@ export class OpenClawAcpChatAdapter implements OpenClawChatAdapter {
       await this.emit(input, 'run.terminal', { outcome: 'cancelled' });
       return { acknowledged: true };
     }
-    const key = this.sessionsByRun.get(input.runId) ?? sessionKey(input);
+    const key = this.sessionsByRun.get(input.runId);
+    if (!key) return { acknowledged: false };
     const result = await this.acp.cancelSession({ sessionKey: key });
     if (result.success) {
       await this.emit(input, 'cancel.acknowledged', { acknowledged: true });
-      await this.emit(input, 'run.terminal', { outcome: 'cancelled' });
+      // The prompt completion owns terminal settlement, after final usage and
+      // resource release. An accepted cancellation is not yet a finished run.
     }
     await this.afterOperation?.();
     return { acknowledged: result.success };
   }
 
   async resolvePermission(input: KernelPermissionResolution): Promise<void> {
-    const key = this.sessionsByRun.get(input.runId) ?? sessionKey(input);
+    const key = this.sessionsByRun.get(input.runId);
+    if (!key) throw new Error('OpenClaw permission run is no longer active');
     const result = await this.acp.respondPermission({
       sessionKey: key,
       requestId: input.requestId,
@@ -170,11 +163,12 @@ export class OpenClawAcpChatAdapter implements OpenClawChatAdapter {
   }
 
   async updateRunConfiguration(input: KernelRunConfiguration): Promise<void> {
-    const key = this.sessionsByRun.get(input.runId) ?? sessionKey(input);
+    const key = this.sessionsByRun.get(input.runId);
+    if (!key) throw new Error('OpenClaw configuration run is no longer active');
     const values: Array<[string, string]> = [];
-    if (input.providerId) values.push(['provider', input.providerId]);
-    if (input.modelId) values.push(['model', input.modelId]);
-    if (input.permissionMode) values.push(['permission_mode', input.permissionMode]);
+    const model = openClawModelRef(input.providerId, input.modelId);
+    if (model) values.push(['clawx_model', model]);
+    if (input.permissionMode) values.push(['clawx_permission_mode', openClawPermissionMode(input.permissionMode)]);
     for (const [configId, value] of values) {
       const result = await this.acp.setSessionConfigOption({ sessionKey: key, configId, value });
       requireSuccess(result, `set ${configId}`);

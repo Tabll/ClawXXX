@@ -83,7 +83,7 @@ describe('kernel runtime build supply chain', () => {
 
       expect(readFileSync(first.archivePath)).toEqual(readFileSync(second.archivePath));
       expect(readFileSync(first.descriptorPath)).toEqual(readFileSync(second.descriptorPath));
-      expect(first.descriptor.artifactVersion).toBe('2026.7.1-2+clawx.6');
+      expect(first.descriptor.artifactVersion).toBe('2026.9.2+clawx.7');
       expect(first.descriptor.storage).toMatchObject({ authority: 'clawx-data-service', nativeDurableHistory: false });
       expect(first.descriptor.supplyChain).toEqual(expect.objectContaining({
         sourceSha256: expect.stringMatching(/^[a-f0-9]{64}$/),
@@ -188,6 +188,11 @@ describe('kernel runtime build supply chain', () => {
     expect(smoke).toContain("[chatPath, '--version']");
     expect(smoke).toContain('smokeDeepSeekHarnessHost');
     expect(smoke).toContain('scanRuntimeDataPaths(managedDataRoot)');
+    expect(smoke).toContain('probe-openclaw-managed-runtime.mjs');
+    expect(smoke.match(/verifyFileManifest\(extracted\);/g)).toHaveLength(2);
+    expect(smoke.lastIndexOf('verifyFileManifest(extracted);')).toBeGreaterThan(smoke.indexOf('? await smokeOpenClawManagedEntrypoint'));
+    expect(workflow).toContain('--plugins-root build/openclaw/clawx-plugins --report temp/reports/openclaw-managed-runtime.json');
+    expect(workflow.indexOf('probe-openclaw-managed-runtime.mjs')).toBeLessThan(workflow.indexOf('scripts/kernel-runtime/sign-macos-runtime.mjs'));
     expect(workflow).toContain('tests/contract/kernels/openclaw-conversation-store.test.ts');
     expect(workflow).toContain('tests/e2e/chat-acp-session-controls.spec.ts');
     expect(workflow).toContain('tests/e2e/agents-multi-kernel.spec.ts');

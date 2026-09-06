@@ -24,7 +24,9 @@ export type OpenClawSessionCheckpointV1 = {
 export interface OpenClawSessionManagerLike {
   isPersisted(): boolean;
   getCwd(): string;
-  getSessionFile(): string | undefined;
+  /** July releases exposed a file; September releases expose a SQLite target. */
+  getSessionFile?(): string | undefined;
+  getSessionTarget?(): unknown;
   getLeafId(): string | null;
   getEntries(): OpenClawSessionEntry[];
   getTree(): unknown[];
@@ -45,6 +47,21 @@ export interface OpenClawSessionManagerLike {
 export type OpenClawSessionManagerFactory = {
   inMemory(cwd?: string): OpenClawSessionManagerLike;
 };
+
+export function assertInMemoryOpenClawSessionManager(
+  manager: Pick<OpenClawSessionManagerLike, 'isPersisted' | 'getSessionFile' | 'getSessionTarget'>,
+): void {
+  // Do not treat a removed/unknown persistence API as proof of in-memory use.
+  if (
+    (typeof manager.getSessionFile !== 'function' && typeof manager.getSessionTarget !== 'function')
+    || typeof manager.isPersisted !== 'function'
+    || manager.isPersisted() !== false
+    || (typeof manager.getSessionFile === 'function' && manager.getSessionFile() !== undefined)
+    || (typeof manager.getSessionTarget === 'function' && manager.getSessionTarget() !== undefined)
+  ) {
+    throw new Error('Managed OpenClaw sessions must be strictly in-memory');
+  }
+}
 
 function assertCheckpoint(value: unknown): asserts value is OpenClawSessionCheckpointV1 {
   if (!value || typeof value !== 'object') throw new Error('OpenClaw checkpoint must be an object');
@@ -189,9 +206,7 @@ export class OpenClawConversationSession {
   private readonly canonicalTurnIds: Set<string>;
 
   private constructor(manager: OpenClawSessionManagerLike, canonicalTurnIds: Iterable<string>) {
-    if (manager.isPersisted() || manager.getSessionFile() !== undefined) {
-      throw new Error('Managed OpenClaw sessions must be strictly in-memory');
-    }
+    assertInMemoryOpenClawSessionManager(manager);
     this.manager = manager;
     this.canonicalTurnIds = new Set(canonicalTurnIds);
   }

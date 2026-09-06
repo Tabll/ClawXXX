@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { basename } from 'node:path';
 import { readFile } from 'node:fs/promises';
+import { registerManagedSessionBridge } from './managed-session.mjs';
 
 const MAX_CACHE_ENTRIES = 1_000;
 const CACHE_TTL_MS = 5 * 60_000;
@@ -14,9 +15,12 @@ function text(value) {
 
 function cacheKey(event, context) {
   return [
+    context?.channelId ?? event?.channel ?? '',
+    context?.accountId ?? '',
     context?.sessionKey ?? event?.sessionKey ?? '',
+    context?.messageId ?? event?.messageId ?? '',
     context?.senderId ?? event?.senderId ?? '',
-    event?.timestamp ?? '',
+    (context?.messageId ?? event?.messageId) ? '' : event?.timestamp ?? '',
   ].join('\u0000');
 }
 
@@ -35,8 +39,6 @@ function remember(event, context) {
   cleanCache();
   const item = { event, context, cachedAt: Date.now() };
   receivedByKey.set(cacheKey(event, context), item);
-  const sessionKey = context?.sessionKey ?? event?.sessionKey;
-  if (sessionKey) receivedByKey.set(`session:${sessionKey}`, item);
 }
 
 async function resolveCached(event, context) {
@@ -44,10 +46,9 @@ async function resolveCached(event, context) {
   // before_dispatch is awaited. Yield once so the already-started hook can
   // publish its richer message id and media metadata.
   await Promise.resolve();
+  cleanCache();
   const exact = receivedByKey.get(cacheKey(event, context));
-  if (exact) return exact;
-  const sessionKey = context?.sessionKey ?? event?.sessionKey;
-  return sessionKey ? receivedByKey.get(`session:${sessionKey}`) : undefined;
+  return exact;
 }
 
 function deterministicMessageId(input) {
@@ -95,7 +96,10 @@ async function handoff(event, context, cached, logger) {
   if (!endpoint || !token || process.env.CLAWX_MANAGED_RUNTIME !== '1') {
     throw new Error('managed Channel handoff endpoint is unavailable');
   }
-  const received = cached?.event ?? {};
+  // September before_dispatch carries the authoritative message identity and
+  // our patch includes its media snapshot. Never borrow another message from
+  // the same conversation when concurrent deliveries race.
+  const received = { ...cached?.event, ...event };
   const receivedContext = cached?.context ?? {};
   const metadata = received.metadata && typeof received.metadata === 'object' ? received.metadata : {};
   const channelType = text(context?.channelId) ?? text(receivedContext?.channelId) ?? text(event?.channel);
@@ -115,7 +119,7 @@ async function handoff(event, context, cached, logger) {
   const content = typeof event?.body === 'string'
     ? event.body
     : typeof event?.content === 'string' ? event.content : received.content;
-  const externalMessageId = text(received.messageId) ?? deterministicMessageId({
+  const externalMessageId = text(event?.messageId) ?? text(context?.messageId) ?? text(received.messageId) ?? deterministicMessageId({
     channelType,
     nativeAccountId,
     externalConversationId,
@@ -155,6 +159,7 @@ export default {
   name: 'ClawX Channel Handoff',
   description: 'Canonical channel ingress handoff for ClawX managed mode',
   register(api) {
+    registerManagedSessionBridge(api);
     api.on('message_received', async (event, context) => {
       remember(event, context);
     });
@@ -167,16 +172,13 @@ export default {
         // and a second history authority. The external provider can redeliver
         // after the canonical owner has recovered.
         api.logger.error?.(`clawx-channel-handoff: ${error instanceof Error ? error.message : String(error)}`);
+        throw error;
       } finally {
         if (cached) {
           receivedByKey.delete(cacheKey(cached.event, cached.context));
-          const sessionKey = cached.context?.sessionKey ?? cached.event?.sessionKey;
-          if (sessionKey && receivedByKey.get(`session:${sessionKey}`) === cached) {
-            receivedByKey.delete(`session:${sessionKey}`);
-          }
         }
       }
-      return { handled: true };
+      return { handled: true, clawxCanonicalAccepted: true };
     });
   },
 };

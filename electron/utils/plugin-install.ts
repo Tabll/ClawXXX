@@ -6,6 +6,8 @@
  * stale plugins) and when a user configures a channel.
  */
 import { app } from 'electron';
+import { fixupPluginManifest as projectPluginManifest } from './plugin-manifest';
+import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { existsSync, cpSync, copyFileSync, statSync, lstatSync, mkdirSync, readFileSync, readlinkSync, writeFileSync, readdirSync, realpathSync, symlinkSync, unlinkSync } from 'node:fs';
 import { readdir, stat, copyFile, mkdir } from 'node:fs/promises';
@@ -118,138 +120,9 @@ function toErrorDiagnostic(error: unknown): { code?: string; name?: string; mess
   };
 }
 
-// ── Known plugin-ID corrections ─────────────────────────────────────────────
-// Some npm packages ship with an openclaw.plugin.json whose "id" field
-// doesn't match the ID the plugin code actually exports.  After copying we
-// patch both the manifest AND the compiled JS so the Gateway accepts them.
-const MANIFEST_ID_FIXES: Record<string, string> = {
-  'wecom-openclaw-plugin': 'wecom',
-};
-
-/**
- * After a plugin has been copied to ~/.openclaw/extensions/<dir>, fix any
- * known manifest-ID mismatches so the Gateway can load the plugin.
- * Also keeps package.json npm metadata usable by OpenClaw's repair planner.
- */
+// Shared with CI so real payload probes exercise the same manifest/entry repair.
 export function fixupPluginManifest(targetDir: string): void {
-  // 1. Fix openclaw.plugin.json id
-  const manifestPath = join(targetDir, 'openclaw.plugin.json');
-  try {
-    const raw = readFileSync(fsPath(manifestPath), 'utf-8');
-    const manifest = JSON.parse(raw);
-    const oldId = manifest.id as string | undefined;
-    let modified = false;
-    if (oldId && MANIFEST_ID_FIXES[oldId]) {
-      const newId = MANIFEST_ID_FIXES[oldId];
-      manifest.id = newId;
-      modified = true;
-      logger.info(`[plugin] Fixed manifest ID: ${oldId} → ${newId}`);
-    }
-
-    // OpenClaw 2026.7.1 treats configured channel plugins without a static
-    // channelConfigs descriptor as stale/missing and invokes its npm repair
-    // flow. The WeCom package has no descriptor upstream, so provide a
-    // permissive schema that preserves ClawX's existing channel config fields.
-    if (manifest.id === 'wecom' && !manifest.channelConfigs?.wecom) {
-      manifest.channelConfigs = {
-        ...(manifest.channelConfigs ?? {}),
-        wecom: {
-          schema: {
-            type: 'object',
-            additionalProperties: true,
-          },
-        },
-      };
-      modified = true;
-      logger.info('[plugin] Added WeCom channelConfigs compatibility descriptor');
-    }
-
-    if (modified) {
-      writeFileSync(fsPath(manifestPath), JSON.stringify(manifest, null, 2) + '\n', 'utf-8');
-    }
-  } catch {
-    // manifest may not exist yet — ignore
-  }
-
-  // 2. Keep package.json package-manager metadata valid
-  const pkgPath = join(targetDir, 'package.json');
-  try {
-    const raw = readFileSync(fsPath(pkgPath), 'utf-8');
-    const pkg = JSON.parse(raw);
-    let modified = false;
-
-    // Keep the real upstream npm package name/spec even though ClawX patches
-    // the effective plugin id. Rewriting these to the non-existent
-    // `@wecom/wecom` package makes OpenClaw's repair planner fail before the
-    // Gateway starts. Restore metadata previously rewritten by older ClawX
-    // compatibility code.
-    if (pkg.name === '@wecom/wecom') {
-      pkg.name = '@wecom/wecom-openclaw-plugin';
-      modified = true;
-    }
-    const install = pkg.openclaw?.install;
-    if (install?.npmSpec === '@wecom/wecom') {
-      install.npmSpec = '@wecom/wecom-openclaw-plugin';
-      modified = true;
-    }
-
-    if (modified) {
-      writeFileSync(fsPath(pkgPath), JSON.stringify(pkg, null, 2) + '\n', 'utf-8');
-      logger.info(`[plugin] Restored package.json npm metadata in ${targetDir}`);
-    }
-  } catch {
-    // ignore
-  }
-
-  // 3. Fix hardcoded plugin IDs in compiled JS entry files.
-  //    The Gateway validates that the JS export's `id` matches the manifest.
-  patchPluginEntryIds(targetDir);
-}
-
-/**
- * Patch the compiled JS entry files so the hardcoded `id` field in the
- * plugin export matches the manifest.  Without this, the Gateway rejects
- * the plugin with "plugin id mismatch".
- */
-function patchPluginEntryIds(targetDir: string): void {
-  const pkgPath = join(targetDir, 'package.json');
-  let pkg: Record<string, unknown>;
-  try {
-    pkg = JSON.parse(readFileSync(fsPath(pkgPath), 'utf-8'));
-  } catch {
-    return;
-  }
-
-  const entryFiles = [pkg.main, pkg.module].filter(Boolean) as string[];
-
-  for (const entry of entryFiles) {
-    const entryPath = join(targetDir, entry);
-    if (!existsSync(fsPath(entryPath))) continue;
-
-    let content: string;
-    try {
-      content = readFileSync(fsPath(entryPath), 'utf-8');
-    } catch {
-      continue;
-    }
-
-    let patched = false;
-    for (const [wrongId, correctId] of Object.entries(MANIFEST_ID_FIXES)) {
-      // Match patterns like:  id: "wecom-openclaw-plugin"  or  id: 'wecom-openclaw-plugin'
-      const escapedWrongId = wrongId.replace(/-/g, '\\-');
-      const pattern = new RegExp(`(\\bid\\s*:\\s*)(["'])${escapedWrongId}\\2`, 'g');
-      const replaced = content.replace(pattern, `$1$2${correctId}$2`);
-      if (replaced !== content) {
-        content = replaced;
-        patched = true;
-        logger.info(`[plugin] Patched plugin ID in ${entry}: "${wrongId}" → "${correctId}"`);
-      }
-    }
-
-    if (patched) {
-      writeFileSync(fsPath(entryPath), content, 'utf-8');
-    }
-  }
+  projectPluginManifest(targetDir, logger);
 }
 
 // ── Plugin npm name mapping ──────────────────────────────────────────────────
@@ -764,6 +637,22 @@ export async function ensurePluginInstalled(
   const targetPkgJson = join(targetDir, 'package.json');
 
   const sourceDir = candidateSources.find((dir) => existsSync(fsPath(join(dir, 'openclaw.plugin.json'))));
+  const npmName = !app.isPackaged ? PLUGIN_NPM_NAMES[pluginDirName] : undefined;
+  const devSource = !sourceDir && npmName ? resolvePluginNpmPackagePath(npmName) : null;
+  const authoritativeSource = sourceDir ?? devSource;
+  const markerPath = join(targetDir, '.clawx-mirror.json');
+  const sourceIdentity = authoritativeSource ? createHash('sha256').update(JSON.stringify([
+    realpathSync(fsPath(authoritativeSource)),
+    readPluginVersion(join(authoritativeSource, 'package.json')),
+    statSync(fsPath(join(authoritativeSource, 'package.json'))).mtimeMs,
+    getOpenClawRuntimeLocation()?.artifactVersion,
+  ])).digest('hex') : undefined;
+  let installedIdentity: string | undefined;
+  try { installedIdentity = JSON.parse(readFileSync(fsPath(markerPath), 'utf8')).sourceIdentity; } catch { /* pre-marker mirror */ }
+
+  function recordMirrorIdentity(): void {
+    if (sourceIdentity) writeFileSync(fsPath(markerPath), JSON.stringify({ sourceIdentity }), { mode: 0o600 });
+  }
 
   async function finalizeInstalledMirror(): Promise<{ installed: true; peerLinkOk: boolean }> {
     await syncTrustedOfficialPluginInstallRecord(pluginDirName, targetDir);
@@ -772,12 +661,12 @@ export async function ensurePluginInstalled(
 
   // If already installed, check whether an upgrade is available
   if (existsSync(fsPath(targetManifest))) {
-    if (!sourceDir) {
+    if (!authoritativeSource) {
       return await finalizeInstalledMirror(); // no bundled source to compare, keep existing
     }
     const installedVersion = readPluginVersion(targetPkgJson);
-    const sourceVersion = readPluginVersion(join(sourceDir, 'package.json'));
-    if (!sourceVersion || !installedVersion || sourceVersion === installedVersion) {
+    const sourceVersion = readPluginVersion(join(authoritativeSource, 'package.json'));
+    if (sourceIdentity === installedIdentity && sourceVersion === installedVersion) {
       return await finalizeInstalledMirror(); // same version or unable to compare
     }
     // Version differs — fall through to overwrite install
@@ -801,6 +690,7 @@ export async function ensurePluginInstalled(
           return { installed: false, warning: `Failed to install ${pluginLabel} plugin mirror (manifest missing).` };
         }
         fixupPluginManifest(targetDir);
+        recordMirrorIdentity();
         const installed = await finalizeInstalledMirror();
         logger.info(`Installed ${pluginLabel} plugin from bundled mirror: ${sourceDir}`);
         return installed;
@@ -840,7 +730,7 @@ export async function ensurePluginInstalled(
       if (npmPkgPath && existsSync(fsPath(join(npmPkgPath, 'openclaw.plugin.json')))) {
         const installedVersion = existsSync(fsPath(targetPkgJson)) ? readPluginVersion(targetPkgJson) : null;
         const sourceVersion = readPluginVersion(join(npmPkgPath, 'package.json'));
-        if (sourceVersion && (!installedVersion || sourceVersion !== installedVersion)) {
+        if (sourceVersion && (sourceIdentity !== installedIdentity || !installedVersion || sourceVersion !== installedVersion)) {
           logger.info(
             `[plugin] ${installedVersion ? 'Upgrading' : 'Installing'} ${pluginLabel} plugin` +
             `${installedVersion ? `: ${installedVersion} → ${sourceVersion}` : `: ${sourceVersion}`} (dev/node_modules)`,
@@ -849,6 +739,7 @@ export async function ensurePluginInstalled(
             mkdirSync(fsPath(join(getOpenClawConfigDir(), 'extensions')), { recursive: true });
             copyPluginFromNodeModules(npmPkgPath, targetDir, npmName);
             fixupPluginManifest(targetDir);
+            recordMirrorIdentity();
             if (existsSync(fsPath(join(targetDir, 'openclaw.plugin.json')))) {
               return await finalizeInstalledMirror();
             }

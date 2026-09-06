@@ -29,7 +29,7 @@ describe('OpenClaw LM Studio tool-schema patch', () => {
 
   it('keeps the LM Studio compatibility fix in the registered pnpm patch', async () => {
     const patch = await readFile(
-      path.join(root, 'patches/openclaw@2026.7.1-2.patch'),
+      path.join(root, 'patches/openclaw@2026.9.2.patch'),
       'utf8',
     );
     const addedAnchoredPatterns = patch
@@ -39,27 +39,28 @@ describe('OpenClaw LM Studio tool-schema patch', () => {
       .split('\n')
       .filter((line) => line.startsWith('-') && line.trimEnd().endsWith(oversizedTriggerLimitSource));
 
-    expect(patch).toContain('diff --git a/dist/cron-tool-C9qaFGtt.js');
-    expect(patch).toContain('diff --git a/dist/schema-BuOFpc7K.js');
-    expect(addedAnchoredPatterns).toHaveLength(4);
+    expect(patch).toContain('diff --git a/dist/cron-tool-DbVyRyAj.js');
+    expect(patch).toContain('diff --git a/dist/src-BiL5aQto.js');
+    expect(addedAnchoredPatterns).toHaveLength(3);
     expect(removedOversizedTriggerLimits).toHaveLength(2);
   });
 
   it('applies anchored patterns to the installed OpenClaw bundles', async () => {
     const cronToolBundle = await readFile(
-      path.join(root, 'node_modules/openclaw/dist/cron-tool-C9qaFGtt.js'),
+      path.join(root, 'node_modules/openclaw/dist/cron-tool-DbVyRyAj.js'),
       'utf8',
     );
     const protocolSchemaBundle = await readFile(
-      path.join(root, 'node_modules/openclaw/dist/schema-BuOFpc7K.js'),
+      path.join(root, 'node_modules/openclaw/dist/src-BiL5aQto.js'),
       'utf8',
     );
 
-    expect(cronToolBundle).toContain(anchoredPatternSource);
+    // Upstream removed the tool declaration-key pattern. Only the three
+    // shared Cron schemas still need the semantics-preserving anchored form.
     expect(cronToolBundle).not.toContain(unanchoredPatternSource);
     expect(cronToolBundle).not.toContain(oversizedTriggerLimitSource);
     expect(protocolSchemaBundle.split(anchoredPatternSource)).toHaveLength(4);
-    expect(protocolSchemaBundle).not.toContain(unanchoredPatternSource);
-    expect(protocolSchemaBundle).not.toContain(oversizedTriggerLimitSource);
+    const trigger = protocolSchemaBundle.slice(protocolSchemaBundle.indexOf('const CronTriggerSchema ='), protocolSchemaBundle.indexOf('const CronPacingSchema ='));
+    expect(trigger).not.toContain(oversizedTriggerLimitSource);
   });
 });

@@ -1,11 +1,13 @@
 # ClawX 0.6.0 多内核发行说明
 
+DSH 0.1.3 已适配服务组合、流式结算和 SessionHandle 的破坏性变更；失败前缀会被替换，用量按请求结算去重，统一历史不变。上游提示性能回退。`.11` 源码升级不代表新版运行时已签名、公证或发布，详见[兼容性说明](../../harness/reference/deepseek-harness-0.1.3-upgrade.md)。
+
 状态：实现候选版本。是否公开发布仍取决于受保护 CI 的五目标运行时晋级和三平台签名安装包闸门。
 
 ## 主要变化
 
 - OpenClaw 已从主安装包移出，改为首次使用或用户选择时下载。
-- DeepSeek Harness `0.1.2-alpha.2+clawx.10` 成为第二个可选内核；两个内核可并行运行并独立更新、失败或回滚。
+- DeepSeek Harness `0.1.3-alpha.1+clawx.11` 成为第二个可选内核；两个内核可并行运行并独立更新、失败或回滚。
 - 两个内核完全复用当前 Chat、Providers/Models、Agents、Channels、Cron、Skills、Usage 与 Diagnostics UI 和 canonical contracts。
 - 单一 Main-owned SQLite/Blob 服务保存全部新 durable history；同一 Conversation 可在 turn 边界通过脱敏 portable context 切换内核续接。
 - 运行时是可复现、可打补丁的 CI 制品，包含有期限签名 metadata、平台安全证据、SBOM、provenance、许可证报告、repair/rollback 与双镜像分发。

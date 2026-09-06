@@ -20,4 +20,13 @@ Conversation identity is independent of kernel. A later turn may choose another 
 
 Managed kernels must disable or replace durable native conversation, cron, channel-message, and usage persistence. Temporary files are disposable and never restart or UI authority. CI and packaged E2E must scan runtime directories after prompt, cancel, compact, restart, cron, and channel flows to prove there is no second durable history.
 
+An environment flag, an in-memory SDK spike, a host DataService fixture or a
+control-plane smoke is not proof that the production ACP/Gateway path disables
+native history. Test the actual entrypoint and its storage implementation,
+including SQLite replay/session tables, with isolated test-owned roots. A
+post-operation purge is not prevention; never delete a combined native database
+to mask duplicate history because it may also own non-history state. The
+September OpenClaw repair and its remaining release acceptance gates are recorded in
+`harness/reference/openclaw-2026.9.2-upgrade.md`.
+
 Legacy OpenClaw and DeepSeek history is not migrated, scanned, deleted, or silently used as fallback. Attachments and large artifacts may use a content-addressed blob store, but SQLite remains authoritative for their identity, order, ownership, authorization, and lifecycle.
