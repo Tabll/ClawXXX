@@ -1,4 +1,4 @@
-# Windows runtime CI repair — OpenClaw +clawx.8 / +clawx.9 / +clawx.10
+# Windows runtime CI repair — OpenClaw +clawx.8 / +clawx.9 / +clawx.10 / +clawx.11
 
 ## Failure and root cause
 
@@ -240,3 +240,50 @@ the repaired modules; it is not a native CI archive. These local checks do not
 certify Apple acceptance, platform signatures, sealed artifacts, clean-machine
 installation or COS publication. Those gates remain mandatory in the new
 two-kernel/five-target staging run, whose outcome is tracked by MK-1933.
+
+## Follow-up: exact Windows esbuild native allowlist — +clawx.11
+
+[Build 34077942495](https://github.com/Tabll/ClawXXX/actions/runs/34077942495)
+at `ae2508be` completed nine of ten runtime builds, all four macOS notarizations
+and all three Electron E2E targets. Windows OpenClaw passed the registry's alias,
+hash, freshness and boundary regressions plus the full real Gateway/ACP/Channel
+probe (94,991/118,570 ms startup/restart within the 180-second budget). It then
+failed native payload validation before archive creation because the allowlist
+incorrectly expected `@esbuild/win32-x64/bin/esbuild.exe`. Both clean-machine
+matrices were skipped; the run retained nine runtime artifacts and ten reports.
+
+The [official frozen npm archive](https://registry.npmjs.org/@esbuild/win32-x64/-/win32-x64-0.27.4.tgz)
+matches the root lock's SHA-512 integrity and contains `package/esbuild.exe`,
+`package/package.json` and `package/README.md`, with no `bin/` directory. The
+11,383,296-byte executable has PE machine AMD64 (`0x8664`) and SHA-256
+`39ee9d164e9f8969ff10852e81023c7141c2fe750e5ea2807f06c3a586e337a7`.
+Only that exact allowlist path is corrected; the native validator, pruning,
+signing, notarization, budgets and runtime probes are unchanged. The audit does
+not execute the downloaded Windows program or introduce another dependency.
+
+Fifteen offline regressions use the checked-in allowlist and real native
+validator across all five targets. Header fixtures must be detected even when
+extensionless; exact approved paths pass while adjacent executables, the old
+Windows path and wrong platform/architecture paths fail. The old configuration
+fails two of these tests, including the same error as CI. The existing
+deterministic artifact test now also assembles a Windows-target esbuild fixture,
+compares archive/descriptor bytes, and proves unreviewed binaries block output.
+The focused allowlist suite runs before expensive source builds in every CI job;
+the final complete-payload audit is still mandatory.
+
+The new immutable identity is `2026.9.2+clawx.11`, revision 11. Only runtime
+metadata and the control bridge's reported default version change, with source
+and overlay hashes synchronized. All 25 existing patch targets, root lock bytes,
+upstream version/commit, independent Node pins and DeepSeek files remain intact.
+Four README locales, the current design, scenario and distribution rule are
+synchronized. Local fixture assembly is not native Windows execution, platform
+signing or clean-machine evidence; the new CI result remains a separate gate.
+
+Local verification passed 36 focused tests and the full 2,245-test host suite
+with zero failures and six existing conditional tests pending. The real frozen
+Windows PE bytes fail the old allowlist and pass the corrected one without
+execution. Typecheck, lint (zero errors/seven existing warnings), frozen-source
+verification, comms replay/compare, Harness CI and the diff-aware task
+validation/dry-run passed. The full report is retained under ignored
+`temp/windows-esbuild-allowlist-vitest.json`. No new Apple acceptance, native
+Windows execution, clean-machine or COS publication is claimed by these checks.

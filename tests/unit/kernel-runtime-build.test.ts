@@ -50,7 +50,10 @@ describe('kernel runtime build supply chain', () => {
     expect(installer).not.toMatch(/taskkill[^\n]+openclaw-gateway/i);
   });
 
-  it('creates byte-for-byte deterministic signed tar.zst artifacts with traceable metadata', async () => {
+  it.each([
+    ['darwin', 'arm64', officialNodeSha256],
+    ['win32', 'x64', 'cc5149eabd53779ce1e7bdc5401643622d0c7e6800ade18928a767e940bb0e62'],
+  ])('creates deterministic signed %s/%s tar.zst artifacts with audited esbuild and traceable metadata', async (platform, arch, nodeSha256) => {
     const root = mkdtempSync(join(tmpdir(), 'clawx-artifact-test-'));
     try {
       const payload = join(root, 'payload');
@@ -61,9 +64,16 @@ describe('kernel runtime build supply chain', () => {
       writeFileSync(join(payload, 'clawx-openclaw.mjs'), 'import "./openclaw.mjs";\n');
       writeFileSync(join(payload, 'clawx-control-bridge.mjs'), 'process.stdout.write("ready\\n");\n');
       writeFileSync(join(payload, 'package.json'), JSON.stringify({ name: 'openclaw-fixture', version: '1.0.0', license: 'MIT' }));
-      writeFileSync(join(nodeRuntime, 'bin', 'node'), '#!/bin/sh\nexit 0\n');
+      const nodeExecutable = join(nodeRuntime, 'bin', platform === 'win32' ? 'node.exe' : 'node');
+      writeFileSync(nodeExecutable, '#!/bin/sh\nexit 0\n');
       writeFileSync(join(nodeRuntime, 'LICENSE'), 'Node fixture license\n');
-      chmodSync(join(nodeRuntime, 'bin', 'node'), 0o755);
+      chmodSync(nodeExecutable, 0o755);
+      // Exercise the production assembly gate, not only the standalone validator.
+      // These binary headers are test fixtures and are never executed.
+      const esbuildDirectory = join(payload, 'node_modules', '@esbuild', `${platform}-${arch}`, ...(platform === 'win32' ? [] : ['bin']));
+      mkdirSync(esbuildDirectory, { recursive: true });
+      const esbuildExecutable = join(esbuildDirectory, platform === 'win32' ? 'esbuild.exe' : 'esbuild');
+      writeFileSync(esbuildExecutable, Buffer.from(platform === 'win32' ? '4d5a0000' : 'cffaedfe', 'hex'));
       const tests = join(root, 'tests.json');
       const storage = join(root, 'storage.json');
       const licenses = join(root, 'licenses.json');
@@ -77,18 +87,18 @@ describe('kernel runtime build supply chain', () => {
         packages: [{ name: 'openclaw-fixture', version: '1.0.0', license: 'MIT' }],
       }));
       writeFileSync(platformSecurity, JSON.stringify({
-        schemaVersion: 1, ok: true, platform: 'darwin', arch: 'arm64', codeSigning: { fixture: true },
+        schemaVersion: 1, ok: true, platform, arch, codeSigning: { fixture: true },
       }));
       const { privateKey } = generateKeyPairSync('ed25519');
       const privateKeyPem = privateKey.export({ type: 'pkcs8', format: 'pem' }).toString();
       const common = {
         repositoryRoot: process.cwd(),
         kernelId: 'openclaw',
-        platform: 'darwin',
-        arch: 'arm64',
+        platform,
+        arch,
         payloadDir: payload,
         nodeDir: nodeRuntime,
-        nodeDistributionSha256: officialNodeSha256,
+        nodeDistributionSha256: nodeSha256,
         testReportPath: tests,
         storageReportPath: storage,
         licenseReportPath: licenses,
@@ -102,7 +112,7 @@ describe('kernel runtime build supply chain', () => {
 
       expect(readFileSync(first.archivePath)).toEqual(readFileSync(second.archivePath));
       expect(readFileSync(first.descriptorPath)).toEqual(readFileSync(second.descriptorPath));
-      expect(first.descriptor.artifactVersion).toBe('2026.9.2+clawx.10');
+      expect(first.descriptor).toMatchObject({ artifactVersion: '2026.9.2+clawx.11', patchRevision: 11, platform, arch });
       expect(first.descriptor.storage).toMatchObject({ authority: 'clawx-data-service', nativeDurableHistory: false });
       expect(first.descriptor.supplyChain).toEqual(expect.objectContaining({
         sourceSha256: expect.stringMatching(/^[a-f0-9]{64}$/),
@@ -114,6 +124,10 @@ describe('kernel runtime build supply chain', () => {
         platformSecurityReportSha256: expect.stringMatching(/^[a-f0-9]{64}$/),
       }));
       expect(readFileSync(first.archivePath).subarray(0, 4).toString('hex')).toBe('28b52ffd');
+      writeFileSync(`${esbuildExecutable}.unreviewed`, Buffer.from('4d5a0000', 'hex'));
+      const rejected = join(root, 'rejected');
+      await expect(assembleKernelArtifact({ ...common, outputDir: rejected })).rejects.toThrow(/not in the audited native allowlist/);
+      expect(existsSync(join(rejected, `openclaw-2026.9.2+clawx.11-${platform}-${arch}.tar.zst`))).toBe(false);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
@@ -216,6 +230,8 @@ describe('kernel runtime build supply chain', () => {
     expect(workflow).toContain('tests/unit/openclaw-plugin-registry.test.ts');
     expect(workflow).toContain('tests/unit/openclaw-probe-lifecycle.test.ts');
     expect(workflow).toContain('tests/unit/kernel-notarization.test.ts');
+    expect(workflow).toContain('tests/unit/openclaw-native-allowlist.test.ts');
+    expect(workflow.indexOf('tests/unit/openclaw-native-allowlist.test.ts')).toBeLessThan(workflow.indexOf('download-npm-source.mjs'));
     expect(workflow.indexOf('tests/unit/kernel-notarization.test.ts')).toBeLessThan(workflow.indexOf('notarize-runtime.mjs'));
     expect(workflow).toContain('--submission temp/reports/notarization-submission.json --report temp/reports/notarization.json');
     expect(workflow).not.toContain('notarytool submit temp/notarization.zip');

@@ -85,4 +85,9 @@ must persist archive-bound submission identity and recover transient status
 queries without repeated uploads or weakening the Accepted gate. Offline
 failure-injection tests and real platform execution remain separate evidence.
 
+Platform-specific native package layouts must be verified against frozen inputs.
+Use exact esbuild executable paths, with all-target native-header and negative
+path fixtures before builds, plus Windows-target artifact assembly regression.
+The complete real payload audit and clean-machine gates remain mandatory.
+
 Skills are canonical immutable packages with per-kernel desired and projection state. OpenClaw and DeepSeek Harness roots must be physically independent: no shared root, nesting, root/package symlink, or cross-root resource reference is allowed. Both-target mutations report each result and retain partial state. DeepSeek Harness registers converted instructions through its process-local `ctx.skills` adapter while SQLite remains the sole metadata authority.

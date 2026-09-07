@@ -22,7 +22,7 @@ Upstream migration/default changes must not widen session visibility or
 permissions. A candidate test must explicitly select its package and exact
 version, never silently test the installed old SDK. Failed real-process storage
 probes block promotion even when host mocks and control smoke pass. The source
-pin is now 2026.9.2+clawx.10; actual per-Run incognito/ACP storage probes run before
+pin is now 2026.9.2+clawx.11; actual per-Run incognito/ACP storage probes run before
 sealing and again against extracted artifacts. Verify the sealed file manifest
 again after first launch, and never let upstream postinstall prune patch files.
 See
@@ -31,6 +31,16 @@ See
 License audits must retain compound `AND` expressions and require explicit package-scoped copyleft obligation records, including Windows sharp's bundled libvips. Do not replace the declaration with a permissive component or interpret a machine-readable obligation record as legal approval.
 
 Frozen inputs must retain LF bytes on Windows; raw upstream and prepared lockfile hashes are checked at their respective stages. DeepSeek Harness Linux builds must compile the pinned native Landlock launcher on each architecture before sandbox tests and include it in the audited runtime payload. Platform reports must be retained even after a later build failure.
+
+Native allowlists must use the integrity-pinned package's actual installed
+layout, not an inferred shared layout across operating systems. For esbuild,
+Windows has `@esbuild/win32-x64/esbuild.exe` at the package root; macOS/Linux use
+`@esbuild/<target>/bin/esbuild`. Keep exact executable paths and exercise the
+production native validator for all five targets before expensive CI builds.
+Regressions must detect native headers, reject adjacent unreviewed binaries,
+obsolete paths and foreign targets, and include Windows-target artifact
+assembly. Do not replace the final complete-payload audit with fixtures, skip
+native validation, or broaden an allowlist to make an unexpected file pass.
 
 Build-time npm source and independent Node downloads must create private staging
 directories beside their destination, not in system temp: Windows CI can place
