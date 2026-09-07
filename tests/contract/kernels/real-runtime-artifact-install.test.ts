@@ -4,7 +4,8 @@ import { generateKeyPairSync, sign } from 'node:crypto';
 import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, onTestFinished } from 'vitest';
+import { createArtifactTestTrace } from '../../fixtures/kernels/artifact-test-support.mjs';
 import { ClawXDataService } from '@electron/data/clawx-data-service';
 import { canonicalJson } from '@electron/kernels/catalog';
 import { KernelPackageManager } from '@electron/kernels/package-manager';
@@ -107,6 +108,17 @@ describe('real signed runtime through the production KernelPackageManager path',
     const data = new ClawXDataService(join(root, 'state', 'clawx.sqlite'));
     const state = data.connect({ role: 'main' });
     const progress: KernelDownloadProgress[] = [];
+    const trace = createArtifactTestTrace(evidencePath);
+    onTestFinished(() => trace.stop());
+    let completed = false;
+    let lastPhase = '';
+    const onProgress = (value: KernelDownloadProgress) => {
+      progress.push(value);
+      if (value.phase !== lastPhase) {
+        trace.phase(`${descriptor.kernelId}:${value.phase}`);
+        lastPhase = value.phase;
+      }
+    };
     const manager = new KernelPackageManager({
       root: join(root, 'kernels'),
       state,
@@ -121,19 +133,19 @@ describe('real signed runtime through the production KernelPackageManager path',
         title: 'Preserved across real runtime uninstall',
         createdAt: now.toISOString(),
       });
-      await expect(manager.installFromCatalog({
+      await trace.step('interrupted-download', () => expect(manager.installFromCatalog({
         kernelId: descriptor.kernelId,
         channel: 'staging',
         catalogUrls: [catalogUrl],
-        onProgress: value => progress.push(value),
-      })).rejects.toMatchObject({ code: 'download-failed' });
+        onProgress,
+      })).rejects.toMatchObject({ code: 'download-failed' }));
 
-      const installed = await manager.installFromCatalog({
+      const installed = await trace.step('resume-and-install', () => manager.installFromCatalog({
         kernelId: descriptor.kernelId,
         channel: 'staging',
         catalogUrls: [catalogUrl],
-        onProgress: value => progress.push(value),
-      });
+        onProgress,
+      }));
       expect(resumedWithExactIdentity).toBe(true);
       expect(progress.some(value => value.phase === 'downloading' && value.resumed)).toBe(true);
       expect(installed).toMatchObject({
@@ -145,12 +157,12 @@ describe('real signed runtime through the production KernelPackageManager path',
         },
         version: { state: 'verified', archiveSha256: descriptor.archive.sha256 },
       });
-      await expect(manager.rescan(descriptor.kernelId, descriptor.artifactVersion))
-        .resolves.toMatchObject({ state: 'verified' });
+      await trace.step('integrity-rescan', () => expect(manager.rescan(descriptor.kernelId, descriptor.artifactVersion))
+        .resolves.toMatchObject({ state: 'verified' }));
       expect(await state.listKernelActivationHistory(descriptor.kernelId, 10))
         .toEqual(expect.arrayContaining([expect.objectContaining({ toVersion: descriptor.artifactVersion })]));
 
-      const removed = await manager.uninstall(descriptor.kernelId);
+      const removed = await trace.step('uninstall', () => manager.uninstall(descriptor.kernelId));
       expect(removed).toMatchObject({ canonicalDataPreserved: true });
       expect(await state.getConversation('clean-machine-preserved' as never))
         .toMatchObject({ title: 'Preserved across real runtime uninstall' });
@@ -173,10 +185,13 @@ describe('real signed runtime through the production KernelPackageManager path',
         uninstallPreservedCanonicalData: true,
       };
       if (evidencePath) await writeFile(evidencePath, `${JSON.stringify(evidence, null, 2)}\n`, { mode: 0o600 });
+      completed = true;
     } finally {
       state.disconnect();
       await data.close();
-      await rm(root, { recursive: true, force: true, maxRetries: 3 });
+      try {
+        await trace.step('cleanup', () => rm(root, { recursive: true, force: true, maxRetries: 3 }));
+      } finally { trace.stop(completed); }
     }
   }, 10 * 60_000);
 });

@@ -32,6 +32,7 @@ import { KernelPackageError } from './errors';
 import { KernelPackageLayout } from './layout';
 import { SafeKernelArtifactExtractor, verifyExtractedArtifact } from './safe-extractor';
 import { ControlBridgeSmokeTester, type KernelSmokeTester } from './smoke-test';
+import { renameRuntimeDirectory } from './runtime-directory';
 import type { KernelPackageStateStore } from './state';
 
 type Fetcher = (input: string | URL, init?: RequestInit) => Promise<Response>;
@@ -388,10 +389,10 @@ export class KernelPackageManager {
             await rm(stagingPath, { recursive: true, force: true, maxRetries: 3 });
           } catch {
             await this.quarantineExisting(finalPath, descriptor, 'Existing runtime failed integrity verification');
-            await rename(stagingPath, finalPath);
+            await renameRuntimeDirectory(stagingPath, finalPath);
           }
         } else {
-          await rename(stagingPath, finalPath);
+          await renameRuntimeDirectory(stagingPath, finalPath);
         }
         const timestamp = this.now().toISOString();
         const version: KernelRuntimeVersionRecord = {
@@ -556,7 +557,7 @@ export class KernelPackageManager {
     const destination = this.layout.quarantinePath(descriptor);
     await rm(destination, { recursive: true, force: true, maxRetries: 3 });
     await mkdir(dirname(destination), { recursive: true, mode: 0o700 });
-    if (await pathExists(path)) await rename(path, destination);
+    if (await pathExists(path)) await renameRuntimeDirectory(path, destination);
     const timestamp = this.now().toISOString();
     await this.options.state.upsertKernelRuntimeVersion({
       kernelId: descriptor.kernelId,
@@ -578,13 +579,13 @@ export class KernelPackageManager {
     const destination = this.layout.quarantinePath(descriptor);
     await rm(destination, { recursive: true, force: true, maxRetries: 3 });
     await mkdir(dirname(destination), { recursive: true, mode: 0o700 });
-    await rename(path, destination);
+    await renameRuntimeDirectory(path, destination);
   }
 
   private async moveRuntimeToTrash(kernelId: KernelId, artifactVersion: string, path: string): Promise<string | undefined> {
     if (!await pathExists(path)) return undefined;
     const destination = this.layout.trashPath(kernelId, artifactVersion, randomUUID());
-    await rename(path, destination);
+    await renameRuntimeDirectory(path, destination);
     return destination;
   }
 

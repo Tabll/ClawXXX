@@ -5,9 +5,11 @@ import {
   mkdir,
   mkdtemp,
   readFile,
+  readdir,
   rename,
   rm,
   stat,
+  symlink,
   writeFile,
 } from 'node:fs/promises';
 import { chmodSync } from 'node:fs';
@@ -15,7 +17,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { zstdCompressSync } from 'node:zlib';
 import tar from 'tar';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import fileSystem from 'node:fs/promises';
+import * as downloads from '@electron/kernels/package-manager/downloader';
 import { assembleKernelArtifact } from '../../../scripts/kernel-runtime/lib/artifact.mjs';
 import {
   archiveOverheadFixture,
@@ -33,7 +37,8 @@ import {
   KernelPackageManager,
 } from '@electron/kernels/package-manager';
 import { KernelPackageLayout } from '@electron/kernels/package-manager/layout';
-import { SafeKernelArtifactExtractor } from '@electron/kernels/package-manager/safe-extractor';
+import { SafeKernelArtifactExtractor, verifyExtractedArtifact } from '@electron/kernels/package-manager/safe-extractor';
+import { injectArtifactCorruption } from '../../fixtures/kernels/artifact-test-support.mjs';
 import type { KernelArtifactDescriptorV1, KernelCatalogEnvelopeV1, KernelTrustStoreV1 } from '@shared/kernels/catalog';
 import type { KernelHostCompatibility } from '@shared/kernels/package-manager';
 
@@ -248,6 +253,81 @@ describe('KernelPackageManager download transport', () => {
 });
 
 describe('KernelPackageManager safe extraction', () => {
+  it.each(['missing', 'unlisted', 'directory-link'] as const)('keeps %s rejection during a parallel installed-tree rescan', async kind => {
+    const root = await mkdtemp(join(tmpdir(), 'clawx-rescan-boundary-'));
+    const destination = join(root, 'installed');
+    try {
+      await new SafeKernelArtifactExtractor().extract(artifacts[0].archivePath, destination, artifacts[0].descriptor);
+      const kernel = join(destination, 'runtime', 'kernel');
+      if (kind === 'missing') await rm(join(kernel, 'control.mjs'), { force: true });
+      if (kind === 'unlisted') await writeFile(join(kernel, 'unlisted'), 'unexpected');
+      if (kind === 'directory-link') {
+        const external = join(root, 'external');
+        await rename(join(kernel, 'many'), external);
+        await symlink(external, join(kernel, 'many'), process.platform === 'win32' ? 'junction' : 'dir');
+      }
+      await expect(verifyExtractedArtifact(destination, artifacts[0].descriptor))
+        .rejects.toMatchObject({ code: kind === 'directory-link' ? 'archive-unsafe' : 'artifact-integrity' });
+    } finally { await rm(root, { recursive: true, force: true }); }
+  });
+
+  it('hashes the complete signed tree in a bounded pool and rejects same-size corruption', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'clawx-hash-pool-'));
+    const destination = join(root, 'installed');
+    let active = 0;
+    let maximum = 0;
+    const seen: string[] = [];
+    const originalHash = downloads.sha256File;
+    try {
+      const report = await new SafeKernelArtifactExtractor().extract(artifacts[0].archivePath, destination, artifacts[0].descriptor);
+      const hash = vi.spyOn(downloads, 'sha256File').mockImplementation(async path => {
+        maximum = Math.max(maximum, ++active);
+        seen.push(path);
+        try {
+          await new Promise<void>(resolve => setImmediate(resolve));
+          return await originalHash(path);
+        } finally { active -= 1; }
+      });
+      try {
+        expect(await verifyExtractedArtifact(destination, artifacts[0].descriptor)).toEqual(report);
+        expect(maximum).toBe(8);
+        expect(active).toBe(0);
+        const runtimePrefix = join(destination, 'runtime') + (process.platform === 'win32' ? '\\' : '/');
+        expect(new Set(seen.filter(path => path.startsWith(runtimePrefix))).size).toBe(report.runtimeFileCount);
+        const corrupt = join(destination, 'runtime', 'kernel', 'control.mjs');
+        const bytes = await readFile(corrupt);
+        bytes[0] ^= 1;
+        await chmod(corrupt, 0o644);
+        await writeFile(corrupt, bytes);
+        await chmod(corrupt, 0o444);
+        await expect(verifyExtractedArtifact(destination, artifacts[0].descriptor)).rejects.toMatchObject({ code: 'artifact-integrity' });
+        expect(active).toBe(0);
+      } finally { hash.mockRestore(); }
+    } finally { await rm(root, { recursive: true, force: true }); }
+  });
+
+  it('fails closed and drains chmod work before cleanup if readonly sealing fails', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'clawx-readonly-failure-'));
+    const originalChmod = fileSystem.chmod;
+    let active = 0;
+    const seal = vi.spyOn(fileSystem, 'chmod').mockImplementation(async (path, mode) => {
+      active += 1;
+      try {
+        await new Promise<void>(resolve => setImmediate(resolve));
+        if (String(path).endsWith('control.mjs')) throw Object.assign(new Error('readonly denied'), { code: 'EPERM' });
+        return await originalChmod(path, mode);
+      } finally { active -= 1; }
+    });
+    try {
+      await expect(new SafeKernelArtifactExtractor().extract(artifacts[0].archivePath, join(root, 'installed'), artifacts[0].descriptor))
+        .rejects.toMatchObject({ code: 'archive-unsafe' });
+      expect(active).toBe(0);
+      expect(await readdir(root)).toEqual([]);
+    } finally {
+      seal.mockRestore();
+      await rm(root, { recursive: true, force: true });
+    }
+  });
   it('installs signed long-name artifacts losslessly and rescans them through the production package manager', async () => {
     const root = await mkdtemp(join(tmpdir(), 'clawx-pax-install-'));
     const service = new ClawXDataService(join(root, 'state.sqlite'));
@@ -387,8 +467,8 @@ describe('KernelPackageManager immutable lifecycle', () => {
         .rejects.toMatchObject({ code: 'artifact-downgrade' });
 
       const corrupted = join(manager.layout.installPath(artifacts[1].descriptor), 'runtime', 'kernel', 'chat.mjs');
-      await chmod(corrupted, 0o644);
-      await appendFile(corrupted, '\ntampered\n');
+      await injectArtifactCorruption(manager.layout.installPath(artifacts[1].descriptor), 'runtime/kernel/chat.mjs');
+      expect((await stat(corrupted)).mode & 0o222).toBe(0);
       await expect(manager.rescan('openclaw', artifacts[1].descriptor.artifactVersion))
         .rejects.toMatchObject({ code: 'artifact-integrity' });
       expect((await state.getKernelInstallation('openclaw'))?.activeVersion).toBe(artifacts[0].descriptor.artifactVersion);
@@ -501,6 +581,11 @@ async function createFixtureRepository(root: string): Promise<void> {
   await writeFile(join(root, 'payload', 'chat.mjs'), 'export const chat = true;\n');
   await writeFile(join(root, 'payload', 'control.mjs'), 'export const control = true;\n');
   for (const name of longFixtureNames) await writeFile(join(root, 'payload', name), `lossless ${name}\n`);
+  // Enough different-sized files to exercise every worker and signed totals.
+  await mkdir(join(root, 'payload', 'many'));
+  for (let index = 0; index < 32; index += 1) {
+    await writeFile(join(root, 'payload', 'many', `${index}.txt`), 'x'.repeat(index + 1));
+  }
   await writeFile(join(root, 'payload', 'package.json'), JSON.stringify({ name: 'fixture-kernel', version: '1.0.0', license: 'MIT' }));
   const nodePath = join(root, 'node-runtime', process.platform === 'win32' ? 'node.exe' : join('bin', 'node'));
   await writeFile(nodePath, process.platform === 'win32' ? 'fixture' : '#!/bin/sh\nexit 0\n');

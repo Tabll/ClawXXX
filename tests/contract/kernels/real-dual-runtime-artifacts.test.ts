@@ -1,15 +1,16 @@
 // @vitest-environment node
 
-import { appendFile, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, onTestFinished } from 'vitest';
+import { awaitArtifactOperations, createArtifactTestTrace, injectArtifactCorruption } from '../../fixtures/kernels/artifact-test-support.mjs';
 import { ClawXDataService } from '@electron/data/clawx-data-service';
 import { KernelPackageManager } from '@electron/kernels/package-manager';
 import { ControlBridgeSmokeTester } from '@electron/kernels/package-manager/smoke-test';
 import type { KernelArtifactDescriptorV1, KernelTrustStoreV1 } from '@shared/kernels/catalog';
-import type { KernelHostCompatibility } from '@shared/kernels/package-manager';
+import type { KernelDownloadProgress, KernelHostCompatibility } from '@shared/kernels/package-manager';
 
 const openClawArtifactDir = process.env.CLAWX_REAL_OPENCLAW_ARTIFACT_DIR?.trim();
 const dshArtifactDir = process.env.CLAWX_REAL_DSH_ARTIFACT_DIR?.trim();
@@ -50,50 +51,59 @@ describe('two real signed runtime artifacts on one clean machine', () => {
       now: () => now,
     });
     const smoke = new ControlBridgeSmokeTester();
+    const trace = createArtifactTestTrace(evidencePath);
+    onTestFinished(() => trace.stop());
+    let completed = false;
+    const phases = new Map<string, string>();
+    const onProgress = (value: KernelDownloadProgress) => {
+      if (phases.get(value.kernelId) !== value.phase) {
+        trace.phase(`${value.kernelId}:${value.phase}`);
+        phases.set(value.kernelId, value.phase);
+      }
+    };
     try {
       await state.createConversation({
         id: 'real-dual-preserved' as never,
         title: 'Shared data survives independent runtime uninstall',
         createdAt: now.toISOString(),
       });
-      const [openInstalled, dshInstalled] = await Promise.all([
-        manager.importOffline({ descriptorPath: openClaw.descriptorPath, archivePath: openClaw.archivePath }),
-        manager.importOffline({ descriptorPath: dsh.descriptorPath, archivePath: dsh.archivePath }),
-      ]);
+      const [openInstalled, dshInstalled] = await trace.step('install-both', () => awaitArtifactOperations([
+        manager.importOffline({ descriptorPath: openClaw.descriptorPath, archivePath: openClaw.archivePath, onProgress }),
+        manager.importOffline({ descriptorPath: dsh.descriptorPath, archivePath: dsh.archivePath, onProgress }),
+      ]));
       expect(openInstalled).toMatchObject({ activated: true, installation: { kernelId: 'openclaw' } });
       expect(dshInstalled).toMatchObject({ activated: true, installation: { kernelId: 'deepseek-harness' } });
 
-      const [openHealth, dshHealth] = await Promise.all([
+      const [openHealth, dshHealth] = await trace.step('concurrent-control-smoke', () => awaitArtifactOperations([
         smoke.test(manager.layout.installPath(openClaw.descriptor), openClaw.descriptor),
         smoke.test(manager.layout.installPath(dsh.descriptor), dsh.descriptor),
-      ]);
+      ]));
       expect(openHealth.pid).not.toBe(dshHealth.pid);
       expect(openHealth.rssBytes).toBeGreaterThan(0);
       expect(dshHealth.rssBytes).toBeGreaterThan(0);
 
-      await appendFile(
-        join(manager.layout.installPath(openClaw.descriptor), openClaw.descriptor.entrypoints.control),
-        '\n// clean-machine integrity failure injection\n',
-      );
-      await expect(manager.rescan('openclaw', openClaw.descriptor.artifactVersion))
-        .rejects.toMatchObject({ code: 'artifact-integrity' });
+      await trace.step('inject-corruption', () => injectArtifactCorruption(
+        manager.layout.installPath(openClaw.descriptor), openClaw.descriptor.entrypoints.control,
+      ));
+      await trace.step('detect-corruption', () => expect(manager.rescan('openclaw', openClaw.descriptor.artifactVersion))
+        .rejects.toMatchObject({ code: 'artifact-integrity' }));
       await expect(smoke.test(manager.layout.installPath(dsh.descriptor), dsh.descriptor))
         .resolves.toMatchObject({ rssBytes: expect.any(Number) });
-      await expect(manager.repair('openclaw'))
-        .resolves.toMatchObject({ activated: true, installation: { kernelId: 'openclaw' } });
+      await trace.step('repair-openclaw', () => expect(manager.repair('openclaw'))
+        .resolves.toMatchObject({ activated: true, installation: { kernelId: 'openclaw' } }));
       await expect(smoke.test(manager.layout.installPath(openClaw.descriptor), openClaw.descriptor))
         .resolves.toMatchObject({ rssBytes: expect.any(Number) });
 
-      await expect(manager.uninstall('openclaw')).resolves.toMatchObject({ canonicalDataPreserved: true });
-      await expect(manager.rescan('deepseek-harness', dsh.descriptor.artifactVersion))
-        .resolves.toMatchObject({ state: 'verified' });
+      await trace.step('uninstall-openclaw', () => expect(manager.uninstall('openclaw')).resolves.toMatchObject({ canonicalDataPreserved: true }));
+      await trace.step('rescan-deepseek-harness', () => expect(manager.rescan('deepseek-harness', dsh.descriptor.artifactVersion))
+        .resolves.toMatchObject({ state: 'verified' }));
       await expect(smoke.test(manager.layout.installPath(dsh.descriptor), dsh.descriptor))
         .resolves.toMatchObject({ rssBytes: expect.any(Number) });
       expect(await state.getConversation('real-dual-preserved' as never))
         .toMatchObject({ title: 'Shared data survives independent runtime uninstall' });
 
-      await expect(manager.uninstall('deepseek-harness'))
-        .resolves.toMatchObject({ canonicalDataPreserved: true });
+      await trace.step('uninstall-deepseek-harness', () => expect(manager.uninstall('deepseek-harness'))
+        .resolves.toMatchObject({ canonicalDataPreserved: true }));
       expect(await state.getConversation('real-dual-preserved' as never)).toBeDefined();
 
       if (evidencePath) {
@@ -115,10 +125,13 @@ describe('two real signed runtime artifacts on one clean machine', () => {
           canonicalDataPreserved: true,
         }, null, 2)}\n`, { mode: 0o600 });
       }
+      completed = true;
     } finally {
       state.disconnect();
       await data.close();
-      await rm(root, { recursive: true, force: true, maxRetries: 3 });
+      try {
+        await trace.step('cleanup', () => rm(root, { recursive: true, force: true, maxRetries: 3 }));
+      } finally { trace.stop(completed); }
     }
   }, 15 * 60_000);
 });

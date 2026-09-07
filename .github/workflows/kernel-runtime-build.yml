@@ -62,6 +62,9 @@ jobs:
           tests/unit/openclaw-native-allowlist.test.ts
           tests/unit/kernel-runtime-archive.test.ts
           tests/unit/extension-bridge-build.test.ts
+          tests/unit/kernel-bounded-io.test.ts
+          tests/unit/kernel-runtime-directory.test.ts
+          tests/unit/kernel-artifact-test-support.test.ts
           tests/contract/kernels/package-manager.test.ts
       - name: Fetch exact OpenClaw npm patch base
         if: matrix.kernel == 'openclaw'
@@ -410,6 +413,7 @@ jobs:
             temp/reports/runtime-artifact-smoke.json
             temp/reports/package-manager-artifact-install.json
             temp/reports/package-manager-artifact-install.vitest.json
+            temp/reports/package-manager-artifact-install.json.progress.jsonl
             playwright-report
             test-results
             artifacts/comms
@@ -471,5 +475,6 @@ jobs:
           path: |
             temp/reports/dual-runtime-artifact-smoke.json
             temp/reports/dual-runtime-artifact-smoke.vitest.json
+            temp/reports/dual-runtime-artifact-smoke.json.progress.jsonl
           if-no-files-found: warn
           retention-days: 14

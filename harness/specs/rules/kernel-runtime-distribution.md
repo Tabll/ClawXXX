@@ -132,6 +132,22 @@ or higher global/per-test timeouts.
 
 When both kernels are built, a separate clean-runner matrix must install both real artifacts into one package manager and SQLite authority, start both control bridges concurrently, prove distinct process identity, inject and repair a one-sided integrity failure while the other remains healthy, and uninstall independently. Control-plane smoke must not be reported as a real provider/model conversation.
 
+Installed files remain readonly. Integrity fault injection must explicitly own
+its temporary regular file, refuse traversal/links/hardlinks, and restore its
+original mode in finally; never remove production readonly protection to make a
+test pass. Verification and permission work use a fixed bounded worker pool,
+retaining every signed file/hash/size/path check and draining in-flight work on
+failure before quarantine or deletion. Readonly sealing errors are fatal.
+Runtime directory moves remain native atomic renames. Windows alone may retry
+transient EPERM/EBUSY locks with at most six attempts and 1500 ms accumulated
+delays; persistent locks and all other errors remain failures. Never copy,
+delete or relax permissions to bypass a lock, or bypass active-runtime guards.
+Concurrent real-artifact test operations also settle before cleanup. Single/dual
+clean-machine tests must persist sanitized phase transitions and bounded
+heartbeats incrementally, including on timeout, without changing their existing
+10/15-minute deadlines. Keep detailed phase evidence as always-uploaded CI
+artifacts; test-only trust keys and local timing results are not release proof.
+
 Packaged runtime tests must prove managed OpenClaw and DeepSeek Harness use the ClawX Conversation Store adapter/provider and do not create durable native conversation, cron, channel-message, or usage history. A patch revision that changes persistence behavior requires focused storage regression coverage and a new immutable artifact version.
 
 Platform security policy must be identical at every model-visible execution seam. On Windows, the DeepSeek Harness ACL runner may grant a private per-session temp capability to its confined child, but the in-process file tool must not widen that into ambient `%TEMP%`; source tests and extracted-artifact self-tests must prove both model-visible shell and file-tool writes to ambient temp fail closed.

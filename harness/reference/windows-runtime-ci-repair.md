@@ -436,3 +436,125 @@ its normal approval and complete single/dual clean-machine gates. Existing
 macOS evidence is not a new acceptance result. Windows remains explicitly
 artifact-signature-only. No COS upload, catalog promotion, credential changes
 or installed-runtime mutations are authorized by this test-only repair.
+
+## Follow-up: immutable fault injection and bounded host installation
+
+[Build 34125183305](https://github.com/Tabll/ClawXXX/actions/runs/34125183305)
+at `ada7ba25` passed all ten runtime builds, all four macOS signing/notarization
+targets and nine of ten single-runtime clean-machine jobs. The same commit's
+[Electron E2E](https://github.com/Tabll/ClawXXX/actions/runs/34124844465) passed
+all three platforms. Thirty-five artifacts were retained: ten runtime bundles,
+ten build reports and fifteen clean-machine evidence bundles.
+
+All five dual-runtime tests failed at their raw append to OpenClaw's installed
+`runtime/kernel/clawx-control-bridge.mjs`: EACCES on Unix, EPERM on Windows.
+The production installer correctly seals payload files readonly; the test
+failed to grant temporary write permission for its deliberate corruption.
+Both installations and concurrent control health checks succeeded before that
+line. Repair, independent uninstall and the later data-preservation checks
+were not reached and must not be counted as passed.
+
+Only the Windows OpenClaw single-runtime job exceeded its 600000 ms test
+deadline. Its earlier actual Gateway, ACP, seven-Channel and canonical-storage
+artifact probe passed; observed Gateway startups of 112871/126480 ms remained
+inside the dedicated 180000 ms budget. The old installer test retained phase
+progress only in memory, so its log does not establish which stage timed out.
+The Windows archive contains **52,729 files / 807,751,063 unpacked bytes**.
+
+The repair is in the host installer and acceptance harness, not runtime code:
+
+- Independent metadata hashes, every runtime file's stat/hash, breadth-first
+  directory checks, byte totals and readonly sealing use a fixed eight-worker
+  pool. A first failure stops new admissions and drains already running work
+  before cleanup; no per-file unlimited promises, cached hashes or omitted
+  verification passes are introduced. A readonly chmod failure now fails
+  closed instead of being swallowed. Runtime directories retain owner-write
+  for quarantine/removal; payload files remain readonly.
+- Fault injection is test-only and requires a caller-owned temporary root,
+  relative contained path, regular file and one physical link. Traversal,
+  directories, symlink/junction ancestors and hardlinks are rejected. Owner
+  write permission is granted only around mutation and the original mode is
+  restored in finally, including writer failures. Production never uses this
+  helper and no user-installed runtime is modified.
+- Both real-artifact contracts emit incremental phase JSONL, bounded to 256
+  events with 15-second in-progress heartbeats. Failure/timeout stops timers;
+  workflow evidence upload uses always() and includes these sidecars. Only
+  closed labels/status/elapsed times are emitted, not error contents, paths,
+  environment variables or secrets. Concurrent dual operations settle fully
+  before cleanup on a one-sided failure.
+- Original 10-minute single and 15-minute dual test deadlines and every
+  signed identity, archive path/type, byte/file budget, hash, Range/If-Range,
+  smoke, independent repair/uninstall and canonical SQLite assertion remain.
+  Real Gateway/ACP/Channels probes and platform-signing gates are unchanged.
+
+Local Node 24.15.0 evidence on 2026-09-07:
+
+- 48 focused checks and the exact nine-suite CI preflight's **121 tests**
+  passed. Negative cases cover missing/unlisted files, directory links,
+  same-size corruption, readonly failure and asynchronous failure draining.
+- Full host suite: **2,290 passed / 0 failed / 6 existing conditional pending**
+  across 262 files (`temp/install-fix-vitest-final.json`). Typecheck, lint (zero errors/seven existing warnings),
+  source verification and comms replay/compare passed.
+- Eight focused Electron E2E interactions for kernel catalog/lifecycle,
+  Agents, Channels, Cron and Skills passed. The first sandboxed attempt could
+  not launch Electron; the same unchanged command outside that restriction
+  passed. Actual Vite/Main/Preload build also passed.
+- Downloaded actual build #12 macOS arm64 OpenClaw and DeepSeek archives were
+  SHA-256 checked against GitHub artifact metadata. The real single-runtime
+  Vitest acceptance passed in **49,824 ms**, including interrupted download,
+  exact-identity resume, production activation, full rescan and uninstall.
+  The real dual-runtime acceptance passed in **90,189 ms**, including both
+  installations, concurrent control processes, readonly corruption injection,
+  detection, independent repair/uninstall and shared SQLite preservation.
+  Ignored evidence is under `temp/install-fix-real-{single,dual}*`; these are
+  actual CI archive tests, not fake driver fixtures, but not a substitute for
+  the complete five-target fresh CI matrix or a production-release audit.
+- Both kernel payloads remain `+clawx.12`. Source hashes, compiled patches,
+  overlays, dependency lock bytes, bundled Node inputs and signing policies
+  are unchanged. The four README locales and harness scenario/rule/task/TODO
+  document host installation and test constraints.
+
+Supplementary Windows 11 VM diagnosis uses the **actual build #12 Windows x64
+OpenClaw archive** and bundled Node 24.15.0, with a fresh task-owned temporary
+root each time. This is Windows on this Mac's Parallels VM, not a native GitHub
+runner performance certification. The unchanged host installer reached smoke
+at 426609 ms (staging began at 1673 ms); bounded verification reached it at
+198682 ms (staging began at 1258 ms), reducing that observed stage by about
+54%. Both probes then independently hit EPERM at staging-to-install rename,
+after successful control smoke. That local failure is additional evidence, not
+proof of the unlogged CI timeout's precise cause.
+
+A separate eight-case real Windows child-process experiment isolated the lock:
+four processes whose executable was inside the moved directory hit EPERM even
+after waiting for child `close`, and could rename after roughly 136–640 ms.
+Four equivalent processes using Node outside that directory renamed immediately.
+Changing `exit` to `close` alone is therefore not a fix for the observed lock.
+The underlying Windows component retaining the executable is not established.
+
+Runtime-directory moves for activation, quarantine and trash now use the same
+native atomic rename with **Windows-only EPERM/EBUSY** backoff: 50/100/200/400/750
+ms, at most six attempts and 1500 ms accumulated delays. Other platforms and
+other errors fail immediately; a persistent Windows lock still fails. No
+copy/delete/chmod fallback, running-version bypass, full-install retry or test
+retry is added. Unit contracts prove the exact delays/attempt cap, fatal error
+paths, absent mutation fallbacks and actual readonly file identity preservation.
+Existing single/dual test deadlines and immutable payload identities remain.
+
+The final Windows probe **passed** with the production installer: smoke at
+211423 ms, atomic activation at 212227 ms, full installed rescan at 225499 ms,
+another actual control process exited at 225994 ms, immediate uninstall at
+229880 ms, and task-root cleanup at **229888 ms**. Payload readonly mode and
+preserved canonical SQLite Conversation were asserted. Evidence is retained in
+ignored `temp/install-fix-vm-after.log`. This manual offline-import probe does
+not test HTTP Range, the complete Windows Vitest dual contract, real provider
+chat or all five native runners; those stay required in the fresh CI matrix.
+Final Vite build, Harness CI (19 checks), diff-aware task validation/dry-run,
+comms/source verification and the eight shared-UI E2E interactions passed again
+after the Windows rename fix. Temporary VM test roots were isolated from any
+installed user runtime, and the task-started VM is shut down after validation.
+
+Commit/push must be followed by a **fresh new-SHA** both-kernel/five-target
+staging dispatch and approval, with Windows artifact-signature-only. Do not
+rerun the old SHA or mark MK-1940 complete until every required remote gate
+passes. No COS upload, catalog promotion, credentials or installed-runtime
+changes are included.

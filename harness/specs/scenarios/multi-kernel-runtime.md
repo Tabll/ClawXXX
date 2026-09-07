@@ -103,4 +103,14 @@ bounded PAX records over a huge EOF trailer; preserve real decompression and
 production limits, and enforce fixture cost with operation counts rather than
 runner-dependent timing assertions. Test-only repairs do not change kernel pins.
 
+Large runtime file verification uses bounded concurrency without dropping any
+signed check. Drain in-flight work before failure cleanup and reject readonly
+sealing failures. Real-artifact fault injection operates only on owned temporary
+regular files with finally-restored permissions. Single/dual clean-machine
+tests retain finite deadlines and incremental phase/timeout evidence; concurrent
+operations settle before removing the shared temporary installation authority.
+Windows executable-directory lock recovery remains a finite atomic rename
+policy (EPERM/EBUSY only, six attempts, 1500 ms total delays), not an install/test
+retry, a permission relaxation, a copy fallback or an active-runtime bypass.
+
 Skills are canonical immutable packages with per-kernel desired and projection state. OpenClaw and DeepSeek Harness roots must be physically independent: no shared root, nesting, root/package symlink, or cross-root resource reference is allowed. Both-target mutations report each result and retain partial state. DeepSeek Harness registers converted instructions through its process-local `ctx.skills` adapter while SQLite remains the sole metadata authority.

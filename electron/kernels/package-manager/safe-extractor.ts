@@ -1,6 +1,6 @@
 import { Transform } from 'node:stream';
 import { createReadStream } from 'node:fs';
-import { chmod, lstat, mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
+import fs, { lstat, mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import { relative, resolve, sep } from 'node:path';
 import { createZstdDecompress } from 'node:zlib';
 import * as tar from 'tar';
@@ -8,6 +8,7 @@ import type { KernelArtifactDescriptorV1 } from '@shared/kernels/catalog';
 import { canonicalJson } from '../catalog';
 import { KernelPackageError } from './errors';
 import { sha256File } from './downloader';
+import { forEachKernelFile } from './bounded-io';
 
 type TarEntry = {
   path: string;
@@ -293,11 +294,11 @@ export async function verifyExtractedArtifact(
       ? [['metadata/platform-security.json', descriptor.supplyChain.platformSecurityReportSha256] as [string, string]]
       : []),
   ];
-  for (const [path, expected] of metadataHashes) {
+  await forEachKernelFile(metadataHashes, async ([path, expected]) => {
     if (await sha256File(inside(root, path)) !== expected) {
       throw new KernelPackageError('artifact-integrity', `Artifact metadata failed integrity verification: ${path}`);
     }
-  }
+  });
   const manifest = await readJsonFile(inside(root, 'metadata/files.json'), 32 * 1024 * 1024) as FileManifestV1;
   const runtimeRoot = inside(root, 'runtime');
   const runtimeFiles = await walkRegularFiles(runtimeRoot);
@@ -306,7 +307,7 @@ export async function verifyExtractedArtifact(
     throw new KernelPackageError('artifact-integrity', 'Runtime file count differs from metadata/files.json');
   }
   const expectedFiles = new Map(manifest.files.map(file => [file.path, file]));
-  for (const path of runtimeFiles) {
+  await forEachKernelFile(runtimeFiles, async (path) => {
     const name = relative(runtimeRoot, path).split(sep).join('/');
     const expected = expectedFiles.get(name);
     const fileStats = await stat(path);
@@ -314,7 +315,7 @@ export async function verifyExtractedArtifact(
       throw new KernelPackageError('artifact-integrity', `Runtime file failed integrity verification: ${name}`);
     }
     expectedFiles.delete(name);
-  }
+  });
   if (expectedFiles.size > 0) throw new KernelPackageError('artifact-integrity', 'Runtime file manifest contains missing files');
   for (const entrypoint of Object.values(descriptor.entrypoints)) {
     const path = inside(root, entrypoint);
@@ -373,47 +374,63 @@ async function readJsonFile(path: string, maximum: number): Promise<unknown> {
 
 async function walkRegularFiles(root: string): Promise<string[]> {
   const output: string[] = [];
-  const visit = async (directory: string): Promise<void> => {
-    const entries = await readdir(directory, { withFileTypes: true });
-    for (const entry of entries.sort((left, right) => left.name.localeCompare(right.name))) {
-      const path = resolve(directory, entry.name);
+  let directories = [root];
+  while (directories.length) {
+    const children: string[][] = new Array(directories.length);
+    await forEachKernelFile(directories, async (directory, index) => {
+      const entries = await readdir(directory, { withFileTypes: true });
+      children[index] = entries.sort((a, b) => a.name.localeCompare(b.name))
+        .map(entry => resolve(directory, entry.name));
+    });
+    const paths = children.flat();
+    const nextDirectories: string[] = [];
+    await forEachKernelFile(paths, async (path) => {
       const rel = relative(root, path);
       if (rel === '..' || rel.startsWith(`..${sep}`)) throw new KernelPackageError('archive-unsafe', 'Extracted path escaped its root');
       const fileStats = await lstat(path);
       if (fileStats.isSymbolicLink()) throw new KernelPackageError('archive-unsafe', `Extracted tree contains a symlink: ${path}`);
-      if (fileStats.isDirectory()) await visit(path);
+      if (fileStats.isDirectory()) nextDirectories.push(path);
       else if (fileStats.isFile()) output.push(path);
       else throw new KernelPackageError('archive-unsafe', `Extracted tree contains a non-regular entry: ${path}`);
-    }
-  };
-  await visit(root);
-  return output;
+    });
+    directories = nextDirectories.sort();
+  }
+  return output.sort();
 }
 
 async function sumFileBytes(paths: string[]): Promise<number> {
   let total = 0;
-  for (const path of paths) total += (await stat(path)).size;
+  await forEachKernelFile(paths, async (path) => {
+    const size = (await stat(path)).size;
+    total += size;
+  });
   return total;
 }
 
 async function makeTreeReadOnly(root: string): Promise<void> {
-  const visit = async (path: string): Promise<void> => {
-    const entries = await readdir(path, { withFileTypes: true });
-    for (const entry of entries) {
-      const child = resolve(path, entry.name);
-      if (entry.isDirectory()) {
-        await visit(child);
+  let directories = [root];
+  while (directories.length) {
+    const children: string[][] = new Array(directories.length);
+    await forEachKernelFile(directories, async (directory, index) => {
+      const entries = await readdir(directory, { withFileTypes: true });
+      children[index] = entries.map(entry => resolve(directory, entry.name));
+      await fs.chmod(directory, 0o755);
+    });
+    const nextDirectories: string[] = [];
+    await forEachKernelFile(children.flat(), async (child) => {
+      const childStats = await lstat(child);
+      if (childStats.isDirectory()) {
         // Keep owner-write on directories so Windows locked-file recovery and
         // quarantine cleanup can remove the immutable file payload later.
-        await chmod(child, 0o755).catch(() => undefined);
+        nextDirectories.push(child);
+      } else if (childStats.isFile() && !childStats.isSymbolicLink()) {
+        await fs.chmod(child, childStats.mode & 0o111 ? 0o555 : 0o444);
       } else {
-        const childStats = await stat(child);
-        await chmod(child, childStats.mode & 0o111 ? 0o555 : 0o444).catch(() => undefined);
+        throw new KernelPackageError('archive-unsafe', 'Runtime tree changed before readonly sealing');
       }
-    }
-  };
-  await visit(root);
-  await chmod(root, 0o755).catch(() => undefined);
+    });
+    directories = nextDirectories;
+  }
 }
 
 function inside(root: string, relativePath: string): string {

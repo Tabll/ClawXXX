@@ -2,7 +2,7 @@
 
 > 对应设计：[docs/zh-CN/multi-kernel-design.md](docs/zh-CN/multi-kernel-design.md)
 >
-> 状态：双内核 +12 已修复归档长文件名和共享 UI 生成步骤；新 CI 为 9/10 build、三个 macOS 公证和三平台 E2E 成功。OpenClaw Intel macOS 的新增解压流预算测试因旧夹具的二次方缓冲复制而超时，clean-machine 跳过。本轮仅优化测试夹具并补精确边界/复制工作量约束，生产代码、内核版本、依赖与签名输入不变；最终真实平台和 clean-machine 验收仍待新 CI，不以本机结果代替
+> 状态：双内核 +12 的第 12 轮 CI 已通过 10/10 build、4/4 macOS 公证、9/10 单内核 clean-machine，另有三平台 E2E 成功；OpenClaw Windows 单内核安装超过 10 分钟，5/5 双内核测试在向只读控制桥注入损坏时失败。本轮修复测试权限处理，宿主完整文件校验改用固定 8 路并发并增加失败时可保留的阶段日志，不放宽安全检查或 10/15 分钟验收时限。实际 CI macOS arm64 制品的单/双内核安装链路本地通过，内核 +12/hash/lock/签名输入保持不变；新五目标远端最终验收仍由 MK-1940 跟踪，不以本机结果代替
 >
 > 最近完整本地证据（2026-09-01）：Vitest 243 files / 241 passed / 2 skipped、2116 tests passed / 6 skipped（其中制品依赖项只在真实 CI 制品存在时执行）；Electron E2E 既有证据 151 passed / 3 platform skips；multi-kernel chaos 既有证据 28/28；DSH `0.1.2-alpha.2` 干净精确上游树完成严格 patch/overlay 重放、冻结安装、完整 host build、12 files / 43 focused tests，并在真实 macOS `sandbox-exec` 下通过 3/3 runtime self-tests；typecheck、lint、comms 与本任务 Harness 全绿
 >
@@ -497,6 +497,12 @@
 - [x] `MK-1941` +12 经 `02560a1a` 提交/推送并 dispatch/审批 [34093118132](https://github.com/Tabll/ClawXXX/actions/runs/34093118132)：9/10 build、三个 macOS 公证及三平台 E2E 成功。OpenClaw Intel 前置 96 项测试中 95 项通过，新增流预算测试 5,031 ms 超时（DSH Intel 同测试 3,792 ms 通过），未进入该目标内核构建/公证；单/双 clean-machine 跳过，保留 9 份 runtime/9 份报告，不是发布成功。
 - [x] `MK-1942` 定位旧测试在 TAR EOF 后放置 11 MiB 空白，node-tar 反复拼接尾部；隔离真实解析器测得边界前累计复制 3,369,189,377 bytes。改用有效 bounded PAX records 填满相同预算，保留 64 KiB EOF trailer，复制降到 212,993 bytes。真实 Zstandard/生产解压器验证 10,485,761 bytes 接受、再多 1 byte 按精确流预算错误拒绝；旧夹具不能通过新增确定性工作量回归。不放宽 5 秒测试/生产安全上限，不 mock、retry 或 skip。
 - [x] `MK-1943` 32 focused / 98 CI preflight / 2267 完整宿主通过（0 失败/6 既有条件跳过）；10 轮共 30 项边界/工作量检查全部通过，最慢约 48 ms。typecheck、lint（0 错误/7 既有警告）、source verify、comms、Harness CI/任务 validate/dry-run 与 diff check 通过。生产代码、构建器、workflow、内核 +12/hash/lock/签名输入不变；四语 README 经审查无需改变，规则/场景/任务/参考文档已记录。提交/推送后新 CI 的最终验收继续由 MK-1940 跟踪。
+- [x] `MK-1944` 核对 `ada7ba25` 的 [34125183305](https://github.com/Tabll/ClawXXX/actions/runs/34125183305)：10/10 build、4/4 macOS 公证、9/10 单内核 clean-machine 成功，三平台独立 E2E 全通过。五个双内核目标均在只读 `clawx-control-bridge.mjs` 的原始 append 处 EACCES/EPERM；此前安装/控制桥检查通过，之后 repair/uninstall 未执行。OpenClaw Windows 单内核超过 600000 ms，但此前真实 Gateway/ACP/7 Channels/存储探针成功；旧日志不足以确认超时阶段。
+- [x] `MK-1945` 损坏注入仅允许自有 mkdtemp 根内的普通单链接文件，拒绝越界/目录/符号链接/硬链接，临时开放 owner-write 并在 finally 恢复权限；生产内核仍保持只读且权限设置失败拒绝安装。元数据、运行时哈希、目录扫描、字节汇总及权限设置使用固定 8 个 worker，首错停止接收新工作并等待所有在途操作结束；保留完整签名/路径/数量/大小/哈希检查。
+- [x] `MK-1946` 单/双真实制品测试增加阶段状态、15 秒心跳及 always-upload 增量 JSONL；失败/超时也能定位阶段，日志不输出凭据/文件内容/本机路径。双内核并发操作失败后等待另一侧收敛再清理；保留原有 10/15 分钟时限、Range/If-Range、独立修复/卸载和统一 SQLite 断言。
+- [x] `MK-1947` 48 focused / 121 CI preflight / 2290 完整宿主测试通过（0 失败/6 既有条件跳过）；共享内核目录、Agents、Channels、Cron、Skills 的 8 项 Electron E2E 通过。校验 GitHub SHA-256 后，实际第 12 轮 macOS arm64 CI 制品通过单内核约 50 秒、双内核约 90 秒完整生产安装/控制桥/扫描/修复/卸载链路。typecheck、lint（0 错误/7 既有警告）、source verify、comms 通过；四语 README 与规则/场景/任务/参考文档同步。Windows 实机补充诊断及新远端结果见参考记录；这些本机证据不等于五目标最终验收。
+- [x] `MK-1948` Windows VM 的同一真实 +12 制品在新旧宿主上将 staging 从约 425 秒降到 197 秒，但均在 smoke 后原子目录切换遇到 EPERM。8 组最小实验证明目录内 node.exe 退出后（即使等待 close）仍可短暂锁住目录；目录外 executable 对照均立即成功。宿主 activation/quarantine/trash 的目录移动仅对 Windows EPERM/EBUSY 做最多 6 次原子 rename、累计延迟 1500 ms；持久锁/其他错误继续失败，不复制、不改权限、不重跑整个安装或放宽 CI 时限。该补充本地故障不等于已确定旧 CI 超时的确切阶段。
+- [x] `MK-1949` 最终 Windows VM 真实制品离线探针通过：212227 ms 激活、225499 ms 完整重扫，225994 ms 第二次真实控制桥退出后立即卸载，229888 ms 全部清理完成，只读文件与 SQLite Conversation 保留断言成功。最终 Vite build、Harness CI/任务 validate/dry-run、source/comms 和 8 项共享 UI E2E 再次通过。该离线探针不覆盖 Windows Range/双内核全套 Vitest 或全部原生 runner，MK-1940 仍待新 CI 最终结果。
 
 ## 每个实现 PR 的最低检查
 
