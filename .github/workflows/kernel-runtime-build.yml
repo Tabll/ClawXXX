@@ -55,7 +55,7 @@ jobs:
       - name: Verify all frozen source, lock, patch, overlay and Node inputs
         run: pnpm run kernel:sources:verify
       - name: Verify atomic download staging and failure cleanup before building
-        run: pnpm exec vitest run tests/unit/kernel-runtime-downloads.test.ts
+        run: pnpm exec vitest run tests/unit/kernel-runtime-downloads.test.ts tests/unit/kernel-notarization.test.ts
       - name: Fetch exact OpenClaw npm patch base
         if: matrix.kernel == 'openclaw'
         run: node scripts/kernel-runtime/download-npm-source.mjs --kernel openclaw --destination temp/kernel-source
@@ -170,6 +170,7 @@ jobs:
           --identity "${{ secrets.CLAWX_MAC_RUNTIME_SIGNING_IDENTITY }}"
           --report temp/reports/platform-signing.json
       - name: Notarize the signed macOS runtime closure
+        timeout-minutes: 50
         if: matrix.target.platform == 'darwin'
         shell: bash
         env:
@@ -184,7 +185,7 @@ jobs:
           ditto temp/node-runtime temp/notarization/runtime/node
           ditto -c -k --sequesterRsrc --keepParent temp/notarization/runtime temp/notarization.zip
           xcrun notarytool store-credentials "$profile" --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_SPECIFIC_PASSWORD"
-          xcrun notarytool submit temp/notarization.zip --keychain-profile "$profile" --wait --output-format json > temp/reports/notarization.json
+          node scripts/kernel-runtime/notarize-runtime.mjs --archive temp/notarization.zip --keychain-profile "$profile" --submission temp/reports/notarization-submission.json --report temp/reports/notarization.json
           node scripts/kernel-runtime/write-platform-security-report.mjs --platform darwin --arch ${{ matrix.target.arch }} --signing temp/reports/platform-signing.json --notarization temp/reports/notarization.json --output temp/reports/platform-security.json
       - name: Materialize Windows runtime signing certificate
         if: matrix.target.platform == 'win32' && inputs['windows-signing'] == 'authenticode'

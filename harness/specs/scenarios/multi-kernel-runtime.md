@@ -79,5 +79,10 @@ Case/8.3/junction aliases must retain the same verified physical install owner,
 without trusting a different package by ID. Full real-process startup probes
 must retain bounded platform-specific readiness, failure traces, signal/exit
 checks and exact-command approval plus execution evidence on Windows as well.
+Manifest cache identity must also remain physical across alias-to-canonical
+reads, with real hashes and unchanged path-boundary checks. macOS notarization
+must persist archive-bound submission identity and recover transient status
+queries without repeated uploads or weakening the Accepted gate. Offline
+failure-injection tests and real platform execution remain separate evidence.
 
 Skills are canonical immutable packages with per-kernel desired and projection state. OpenClaw and DeepSeek Harness roots must be physically independent: no shared root, nesting, root/package symlink, or cross-root resource reference is allowed. Both-target mutations report each result and retain partial state. DeepSeek Harness registers converted instructions through its process-local `ctx.skills` adapter while SQLite remains the sole metadata authority.

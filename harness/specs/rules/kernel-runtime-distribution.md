@@ -22,7 +22,7 @@ Upstream migration/default changes must not widen session visibility or
 permissions. A candidate test must explicitly select its package and exact
 version, never silently test the installed old SDK. Failed real-process storage
 probes block promotion even when host mocks and control smoke pass. The source
-pin is now 2026.9.2+clawx.9; actual per-Run incognito/ACP storage probes run before
+pin is now 2026.9.2+clawx.10; actual per-Run incognito/ACP storage probes run before
 sealing and again against extracted artifacts. Verify the sealed file manifest
 again after first launch, and never let upstream postinstall prune patch files.
 See
@@ -63,6 +63,14 @@ the exact fixed command and assert actual output, not use a Windows shell
 builtin that fails executable-identity binding before approval. Retain all
 existing conversation, cancellation, crash, Channel and storage assertions.
 
+Cached plugin manifests must expose the physical path returned by the checked
+file read, not the first caller's lexical alias. Root aliases and Windows 8.3
+paths must not create escaping relative paths or empty manifest hashes in the
+installed registry. Exercise native and directory-alias fixtures against the
+real pinned modules; require nonempty SHA-256 hashes, reject changed manifest,
+entrypoint, policy and diagnostics, and retain traversal, link-boundary and
+strict hardlink rejection. Never make an alias test pass by disabling freshness.
+
 Real Channel package entrypoint tests must use a fresh native Node process when
 loading the complete plugin/SDK graph. Bound that child with a kill timeout
 shorter than its dedicated test deadline; retain actual export and syntax
@@ -75,6 +83,16 @@ DeepSeek Harness deployment must derive its closure from the shared lockfile (`i
 Windows runtime CI may explicitly select `artifact-signature-only` while Authenticode is deferred by the repository owner. The hash-bound platform report must record `authenticode: false` and `status: deferred`; all Ed25519 descriptor/catalog, archive integrity, extraction, sandbox, and storage checks remain mandatory. Missing credentials or failed Authenticode verification must never silently fall back to this mode. macOS Developer ID, hardened-runtime, and accepted notarization gates remain mandatory.
 
 Standalone macOS runtime tools/addons must pass strict `codesign` plus the explicit `notarized` requirement and `--check-notarization`, per Apple's [Testing a Notarised Product](https://developer.apple.com/forums/thread/130560). Do not use `.app`-only `spctl --type execute` assessment on a bare Node executable, or turn a missing notarization ticket into a signature-only success. Host app/DMG Gatekeeper and stapling checks remain separate. Overlay package file lists must retain emitted root-level JavaScript chunks, not only public entry files.
+
+Notarization submits an archive once without waiting, records its SHA-256 and
+submission ID before polling, and queries that same ID with bounded per-command
+and total deadlines. Retry only classified transient read-only status failures;
+authentication, TLS validation, rejected/unknown/mismatched results remain fatal.
+An uncertain submit without an ID requires reconciliation, never automatic
+resubmission. Retain submission and sanitized failure reports; no raw credential
+diagnostics and no stale Accepted report may survive a failed retry. An existing
+journal can resume only for the exact archive bytes, and acceptance is checked
+again before emitting platform-security evidence.
 
 Every target's real signed descriptor/archive must pass the production `KernelPackageManager` path on a clean runner: injected transfer interruption with exact Range/If-Range resume, catalog/artifact verification, safe extraction, control-bridge smoke, atomic activation, integrity rescan, uninstall, and canonical-data preservation. CI-only trust material may contain only the artifact public key and must never enter the production publish set.
 

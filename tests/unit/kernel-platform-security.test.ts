@@ -39,12 +39,14 @@ describe('kernel platform signing and support evidence', () => {
       notarization: { status: 'Accepted', submissionId: 'submission-id' },
     });
 
-    writeFileSync(notarization, JSON.stringify({ status: 'Invalid', id: 'submission-id' }));
-    expect(() => execFileSync(process.execPath, [
-      'scripts/kernel-runtime/write-platform-security-report.mjs',
-      '--platform', 'darwin', '--arch', 'arm64', '--signing', signing,
-      '--notarization', notarization, '--output', join(root, 'rejected.json'),
-    ], { cwd: process.cwd(), stdio: 'pipe' })).toThrow();
+    for (const status of ['Invalid', 'Rejected', 'In Progress', 'Failed']) {
+      writeFileSync(notarization, JSON.stringify({ ok: false, status, id: 'submission-id' }));
+      expect(() => execFileSync(process.execPath, [
+        'scripts/kernel-runtime/write-platform-security-report.mjs',
+        '--platform', 'darwin', '--arch', 'arm64', '--signing', signing,
+        '--notarization', notarization, '--output', join(root, 'rejected.json'),
+      ], { cwd: process.cwd(), stdio: 'pipe' })).toThrow();
+    }
   });
 
   it('keeps signing, notarization, Authenticode and Linux ABI gates in runtime CI', () => {
@@ -57,7 +59,14 @@ describe('kernel platform signing and support evidence', () => {
     expect(workflow).toContain('deploy --prod --ignore-scripts');
     expect(workflow).toContain('materialize-deploy-tree.mjs');
     expect(workflow).toContain('sign-macos-runtime.mjs');
-    expect(workflow).toContain('notarytool submit');
+    expect(workflow).toContain('notarize-runtime.mjs');
+    expect(workflow).toContain('--submission temp/reports/notarization-submission.json');
+    expect(workflow).toContain('--notarization temp/reports/notarization.json');
+    const notaryHelper = readFileSync(join(process.cwd(), 'scripts/kernel-runtime/lib/notarization.mjs'), 'utf8');
+    expect(notaryHelper).toContain("command(['submit'");
+    expect(notaryHelper).toContain("'--no-wait'");
+    expect(notaryHelper).toContain("command(['info', id");
+    expect(notaryHelper).toContain("lastStatus === 'Accepted'");
     expect(workflow).toContain('sign-windows-runtime.ps1');
     expect(workflow).toContain("inputs['windows-signing'] == 'authenticode'");
     expect(workflow).toContain('default: artifact-signature-only');

@@ -1,4 +1,4 @@
-# Windows runtime CI repair — OpenClaw +clawx.8 / +clawx.9
+# Windows runtime CI repair — OpenClaw +clawx.8 / +clawx.9 / +clawx.10
 
 ## Failure and root cause
 
@@ -137,3 +137,106 @@ The rebuilt macOS arm64 payload also passed the same full probe (4,560 / 2,517
 ms readiness), and Harness CI plus the diff-aware task validation/dry-run passed.
 New staging results must still be recorded separately; no COS/catalog write is
 authorized by this repair.
+
+## Follow-up: manifest cache identity and notarization recovery — +clawx.10
+
+[Build 34048363051](https://github.com/Tabll/ClawXXX/actions/runs/34048363051)
+at `1b459ff7` passed eight of ten runtime builds and all three Electron E2E
+platforms. OpenClaw Windows failed the real registry's manifest-change assertion
+**before** the Gateway probe. DeepSeek Intel macOS passed build, seven executable
+signatures and credential validation, then `notarytool submit --wait` exited on
+`NSURLErrorDomain -1001` while reading submission
+`e14fd882-fd40-4450-8b25-55b67951dc13`. This is a transport failure, not evidence
+of Apple rejecting the archive. Single/dual clean-machine jobs were skipped.
+
+### Windows reproduction and minimal runtime patch
+
+The same pinned Node 24.15.0 process and copied JavaScript payload passed with
+a long TEMP path but failed with a real Windows 8.3 TEMP alias. Instrumentation
+did not replace registry logic: it showed that the explicitly configured copies
+were selected correctly in both cases. On the short path, however:
+
+1. Discovery first reads a manifest through the configured short alias and
+   caches its parsed result on the checked file object.
+2. Later registry consumers use the canonical long plugin root. The cached
+   `manifestPath` still belongs to the first lexical caller.
+3. `path.relative(longRoot, shortManifest)` contains parent traversal. The
+   unchanged checked-file reader correctly rejects it. Required manifest hashes
+   become empty strings, with `could not hash ...: validation` diagnostics.
+4. Mutating the real active manifest then produces the same empty hash and
+   registry result, incorrectly accepting `persisted` rather than `derived`.
+
+`loadPluginManifest` now caches `file.path` **after** a successful checked read.
+It does not resolve or trust a new arbitrary path, change plugin precedence,
+skip safe opening, ignore diagnostics, or relax hardlink/provenance/owner policy.
+The parsed manifest and its stored path identify the same physically verified
+file. This also fixes the equivalent directory-symlink alias on macOS/Linux.
+
+The real registry probe defaults to an owned directory alias and also exposes
+`--fixture-path-mode native`. It requires the expected configured copies,
+canonical manifest paths, nonempty SHA-256 hashes and no hash-failure diagnostic
+before its original three SQLite round trips and manifest/entrypoint/policy/
+diagnostic mutation tests. Additional real checked-file tests reject parent
+traversal, directory-link escape and strict hardlinks. All four Windows
+long/short TEMP × native/alias combinations passed without diagnostic hooks;
+the prior implementation fails the new regression.
+
+The immutable OpenClaw identity is `2026.9.2+clawx.10`, revision 10, with 25 patch
+targets. Upstream and dependency versions are unchanged. Patch/lock/source/
+runtime/control-overlay hashes are synchronized; the official npm baseline
+passes strict preparation with zero offsets/fuzz. Four README locale versions
+are synchronized; this repair does not change UI or end-user installation flows.
+
+### Recoverable notarization with unchanged trust requirements
+
+The workflow follows Apple's [custom notarization workflow](https://developer.apple.com/documentation/security/customizing-the-notarization-workflow)
+and the locally installed `notarytool help submit/info` interfaces. Its archive
+is still built from the previously signed kernel and independent Node closure.
+The new helper performs a single `submit --no-wait`, persists an archive-SHA-256
+bound submission journal, then uses `info` for that exact ID. An existing journal
+resumes only for identical archive bytes. An ambiguous upload with no ID leaves
+a write-ahead marker and requires reconciliation; it never silently uploads
+again. A known ID in a transient Apple submission URL is saved before querying.
+
+Read-only status requests have a 90-second command deadline; transient network,
+408/429 and selected 5xx errors retry at 5/10/20/30/30-second backoffs. Submission
+is bounded at ten minutes, total helper time at forty minutes and the enclosing
+CI step at fifty. Authentication/TLS validation, malformed/unknown/mismatched
+responses, Invalid/Rejected results, exhausted retries and late Accepted replies
+remain fatal. Only an in-budget Accepted result for the same unchanged archive
+can produce the platform-security input. Failure reports replace prior Accepted
+state, retain the submission ID and a sanitized classification, and never copy
+credential-bearing stderr. Both journal and result JSON are preserved by the
+existing always-run report artifact step.
+
+Offline regression covers submit-once ordering, process restart, the exact CI
+network timeout, uncertain uploads, malformed IDs, rejection, credential/TLS
+failure, changed archives, bounded backoff/deadlines and actual hung-process
+termination. Those tests are mandatory before expensive builds/signing. They
+are not real Apple acceptance, native archive certification or clean-machine
+evidence; record those new CI outcomes separately in TODO MK-1932/1933. No COS,
+catalog, user-data or installed-runtime mutation is part of this repair.
+
+### Local verification before the new staging run
+
+The final full host suite passed 2,229 tests with zero failures and six existing
+conditional tests pending. Typecheck, lint (zero errors/seven existing warnings),
+both frozen source verifications, strict patch preparation, comms replay/compare,
+Harness CI and the diff-aware task validation/dry-run passed. An independent
+comparison confirms that all 24 root-lock changes only replace the patch hash;
+no dependency version or resolution changed.
+
+The uninstrumented Windows probe passed with an actual 8.3 TEMP alias: first
+start/restart took 81,711/18,477 ms within the existing 180-second Windows budget.
+The rebuilt macOS arm64 closure passed in 3,546/1,828 ms. Both exercised real
+Gateway/ACP, all seven lazy Channel execution modules, six loopback-only provider
+calls, role/tool approval/output, cancel, forced-crash rehydration, accepted and
+rejected canonical Channel ingress, four distinct usage events and no native
+durable conversation history. Reports are retained under ignored
+`temp/reports/openclaw-registry-notary-repair-{windows,macos}.json`.
+
+The Windows VM uses the copied JavaScript closure plus pinned Windows Node and
+the repaired modules; it is not a native CI archive. These local checks do not
+certify Apple acceptance, platform signatures, sealed artifacts, clean-machine
+installation or COS publication. Those gates remain mandatory in the new
+two-kernel/five-target staging run, whose outcome is tracked by MK-1933.

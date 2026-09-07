@@ -102,7 +102,7 @@ describe('kernel runtime build supply chain', () => {
 
       expect(readFileSync(first.archivePath)).toEqual(readFileSync(second.archivePath));
       expect(readFileSync(first.descriptorPath)).toEqual(readFileSync(second.descriptorPath));
-      expect(first.descriptor.artifactVersion).toBe('2026.9.2+clawx.9');
+      expect(first.descriptor.artifactVersion).toBe('2026.9.2+clawx.10');
       expect(first.descriptor.storage).toMatchObject({ authority: 'clawx-data-service', nativeDurableHistory: false });
       expect(first.descriptor.supplyChain).toEqual(expect.objectContaining({
         sourceSha256: expect.stringMatching(/^[a-f0-9]{64}$/),
@@ -215,6 +215,10 @@ describe('kernel runtime build supply chain', () => {
     expect(workflow.indexOf('probe-openclaw-plugin-registry.mjs')).toBeLessThan(workflow.indexOf('probe-openclaw-managed-runtime.mjs'));
     expect(workflow).toContain('tests/unit/openclaw-plugin-registry.test.ts');
     expect(workflow).toContain('tests/unit/openclaw-probe-lifecycle.test.ts');
+    expect(workflow).toContain('tests/unit/kernel-notarization.test.ts');
+    expect(workflow.indexOf('tests/unit/kernel-notarization.test.ts')).toBeLessThan(workflow.indexOf('notarize-runtime.mjs'));
+    expect(workflow).toContain('--submission temp/reports/notarization-submission.json --report temp/reports/notarization.json');
+    expect(workflow).not.toContain('notarytool submit temp/notarization.zip');
     expect(smoke).toContain('waitForExit(probe, openClawProbeBudgets().totalMs)');
     const probe = readFileSync(join(process.cwd(), 'scripts/kernel-runtime/probe-openclaw-managed-runtime.mjs'), 'utf8');
     expect(probe).toContain("OPENCLAW_GATEWAY_STARTUP_TRACE: '1'");

@@ -2,7 +2,7 @@
 
 > 对应设计：[docs/zh-CN/multi-kernel-design.md](docs/zh-CN/multi-kernel-design.md)
 >
-> 状态：M19 已修复 OpenClaw 生产存储桥接、配置、Channels 及 Windows 路径兼容，本地源码/依赖为 2026.9.2+clawx.9；Windows 隔离执行及 macOS arm64 payload 的真实 Gateway/ACP 已验证。新版受保护五目标构建、clean-machine、真实账号/长上下文、生产镜像演练及法务批准仍是发布门禁，不以本机结果代替
+> 状态：M19 继续处理 OpenClaw Windows 注册表路径兼容及 macOS 公证查询恢复，本地源码/依赖为 2026.9.2+clawx.10。+9 的 CI 为 8/10 build 成功，单/双内核 clean-machine 未执行；新版仍须完整真实平台验证。真实账号/长上下文、生产镜像演练及法务批准仍是发布门禁，不以本机结果代替
 >
 > 最近完整本地证据（2026-09-01）：Vitest 243 files / 241 passed / 2 skipped、2116 tests passed / 6 skipped（其中制品依赖项只在真实 CI 制品存在时执行）；Electron E2E 既有证据 151 passed / 3 platform skips；multi-kernel chaos 既有证据 28/28；DSH `0.1.2-alpha.2` 干净精确上游树完成严格 patch/overlay 重放、冻结安装、完整 host build、12 files / 43 focused tests，并在真实 macOS `sandbox-exec` 下通过 3/3 runtime self-tests；typecheck、lint、comms 与本任务 Harness 全绿
 >
@@ -481,7 +481,12 @@
 - [x] `MK-1925` 扩展真实 registry 回归：物理目录大小写与 junction/symlink 保留官方安装所有者，拒绝不同物理副本、伪造来源与多所有者冲突。Windows 真实 Gateway 专用预算 180 秒、其他平台 90 秒；补迟到响应/进程退出/信号/创建失败与资源释放回归，成功和失败均记录诊断。未调整 App/控制桥预算或跳过发布闸门。
 - [x] `MK-1926` 修复 Windows bare echo 无法绑定可执行文件的测试问题：使用 PATH 首位预置 Node 执行固定私有脚本，只对精确 command 批准一次并断言实际工具输出。真实 Windows 原始探针通过：两次就绪 34.5/21.1 秒，ACP、7 Channels、审批执行、取消、崩溃重建、6 次 Provider/4 usage 与零原生历史均通过。仅为隔离 VM 执行证据，不冒充原生 CI 制品验证。
 - [x] `MK-1927` 冻结 +clawx.9、24-target 严格补丁和完整 hash 链；离线 frozen install 无依赖版本变动。宿主全量 **2191 passed / 0 failed / 6 existing pending**，typecheck、lint（0 errors / 7 existing warnings）、source verify、comms replay/compare 通过；同步四语 README 版本、设计参考、规则、场景与任务规格。
-- [ ] `MK-1928` 审核并提交/推送 +9 修复，使用新提交重新 dispatch 两内核五目标 staging（Windows artifact-signature-only）及环境审批；逐项记录 build 和单/双内核 clean-machine 实际结果。COS/catalog/生产发布不在本轮范围。
+- [x] `MK-1928` +9 已经由 `1b459ff7` 提交/推送并 dispatch/审批 [34048363051](https://github.com/Tabll/ClawXXX/actions/runs/34048363051)：8/10 build 成功；OpenClaw Windows 在真实 Gateway 前的清单失效探针失败，DSH Intel macOS 已签名但公证查询网络超时。三平台 Electron E2E 通过，单/双内核 clean-machine 跳过；不是全绿或生产发布。
+- [x] `MK-1929` 真实 Windows 长/8.3 短 TEMP 对比稳定复现：短路径清单被缓存、root 后续 canonical 化，`path.relative` 生成逃逸路径导致安全读取失败，manifestHash 为空；修改清单仍得到 persisted。长路径通过。不是插件副本选错，也不是凭据或等待时限问题。
+- [x] `MK-1930` +10 将清单缓存路径绑定到已验证文件的物理路径，保留原边界/来源/所有者策略。回归默认加入目录别名，强制选中 configured 副本、非空 SHA-256、3 次 SQLite 回读、4 类变更拒绝，以及 traversal/junction escape/hardlink 拒绝。真实 Windows 长/短 TEMP × native/alias 四组合全部通过，旧实现失败。
+- [x] `MK-1931` 公证拆为单次 no-wait submit + archive SHA/提交 ID journal + 有界 info 查询；网络类状态错误指数退避，认证/TLS/拒绝/异常响应与总时限仍失败。未知上传结果不重复提交，失败清除旧 Accepted 状态；37 项离线故障注入/进程期限回归通过，不冒充真实 Apple Accepted。
+- [x] `MK-1932` +10 完整宿主 2229 项通过、6 项既有条件跳过；typecheck、lint（0 错误/7 项既有警告）、source/hash/strict preparation、comms replay/compare、Harness CI 与任务校验通过。Windows 短 TEMP 真实 Gateway 首启/重启 81,711/18,477 ms，重建 macOS arm64 为 3,546/1,828 ms；均覆盖 7 Channels、ACP/审批/取消/崩溃恢复、usage 与零内核持久历史。Windows 使用复制 JS 闭包，不等同于 CI 原生包/公证/clean-machine 验收；四语 README 与设计/规则/场景已同步。
+- [ ] `MK-1933` 提交、推送 +10 并用新 SHA dispatch/审批两个内核五目标 staging（Windows artifact-signature-only）；如实记录 CI 与后续 clean-machine 结果。COS/catalog/生产发布仍不在本轮范围。
 
 ## 每个实现 PR 的最低检查
 

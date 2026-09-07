@@ -609,3 +609,25 @@ diff --git a/dist/plugin-cache-files-DLPF_Tw2.js b/dist/plugin-cache-files-DLPF_
  	const facts = pathFacts(targetPath);
  	const key = native ? "nativeRealpath" : "realpath";
  	if (facts[key] === void 0) try {
+diff --git a/dist/manifest-ByRdkf9X.js b/dist/manifest-ByRdkf9X.js
+--- a/dist/manifest-ByRdkf9X.js
++++ b/dist/manifest-ByRdkf9X.js
+@@ -951,7 +951,7 @@
+ 	};
+ }
+ function loadPluginManifest(rootDir, rejectHardlinks = true, rootRealPath) {
+-	const manifestPath = path.join(rootDir, PLUGIN_MANIFEST_FILENAME);
++	let manifestPath = path.join(rootDir, PLUGIN_MANIFEST_FILENAME);
+ 	const file = readPluginCacheFile({
+ 		rootDir,
+ 		relativePath: PLUGIN_MANIFEST_FILENAME,
+@@ -971,6 +971,9 @@
+ 			manifestPath
+ 		})
+ 	});
++	// Cache the checked physical file, not the first caller's short/symlink
++	// alias: later consumers compute paths relative to the canonical root.
++	manifestPath = file.path;
+ 	if (file.manifest) return file.manifest;
+ 	const cacheResult = (result) => {
+ 		return file.manifest = result;

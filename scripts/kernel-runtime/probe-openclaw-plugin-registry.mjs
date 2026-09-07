@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /** Real pinned registry + private SQLite; no plugin code, user state or network. */
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { linkSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -10,11 +10,18 @@ const args = new Map();
 for (let index = 2; index < process.argv.length; index += 2) args.set(process.argv[index], process.argv[index + 1]);
 const packageDir = resolve(args.get('--package-dir') ?? 'node_modules/openclaw');
 assert.equal(JSON.parse(readFileSync(join(packageDir, 'package.json'), 'utf8')).version, '2026.9.2');
-const root = mkdtempSync(join(tmpdir(), 'clawx-registry-probe-'));
+const fixturePathMode = args.get('--fixture-path-mode') ?? 'alias';
+assert.ok(['native', 'alias'].includes(fixturePathMode), 'Invalid fixture path mode');
+const fixture = mkdtempSync(join(tmpdir(), 'clawx-registry-probe-'));
+const physicalRoot = join(fixture, 'physical');
+const fixtureAlias = join(fixture, 'alias');
+const root = fixturePathMode === 'alias' ? fixtureAlias : physicalRoot;
 const state = join(root, 'state');
 const workspace = join(root, 'workspace');
 let closeDatabase;
 try {
+  mkdirSync(physicalRoot);
+  if (fixturePathMode === 'alias') symlinkSync(realpathSync.native(physicalRoot), fixtureAlias, process.platform === 'win32' ? 'junction' : 'dir');
   for (const directory of [state, workspace]) mkdirSync(directory, { recursive: true, mode: 0o700 });
   Object.assign(process.env, {
     CLAWX_MANAGED_RUNTIME: '1', CLAWX_OPENCLAW_PACKAGE_DIR: packageDir,
@@ -51,6 +58,15 @@ try {
   ({ n: closeDatabase } = await chunk('openclaw-state-db-cache-C7ljO0xP.js'));
   const read = (extra = {}) => withCache(createCache(), () => load({ config, env: process.env, workspaceDir: workspace, allowCurrent: false, ...extra }));
   const initial = read({ preferPersisted: false, installRecords });
+  // Discovery first reads through the configured alias and later uses a
+  // canonical root. Cached manifests must retain the checked file identity.
+  for (const plugin of initial.snapshot.plugins) {
+    assert.equal(realpathSync.native(plugin.rootDir), realpathSync.native(join(root, 'configured', plugin.pluginId)), 'Explicit configured copies must be selected');
+    assert.equal(plugin.manifestPath, realpathSync.native(join(plugin.rootDir, 'openclaw.plugin.json')), 'Cached manifest paths must use the checked physical file');
+    assert.match(plugin.manifestHash, /^[a-f0-9]{64}$/, 'Active manifests must have real content hashes, never empty placeholders');
+  }
+  assert.equal(initial.snapshot.plugins.length, 2);
+  assert.ok(!initial.snapshot.diagnostics.some(item => item.message.includes('could not hash')), 'Every fixture manifest must be hashed safely');
   const duplicates = initial.snapshot.diagnostics.filter(item => item.message.includes('duplicate plugin id'));
   assert.equal(duplicates.length, 2, 'The fixture must actually exercise both duplicate diagnostics');
   const assertStale = (result, code) => {
@@ -112,7 +128,17 @@ try {
   assert.notEqual(manifestFor(configuredPath, { discord: { ...officialRecord, resolvedName: '@untrusted/discord' } })?.trust?.reason, 'trusted-official', 'Path equality must not override invalid provenance');
   assert.equal(manifestFor(configuredPath, { discord: officialRecord, other: { ...officialRecord } })?.trust?.reason, 'owner-ambiguous', 'Two owners of one physical path must fail closed');
 
-  const report = { schemaVersion: 1, ok: true, version: '2026.9.2', platform: process.platform, duplicateDiagnostics: duplicates.length, persistedRoundTrips: 3, staleChangesRejected: ['manifest', 'source', 'policy', 'diagnostic'], physicalAliasTrust: true, unrelatedPathRejected: true, invalidProvenanceRejected: true, ambiguousOwnerRejected: true };
+  // Canonical cache paths must not weaken the original checked-file policy.
+  const { c: readFile } = await chunk('plugin-cache-files-DLPF_Tw2.js');
+  const checkedRead = (relativePath, rejectHardlinks = true) => withCache(createCache(), () => readFile({ rootDir: physical, relativePath, rejectHardlinks }));
+  assert.equal(checkedRead('../UnrelatedOfficial/openclaw.plugin.json').ok, false, 'Lexical traversal must remain rejected');
+  symlinkSync(realpathSync.native(unrelated), join(physical, 'escape'), process.platform === 'win32' ? 'junction' : 'dir');
+  assert.equal(checkedRead('escape/openclaw.plugin.json').ok, false, 'Directory aliases must not escape the checked root');
+  linkSync(join(unrelated, 'openclaw.plugin.json'), join(physical, 'hardlinked.json'));
+  assert.equal(checkedRead('hardlinked.json', false).ok, true);
+  assert.equal(checkedRead('hardlinked.json').ok, false, 'Strict hardlink rejection must remain intact');
+
+  const report = { schemaVersion: 1, ok: true, version: '2026.9.2', platform: process.platform, fixturePathMode, manifestHashesVerified: true, unsafePathsRejected: true, duplicateDiagnostics: duplicates.length, persistedRoundTrips: 3, staleChangesRejected: ['manifest', 'source', 'policy', 'diagnostic'], physicalAliasTrust: true, unrelatedPathRejected: true, invalidProvenanceRejected: true, ambiguousOwnerRejected: true };
   if (args.has('--report')) {
     const output = resolve(args.get('--report'));
     mkdirSync(dirname(output), { recursive: true, mode: 0o700 });
@@ -123,5 +149,5 @@ try {
   // Only databases opened by this isolated process; close handles before Windows
   // cleanup. The production registry guard and database implementation are intact.
   closeDatabase?.();
-  rmSync(root, { recursive: true, force: true, maxRetries: 3 });
+  rmSync(fixture, { recursive: true, force: true, maxRetries: 3 });
 }
