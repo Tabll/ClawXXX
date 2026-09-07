@@ -60,6 +60,17 @@ non-truncating handle with fatal flush errors; Git fixture LF bytes and driver
 path assertions must be independent of developer Git policy and host separators.
 See `harness/reference/windows-runtime-ci-repair.md`.
 
+Windows storage/build contract suites run with one file worker so real Git
+processes and FULL-sync SQLite do not compete with unrelated cold SDK imports.
+Keep test-internal dual-kernel/message concurrency and all original deadlines.
+Use Node environments for pure host contracts; create real Git fixtures with
+bounded setup commands and split independent exact/offset cases for both
+autocrlf policies. Async readiness must follow actual admission, and terminal
+observers must follow successful SQLite writes, never an early request array.
+Retain durable readback/reopen assertions, release owned gates on failure and
+drain work before closing storage. No in-memory substitutes, relaxed fsync,
+blanket retries, skipped tests or enlarged global/per-test timeouts are allowed.
+
 Windows plugin-cache realpath defaults must use native OS canonicalization so
 case, 8.3 and junction aliases agree with async installation records. Preserve
 strict owner, physical-boundary and provenance checks; an official ID alone

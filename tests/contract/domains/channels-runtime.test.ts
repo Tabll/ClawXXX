@@ -3,7 +3,7 @@
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import { ChannelAdapterRegistry } from '@electron/channels/channel-adapter-registry';
 import { CanonicalChannelAccountService } from '@electron/channels/channel-account-service';
 import { ChannelBindingService } from '@electron/channels/channel-binding-service';
@@ -32,6 +32,7 @@ import { SUPPORTED_CHANNEL_TYPES } from '@shared/types/channel';
 import type { KernelId } from '@shared/kernels/contracts';
 import { createFakeHost } from '../kernels/driver-contract-kit';
 import { FakeKernelDriver } from '../kernels/fakes/fake-kernel-driver';
+import { createContractSignal } from '../../fixtures/kernels/contract-signal';
 
 const cleanups: Array<() => Promise<void> | void> = [];
 
@@ -367,7 +368,10 @@ describe('Channel Orchestrator', () => {
   it('queues simultaneous messages for one external thread instead of opening parallel runs', async () => {
     const { main, connector, drivers } = await runtimeFixture();
     const gate = Promise.withResolvers<void>();
-    drivers.get('deepseek-harness')!.executionGate = gate.promise;
+    const started = createContractSignal('channel driver started');
+    const driver = drivers.get('deepseek-harness')!;
+    driver.executionGate = gate.promise;
+    driver.onExecutionStarted = input => started.publish(input);
     const one = connector.emit({
       externalConversationId: 'same-thread',
       externalMessageId: 'one',
@@ -382,13 +386,22 @@ describe('Channel Orchestrator', () => {
       text: 'two',
       receivedAt: '2026-08-24T00:00:01.000Z',
     });
-    await vi.waitFor(() => expect(drivers.get('deepseek-harness')!.requests).toHaveLength(1));
-    gate.resolve();
-    await Promise.all([one, two]);
-    expect(drivers.get('deepseek-harness')!.requests).toHaveLength(2);
-    const conversations = await main.listConversations();
-    expect(conversations.items).toHaveLength(1);
-    expect((await main.exportConversation(conversations.items[0]!.id)).turns).toHaveLength(4);
+    try {
+      await started.waitFor();
+      expect(driver.requests).toHaveLength(1);
+      gate.resolve();
+      await Promise.all([one, two]);
+      expect(driver.requests).toHaveLength(2);
+      const conversations = await main.listConversations();
+      expect(conversations.items).toHaveLength(1);
+      expect((await main.exportConversation(conversations.items[0]!.id)).turns).toHaveLength(4);
+    } finally {
+      // A failed assertion must not leave an execution gate blocking teardown.
+      gate.resolve();
+      await Promise.allSettled([one, two]);
+      driver.onExecutionStarted = undefined;
+      started.dispose();
+    }
   });
 
   it('persists a terminal dead letter when the canonical retry budget is exhausted', async () => {

@@ -2,7 +2,7 @@
 
 > 对应设计：[docs/zh-CN/multi-kernel-design.md](docs/zh-CN/multi-kernel-design.md)
 >
-> 状态：双内核 +12 的第 12 轮 CI 已通过 10/10 build、4/4 macOS 公证、9/10 单内核 clean-machine，另有三平台 E2E 成功；OpenClaw Windows 单内核安装超过 10 分钟，5/5 双内核测试在向只读控制桥注入损坏时失败。本轮修复测试权限处理，宿主完整文件校验改用固定 8 路并发并增加失败时可保留的阶段日志，不放宽安全检查或 10/15 分钟验收时限。实际 CI macOS arm64 制品的单/双内核安装链路本地通过，内核 +12/hash/lock/签名输入保持不变；新五目标远端最终验收仍由 MK-1940 跟踪，不以本机结果代替
+> 状态：双内核 +12 的第 13 轮 CI 通过 8/10 build、4/4 macOS 公证和三平台 E2E；两个 Windows 均通过前置 121 项安装器回归，随后共享存储/Git 契约测试 5 秒超时，单/双 clean-machine 未执行。本轮减少真实 Git 夹具启动开销，Cron/Channels 改用真实工作完成后的事件屏障，仅限制 Windows 存储步骤的文件并发，不改变测试内部双内核并发、SQLite FULL 持久化或原时限。完整宿主 2298 项、两组 CI 存储选择器 99/71 项本地通过；内核 +12/hash/lock/签名输入不变。新五目标最终验收仍由 MK-1940 跟踪，不以本机结果代替。
 >
 > 最近完整本地证据（2026-09-01）：Vitest 243 files / 241 passed / 2 skipped、2116 tests passed / 6 skipped（其中制品依赖项只在真实 CI 制品存在时执行）；Electron E2E 既有证据 151 passed / 3 platform skips；multi-kernel chaos 既有证据 28/28；DSH `0.1.2-alpha.2` 干净精确上游树完成严格 patch/overlay 重放、冻结安装、完整 host build、12 files / 43 focused tests，并在真实 macOS `sandbox-exec` 下通过 3/3 runtime self-tests；typecheck、lint、comms 与本任务 Harness 全绿
 >
@@ -503,6 +503,12 @@
 - [x] `MK-1947` 48 focused / 121 CI preflight / 2290 完整宿主测试通过（0 失败/6 既有条件跳过）；共享内核目录、Agents、Channels、Cron、Skills 的 8 项 Electron E2E 通过。校验 GitHub SHA-256 后，实际第 12 轮 macOS arm64 CI 制品通过单内核约 50 秒、双内核约 90 秒完整生产安装/控制桥/扫描/修复/卸载链路。typecheck、lint（0 错误/7 既有警告）、source verify、comms 通过；四语 README 与规则/场景/任务/参考文档同步。Windows 实机补充诊断及新远端结果见参考记录；这些本机证据不等于五目标最终验收。
 - [x] `MK-1948` Windows VM 的同一真实 +12 制品在新旧宿主上将 staging 从约 425 秒降到 197 秒，但均在 smoke 后原子目录切换遇到 EPERM。8 组最小实验证明目录内 node.exe 退出后（即使等待 close）仍可短暂锁住目录；目录外 executable 对照均立即成功。宿主 activation/quarantine/trash 的目录移动仅对 Windows EPERM/EBUSY 做最多 6 次原子 rename、累计延迟 1500 ms；持久锁/其他错误继续失败，不复制、不改权限、不重跑整个安装或放宽 CI 时限。该补充本地故障不等于已确定旧 CI 超时的确切阶段。
 - [x] `MK-1949` 最终 Windows VM 真实制品离线探针通过：212227 ms 激活、225499 ms 完整重扫，225994 ms 第二次真实控制桥退出后立即卸载，229888 ms 全部清理完成，只读文件与 SQLite Conversation 保留断言成功。最终 Vite build、Harness CI/任务 validate/dry-run、source/comms 和 8 项共享 UI E2E 再次通过。该离线探针不覆盖 Windows Range/双内核全套 Vitest 或全部原生 runner，MK-1940 仍待新 CI 最终结果。
+
+- [x] `MK-1950` 核对 `dc2ec968` 的 [34135100335](https://github.com/Tabll/ClawXXX/actions/runs/34135100335)：8/10 build、4/4 macOS 公证、三平台 E2E 成功。两个 Windows 前置 121 项均通过；OpenClaw Git/Cron restart 为 9704/9679 ms，DSH Channels/Cron overlap 为 8660/7255 ms，均超出原 5000 ms 测试时限。保留 8 份 runtime/10 份报告，单/双 clean-machine 未执行；不能据此宣称前轮安装器已完整远端验收。
+- [x] `MK-1951` 纯宿主 Git 用 Node 环境，每个真实临时仓库 setup 从 7 次进程减到 3 次，精确/offset 与两种 autocrlf 分成 4 项，保留 LF 字节、真正 patch、拒绝偏移和 clean index。Cron/Channels 用实际 admission/SQLite 写入后的有界事件屏障，skip/replace 分项并在失败时释放 gate/收敛工作；4 项 helper 负向回归和 workflow 并发策略回归覆盖。仅 Windows storage step 文件 worker=1，保留用例内并发与全部时限，无 retry/skip/mock SQLite 或降低 fsync。
+- [x] `MK-1952` Node 24.15.0 完整宿主 **2298 passed / 0 failed / 6 existing conditional pending**；从 workflow 实际提取的 OpenClaw/DSH storage suites 用 Windows worker 策略分别 **99/71 passed**。typecheck、lint（0 错误/7 既有警告）、source verify、comms、Harness CI/任务 validate/dry-run 通过；四语 README 经审查无需修改，rule/scenario/task/reference 已同步。Windows 本机基线通过但未复现 CI 长停顿，最终原生平台验收仍保持未完成；不改 +12/locks/签名和任何用户安装。
+
+- [x] `MK-1953` 同 CI Node 24.15.0 x64 / Git 2.55.0.windows.5 的独立 Windows 11 VM 修复后 4 个与 1 个文件 worker 各 **43/43 passed**：Git exact/offset 367–544 ms，Channels queue 51–53 ms，Cron skip/replace 21–27 ms、restart 29–36 ms。官方工具链摘要及两个原生测试依赖的 lockfile SHA-512 已验证。原基线 Git 1274–1349 ms 也通过，未宣称复现 CI 7–10 秒停顿；原生 GitHub runner 和完整单/双制品验收继续由 MK-1940 跟踪。
 
 ## 每个实现 PR 的最低检查
 

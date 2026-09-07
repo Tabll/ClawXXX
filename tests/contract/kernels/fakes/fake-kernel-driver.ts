@@ -47,6 +47,7 @@ export class FakeKernelDriver implements KernelDriver {
   readonly permissions: KernelPermissionResolution[] = [];
   readonly requests: KernelRunRequest[] = [];
   executionGate?: Promise<void>;
+  onExecutionStarted?: (input: KernelRunRequest) => void;
   promptCheckpoint?: unknown;
   private host?: KernelDriverHost;
   private state: KernelRuntimeSnapshot['state'] = 'stopped';
@@ -123,6 +124,7 @@ export class FakeKernelDriver implements KernelDriver {
     this.requests.push(structuredClone(input));
     const event = this.event(input, 'assistant.delta', { text: `${this.definition.id}:${input.runId}` });
     await host.emit(event);
+    this.onExecutionStarted?.(input);
     await this.executionGate;
     return {
       ...input,

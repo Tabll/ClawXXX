@@ -244,6 +244,7 @@ jobs:
         shell: bash
         run: |
           suites=(
+            tests/unit/kernel-contract-signal.test.ts
             tests/unit/kernel-runtime-build.test.ts
             tests/contract/data/blob-and-conversation-store.test.ts
             tests/contract/domains/channels-runtime.test.ts
@@ -258,8 +259,14 @@ jobs:
           else
             suites+=(tests/contract/kernels/deepseek-harness-driver.test.ts)
           fi
+          # Keep FULL-sync SQLite and native Git contracts from competing with
+          # unrelated cold SDK imports on Windows. In-test concurrency remains.
+          worker_args=()
+          if [ "${{ matrix.target.platform }}" = "win32" ]; then
+            worker_args+=(--maxWorkers=1)
+          fi
           mkdir -p temp/reports
-          pnpm exec vitest run "${suites[@]}" --reporter=default --reporter=json --outputFile.json=temp/reports/vitest-storage-contracts.json
+          pnpm exec vitest run "${suites[@]}" "${worker_args[@]}" --reporter=default --reporter=json --outputFile.json=temp/reports/vitest-storage-contracts.json
           printf 'CLAWX_STORAGE_SUITES=%s\n' "$(IFS=,; echo "${suites[*]}")" >> "$GITHUB_ENV"
       - name: Record test and no-native-history evidence
         shell: bash

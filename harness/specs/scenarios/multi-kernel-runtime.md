@@ -103,6 +103,15 @@ bounded PAX records over a huge EOF trailer; preserve real decompression and
 production limits, and enforce fixture cost with operation counts rather than
 runner-dependent timing assertions. Test-only repairs do not change kernel pins.
 
+Storage contracts must observe completed admission and durable SQLite terminal
+writes with explicit bounded event barriers, not timer polling or early fake
+request counts. Preserve per-thread serialization, dual-kernel concurrency,
+Cron skip/replace/restart deduplication and real FULL-sync on-disk readback.
+Pure Git contracts use Node, bounded real repository setup, both autocrlf
+policies and independent exact/offset cases. Only Windows storage-suite file
+workers are serialized; internal concurrency, deadlines and release gates stay.
+Release owned execution gates and drain operations on failure before teardown.
+
 Large runtime file verification uses bounded concurrency without dropping any
 signed check. Drain in-flight work before failure cleanup and reject readonly
 sealing failures. Real-artifact fault injection operates only on owned temporary

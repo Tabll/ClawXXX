@@ -558,3 +558,76 @@ staging dispatch and approval, with Windows artifact-signature-only. Do not
 rerun the old SHA or mark MK-1940 complete until every required remote gate
 passes. No COS upload, catalog promotion, credentials or installed-runtime
 changes are included.
+
+## Follow-up: Windows shared-contract stalls in build #13
+
+[Build 34135100335](https://github.com/Tabll/ClawXXX/actions/runs/34135100335)
+at `dc2ec968` passed eight runtime builds, all four macOS signing/notarization
+targets and all **121 early installer regressions on both Windows targets**.
+The same commit's [Electron E2E](https://github.com/Tabll/ClawXXX/actions/runs/34135022724)
+passed all three platforms. Windows failed later in the shared storage/build
+contract step, before archive sealing: OpenClaw's LF patch and Cron restart
+checks took 9704/9679 ms; DSH's Channel queue and combined Cron skip/replace
+checks took 8660/7255 ms, exceeding their unchanged 5000 ms test deadlines.
+The 18 retained artifacts are eight runtime bundles plus ten build reports.
+Both clean-machine matrices were skipped; the previous installer repair does
+not yet have complete remote acceptance.
+
+The logs establish deadline overruns, not the precise scheduler/host component
+responsible for the delay. The original three suites also passed in this Mac's
+Windows 11 VM after completing the isolated test dependency closure (35 tests,
+Node 24.15.0 x64 and Git 2.55.0.windows.5, four file workers). This is not a
+reproduction of CI's failures or a native GitHub runner benchmark. Before that,
+missing `punycode/` and `THIRD_PARTY_NOTICES.md` in the temporary diagnostic copy
+were corrected without changing repository dependencies or product code.
+Official Node/MinGit SHA-256 and Windows esbuild/Rollup lockfile SHA-512 were
+verified; no toolchain was installed globally and no user runtime was touched.
+
+The repair keeps production code, SQLite durability, source locks and both
+`+clawx.12` payloads unchanged:
+
+- Pure host build contracts use the Node test environment, not jsdom. Real Git
+  fixture setup uses three native commands instead of seven; local config is
+  written only inside the owned temporary repository. Exact and shifted patch
+  cases have separate default-deadline tests for both autocrlf policies. Real
+  patch application, LF bytes, offset rejection and an unchanged clean index
+  remain asserted. The original combined test launched 22 Git processes; each
+  new exact/offset test launches nine/six, with setup operation-count assertions.
+- Test-only bounded event barriers observe completed driver/router admission
+  and successful actual `putCronRun` writes. They do not replace SQLite work or
+  manufacture terminal state. Tests query real persisted data, retain reopen
+  and deduplication, and release execution gates/drain owned work on failure.
+  Skip and replace use independent fixtures/tests. Four helper regressions
+  cover already-completed events, exact matching, timeout and teardown.
+- Only the Windows storage-contract step uses `--maxWorkers=1`, avoiding file
+  worker competition with unrelated native/SDK startup. Internal simultaneous
+  kernel/jobs/messages are still tested. Other platforms retain default file
+  workers. A workflow regression guards that scope and unchanged deadlines.
+  There are no whole-test retries, skips, in-memory databases, weaker fsync,
+  global Vitest config changes or relaxed integrity/signing checks.
+
+Local Node 24.15.0 validation on 2026-09-07: **2,298 passed / 0 failed / six
+existing conditional pending** across 263 files; both actual CI storage-suite
+selectors with Windows file-worker policy passed **99 OpenClaw / 71 DSH**
+tests. Typecheck, lint (zero errors/seven existing warnings), source hashes,
+comms replay/compare and Harness CI (19 checks) passed. Diff-aware task
+validation/dry-run passed. Ignored reports use the `temp/contracts-stall-*`
+prefix. English/Chinese/Japanese/Russian READMEs were reviewed; no user-visible
+flow, API, runtime version or development command changed, so no translation
+edits were needed. Rule/scenario/task/TODO capture the test/CI constraints.
+
+The repaired four-suite Windows VM run passed **43/43** with four file workers
+and again **43/43** with the final single-file-worker policy. All Git exact and
+offset cases completed in 367–544 ms; the old combined Git cases had taken
+1274–1349 ms. Channel queue completed in 51–53 ms; skip/replace in 21–27 ms;
+restart deduplication in 29–36 ms. These are observed VM samples, not timing
+assertions or proof that a particular Windows component caused CI's stalls.
+Reports are `temp/contracts-stall-windows-{baseline-4,candidate-4,candidate-1}`.
+The task-owned portable tools/source copy is removed after verification, with
+host reports retained and the initially stopped VM returned to stopped state.
+
+Commit/push must dispatch a fresh both-kernel/five-target staging run on the new
+SHA and pass normal `kernel-staging` approval. Keep Windows explicitly
+artifact-signature-only, macOS signing/notarization and every single/dual
+clean-machine gate. MK-1940 remains open until full new remote acceptance;
+no COS upload, catalog promotion, secret changes or installed-data mutation.

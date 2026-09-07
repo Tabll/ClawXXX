@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { execFileSync } from 'node:child_process';
 import { generateKeyPairSync } from 'node:crypto';
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -9,11 +10,23 @@ import {
   scanRuntimeDataPaths,
 } from '../../scripts/kernel-runtime/lib/storage-contract.mjs';
 import { applyStrictPatchSeries } from '../../scripts/kernel-runtime/lib/source-manifest.mjs';
+import { createStrictPatchFixture } from '../fixtures/kernels/strict-patch-fixture.mjs';
 import { describe, expect, it, vi } from 'vitest';
 
 const officialNodeSha256 = 'af5cfaeafe603aaf7599f287fd9d100bb41f16794f49788fa59dd3f25546930f';
 
 describe('kernel runtime build supply chain', () => {
+  it('bounds Windows storage suite file workers without changing test deadlines or internal concurrency', () => {
+    const workflow = readFileSync(join(process.cwd(), '.github/workflows/kernel-runtime-build.yml'), 'utf8');
+    const step = workflow.split('- name: Run canonical storage and runtime build contract suites')[1]!.split('- name: Record test and no-native-history evidence')[0]!;
+    expect(step).toContain('tests/unit/kernel-contract-signal.test.ts');
+    expect(step).toContain('worker_args=()');
+    expect(step).toContain('if [ "${{ matrix.target.platform }}" = "win32" ]; then\n            worker_args+=(--maxWorkers=1)\n          fi');
+    expect(step).toContain('pnpm exec vitest run "${suites[@]}" "${worker_args[@]}"');
+    expect(step).not.toMatch(/--(?:testTimeout|hookTimeout|retry|bail|maxConcurrency)|continue-on-error|--passWithNoTests/);
+    expect(readFileSync(join(process.cwd(), 'vitest.config.ts'), 'utf8')).not.toMatch(/testTimeout|hookTimeout|retry:|fileParallelism|maxWorkers/);
+  });
+
   it.each([false, true])('flushes sealed bytes with a writable non-truncating handle and always closes it (failure=%s)', (failure) => {
     const root = mkdtempSync(join(tmpdir(), 'clawx-artifact-fsync-'));
     const path = join(root, 'sealed.tar.zst');
@@ -325,22 +338,31 @@ describe('kernel runtime build supply chain', () => {
     }
   });
 
-  it.each(['false', 'true'])('applies LF-exact patches and rejects offsets under inherited core.autocrlf=%s', (autocrlf) => {
+  it.each([
+    { autocrlf: 'false', shifted: false }, { autocrlf: 'true', shifted: false },
+    { autocrlf: 'false', shifted: true }, { autocrlf: 'true', shifted: true },
+  ])('checks LF-exact patching with core.autocrlf=$autocrlf and shifted=$shifted', ({ autocrlf, shifted }) => {
     const root = mkdtempSync(join(tmpdir(), 'clawx-patch-test-'));
     try {
       // Model Windows global Git policy without editing the developer's config.
       const globalConfig = join(root, 'global.gitconfig');
       writeFileSync(globalConfig, `[core]\n\tautocrlf = ${autocrlf}\n\teol = crlf\n`);
       vi.stubEnv('GIT_CONFIG_GLOBAL', globalConfig);
-      const clean = createGitFixture(join(root, 'clean'), 'head\nalpha\none\nomega\ntail\n');
+      const content = `${shifted ? 'zero\n' : ''}head\nalpha\none\nomega\ntail\n`;
+      const checkout = createStrictPatchFixture(join(root, 'checkout'), content);
+      expect(checkout.commands.map((args: string[]) => args[0])).toEqual(['init', 'add', 'commit']);
       const patchPath = join(root, 'change.patch');
       writeFileSync(patchPath, patchText());
       const source = { patches: [{ path: 'change.patch' }] };
-      expect(applyStrictPatchSeries({ repositoryRoot: root, checkoutRoot: clean, source })).toEqual(['value.txt']);
-      expect(readFileSync(join(clean, 'value.txt'), 'utf8')).toBe('head\nalpha\ntwo\nomega\ntail\n');
-
-      const shifted = createGitFixture(join(root, 'shifted'), 'zero\nhead\nalpha\none\nomega\ntail\n');
-      expect(() => applyStrictPatchSeries({ repositoryRoot: root, checkoutRoot: shifted, source })).toThrow(/fuzz or offset/);
+      const apply = () => applyStrictPatchSeries({ repositoryRoot: root, checkoutRoot: checkout.path, source });
+      if (shifted) {
+        expect(apply).toThrow(/fuzz or offset/);
+        expect(readFileSync(join(checkout.path, 'value.txt'), 'utf8')).toBe(content);
+        expect(execFileSync('git', ['status', '--porcelain=v1'], { cwd: checkout.path, encoding: 'utf8', timeout: 2_000 })).toBe('');
+      } else {
+        expect(apply()).toEqual(['value.txt']);
+        expect(readFileSync(join(checkout.path, 'value.txt'), 'utf8')).toBe('head\nalpha\ntwo\nomega\ntail\n');
+      }
     } finally {
       vi.unstubAllEnvs();
       rmSync(root, { recursive: true, force: true });
@@ -387,19 +409,6 @@ function vitestProof(suites: string[]) {
       assertionResults: [{ status: 'passed' }],
     })),
   };
-}
-
-function createGitFixture(path: string, content: string) {
-  mkdirSync(path, { recursive: true });
-  execFileSync('git', ['init', '--quiet'], { cwd: path });
-  execFileSync('git', ['config', 'core.autocrlf', 'false'], { cwd: path });
-  execFileSync('git', ['config', 'core.eol', 'lf'], { cwd: path });
-  execFileSync('git', ['config', 'user.name', 'ClawX Test'], { cwd: path });
-  execFileSync('git', ['config', 'user.email', 'tests@claw-x.invalid'], { cwd: path });
-  writeFileSync(join(path, 'value.txt'), content);
-  execFileSync('git', ['add', 'value.txt'], { cwd: path });
-  execFileSync('git', ['commit', '--quiet', '-m', 'fixture'], { cwd: path });
-  return path;
 }
 
 function patchText() {

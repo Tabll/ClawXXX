@@ -15,22 +15,36 @@ import { asConversationId, asTurnId } from '@shared/conversations/contracts';
 import { asAgentId, asCronJobId } from '@shared/domains/identity';
 import type { CanonicalCronAdmission, CanonicalCronRun } from '@shared/domains/cron';
 import type { KernelId, KernelLifecycleState } from '@shared/kernels/contracts';
+import { createContractSignal } from '../../fixtures/kernels/contract-signal';
 
 const services: ClawXDataService[] = [];
 const schedulers: ClawXScheduler[] = [];
+const routers: FakeRouter[] = [];
+const signals: Array<{ dispose(): void }> = [];
+
+function signal<T>(label: string) {
+  const observer = createContractSignal<T>(label);
+  signals.push(observer);
+  return observer;
+}
 
 afterEach(async () => {
   vi.useRealTimers();
+  for (const router of routers.splice(0)) for (const kernelId of router.gates.keys()) router.release(kernelId);
   await Promise.allSettled(schedulers.splice(0).map(scheduler => scheduler.stop()));
   await Promise.all(services.splice(0).map(service => service.close()));
+  for (const observer of signals.splice(0)) observer.dispose();
 });
 
-function remote(client: ClawXDataClient) {
+function remote(client: ClawXDataClient, runs?: ReturnType<typeof createContractSignal<CanonicalCronRun>>) {
   return {
-    call<T>(method: string, ...args: unknown[]): Promise<T> {
+    async call<T>(method: string, ...args: unknown[]): Promise<T> {
       const fn = (client as unknown as Record<string, unknown>)[method];
       if (typeof fn !== 'function') return Promise.reject(new Error(`Unknown method: ${method}`));
-      return Reflect.apply(fn, client, args) as Promise<T>;
+      const result = await Reflect.apply(fn, client, args) as T;
+      // Publish only after the real SQLite operation has durably completed.
+      if (method === 'putCronRun') runs?.publish(structuredClone(args[0] as CanonicalCronRun));
+      return result;
     },
   };
 }
@@ -39,7 +53,8 @@ function fixture(path = join(mkdtempSync(join(tmpdir(), 'clawx-scheduler-')), 'c
   const service = new ClawXDataService(path);
   services.push(service);
   const main = service.connect({ role: 'main' });
-  return { path, service, main, data: remote(main) };
+  const runs = signal<CanonicalCronRun>('durable Cron run');
+  return { path, service, main, runs, data: remote(main, runs) };
 }
 
 function job(input: Partial<StoredCronJob> & Pick<StoredCronJob, 'id' | 'kernelId'>): StoredCronJob {
@@ -64,6 +79,7 @@ function job(input: Partial<StoredCronJob> & Pick<StoredCronJob, 'id' | 'kernelI
 }
 
 class FakeRouter implements SchedulerConversationRouter {
+  readonly started = signal<Parameters<SchedulerConversationRouter['prompt']>[0]>('Cron router started');
   readonly prompts: Array<Parameters<SchedulerConversationRouter['prompt']>[0]> = [];
   readonly states = new Map<KernelId, KernelLifecycleState>();
   readonly active = new Map<string, ReturnType<SchedulerConversationRouter['activeRun']>>();
@@ -73,7 +89,7 @@ class FakeRouter implements SchedulerConversationRouter {
   constructor(
     private readonly service: ClawXDataService,
     private readonly main: ClawXDataClient,
-  ) {}
+  ) { routers.push(this); }
 
   block(kernelId: KernelId): void {
     let resolve!: () => void;
@@ -131,6 +147,7 @@ class FakeRouter implements SchedulerConversationRouter {
       generation: 1,
     };
     this.active.set(input.conversationId, identity);
+    this.started.publish(input);
     await this.gates.get(input.kernelId)?.promise;
     this.active.delete(input.conversationId);
     await kernel.commitTerminalRun({
@@ -365,62 +382,44 @@ describe('ClawXScheduler contract', () => {
       .toBe(true);
   });
 
-  it('enforces skip and replace overlap policies without dispatching parallel turns for one job', async () => {
-    const skipFixture = fixture();
-    const skipJob = job({
-      id: asCronJobId('overlap-skip'),
-      kernelId: 'openclaw',
-      overlapPolicy: 'skip',
+  it.each(['skip', 'replace'] as const)('enforces %s overlap without dispatching parallel turns for one job', async policy => {
+    const test = fixture();
+    const kernelId = policy === 'skip' ? 'openclaw' : 'deepseek-harness';
+    const stored = job({
+      id: asCronJobId(`overlap-${policy}`),
+      kernelId,
+      overlapPolicy: policy,
       nextRunAt: '2026-08-24T13:00:00.000Z',
     });
-    await skipFixture.main.putCronJob(skipJob);
-    const skipRouter = new FakeRouter(skipFixture.service, skipFixture.main);
-    skipRouter.block('openclaw');
-    const skipScheduler = new ClawXScheduler(skipFixture.data, skipRouter, undefined, {
+    await test.main.putCronJob(stored);
+    const router = new FakeRouter(test.service, test.main);
+    router.block(kernelId);
+    const scheduler = new ClawXScheduler(test.data, router, undefined, {
       now: () => new Date('2026-08-24T12:00:00.000Z'),
-      ownerId: 'overlap-skip',
+      ownerId: `overlap-${policy}`,
     });
-    schedulers.push(skipScheduler);
-    await skipScheduler.start();
-    await skipScheduler.trigger(skipJob, '2026-08-24T12:00:00.100Z');
-    await waitFor(() => expect(skipRouter.prompts).toHaveLength(1));
-    await skipScheduler.trigger(skipJob, '2026-08-24T12:00:00.200Z');
-    await waitFor(async () => {
-      expect((await skipFixture.main.listCronRuns(skipJob.id)).some(
+    schedulers.push(scheduler);
+    await scheduler.start();
+    await scheduler.trigger(stored, '2026-08-24T12:00:00.100Z');
+    const first = await router.started.waitFor();
+    expect(router.prompts).toHaveLength(1);
+    await scheduler.trigger(stored, '2026-08-24T12:00:00.200Z');
+    if (policy === 'skip') {
+      expect((await test.main.listCronRuns(stored.id)).some(
         run => run.status === 'missed' && run.diagnostic?.code === 'OVERLAP_SKIPPED',
       )).toBe(true);
-    });
-    expect(skipRouter.prompts).toHaveLength(1);
-    skipRouter.release('openclaw');
-    await waitFor(async () => {
-      expect((await skipFixture.main.listCronRuns(skipJob.id)).some(run => run.status === 'completed')).toBe(true);
-    });
-
-    const replaceFixture = fixture();
-    const replaceJob = job({
-      id: asCronJobId('overlap-replace'),
-      kernelId: 'deepseek-harness',
-      overlapPolicy: 'replace',
-      nextRunAt: '2026-08-24T13:00:00.000Z',
-    });
-    await replaceFixture.main.putCronJob(replaceJob);
-    const replaceRouter = new FakeRouter(replaceFixture.service, replaceFixture.main);
-    replaceRouter.block('deepseek-harness');
-    const replaceScheduler = new ClawXScheduler(replaceFixture.data, replaceRouter, undefined, {
-      now: () => new Date('2026-08-24T12:00:00.000Z'),
-      ownerId: 'overlap-replace',
-    });
-    schedulers.push(replaceScheduler);
-    await replaceScheduler.start();
-    await replaceScheduler.trigger(replaceJob, '2026-08-24T12:00:00.100Z');
-    await waitFor(() => expect(replaceRouter.prompts).toHaveLength(1));
-    await replaceScheduler.trigger(replaceJob, '2026-08-24T12:00:00.200Z');
-    await waitFor(() => expect(replaceRouter.prompts).toHaveLength(2));
-    await waitFor(async () => {
-      const runs = await replaceFixture.main.listCronRuns(replaceJob.id);
-      expect(runs.some(run => run.status === 'cancelled')).toBe(true);
-      expect(runs.some(run => run.status === 'completed')).toBe(true);
-    });
+      expect(router.prompts).toHaveLength(1);
+      router.release(kernelId);
+    } else {
+      await router.started.waitFor(input => input.runId !== first.runId);
+      expect(router.prompts).toHaveLength(2);
+      await test.runs.waitFor(run => run.status === 'cancelled');
+    }
+    await test.runs.waitFor(run => run.status === 'completed');
+    const runs = await test.main.listCronRuns(stored.id);
+    expect(runs).toHaveLength(2);
+    expect(runs.filter(run => run.status === 'completed')).toHaveLength(1);
+    expect(runs.filter(run => run.status === (policy === 'skip' ? 'missed' : 'cancelled'))).toHaveLength(1);
   });
 
   it('creates a distinct canonical Conversation for every new-per-run admission', async () => {
@@ -463,18 +462,18 @@ describe('ClawXScheduler contract', () => {
     services.push(reopened);
     const main = reopened.connect({ role: 'main' });
     const router = new FakeRouter(reopened, main);
-    const first = new ClawXScheduler(remote(main), router, undefined, {
+    const persistedRuns = signal<CanonicalCronRun>('reopened durable Cron run');
+    const first = new ClawXScheduler(remote(main, persistedRuns), router, undefined, {
       now: () => new Date('2026-08-24T12:00:00.000Z'),
       ownerId: 'restart-first',
     });
     schedulers.push(first);
     await first.start();
-    await waitFor(async () => {
-      const runs = await main.listCronRuns(stored.id);
-      expect(runs).toHaveLength(3);
-      expect(runs.filter(run => run.status === 'completed')).toHaveLength(1);
-      expect(runs.filter(run => run.status === 'missed')).toHaveLength(2);
-    });
+    await persistedRuns.waitFor(run => run.status === 'completed');
+    const runs = await main.listCronRuns(stored.id);
+    expect(runs).toHaveLength(3);
+    expect(runs.filter(run => run.status === 'completed')).toHaveLength(1);
+    expect(runs.filter(run => run.status === 'missed')).toHaveLength(2);
     expect(router.prompts).toHaveLength(1);
     await first.stop();
 
