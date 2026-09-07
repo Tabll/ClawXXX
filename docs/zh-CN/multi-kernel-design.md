@@ -1,6 +1,6 @@
 # ClawX 多内核统一架构设计
 
-> 状态：实现候选（M19 已修复 OpenClaw 生产桥接、配置和 Channels，并完成本地新版切换；五平台签名制品/真实账号/发布证据仍以 `TODO.md` M19/M16 为准）；实现基线：ClawX 0.6.0、OpenClaw 2026.9.2+clawx.7、DeepSeek Harness 0.1.3-alpha.1+clawx.11；最后更新：2026-09-06
+> 状态：实现候选（M19 已修复 OpenClaw 生产桥接、配置和 Channels，并完成本地新版切换；五平台签名制品/真实账号/发布证据仍以 `TODO.md` M19/M16 为准）；实现基线：ClawX 0.6.0、OpenClaw 2026.9.2+clawx.12、DeepSeek Harness 0.1.3-alpha.1+clawx.12；最后更新：2026-09-07
 >
 > 实施清单：[TODO.md](../../TODO.md)
 >
@@ -511,7 +511,7 @@ DeepSeek SessionEvent 是实时输入，不是持久化事实来源。`dsh-runti
 
 当前 M18 升级后的冻结实现采用上游 commit
 `d347e703908d0406b7a7ef80e3a0e594d86b2215`，制品版本为
-`0.1.3-alpha.1+clawx.11`。CI 只允许应用严格有序 patch series（lock/project
+`0.1.3-alpha.1+clawx.12`。CI 只允许应用严格有序 patch series（lock/project
 importer 与 Windows sandbox 临时目录权限同构修复）和逐文件 SHA-256
 overlay；生产 deploy 只有一个长生命周期
 `@clawx/dsh-runtime-host`，不会包含 DSH Web、settings-file、JSONL session
@@ -616,7 +616,7 @@ type KernelProviderProjection = {
 - Bridge 断开或 kernel identity 不匹配时 fail closed。
 - Provider 更新必须独立返回每个 kernel projection 结果，不允许一个内核失败回滚另一个已经成功使用的 keychain metadata。
 
-M9 的落地实现还要求：Renderer 只持有凭据是否已填写和一次性 `credential-stage://` 句柄；OpenClaw 与 DSH 默认账号/模型分别记录；Main 按 kernel/generation/PID/artifact/account/purpose 逐次授权，进程断开或 generation 替换立即撤销；Models 页面同时显示 ready/partial/failed/unsupported 以及可重试错误。当前 DSH 累积补丁制品版本为 `0.1.3-alpha.1+clawx.11`，冻结 lockfile 同时包含只读、request-scoped 的 `@clawx/dsh-credential-provider`、Agent/Preset 支持和保留 unknown Usage 字段的 live SessionEvent 投影。
+M9 的落地实现还要求：Renderer 只持有凭据是否已填写和一次性 `credential-stage://` 句柄；OpenClaw 与 DSH 默认账号/模型分别记录；Main 按 kernel/generation/PID/artifact/account/purpose 逐次授权，进程断开或 generation 替换立即撤销；Models 页面同时显示 ready/partial/failed/unsupported 以及可重试错误。当前 DSH 累积补丁制品版本为 `0.1.3-alpha.1+clawx.12`，冻结 lockfile 同时包含只读、request-scoped 的 `@clawx/dsh-credential-provider`、Agent/Preset 支持和保留 unknown Usage 字段的 live SessionEvent 投影。
 
 ## 8. Agents 同构
 
@@ -856,7 +856,7 @@ scripts/kernel-runtime/
 
 ```text
 openclaw/2026.7.1-2+clawx.1
-deepseek-harness/0.1.3-alpha.1+clawx.11
+deepseek-harness/0.1.3-alpha.1+clawx.12
 ```
 
 上游版本不变但补丁、bridge 或组装内容变化时必须增加 `clawx.N`，禁止覆盖已发布 artifact。
@@ -873,10 +873,17 @@ deepseek-harness/0.1.3-alpha.1+clawx.11
 8. 为两个内核加入各自固定的 Node runtime，并验证 Node version/ABI。
 9. 删除 dev/test/source junk，但使用 allowlist 验证运行必需文件。
 10. 生成 THIRD_PARTY_NOTICES、CycloneDX/SPDX SBOM 和构建元数据。
-11. 生成 deterministic `tar.zst` 和 SHA-256。
+11. 使用排序路径、固定 epoch 和 portable PAX 生成 deterministic `tar.zst`，保留长文件名/多字节路径；写出归档及签名前，对解码后的实际路径、唯一性、文件类型、逐文件 SHA-256、大小及 mode 做源清单往返校验。
 12. 对 artifact descriptor 签名并上传 staging。
 13. 在干净 VM 上执行 install/start/chat/control smoke。
 14. promotion job 先将执行仓库/Release tag 与 descriptor URL 绑定到已评审镜像，再从所有生产 HTTPS 镜像解析、验签并比对精确 N−1 catalog，将 descriptor 加入单调递增的签名 release manifest；sequence 1 必须显式 bootstrap 且确认所有镜像均无 catalog。跨云部分写入只允许复用精确、可信且与请求/制品集合一致的已签 N 做幂等修复；构建 job 无权直接更新 production catalog。
+
+共享归档器变更同时递增两内核制品身份，不覆盖旧版本。生产解压器继续按
+PAX 解析后的实际路径执行越界/链接/冲突/签名预算检查。`pnpm run build:vite`
+自身先生成 Main/Renderer 两份 ignored 扩展桥，再编译共享 UI 与 Electron
+bundle；干净机器不依赖预先运行 dev 或手工生成。CI 在各平台昂贵构建前
+执行归档及干净构建回归，制品产出后仍必须完成单/双内核 clean-machine。
+具体根因、验证和待办见 [CI 修复记录](../../harness/reference/windows-runtime-ci-repair.md)。
 
 ### 13.3 Artifact Manifest
 
@@ -885,8 +892,8 @@ deepseek-harness/0.1.3-alpha.1+clawx.11
   "schemaVersion": 1,
   "kernelId": "deepseek-harness",
   "kernelVersion": "0.1.3-alpha.1",
-  "patchRevision": 1,
-  "artifactVersion": "0.1.3-alpha.1+clawx.11",
+  "patchRevision": 12,
+  "artifactVersion": "0.1.3-alpha.1+clawx.12",
   "platform": "darwin",
   "arch": "arm64",
   "minHostVersion": "0.6.0",

@@ -1,4 +1,4 @@
-# Windows runtime CI repair — OpenClaw +clawx.8 / +clawx.9 / +clawx.10 / +clawx.11
+# Runtime CI repair — OpenClaw +clawx.8 through +clawx.12
 
 ## Failure and root cause
 
@@ -287,3 +287,87 @@ verification, comms replay/compare, Harness CI and the diff-aware task
 validation/dry-run passed. The full report is retained under ignored
 `temp/windows-esbuild-allowlist-vitest.json`. No new Apple acceptance, native
 Windows execution, clean-machine or COS publication is claimed by these checks.
+
+## Follow-up: lossless archives and clean UI compilation — both kernels +clawx.12
+
+[Build 34088424748](https://github.com/Tabll/ClawXXX/actions/runs/34088424748)
+at `33b3c7a7` completed all ten runtime builds and all four macOS notarizations.
+The same commit's [Electron E2E](https://github.com/Tabll/ClawXXX/actions/runs/34088337964)
+passed all three platforms. Its subsequent fifteen clean-machine jobs failed
+in two shared places, not fifteen unrelated runtime failures:
+
+- All five OpenClaw single-runtime and all five dual-runtime jobs rejected a
+  truncated Jimp snapshot path at **initial** file-manifest verification, before
+  managed startup or concurrent-process assertions. `tar.c({ noPax: true })`
+  silently truncates basenames that USTAR cannot split into its name/prefix
+  fields. Eight of the 24 local pinned Jimp snapshot names were not retained
+  by the old encoder; one truncation exactly matches the CI diagnostic.
+- All five DeepSeek jobs passed real extracted-runtime smoke and production
+  signed installation, then failed to resolve `../extensions/_ext-bridge.generated`
+  during UI compilation. That file is intentionally ignored. The separate E2E
+  workflow generated it explicitly, while `build:vite` did not.
+
+The shared encoder now permits PAX and retains `portable`, fixed source epoch,
+sorted input paths and deterministic single-worker Zstandard settings. Portable
+PAX omits filesystem ownership, inode/device and access/change timestamps; it
+does not remove any payload file or shorten any name. Before compression and
+immutable output, a decoded tar preflight compares effective paths, uniqueness,
+file type/link absence, SHA-256, byte lengths and permission modes with a source
+manifest. Missing, aliased or modified files fail before descriptor signing.
+
+The existing production safe extractor already checks effective PAX paths in
+both preflight and extraction. Its implementation and limits are unchanged.
+New contracts prove signed package-manager installation and integrity rescan of
+long/shared-prefix/Unicode files, plus rejection of traversal, absolute/drive and
+reserved paths, case/Unicode collisions, file nesting, link overrides and signed
+size/decompressed-stream overflow before touching the destination. Encoder
+tests vary creation order/inodes/timestamps and inject path truncation, duplicate
+or missing entries, altered bytes and altered header permissions. The permission
+fault is injected into the tar header so it does not rely on Unix chmod behavior
+on Windows.
+
+`build:vite` explicitly generates both bridges before invoking the real compiler;
+`build` and `package` reuse that entrypoint. This does not depend on pnpm implicit
+pre/post hooks, generated files in Git, or a developer's prior `pnpm dev` session.
+Two isolated command regressions cover no extensions and configured-but-absent
+external packages. These tests use a compiler sentinel only to assert ordering;
+the separate real clean-copy build below validates actual compilation. CI runs
+archive, package-manager and bridge-build regressions before expensive runtime
+builds on every target. All real clean-machine, signing and storage gates remain.
+
+Both immutable artifact identities become revision 12 because the encoder is
+shared: OpenClaw `2026.9.2+clawx.12`, DeepSeek `0.1.3-alpha.1+clawx.12`.
+Runtime descriptors/source hashes and OpenClaw's default control-bridge version
+and overlay hash chain are synchronized. The new recorded epoch is 1788763473.
+Upstream commits/versions, all dependency lock bytes, compiled patches, Node
+inputs and DeepSeek overlays remain unchanged. Installed runtimes are untouched.
+
+Local validation with Node 24.15.0:
+
+- 49 focused archive/build/package-manager checks passed; the old implementation
+  failed six relevant checks, including both missing-bridge cases and truncated
+  or colliding archive names.
+- The exact new six-suite early CI command passed all 96 tests locally; YAML
+  inspection retains `kernel: all` and the same five platform/architecture targets.
+- Full host suite: 259 files, **2,265 passed / 0 failed / 6 existing conditional
+  pending**, recorded in ignored `temp/archive-clean-build-vitest.json`.
+- A new isolated copy of 528 tracked build inputs, with neither generated bridge
+  present, completed actual Vite UI plus Electron Main/Preload/SQLite utility
+  bundles using installed pinned dependencies. The first manually assembled
+  copy omitted Tailwind configuration; rebuilding a fresh copy including both
+  checked-in CSS configs passed. This was a validation-fixture omission, not a
+  production stylesheet change.
+- All 24 real Jimp snapshots (79,674 bytes), copied into the actual runtime path
+  layout, passed the new path/content/mode round-trip preflight. Compressed
+  subset size was 40,974 bytes. This is a local pinned payload subset, **not a
+  downloaded exported CI archive** or a full platform/security certification.
+- Source verification, typecheck, lint (zero errors/seven existing warnings),
+  comms replay/compare, Harness CI and diff-aware task validate/dry-run passed.
+  Four README locales, design references, scenario/rule/task and TODO are synced.
+
+The new SHA must be committed/pushed and dispatched as a fresh two-kernel,
+five-target `kernel-staging` run, with Windows `artifact-signature-only`. New
+platform signatures/notarizations and complete single/dual clean-machine
+acceptance are not established by local tests. No COS upload, catalog promotion,
+production publication, credential changes or installed-runtime replacement is
+part of this repair. Track the new remote outcome in MK-1940.

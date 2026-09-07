@@ -3,7 +3,7 @@
 Status: release candidate. M0–M15 have local implementation, contract, full Electron E2E, performance, communication-replay, and Harness coverage. M16's protected five-target signing/notarization/promotion runs, production mirror drill, and legal release approval remain open. This reference does not assert that multi-kernel support is already publicly shipped.
 
 OpenClaw production bridge update (2026-09-06): source/dev pins now select
-`2026.9.2+clawx.11`. Canonical typed history hydrates a new incognito session per
+`2026.9.2+clawx.12`. Canonical typed history hydrates a new incognito session per
 Run; ACP replay and transient delivery/approval state stay in memory, and native
 durable history writes are fenced without deleting old data. Actual Gateway/ACP
 and packaged-payload probes replace host-only evidence for this boundary.
@@ -70,7 +70,7 @@ See [the 0.1.3 upgrade contract](deepseek-harness-0.1.3-upgrade.md) for the
 breaking API adaptations, local evidence and remaining publication gates.
 
 The frozen DSH base is commit `d347e703908d0406b7a7ef80e3a0e594d86b2215`
-(`0.1.3-alpha.1`), currently patched by ClawX as `0.1.3-alpha.1+clawx.11`. CI applies
+(`0.1.3-alpha.1`), currently patched by ClawX as `0.1.3-alpha.1+clawx.12`. CI applies
 an ordered strict patch series (workspace lock/importers and Windows sandbox
 temp parity) plus a byte-manifested overlay. The production deploy
 has one `@clawx/dsh-runtime-host` entrypoint and excludes the DSH Web UI,
@@ -281,7 +281,7 @@ Concrete v1 implementation details, strict patch-base rules, key separation and 
 - Artifacts are split by kernel, OS, and architecture. A universal app does not imply a universal runtime artifact.
 - Each archive contains a signed manifest with kernel ID, upstream version/commit, ClawX patch revision, platform, architecture, protocol versions, capability contract version, minimum app version, size, file integrity, build provenance, licenses, and entrypoints. Catalog metadata additionally carries a monotonic sequence, issue/expiry times, and signing-key identity so clients can reject rollback or frozen metadata.
 - The manifest declares Conversation Store protocol and checkpoint codecs. CI runs clean-directory tests proving managed prompt, cancel, compact, restart, cron, and channel flows do not create native durable history.
-- Runtime versions use an immutable upstream-plus-patch identity such as the current DSH `0.1.3-alpha.1+clawx.11`.
+- Runtime versions use an immutable upstream-plus-patch identity such as the current DSH `0.1.3-alpha.1+clawx.12`.
 - The app verifies manifest signature, archive digest, unpacked file integrity, platform/architecture, compatibility, and entrypoint allowlists before activation.
 - Artifact signing, catalog promotion, and hosting credentials are separated. Key rotation and any emergency downgrade use explicit signed authorization rather than lowering the stored sequence implicitly.
 - Catalog promotion binds the executing GitHub repository/release tag and every descriptor URL to the reviewed distribution mirrors, then extends only the exact signed N-1 catalog returned identically by all configured HTTPS mirrors. Sequence 1 is an explicit protected bootstrap that first proves every mirror is absent. A retry may idempotently repair only an exact trusted N/N-1 partial publication with matching request and staged artifacts; same-sequence forks fail closed. Promotion verifies the new catalog, retained artifacts, and signing keys at issue time and immediately before catalog expiry.

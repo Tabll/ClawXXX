@@ -112,7 +112,7 @@ describe('kernel runtime build supply chain', () => {
 
       expect(readFileSync(first.archivePath)).toEqual(readFileSync(second.archivePath));
       expect(readFileSync(first.descriptorPath)).toEqual(readFileSync(second.descriptorPath));
-      expect(first.descriptor).toMatchObject({ artifactVersion: '2026.9.2+clawx.11', patchRevision: 11, platform, arch });
+      expect(first.descriptor).toMatchObject({ artifactVersion: '2026.9.2+clawx.12', patchRevision: 12, platform, arch });
       expect(first.descriptor.storage).toMatchObject({ authority: 'clawx-data-service', nativeDurableHistory: false });
       expect(first.descriptor.supplyChain).toEqual(expect.objectContaining({
         sourceSha256: expect.stringMatching(/^[a-f0-9]{64}$/),
@@ -127,7 +127,7 @@ describe('kernel runtime build supply chain', () => {
       writeFileSync(`${esbuildExecutable}.unreviewed`, Buffer.from('4d5a0000', 'hex'));
       const rejected = join(root, 'rejected');
       await expect(assembleKernelArtifact({ ...common, outputDir: rejected })).rejects.toThrow(/not in the audited native allowlist/);
-      expect(existsSync(join(rejected, `openclaw-2026.9.2+clawx.11-${platform}-${arch}.tar.zst`))).toBe(false);
+      expect(existsSync(join(rejected, `openclaw-2026.9.2+clawx.12-${platform}-${arch}.tar.zst`))).toBe(false);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
@@ -231,6 +231,10 @@ describe('kernel runtime build supply chain', () => {
     expect(workflow).toContain('tests/unit/openclaw-probe-lifecycle.test.ts');
     expect(workflow).toContain('tests/unit/kernel-notarization.test.ts');
     expect(workflow).toContain('tests/unit/openclaw-native-allowlist.test.ts');
+    for (const suite of ['tests/unit/kernel-runtime-archive.test.ts', 'tests/unit/extension-bridge-build.test.ts', 'tests/contract/kernels/package-manager.test.ts']) {
+      expect(workflow).toContain(suite);
+      expect(workflow.indexOf(suite)).toBeLessThan(workflow.indexOf('download-npm-source.mjs'));
+    }
     expect(workflow.indexOf('tests/unit/openclaw-native-allowlist.test.ts')).toBeLessThan(workflow.indexOf('download-npm-source.mjs'));
     expect(workflow.indexOf('tests/unit/kernel-notarization.test.ts')).toBeLessThan(workflow.indexOf('notarize-runtime.mjs'));
     expect(workflow).toContain('--submission temp/reports/notarization-submission.json --report temp/reports/notarization.json');

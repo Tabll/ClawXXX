@@ -22,7 +22,7 @@ Upstream migration/default changes must not widen session visibility or
 permissions. A candidate test must explicitly select its package and exact
 version, never silently test the installed old SDK. Failed real-process storage
 probes block promotion even when host mocks and control smoke pass. The source
-pin is now 2026.9.2+clawx.11; actual per-Run incognito/ACP storage probes run before
+pin is now 2026.9.2+clawx.12; actual per-Run incognito/ACP storage probes run before
 sealing and again against extracted artifacts. Verify the sealed file manifest
 again after first launch, and never let upstream postinstall prune patch files.
 See
@@ -105,6 +105,21 @@ journal can resume only for the exact archive bytes, and acceptance is checked
 again before emitting platform-security evidence.
 
 Every target's real signed descriptor/archive must pass the production `KernelPackageManager` path on a clean runner: injected transfer interruption with exact Range/If-Range resume, catalog/artifact verification, safe extraction, control-bridge smoke, atomic activation, integrity rescan, uninstall, and canonical-data preservation. CI-only trust material may contain only the artifact public key and must never enter the production publish set.
+
+Runtime archives must preserve long and multibyte file names losslessly. Use
+portable PAX with sorted paths and the recorded source epoch; do not suppress
+extended headers to obtain determinism. Before writing/signing an immutable
+artifact, decode the tar and compare effective file paths, uniqueness, content
+hashes, sizes and modes against the source manifest. Regression fixtures must
+include names sharing the first 100 bytes and independent filesystem metadata.
+Production extraction must continue rejecting effective PAX traversal, reserved
+paths, case/Unicode collisions, links and signed size/stream-budget violations.
+
+`pnpm run build:vite` must explicitly generate both ignored extension bridges
+before compiling, including on a clean checkout with no external extensions.
+Do not depend on a previous dev run, implicit lifecycle hooks or untracked local
+outputs. Archive and clean-build regressions run before expensive platform builds;
+real single/dual clean-machine gates remain mandatory after artifact production.
 
 When both kernels are built, a separate clean-runner matrix must install both real artifacts into one package manager and SQLite authority, start both control bridges concurrently, prove distinct process identity, inject and repair a one-sided integrity failure while the other remains healthy, and uninstall independently. Control-plane smoke must not be reported as a real provider/model conversation.
 

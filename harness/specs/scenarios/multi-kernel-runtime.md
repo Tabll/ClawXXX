@@ -90,4 +90,11 @@ Use exact esbuild executable paths, with all-target native-header and negative
 path fixtures before builds, plus Windows-target artifact assembly regression.
 The complete real payload audit and clean-machine gates remain mandatory.
 
+Portable PAX archives must retain complete long/Unicode paths, with a decoded
+file-manifest check before descriptor signing. Production extraction validates
+effective PAX paths and signed budgets without weakening traversal, collision
+or link rejection. Shared UI compilation generates both extension bridges in
+its own build entrypoint; a clean checkout must not depend on prior dev outputs.
+Both kernels receive new immutable identities when shared archive encoding changes.
+
 Skills are canonical immutable packages with per-kernel desired and projection state. OpenClaw and DeepSeek Harness roots must be physically independent: no shared root, nesting, root/package symlink, or cross-root resource reference is allowed. Both-target mutations report each result and retain partial state. DeepSeek Harness registers converted instructions through its process-local `ctx.skills` adapter while SQLite remains the sole metadata authority.

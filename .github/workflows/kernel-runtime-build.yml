@@ -54,8 +54,15 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Verify all frozen source, lock, patch, overlay and Node inputs
         run: pnpm run kernel:sources:verify
-      - name: Verify download, notarization and native payload regressions before building
-        run: pnpm exec vitest run tests/unit/kernel-runtime-downloads.test.ts tests/unit/kernel-notarization.test.ts tests/unit/openclaw-native-allowlist.test.ts
+      - name: Verify download, notarization, native payload, archive and clean UI build regressions
+        run: >-
+          pnpm exec vitest run
+          tests/unit/kernel-runtime-downloads.test.ts
+          tests/unit/kernel-notarization.test.ts
+          tests/unit/openclaw-native-allowlist.test.ts
+          tests/unit/kernel-runtime-archive.test.ts
+          tests/unit/extension-bridge-build.test.ts
+          tests/contract/kernels/package-manager.test.ts
       - name: Fetch exact OpenClaw npm patch base
         if: matrix.kernel == 'openclaw'
         run: node scripts/kernel-runtime/download-npm-source.mjs --kernel openclaw --destination temp/kernel-source

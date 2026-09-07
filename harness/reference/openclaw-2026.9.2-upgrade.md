@@ -1,6 +1,6 @@
 # OpenClaw 2026.9.2：生产桥接修复与版本切换
 
-更新：2026-09-07。源码描述符和 CI 运行时定义已切换为 **2026.9.2+clawx.11**。+9 修复 Windows 物理路径别名与插件安装所有者关联；+10 修复清单缓存短路径及公证状态查询恢复；+11 精确修正 Windows esbuild 原生文件白名单，上游代码、编译补丁和依赖锁保持不变。+10 的 CI 已通过 9/10 build、四个 macOS 公证和三平台 E2E，Windows 在真实 Gateway 验证后被错误白名单拦截。详见 [Windows CI 修复](windows-runtime-ci-repair.md)。这不是已发布声明：用户已安装的不可变运行时和在线 catalog 未被修改，新身份的五平台构建、签名、公证、clean-machine 与发布演练仍须通过。
+更新：2026-09-07。源码描述符和 CI 运行时定义已切换为 **2026.9.2+clawx.12**。+9～+11 已修复 Windows 注册表路径、公证查询恢复及 esbuild 精确白名单；+11 的 CI 全部 10 个 build、四个 macOS 公证和三平台 E2E 成功，随后 clean-machine 暴露归档长文件名截断及共享 UI 缺少生成步骤。+12 启用确定性 PAX、签名前归档逐文件往返校验，并让 build:vite 自带桥接生成。上游代码、编译补丁和依赖锁保持不变。详见 [CI 修复](windows-runtime-ci-repair.md)。这不是已发布声明：用户已安装的不可变运行时和在线 catalog 未被修改，新身份的五平台构建、签名、公证、clean-machine 与发布演练仍须通过。
 
 任务：harness/specs/tasks/upgrade-openclaw-2026-9-2.md；逐项状态：TODO M19。本文件是架构参考，不可作为 Harness task 运行。
 
@@ -13,7 +13,7 @@
 | 已验证签名 tag object | 87d32a44ab9744903d36a33b399c26cfc2b078d6 |
 | npm | openclaw@2026.9.2 |
 | SHA-512 | sha512-M6C7UsnX815nv26qBJFYGe6aGzv+ftZLRzV6S9oRXUtXg2Yn67eVntpssT94kgkquKVSeUxerUg0j1ONp4WYQg== |
-| runtime | 2026.9.2+clawx.11，patch revision 11 |
+| runtime | 2026.9.2+clawx.12，patch revision 12 |
 | Node | 冻结 24.15.0；上游要求 >=22.22.3 <23 或 >=24.15.0 <25 或 >=25.9.0；本机系统 Node 25.8.1 不满足 |
 | ACP SDK | @agentclientprotocol/sdk@1.4.0，含实际 session/close 客户端方法 |
 

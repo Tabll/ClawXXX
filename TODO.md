@@ -2,7 +2,7 @@
 
 > 对应设计：[docs/zh-CN/multi-kernel-design.md](docs/zh-CN/multi-kernel-design.md)
 >
-> 状态：M19 已修复注册表路径兼容及公证查询恢复，+10 的 CI 为 9/10 build、四个 macOS 公证与三平台 E2E 成功；Windows 在真实 Gateway 验证后因 esbuild 白名单路径错误而打包失败，单/双内核 clean-machine 跳过。本轮修正该精确路径并使用新制品身份 2026.9.2+clawx.11，上游代码与依赖锁不变；新版仍须完整真实平台验证。真实账号/长上下文、生产镜像演练及法务批准仍是发布门禁，不以本机结果代替
+> 状态：M19 的 +11 CI 已通过全部 10 个 build、四个 macOS 公证和三平台 E2E；单/双内核 clean-machine 随后暴露归档长文件名截断和共享 UI 缺少扩展桥生成。本轮修复两处根因，双内核使用新制品身份 +clawx.12，上游和依赖锁不变；新版仍须完整真实平台与 clean-machine 验证。真实账号/长上下文、生产镜像演练及法务批准仍是发布门禁，不以本机结果代替
 >
 > 最近完整本地证据（2026-09-01）：Vitest 243 files / 241 passed / 2 skipped、2116 tests passed / 6 skipped（其中制品依赖项只在真实 CI 制品存在时执行）；Electron E2E 既有证据 151 passed / 3 platform skips；multi-kernel chaos 既有证据 28/28；DSH `0.1.2-alpha.2` 干净精确上游树完成严格 patch/overlay 重放、冻结安装、完整 host build、12 files / 43 focused tests，并在真实 macOS `sandbox-exec` 下通过 3/3 runtime self-tests；typecheck、lint、comms 与本任务 Harness 全绿
 >
@@ -489,7 +489,11 @@
 - [x] `MK-1933` +10 经 `ae2508be` 提交/推送并 dispatch/审批 [34077942495](https://github.com/Tabll/ClawXXX/actions/runs/34077942495)：9/10 build、四个 macOS 公证和三平台 E2E 成功。OpenClaw Windows 清单和真实 Gateway/ACP/7 Channels 已通过，打包阶段因 esbuild 精确白名单路径不匹配失败；保留 9 份 runtime 与 10 份报告，单/双内核 clean-machine 跳过，未发布 COS/catalog。
 - [x] `MK-1934` 核验锁定的官方 `@esbuild/win32-x64@0.27.4`：SHA-512 一致，根目录 `esbuild.exe` 为 AMD64 PE；精确纠正多余的 `bin/`。15 项原生白名单回归中旧配置 2 项失败、新配置全过，加入 Windows-target 确定性归档和未审计文件拒绝测试；不扩大通配符或修改校验器。
 - [x] `MK-1935` +11 元数据/overlay 哈希同步通过，compiled patch/依赖锁/Node/DSH 字节未改动；真实冻结 PE 文件旧白名单拒绝、新白名单接受（未执行）。36 项 focused、2245 项完整宿主测试通过，6 项既有条件跳过；typecheck、lint（0 错误/7 项既有警告）、comms、Harness CI 与任务 validate/dry-run 通过，四语 README/设计/规则/场景已同步。本地 Windows-target fixture 归档不替代真实 CI/签名/clean-machine 验收。
-- [ ] `MK-1936` 提交、推送 +11 并在新 SHA dispatch/审批双内核五目标 staging（Windows artifact-signature-only）；如实记录实际 CI 和后续 clean-machine 结果。COS/catalog/生产发布仍不在本轮范围。
+- [x] `MK-1936` +11 经 `33b3c7a7` 提交、推送并 dispatch/审批 [34088424748](https://github.com/Tabll/ClawXXX/actions/runs/34088424748)：10/10 build、四个 macOS 公证和三平台 E2E 成功；5 个 OpenClaw 与 5 个双内核 clean-machine 在首次归档完整性校验失败；5 个 DSH 已通过真实 runtime smoke/生产安装，随后共享 UI 构建缺少生成文件。无 COS/catalog 发布，不是全绿。
+- [x] `MK-1937` 用真实 Jimp 文件名及隔离夹具复现 USTAR 截断/同前缀碰撞；启用 portable PAX、固定 epoch/排序，在输出归档和签名前逐文件核对解码路径、唯一性、内容 SHA-256、大小与 mode。覆盖长 ASCII/多字节/深路径、跨副本确定性，以及截断、重复、缺失、内容和权限损坏拒绝。
+- [x] `MK-1938` build:vite 显式前置生成两份 ignored 扩展桥，build/package 共用该入口；隔离无扩展/未安装扩展两场景旧实现均失败、新实现通过。生产安装/重扫覆盖长路径，PAX 越界/绝对/保留路径、大小写/Unicode 碰撞、链接及 size/解压流超额仍拒绝；回归前置于全部 CI 平台构建，不移除任何签名/公证/clean-machine 闸门。
+- [x] `MK-1939` 双内核 +12 source/runtime/overlay 摘要校验通过；upstream/compiled patch/依赖锁/Node/DSH overlay 不变。49 项 focused、2265 项完整宿主通过，0 失败/6 项既有条件跳过；528 份 tracked 构建输入的干净副本（不带 generated bridges）完成实际 UI/Main/Preload/SQLite 构建。24 个真实 Jimp 文件按 runtime 路径完整往返；typecheck、lint（0 错误/7 项既有警告）、source verify、comms、Harness CI/任务 validate/dry-run 通过，四语 README/设计/规则/场景同步。不是 CI 原生制品或平台签名验收。
+- [ ] `MK-1940` +12 提交/推送并在新 SHA dispatch/审批后，取得双内核五目标 staging、全部单/双 clean-machine 的最终通过证据；新 run 链接随交付记录提供，未完成远端验收前不勾选。COS/catalog/生产发布仍不在本轮范围。
 
 ## 每个实现 PR 的最低检查
 

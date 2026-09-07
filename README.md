@@ -158,9 +158,9 @@ ClawX uses a **Main-owned multi-kernel architecture with a unified Host API laye
 
 > ClawX 0.6 implements optional CI-built OpenClaw and DeepSeek Harness runtimes backed by one Main-owned SQLite/Blob authority. Public release remains fail-closed until the protected cross-platform signing, promotion and packaged-test evidence in the [implementation checklist](TODO.md) passes. See the [multi-kernel design](docs/zh-CN/multi-kernel-design.md), [runtime security/support](docs/en-US/runtime-security-support.md), and [data policy](docs/en-US/data-security-retention.md).
 
-The reviewed DSH source is now `0.1.3-alpha.1+clawx.11`, with v2 streaming/settlement compatibility and unchanged shared SQLite history. It is still an alpha; upstream reports a performance regression. Source changes do not update an installed runtime until a newly verified CI artifact is published. See the [upgrade contract](harness/reference/deepseek-harness-0.1.3-upgrade.md).
+The reviewed DSH source is now `0.1.3-alpha.1+clawx.12`, with v2 streaming/settlement compatibility and unchanged shared SQLite history. It is still an alpha; upstream reports a performance regression. Source changes do not update an installed runtime until a newly verified CI artifact is published. See the [upgrade contract](harness/reference/deepseek-harness-0.1.3-upgrade.md).
 
-OpenClaw source and development dependencies now use `2026.9.2+clawx.11`. The production bridge creates a fresh in-memory session per Run from canonical SQLite history, translates the new Agents/model/permission configuration, and repairs all seven bundled Channel plugins. Isolated real Gateway/ACP and packaged-payload checks cover tools, cancellation, crash recovery and rejected channel admission without native history writes. Installed runtimes still require a newly verified CI artifact; five-platform signing/publication and real-account acceptance remain pending. See the [upgrade design and evidence](harness/reference/openclaw-2026.9.2-upgrade.md).
+OpenClaw source and development dependencies now use `2026.9.2+clawx.12`. The production bridge creates a fresh in-memory session per Run from canonical SQLite history, translates the new Agents/model/permission configuration, and repairs all seven bundled Channel plugins. Isolated real Gateway/ACP and packaged-payload checks cover tools, cancellation, crash recovery and rejected channel admission without native history writes. Installed runtimes still require a newly verified CI artifact; five-platform signing/publication and real-account acceptance remain pending. See the [upgrade design and evidence](harness/reference/openclaw-2026.9.2-upgrade.md).
 
 - **Process model**: Electron Main owns system integration, one DataService, the package manager and an independent supervisor per kernel. OpenClaw and DSH may run concurrently; the renderer and runtimes never open the canonical ClawX SQLite database or contact each other directly.
 - **Configuration delivery**: Main uses `config.get`/`config.set` while the Gateway is running and updates the resolved JSON5 config while it is stopped or starting; ordinary provider, agent, skill, and model changes do not replace the process, and credentials are hot-reloaded through `secrets.reload`. After three minutes without verified Gateway activity, ClawX verifies the core RPC and restarts only an unavailable Gateway process it owns; externally managed Gateways are left for manual recovery.
@@ -193,6 +193,7 @@ pnpm typecheck       # TypeScript validation
 pnpm test            # Run unit tests
 pnpm run test:e2e    # Run Electron E2E smoke tests
 pnpm build           # Full production build
+pnpm run build:vite  # Generate extension bridges and build the shared UI/Electron bundles
 pnpm package         # Package for the current platform (:mac / :win / :linux)
 ```
 

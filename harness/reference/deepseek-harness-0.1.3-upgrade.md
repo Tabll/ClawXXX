@@ -1,12 +1,12 @@
 # DeepSeek Harness 0.1.3-alpha.1 compatibility contract
 
-Reviewed 2026-09-06. Local implementation candidate; not a published artifact.
+Reviewed 2026-09-07. Local implementation candidate; not a published artifact.
 
 ## Immutable inputs
 
 - Upstream release: [dsh-v0.1.3-alpha.1](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.1.3-alpha.1).
 - Commit: `d347e703908d0406b7a7ef80e3a0e594d86b2215`.
-- ClawX artifact: `0.1.3-alpha.1+clawx.11`; old `.10` artifacts and their CI/notarization evidence are not reused.
+- ClawX artifact: `0.1.3-alpha.1+clawx.12`; prior artifact bytes and their CI/notarization evidence are not reused. Revision 12 changes the shared lossless PAX archive builder and runtime identity, not upstream, dependency locks or DeepSeek overlays.
 - `source.json`, `lock.json`, patch series, runtime descriptor and overlay manifest pin exact bytes. The raw upstream lock is checked before patches; the prepared lock is checked after strict patch application. No fuzzy patching or end-user builds.
 - Upstream requires Node `^22.19.0 || >=24.0.0`; the runtime remains official SHA-256-verified Node 24.15.0. The build workspace uses upstream pnpm 11.7.0 and TypeScript 6.0.3.
 
@@ -46,6 +46,6 @@ Local evidence on 2026-09-06:
 
 Use the task spec `harness/specs/tasks/upgrade-deepseek-harness-0-1-3-alpha-1.md` and TODO M18. Local checks include strict preparation from a clean upstream checkout, frozen dependency install, complete host build, overlay contracts, macOS sandbox self-test, production dependency deployment, unsigned local tar round-trip with the pinned Node runtime, storage-path scan, host regression/type/lint/comms/Harness and Electron timeline tests.
 
-A local unsigned payload probe is not the signed-artifact installation gate. Five-target CI, native Linux/Windows enforcement, macOS Developer ID/notarization, clean-machine signed installation, COS/GitHub publication and online Range verification require new evidence for `.11`. Do not mark those complete based on older artifacts or local tests. No provider API request is made by the deterministic smoke tests.
+A local unsigned payload probe is not the signed-artifact installation gate. Run [34088424748](https://github.com/Tabll/ClawXXX/actions/runs/34088424748) passed all five DeepSeek `.11` builds, two macOS notarizations, extracted-runtime smoke and production package-manager installation. Its five single-kernel clean-machine jobs then failed at the shared UI build because the ignored extension bridge had not been generated; dual-kernel jobs were blocked by OpenClaw's truncated archive paths. Revision `.12` must collect new five-target build/signing/notarization and complete single/dual clean-machine evidence. COS/catalog publication and online Range verification remain separate gates. No provider API request is made by the deterministic smoke tests. See [the CI repair record](windows-runtime-ci-repair.md).
 
 The upstream release explicitly warns of a performance regression, particularly session loading. ClawX's canonical hydration avoids native history loading, but this does not prove the absence of long-context/provider latency regressions. Keep the last verified artifact available and require representative real-provider/long-context acceptance before public promotion. Do not expose arbitrary upstream builds as user-installable kernels.

@@ -14,6 +14,7 @@ import { chmodSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { zstdCompressSync } from 'node:zlib';
+import tar from 'tar';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { assembleKernelArtifact } from '../../../scripts/kernel-runtime/lib/artifact.mjs';
 import { ClawXDataService } from '@electron/data/clawx-data-service';
@@ -41,6 +42,11 @@ let artifacts: [BuiltArtifact, BuiltArtifact];
 let artifactPrivateKeyPem: string;
 let catalogPrivateKeyPem: string;
 let trustStore: KernelTrustStoreV1;
+const longFixtureNames = [
+  `${'shared-prefix-'.repeat(9)}first.txt`,
+  `${'shared-prefix-'.repeat(9)}second.txt`,
+  `${'内核'.repeat(25)}.txt`,
+];
 
 beforeAll(async () => {
   fixtureRoot = await mkdtemp(join(tmpdir(), 'clawx-package-manager-fixture-'));
@@ -236,6 +242,61 @@ describe('KernelPackageManager download transport', () => {
 });
 
 describe('KernelPackageManager safe extraction', () => {
+  it('installs signed long-name artifacts losslessly and rescans them through the production package manager', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'clawx-pax-install-'));
+    const service = new ClawXDataService(join(root, 'state.sqlite'));
+    const state = service.connect({ role: 'main' });
+    const manager = managerFor(root, state);
+    try {
+      await manager.importOffline({ descriptorPath: artifacts[0].descriptorPath, archivePath: artifacts[0].archivePath });
+      for (const name of longFixtureNames) {
+        expect(await readFile(join(manager.layout.installPath(artifacts[0].descriptor), 'runtime/kernel', name), 'utf8'))
+          .toBe(`lossless ${name}\n`);
+      }
+      await expect(manager.rescan('openclaw', artifacts[0].descriptor.artifactVersion))
+        .resolves.toMatchObject({ state: 'verified' });
+    } finally {
+      state.disconnect();
+      await service.close();
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it.each([
+    ['traversal', ['runtime/../../escape'], '', 1, 'archive-unsafe'],
+    ['absolute', ['/runtime/escape'], '', 1, 'archive-unsafe'],
+    ['drive', ['C:/escape'], '', 1, 'archive-unsafe'],
+    ['reserved', ['metadata/descriptor.json'], '', 1, 'archive-unsafe'],
+    ['duplicate', ['runtime/same', 'runtime/same'], '', 2, 'archive-unsafe'],
+    ['case collision', ['runtime/Same', 'runtime/same'], '', 2, 'archive-unsafe'],
+    ['Unicode collision', ['runtime/café', 'runtime/cafe\u0301'], '', 2, 'archive-unsafe'],
+    ['nested under file', ['runtime/file', 'runtime/file/child'], '', 2, 'archive-unsafe'],
+    ['PAX link override', ['runtime/file'], '../escape', 1, 'archive-unsafe'],
+    ['PAX size budget', ['runtime/file'], '', 0, 'archive-bomb'],
+  ] as const)('rejects effective %s PAX entries before writing the destination', async (_label, paths, linkpath, budget, code) => {
+    const root = await mkdtemp(join(tmpdir(), 'clawx-unsafe-pax-'));
+    try {
+      // The raw USTAR name is benign. The guard must inspect the effective
+      // PAX name/link/size that both the listing and extraction parser use.
+      const records = paths.flatMap(path => [
+        new tar.Pax({ path, linkpath, size: 1, mtime: new Date(0) }).encode()!,
+        simpleTar('runtime/benign', '0', Buffer.from('x')).subarray(0, -1_024),
+      ]);
+      const bytes = zstdCompressSync(Buffer.concat([...records, Buffer.alloc(1_024)]));
+      const archivePath = join(root, 'unsafe.tar.zst');
+      await writeFile(archivePath, bytes);
+      const descriptor = descriptorForBytes(artifacts[0].descriptor, bytes, paths.length, budget);
+      const destination = join(root, 'destination');
+      await mkdir(destination);
+      await writeFile(join(destination, 'sentinel'), 'must survive failed preflight');
+      await expect(new SafeKernelArtifactExtractor().extract(archivePath, destination, descriptor))
+        .rejects.toMatchObject({ code });
+      expect(await readFile(join(destination, 'sentinel'), 'utf8')).toBe('must survive failed preflight');
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   it.each([
     ['traversal', '../escape', '0'],
     ['symlink', 'runtime/link', '2'],
@@ -263,6 +324,23 @@ describe('KernelPackageManager safe extraction', () => {
     const descriptor = descriptorForBytes(artifacts[0].descriptor, bytes, 1, 1);
     try {
       await expect(new SafeKernelArtifactExtractor().scanArchive(archivePath, descriptor))
+        .rejects.toMatchObject({ code: 'archive-bomb' });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it('retains the bounded decompressed-stream overhead with PAX metadata', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'clawx-pax-overhead-'));
+    try {
+      const bytes = zstdCompressSync(Buffer.concat([
+        new tar.Pax({ path: 'runtime/file', size: 1 }).encode()!,
+        simpleTar('runtime/benign', '0', Buffer.from('x')),
+        Buffer.alloc(11 * 1024 * 1024),
+      ]));
+      const archivePath = join(root, 'bomb.tar.zst');
+      await writeFile(archivePath, bytes);
+      await expect(new SafeKernelArtifactExtractor().scanArchive(archivePath, descriptorForBytes(artifacts[0].descriptor, bytes, 1, 1)))
         .rejects.toMatchObject({ code: 'archive-bomb' });
     } finally {
       await rm(root, { recursive: true, force: true });
@@ -410,6 +488,7 @@ async function createFixtureRepository(root: string): Promise<void> {
   await writeFile(join(root, 'kernels', 'openclaw', 'patches', 'series'), 'fixture.patch\n');
   await writeFile(join(root, 'payload', 'chat.mjs'), 'export const chat = true;\n');
   await writeFile(join(root, 'payload', 'control.mjs'), 'export const control = true;\n');
+  for (const name of longFixtureNames) await writeFile(join(root, 'payload', name), `lossless ${name}\n`);
   await writeFile(join(root, 'payload', 'package.json'), JSON.stringify({ name: 'fixture-kernel', version: '1.0.0', license: 'MIT' }));
   const nodePath = join(root, 'node-runtime', process.platform === 'win32' ? 'node.exe' : join('bin', 'node'));
   await writeFile(nodePath, process.platform === 'win32' ? 'fixture' : '#!/bin/sh\nexit 0\n');

@@ -1,5 +1,6 @@
 import { cpSync, existsSync, lstatSync, mkdirSync, openSync, closeSync, readFileSync, readSync, readdirSync, rmSync, statSync, chmodSync, writeFileSync, fsyncSync } from 'node:fs';
 import { basename, join, relative, resolve, sep } from 'node:path';
+import { createHash } from 'node:crypto';
 import { zstdCompressSync, constants as zlibConstants } from 'node:zlib';
 import tar from 'tar';
 import { canonicalJson, readJson, sha256Bytes, sha256File, writeCanonicalJson } from './canonical.mjs';
@@ -251,18 +252,25 @@ export function validateNativePayloads(root, platform, arch, allowlist) {
 
 export async function createDeterministicTarZstd(root, sourceDateEpoch) {
   if (typeof zstdCompressSync !== 'function') throw new Error('Node runtime lacks built-in Zstandard support');
-  const paths = walkFiles(root).map((path) => toPosix(relative(root, path))).sort();
+  const manifest = buildFileManifest(root, sourceDateEpoch);
+  const paths = manifest.files.map((file) => file.path).sort();
   const chunks = [];
   const stream = tar.c({
     cwd: root,
     portable: true,
     strict: true,
     follow: false,
-    noPax: true,
+    // USTAR silently truncates unsplittable names over 100 bytes. Portable PAX
+    // retains the exact path without host inode/owner/access-time metadata.
+    noPax: false,
     mtime: new Date(sourceDateEpoch * 1_000),
   }, paths);
   for await (const chunk of stream) chunks.push(Buffer.from(chunk));
-  return zstdCompressSync(Buffer.concat(chunks), {
+  const archive = Buffer.concat(chunks);
+  // Fail before writing an immutable archive or signing its descriptor if the
+  // encoder loses a path, aliases two files, or observes changing source bytes.
+  await verifyTarFileManifest(archive, manifest);
+  return zstdCompressSync(archive, {
     params: {
       [zlibConstants.ZSTD_c_compressionLevel]: 19,
       [zlibConstants.ZSTD_c_checksumFlag]: 1,
@@ -270,6 +278,38 @@ export async function createDeterministicTarZstd(root, sourceDateEpoch) {
       [zlibConstants.ZSTD_c_nbWorkers]: 0,
     },
   });
+}
+
+export async function verifyTarFileManifest(archive, manifest) {
+  const pending = new Map(manifest.files.map((file) => [file.path, file]));
+  let failure;
+  const fail = (path) => { failure ??= new Error(`Encoded archive differs from source file manifest: ${path}`); };
+  const listing = tar.t({
+    strict: true,
+    onentry(entry) {
+      const expected = pending.get(entry.path);
+      if (entry.type !== 'File' || entry.linkpath || !expected) {
+        fail(entry.path);
+        return;
+      }
+      pending.delete(entry.path);
+      const hash = createHash('sha256');
+      let size = 0;
+      entry.on('data', (chunk) => { size += chunk.length; hash.update(chunk); });
+      entry.on('end', () => {
+        if (entry.size !== expected.size || size !== expected.size || hash.digest('hex') !== expected.sha256
+          || (entry.mode & 0o777) !== Number.parseInt(expected.mode, 8)) fail(entry.path);
+      });
+    },
+  });
+  const completed = new Promise((accept, reject) => {
+    listing.on('error', reject);
+    listing.on('end', accept);
+  });
+  listing.end(archive);
+  await completed;
+  if (failure) throw failure;
+  if (pending.size > 0) throw new Error(`Encoded archive is missing source files: ${[...pending.keys()].slice(0, 5).join(', ')}`);
 }
 
 function buildSpdxSbom(root, source, runtimeManifest, licenseReport) {
