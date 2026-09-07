@@ -2,7 +2,7 @@
 
 > 对应设计：[docs/zh-CN/multi-kernel-design.md](docs/zh-CN/multi-kernel-design.md)
 >
-> 状态：M19 的 +11 CI 已通过全部 10 个 build、四个 macOS 公证和三平台 E2E；单/双内核 clean-machine 随后暴露归档长文件名截断和共享 UI 缺少扩展桥生成。本轮修复两处根因，双内核使用新制品身份 +clawx.12，上游和依赖锁不变；新版仍须完整真实平台与 clean-machine 验证。真实账号/长上下文、生产镜像演练及法务批准仍是发布门禁，不以本机结果代替
+> 状态：双内核 +12 已修复归档长文件名和共享 UI 生成步骤；新 CI 为 9/10 build、三个 macOS 公证和三平台 E2E 成功。OpenClaw Intel macOS 的新增解压流预算测试因旧夹具的二次方缓冲复制而超时，clean-machine 跳过。本轮仅优化测试夹具并补精确边界/复制工作量约束，生产代码、内核版本、依赖与签名输入不变；最终真实平台和 clean-machine 验收仍待新 CI，不以本机结果代替
 >
 > 最近完整本地证据（2026-09-01）：Vitest 243 files / 241 passed / 2 skipped、2116 tests passed / 6 skipped（其中制品依赖项只在真实 CI 制品存在时执行）；Electron E2E 既有证据 151 passed / 3 platform skips；multi-kernel chaos 既有证据 28/28；DSH `0.1.2-alpha.2` 干净精确上游树完成严格 patch/overlay 重放、冻结安装、完整 host build、12 files / 43 focused tests，并在真实 macOS `sandbox-exec` 下通过 3/3 runtime self-tests；typecheck、lint、comms 与本任务 Harness 全绿
 >
@@ -494,6 +494,9 @@
 - [x] `MK-1938` build:vite 显式前置生成两份 ignored 扩展桥，build/package 共用该入口；隔离无扩展/未安装扩展两场景旧实现均失败、新实现通过。生产安装/重扫覆盖长路径，PAX 越界/绝对/保留路径、大小写/Unicode 碰撞、链接及 size/解压流超额仍拒绝；回归前置于全部 CI 平台构建，不移除任何签名/公证/clean-machine 闸门。
 - [x] `MK-1939` 双内核 +12 source/runtime/overlay 摘要校验通过；upstream/compiled patch/依赖锁/Node/DSH overlay 不变。49 项 focused、2265 项完整宿主通过，0 失败/6 项既有条件跳过；528 份 tracked 构建输入的干净副本（不带 generated bridges）完成实际 UI/Main/Preload/SQLite 构建。24 个真实 Jimp 文件按 runtime 路径完整往返；typecheck、lint（0 错误/7 项既有警告）、source verify、comms、Harness CI/任务 validate/dry-run 通过，四语 README/设计/规则/场景同步。不是 CI 原生制品或平台签名验收。
 - [ ] `MK-1940` +12 提交/推送并在新 SHA dispatch/审批后，取得双内核五目标 staging、全部单/双 clean-machine 的最终通过证据；新 run 链接随交付记录提供，未完成远端验收前不勾选。COS/catalog/生产发布仍不在本轮范围。
+- [x] `MK-1941` +12 经 `02560a1a` 提交/推送并 dispatch/审批 [34093118132](https://github.com/Tabll/ClawXXX/actions/runs/34093118132)：9/10 build、三个 macOS 公证及三平台 E2E 成功。OpenClaw Intel 前置 96 项测试中 95 项通过，新增流预算测试 5,031 ms 超时（DSH Intel 同测试 3,792 ms 通过），未进入该目标内核构建/公证；单/双 clean-machine 跳过，保留 9 份 runtime/9 份报告，不是发布成功。
+- [x] `MK-1942` 定位旧测试在 TAR EOF 后放置 11 MiB 空白，node-tar 反复拼接尾部；隔离真实解析器测得边界前累计复制 3,369,189,377 bytes。改用有效 bounded PAX records 填满相同预算，保留 64 KiB EOF trailer，复制降到 212,993 bytes。真实 Zstandard/生产解压器验证 10,485,761 bytes 接受、再多 1 byte 按精确流预算错误拒绝；旧夹具不能通过新增确定性工作量回归。不放宽 5 秒测试/生产安全上限，不 mock、retry 或 skip。
+- [x] `MK-1943` 32 focused / 98 CI preflight / 2267 完整宿主通过（0 失败/6 既有条件跳过）；10 轮共 30 项边界/工作量检查全部通过，最慢约 48 ms。typecheck、lint（0 错误/7 既有警告）、source verify、comms、Harness CI/任务 validate/dry-run 与 diff check 通过。生产代码、构建器、workflow、内核 +12/hash/lock/签名输入不变；四语 README 经审查无需改变，规则/场景/任务/参考文档已记录。提交/推送后新 CI 的最终验收继续由 MK-1940 跟踪。
 
 ## 每个实现 PR 的最低检查
 

@@ -1,10 +1,12 @@
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { zstdDecompressSync } from 'node:zlib';
 import tar from 'tar';
 import { describe, expect, it } from 'vitest';
 import { buildFileManifest, createDeterministicTarZstd, verifyTarFileManifest } from '../../scripts/kernel-runtime/lib/artifact.mjs';
+import { streamBudget } from '../fixtures/kernels/archive-overhead.mjs';
 
 const epoch = 1_788_638_407;
 const prefix = 'runtime/kernel/snapshots/';
@@ -18,6 +20,16 @@ const names = [
 ];
 
 describe('lossless deterministic runtime archives', () => {
+  it('keeps archive-overhead fixture buffering bounded independently of runner speed', () => {
+    const report = JSON.parse(execFileSync(process.execPath, [
+      join(process.cwd(), 'tests/fixtures/kernels/archive-overhead-probe.mjs'),
+    ], { encoding: 'utf8', timeout: 4_000, windowsHide: true }));
+    expect(report).toMatchObject({ legacy: false, archiveBytes: streamBudget, entries: 1 });
+    // The old trailer copied over 300 times the input before the same limit.
+    // Operation counts guard fixture cost without brittle wall-clock assertions.
+    expect(report.concatenatedBytes).toBeLessThan(streamBudget);
+  });
+
   it.each(['truncated path', 'duplicate', 'missing', 'content', 'mode'])('rejects %s before compression and descriptor signing', async (fault) => {
     const root = mkdtempSync(join(tmpdir(), 'clawx-tar-roundtrip-'));
     try {

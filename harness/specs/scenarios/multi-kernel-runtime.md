@@ -97,4 +97,10 @@ or link rejection. Shared UI compilation generates both extension bridges in
 its own build entrypoint; a clean checkout must not depend on prior dev outputs.
 Both kernels receive new immutable identities when shared archive encoding changes.
 
+Archive-budget regression fixtures must cover the exact signed boundary and
+post-EOF overflow while keeping parser buffer-copy work bounded. Prefer valid
+bounded PAX records over a huge EOF trailer; preserve real decompression and
+production limits, and enforce fixture cost with operation counts rather than
+runner-dependent timing assertions. Test-only repairs do not change kernel pins.
+
 Skills are canonical immutable packages with per-kernel desired and projection state. OpenClaw and DeepSeek Harness roots must be physically independent: no shared root, nesting, root/package symlink, or cross-root resource reference is allowed. Both-target mutations report each result and retain partial state. DeepSeek Harness registers converted instructions through its process-local `ctx.skills` adapter while SQLite remains the sole metadata authority.

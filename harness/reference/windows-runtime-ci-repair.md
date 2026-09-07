@@ -371,3 +371,68 @@ platform signatures/notarizations and complete single/dual clean-machine
 acceptance are not established by local tests. No COS upload, catalog promotion,
 production publication, credential changes or installed-runtime replacement is
 part of this repair. Track the new remote outcome in MK-1940.
+
+## Follow-up: bounded archive-budget regression cost — unchanged +clawx.12
+
+[Build 34093118132](https://github.com/Tabll/ClawXXX/actions/runs/34093118132)
+at `02560a1a` passed nine of ten runtime builds and three macOS notarizations.
+All five DeepSeek targets and four OpenClaw targets produced artifacts. The
+same commit's [Electron E2E](https://github.com/Tabll/ClawXXX/actions/runs/34093008809)
+passed all three platforms. OpenClaw Intel macOS stopped at the early 96-test
+preflight: 95 passed, and the decompressed-stream overhead test timed out after
+5,031 ms. The same test took 3,792 ms in the successful DeepSeek Intel job.
+OpenClaw Intel did not reach source preparation or notarization; both
+clean-machine matrices were skipped. Nine runtime artifacts and nine reports
+were retained. This was not an Apple signing/notarization rejection.
+
+The fixture appended 11 MiB of zero padding **after** a complete TAR EOF. The
+pinned node-tar 6.2.1 parser stops interpreting entries at EOF, but subsequent
+16 KiB decompressor chunks repeatedly concatenate its retained trailer buffer.
+The production limiter still rejects the oversized stream, but the fixture
+performs quadratic copy work on its way to that rejection.
+
+An isolated real-parser probe, instrumenting only `Buffer.concat` after fixture
+creation, measured 640 concatenations and **3,369,189,377 copied bytes** before
+the signed boundary (321.3 times its budget). The replacement measures four
+concatenations and **212,993 copied bytes**. The old fixture deterministically
+fails the new copy-work bound; elapsed-time thresholds are not used to make
+this regression pass. The explicit `--legacy` diagnostic preserves the old
+fixture for reproduction, but CI never runs that expensive mode.
+
+The replacement fills the same 10 MiB-plus-one-file-byte signed stream limit
+with valid, bounded PAX metadata records before the regular file and EOF. Each
+record stays below tar's existing 1 MiB metadata limit. A 64 KiB trailer remains
+after EOF so later decompressor chunks still exercise the production limiter.
+Two real Zstandard-file/`SafeKernelArtifactExtractor` contracts prove acceptance
+at exactly **10,485,761 bytes** and rejection at **10,485,762 bytes**, asserting
+the exact `archive-bomb` stream-overhead message, not an unrelated parse/quota
+error. One real-parser child regression caps buffer-copy work below one stream
+budget with a four-second kill deadline inside the unchanged five-second test
+deadline. There are no retries, skips, global timeout increases, synthetic
+extractor substitutes or production limit changes.
+
+Local Node 24.15.0 validation on 2026-09-07:
+
+- 32 focused tests and the exact six-suite CI preflight's 98 tests passed.
+- The two boundary checks took approximately 19/16 ms in the initial focused
+  run, compared with approximately 296 ms for the old fixture on this host.
+  Ten additional runs passed all 30 selected checks, with a maximum of 48 ms,
+  including child startup. Native Intel CI timing still requires the new run.
+- Full host suite: **2,267 passed / 0 failed / 6 existing conditional pending**
+  across 259 files (`temp/archive-overhead-vitest.json`). Typecheck, lint (zero
+  errors/seven existing warnings), source hashes and comms replay/compare passed.
+  Harness CI plus diff-aware task validation/dry-run and diff checks also passed.
+- Production Main/extractor code, builder, workflow, both kernel descriptors,
+  artifact revisions, overlays, dependency locks and platform-security inputs
+  are byte-for-byte unchanged. Both kernels remain `+clawx.12`; no runtime
+  payload or archive encoding change requires a new immutable version.
+- English/Chinese/Japanese/Russian READMEs were reviewed. User-visible flows,
+  build commands and interfaces are unchanged, so no translation edits are
+  needed. The distribution rule, scenario, task and TODO record the new test
+  constraint. This turn inspected logs and fixtures, not exported CI archives.
+
+The new main SHA must undergo a fresh both-kernel/five-target staging run with
+its normal approval and complete single/dual clean-machine gates. Existing
+macOS evidence is not a new acceptance result. Windows remains explicitly
+artifact-signature-only. No COS upload, catalog promotion, credential changes
+or installed-runtime mutations are authorized by this test-only repair.

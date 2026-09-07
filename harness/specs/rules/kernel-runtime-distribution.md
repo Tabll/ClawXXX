@@ -121,6 +121,15 @@ Do not depend on a previous dev run, implicit lifecycle hooks or untracked local
 outputs. Archive and clean-build regressions run before expensive platform builds;
 real single/dual clean-machine gates remain mandatory after artifact production.
 
+Oversized-stream regression fixtures must not accumulate megabytes of post-EOF
+padding in node-tar's repeatedly concatenated buffer. Fill the real signed stream
+budget with bounded valid PAX records and retain a small multi-chunk EOF trailer.
+Prove exact-boundary acceptance and one-byte-overflow rejection through the real
+Zstandard/production-extractor path, asserting the stream limiter's specific
+error. Bound fixture copy work deterministically in an isolated parser probe;
+do not hide quadratic fixture cost with retries, skips, relaxed safety limits
+or higher global/per-test timeouts.
+
 When both kernels are built, a separate clean-runner matrix must install both real artifacts into one package manager and SQLite authority, start both control bridges concurrently, prove distinct process identity, inject and repair a one-sided integrity failure while the other remains healthy, and uninstall independently. Control-plane smoke must not be reported as a real provider/model conversation.
 
 Packaged runtime tests must prove managed OpenClaw and DeepSeek Harness use the ClawX Conversation Store adapter/provider and do not create durable native conversation, cron, channel-message, or usage history. A patch revision that changes persistence behavior requires focused storage regression coverage and a new immutable artifact version.

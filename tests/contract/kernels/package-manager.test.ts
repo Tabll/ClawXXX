@@ -17,6 +17,12 @@ import { zstdCompressSync } from 'node:zlib';
 import tar from 'tar';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { assembleKernelArtifact } from '../../../scripts/kernel-runtime/lib/artifact.mjs';
+import {
+  archiveOverheadFixture,
+  signedFileBytes,
+  signedFileCount,
+  streamBudget,
+} from '../../fixtures/kernels/archive-overhead.mjs';
 import { ClawXDataService } from '@electron/data/clawx-data-service';
 import { canonicalJson } from '@electron/kernels/catalog';
 import { KernelCatalogClient, resolveCompatibleArtifact } from '@electron/kernels/package-manager/catalog-client';
@@ -330,18 +336,24 @@ describe('KernelPackageManager safe extraction', () => {
     }
   });
 
-  it('retains the bounded decompressed-stream overhead with PAX metadata', async () => {
+  it.each([0, 1])('enforces the exact PAX stream budget including post-EOF bytes (excess=%s)', async (excess) => {
     const root = await mkdtemp(join(tmpdir(), 'clawx-pax-overhead-'));
     try {
-      const bytes = zstdCompressSync(Buffer.concat([
-        new tar.Pax({ path: 'runtime/file', size: 1 }).encode()!,
-        simpleTar('runtime/benign', '0', Buffer.from('x')),
-        Buffer.alloc(11 * 1024 * 1024),
-      ]));
-      const archivePath = join(root, 'bomb.tar.zst');
+      // Valid bounded PAX records fill the budget before EOF. Keep a 64 KiB
+      // trailer to prove later decompressor chunks cannot bypass the limiter,
+      // without making node-tar repeatedly concatenate an 11 MiB EOF buffer.
+      const raw = archiveOverheadFixture(excess);
+      expect(raw.length).toBe(streamBudget + excess);
+      const bytes = zstdCompressSync(raw);
+      const archivePath = join(root, 'boundary.tar.zst');
       await writeFile(archivePath, bytes);
-      await expect(new SafeKernelArtifactExtractor().scanArchive(archivePath, descriptorForBytes(artifacts[0].descriptor, bytes, 1, 1)))
-        .rejects.toMatchObject({ code: 'archive-bomb' });
+      const descriptor = descriptorForBytes(artifacts[0].descriptor, bytes, signedFileCount, signedFileBytes);
+      const scan = new SafeKernelArtifactExtractor().scanArchive(archivePath, descriptor);
+      if (excess === 0) await expect(scan).resolves.toBeUndefined();
+      else await expect(scan).rejects.toMatchObject({
+        code: 'archive-bomb',
+        message: 'Decompressed tar stream exceeds its signed overhead budget',
+      });
     } finally {
       await rm(root, { recursive: true, force: true });
     }
