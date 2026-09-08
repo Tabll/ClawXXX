@@ -114,7 +114,11 @@ request counts. Preserve per-thread serialization, dual-kernel concurrency,
 Cron skip/replace/restart deduplication and real FULL-sync on-disk readback.
 Pure Git contracts use Node, bounded real repository setup, both autocrlf
 policies and independent exact/offset cases. Only Windows storage-suite file
-workers are serialized; internal concurrency, deadlines and release gates stay.
+workers are serialized, including the duplicate real SQLite suite in the early
+OpenClaw closure step; internal concurrency, deadlines and release gates stay.
+Retain early JSON results and bounded phase journals for database open, durable
+commits, close/reopen and restored history, even before any artifact exists.
+Clean only owned fixture roots after their service handles close.
 Release owned execution gates and drain operations on failure before teardown.
 Workflow-policy assertions also exercise LF and CRLF text on every host;
 semantic EOL normalization must never alter frozen-source or patch-byte checks.

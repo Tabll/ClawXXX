@@ -1018,3 +1018,54 @@ comms replay/compare, Harness CI and diff-aware task validation/dry-run passed.
 Native evidence is retained under ignored `temp/sealed-probe-vm-*.log` alongside
 the original downloaded ZIP. Fresh full-matrix acceptance is still required
 before MK-1940 can be closed; no COS/catalog or production change is included.
+
+## Follow-up: the earlier Windows SQLite gate also needs the worker policy
+
+[Build #19](https://github.com/Tabll/ClawXXX/actions/runs/34190465955) on
+`78588bc00455f22da96c41b9098f9dcb9e1e310e` reached a separate failure in
+Windows OpenClaw build job `101947300320`. All **174 preflight cases** passed,
+including all 30 lifecycle/output-collection cases. The subsequent closure
+suite passed ten of eleven cases, but the real SQLite hydrate/compact/branch/
+restart case took **5180 ms**, exceeding its unchanged **5000 ms** budget.
+This was before payload materialization, not the #18 sealed-probe failure.
+The same suite completed in 434 ms in #18; a prior pass is not robust timing
+evidence, and the old logs do not identify which operation was delayed.
+
+The later canonical storage step already serializes Windows file workers,
+but the earlier OpenClaw closure step also selected this real SQLite suite and
+had omitted that policy. Both steps now use one file worker only on Windows;
+other platforms retain defaults, and the exact three early suites, all test
+deadlines and in-test concurrency are unchanged. LF/CRLF policy cases enforce
+both selections. The early step also emits its Vitest JSON report, and the
+always-uploaded build reports include phase JSONL, including pre-seal probe
+phases. Early and later SQLite report paths are distinct.
+
+The affected lifecycle case records bounded content-free phases for SQLite
+open, first admission/hydration, terminal/checkpoint commit, close, reopen,
+second admission, checkpoint restoration and history assertions. It reuses
+the tested artifact trace helper and emits pass only after assertions and
+teardown succeed. Its real SQLite service is unchanged: WAL, FULL synchronous,
+production migration/checkpoint code and close/reopen remain in the test.
+Both owned temporary roots are removed after service handles close; a close
+failure does not trigger deletion of potentially active state. No assertion
+was removed, and no in-memory database, relaxed durability or timeout increase
+was introduced. The four README locales were reviewed and need no changes for
+this CI-only policy/evidence repair.
+
+The isolated Windows 11 / official Node 24.15.0 x64 fixture used the unmodified
+#18 artifact's actual OpenClaw SDK and the pinned native Vitest dependencies.
+Both the original four-worker and repaired one-worker selections passed all
+**11 cases**. The SQLite lifecycle took **116/65 ms** respectively; the candidate
+phase journal completed assertions at 58 ms and teardown at 64 ms. This did
+not reproduce the runner's five-second stall and is not causal proof of that
+stall. The change closes an execution-policy gap, with additional evidence if
+native CI still fails. The original SDK archive and VM logs are retained under
+ignored `temp/`; only the exact GUID fixture root was removed afterward.
+
+Host validation passed **39 focused**, **2339 full** (zero failures/six existing
+artifact-conditional skips) and **125 actual OpenClaw storage-selection** cases.
+Typecheck, lint (zero errors/seven existing warnings), source verification,
+comms replay/compare, Harness CI and diff-aware task validation/dry-run passed.
+[Electron E2E #33](https://github.com/Tabll/ClawXXX/actions/runs/34190433259) on
+the #19 source SHA passed all three platforms. MK-1940 remains pending until
+the next pushed-SHA full staging matrix succeeds; COS/catalog remains unchanged.

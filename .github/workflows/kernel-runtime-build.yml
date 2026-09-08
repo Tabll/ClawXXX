@@ -80,11 +80,17 @@ jobs:
         run: node scripts/kernel-runtime/prepare-source.mjs --kernel ${{ matrix.kernel }} --checkout temp/kernel-source
       - name: Build and test OpenClaw runtime closure
         if: matrix.kernel == 'openclaw'
-        run: >-
-          pnpm exec vitest run
-          tests/unit/openclaw-restart-recovery-patch.test.ts
-          tests/unit/openclaw-lm-studio-tool-schema-patch.test.ts
-          tests/contract/kernels/openclaw-conversation-store.test.ts
+        shell: bash
+        env:
+          CLAWX_OPENCLAW_STORE_REPORT: temp/reports/openclaw-store-closure.json
+        run: |
+          mkdir -p temp/reports
+          suites=(tests/unit/openclaw-restart-recovery-patch.test.ts tests/unit/openclaw-lm-studio-tool-schema-patch.test.ts tests/contract/kernels/openclaw-conversation-store.test.ts)
+          worker_args=()
+          if [ "${{ matrix.target.platform }}" = "win32" ]; then
+            worker_args+=(--maxWorkers=1)
+          fi
+          pnpm exec vitest run "${suites[@]}" "${worker_args[@]}" --reporter=default --reporter=json --outputFile.json=temp/reports/vitest-openclaw-closure.json
       - name: Materialize OpenClaw payload
         if: matrix.kernel == 'openclaw'
         run: >-
@@ -245,6 +251,8 @@ jobs:
           --platform linux --arch ${{ matrix.target.arch }}
           --output temp/reports/platform-security.json
       - name: Run canonical storage and runtime build contract suites
+        env:
+          CLAWX_OPENCLAW_STORE_REPORT: temp/reports/openclaw-store-canonical.json
         shell: bash
         run: |
           suites=(
@@ -318,7 +326,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: kernel-build-reports-${{ matrix.kernel }}-${{ matrix.target.platform }}-${{ matrix.target.arch }}
-          path: temp/reports/*.json
+          path: temp/reports/*.json*
           if-no-files-found: warn
           retention-days: 30
 

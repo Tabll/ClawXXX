@@ -3,7 +3,7 @@
 import { readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { mkdtempSync } from 'node:fs';
+import { mkdtempSync, rmSync } from 'node:fs';
 import { Agent } from 'openclaw/plugin-sdk/agent-core';
 import { SessionManager } from 'openclaw/plugin-sdk/agent-sessions';
 import {
@@ -26,11 +26,21 @@ import {
   OpenClawConversationStore,
 } from '@electron/kernels/openclaw/conversation-store';
 import { asConversationId, asRunId, asTurnId } from '@shared/conversations/contracts';
+import { createArtifactTestTrace } from '../../fixtures/kernels/artifact-test-support.mjs';
 
 const services: ClawXDataService[] = [];
+const ownedRoots: string[] = [];
+const traces: ReturnType<typeof createArtifactTestTrace>[] = [];
 
-afterEach(async () => {
-  await Promise.all(services.splice(0).map((service) => service.close()));
+afterEach(async ({ task }) => {
+  let ok = false;
+  try {
+    await Promise.all(services.splice(0).map((service) => service.close()));
+    for (const root of ownedRoots.splice(0)) rmSync(root, { recursive: true, force: true });
+    ok = task.result?.state !== 'fail';
+  } finally {
+    for (const trace of traces.splice(0)) trace.stop(ok);
+  }
 });
 
 function factory(): OpenClawSessionManagerFactory {
@@ -142,7 +152,11 @@ describe('OpenClaw unified conversation store spike', () => {
   });
 
   it('hydrates, compacts, branches and restarts solely from ClawX SQLite', async () => {
+    const trace = createArtifactTestTrace(process.env.CLAWX_OPENCLAW_STORE_REPORT);
+    traces.push(trace);
+    trace.phase('sqlite-open');
     const root = mkdtempSync(join(tmpdir(), 'clawx-openclaw-store-'));
+    ownedRoots.push(root);
     const databasePath = join(root, 'state', 'clawx.sqlite');
     const cwd = join(root, 'workspace');
     const conversationId = asConversationId('conversation-openclaw');
@@ -150,6 +164,7 @@ describe('OpenClaw unified conversation store spike', () => {
 
     let service = new ClawXDataService(databasePath);
     services.push(service);
+    trace.phase('first-admission');
     let { main, kernel, runId, turnId } = admit(service, conversationId, 1);
     await main.createConversation({ id: conversationId, title: 'portable', createdAt });
     await main.admitRun({
@@ -166,6 +181,7 @@ describe('OpenClaw unified conversation store spike', () => {
       userBlocks: [{ id: 'block-user-1', type: 'text', visibility: 'portable', text: 'first prompt' }],
       createdAt,
     });
+    trace.phase('first-hydration');
     const snapshot = await kernel.compileContext({ conversationId, runId });
     const session = OpenClawConversationSession.hydrate({ factory: factory(), cwd, snapshot });
     expect(session.manager.isPersisted()).toBe(false);
@@ -194,6 +210,7 @@ describe('OpenClaw unified conversation store spike', () => {
     session.manager.branch(firstEntry.id);
     session.manager.appendMessage({ role: 'user', content: 'alternate path', timestamp: Date.now() });
 
+    trace.phase('terminal-and-checkpoint');
     const assistantTurnId = asTurnId('assistant-1');
     await kernel.commitTerminalRun({
       conversationId,
@@ -216,10 +233,13 @@ describe('OpenClaw unified conversation store spike', () => {
     });
     expect(forbiddenHistoryFiles(root)).toEqual([]);
 
+    trace.phase('sqlite-close');
     await service.close();
     services.splice(services.indexOf(service), 1);
+    trace.phase('sqlite-reopen');
     service = new ClawXDataService(databasePath);
     services.push(service);
+    trace.phase('second-admission');
     ({ main, kernel, runId, turnId } = admit(service, conversationId, 2));
     await main.admitRun({
       conversationId,
@@ -235,6 +255,7 @@ describe('OpenClaw unified conversation store spike', () => {
       userBlocks: [{ id: 'block-user-2', type: 'text', visibility: 'portable', text: 'second prompt' }],
       createdAt: '2026-08-23T10:01:00.000Z',
     });
+    trace.phase('checkpoint-restore');
     const restoredCheckpoint = await kernel.getLatestConversationCheckpoint({
       conversationId,
       codec: OPENCLAW_CHECKPOINT_CODEC,
@@ -250,6 +271,7 @@ describe('OpenClaw unified conversation store spike', () => {
       checkpoint: restoredCheckpoint?.checkpoint,
     });
 
+    trace.phase('assert-restored-history');
     expect(restored.manager.isPersisted()).toBe(false);
     expect(() => assertInMemoryOpenClawSessionManager(restored.manager)).not.toThrow();
     expect(restored.manager.getEntries().some((entry) => entry.type === 'compaction')).toBe(true);
@@ -258,10 +280,12 @@ describe('OpenClaw unified conversation store spike', () => {
     expect(contextText).toContain('alternate path');
     expect(contextText).toContain('second prompt');
     expect(forbiddenHistoryFiles(root)).toEqual([]);
+    trace.phase('assertions-complete');
   });
 
   it('exposes metadata, compaction, fork/reset, checkpoint and canonical memory search without native files', async () => {
     const root = mkdtempSync(join(tmpdir(), 'clawx-openclaw-package-'));
+    ownedRoots.push(root);
     const service = new ClawXDataService(join(root, 'state', 'clawx.sqlite'));
     services.push(service);
     const conversationId = asConversationId('conversation-package');

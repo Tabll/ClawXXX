@@ -31,6 +31,24 @@ describe('kernel runtime build supply chain', () => {
     expect(readFileSync(join(process.cwd(), 'vitest.config.ts'), 'utf8')).not.toMatch(/testTimeout|hookTimeout|retry:|fileParallelism|maxWorkers/);
   });
 
+  it.each(['\n', '\r\n'])('retains the same Windows-only storage policy and failure evidence at the earlier OpenClaw closure gate (%j)', newline => {
+    const workflow = readFileSync(join(process.cwd(), '.github/workflows/kernel-runtime-build.yml'), 'utf8').replace(/\r?\n/g, newline).replace(/\r\n/g, '\n');
+    const step = workflow.split('- name: Build and test OpenClaw runtime closure')[1]!.split('- name: Materialize OpenClaw payload')[0]!;
+    expect(step).toContain("if: matrix.kernel == 'openclaw'");
+    expect(step).toContain('shell: bash');
+    expect(step).toContain('worker_args=()');
+    expect(step).toContain('if [ "${{ matrix.target.platform }}" = "win32" ]; then\n            worker_args+=(--maxWorkers=1)\n          fi');
+    expect(step).toContain('suites=(tests/unit/openclaw-restart-recovery-patch.test.ts tests/unit/openclaw-lm-studio-tool-schema-patch.test.ts tests/contract/kernels/openclaw-conversation-store.test.ts)');
+    expect(step).toContain('pnpm exec vitest run "${suites[@]}" "${worker_args[@]}"');
+    expect(step).toContain('--outputFile.json=temp/reports/vitest-openclaw-closure.json');
+    expect(step).toContain('CLAWX_OPENCLAW_STORE_REPORT: temp/reports/openclaw-store-closure.json');
+    expect(workflow).toContain('CLAWX_OPENCLAW_STORE_REPORT: temp/reports/openclaw-store-canonical.json');
+    const reports = workflow.split('- name: Preserve runtime build and platform security reports')[1]!.split('  clean-machine-smoke:')[0]!;
+    expect(reports).toContain('if: always()');
+    expect(reports).toContain('path: temp/reports/*.json*');
+    expect(step).not.toMatch(/--(?:testTimeout|hookTimeout|retry|bail|maxConcurrency)|continue-on-error|--passWithNoTests/);
+  });
+
   it.each([false, true])('flushes sealed bytes with a writable non-truncating handle and always closes it (failure=%s)', (failure) => {
     const root = mkdtempSync(join(tmpdir(), 'clawx-artifact-fsync-'));
     const path = join(root, 'sealed.tar.zst');

@@ -68,7 +68,8 @@ calls and release the execution slot. These contracts run before expensive
 builds and remain mandatory after real-artifact installation; never mock or
 relax production URL conversion to make a POSIX-only fixture pass on Windows.
 
-Windows storage/build contract suites run with one file worker so real Git
+Windows storage/build contract suites, including the earlier OpenClaw closure
+gate that repeats the SQLite suite, run with one file worker so real Git
 processes and FULL-sync SQLite do not compete with unrelated cold SDK imports.
 Keep test-internal dual-kernel/message concurrency and all original deadlines.
 Use Node environments for pure host contracts; create real Git fixtures with
@@ -78,6 +79,11 @@ observers must follow successful SQLite writes, never an early request array.
 Retain durable readback/reopen assertions, release owned gates on failure and
 drain work before closing storage. No in-memory substitutes, relaxed fsync,
 blanket retries, skipped tests or enlarged global/per-test timeouts are allowed.
+Retain phase evidence for database open/admission/checkpoint/close/reopen and
+restored-history assertions. Early closure JSON results and phase journals must
+be always-uploaded even if no platform artifact was produced; keep report paths
+distinct from the later canonical suite. Remove only test-owned temporary roots
+after closing their services, without deleting an active database on failure.
 
 Semantic workflow source-text assertions must cover both LF and CRLF checkout
 representations on every host, normalizing EOLs only inside those assertions.
