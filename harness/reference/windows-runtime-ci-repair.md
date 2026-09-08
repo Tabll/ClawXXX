@@ -1149,8 +1149,9 @@ passed all assertions and cleanup in **173990 ms**: Gateway readiness
 **92184/22765 ms**, one real background poll, seven provider requests/five usage
 events, seven Channel modules, rejected canonical handoff and zero native
 history. This tests new-Node compatibility against unmodified kernel bytes,
-not a newly signed +13 artifact. Native supervisor regressions and full
-current-source staging acceptance remain separate gates; MK-1940 stays open.
+not a newly signed +13 artifact. At that point native supervisor regressions
+and full current-source staging acceptance remained separate gates; their
+subsequent successful results are recorded below.
 
 The final **new supervised entrypoint**, Node 24.20.0 and the same unmodified
 signed Windows payload passed in **97672 ms**, without observation hooks.
@@ -1177,3 +1178,78 @@ was removed; a read-only check followed by cleanup removed two remaining
 empty directories. The host's original archives and logs remain available.
 The private fixture HTTP service was stopped and the initially stopped VM
 was restored to stopped state. No installed runtime or user data was touched.
+
+The repair was committed and pushed as
+`45bb92609a2349ed89e50c45c64cac53f1aa2620`. [E2E #35](https://github.com/Tabll/ClawXXX/actions/runs/34195995688)
+passed all three platforms: Linux 150 passed/5 skipped, macOS 152 passed/3
+skipped, Windows 153 passed/2 skipped, with no failures or flaky outcomes.
+[Full staging #21](https://github.com/Tabll/ClawXXX/actions/runs/34205494108)
+was dispatched for that exact commit, both kernels and all five targets,
+using the existing artifact URL and Windows artifact-signature-only policy.
+Its ten build jobs received the normal required-reviewer approval from
+Tabll in `kernel-staging`; no protection bypass or promotion was used.
+The run completed successfully on attempt 1: all **25/25 jobs** succeeded,
+with no failed, cancelled or skipped jobs. Every required build, single-runtime
+and dual-runtime gate passed, so **MK-1940 is complete**.
+
+The native GitHub Windows OpenClaw build `101993900027` passed all **190**
+preflight, **11** early closure and **132** later contract cases. Its complete
+real probe took **327464 ms**, with Gateway readiness **86808/103766 ms**,
+all **25** journal phases, native exit **0 / 0x0**, null signal, seven provider
+requests/five usage events and one real background poll. Restart, cancellation,
+all seven Channels, rejected handoff and no-native-history assertions passed.
+Early/canonical SQLite lifecycles finished in **227/234 ms**. The exact
+`kernel-build-reports-openclaw-win32-x64` ZIP (`10048189242`) matched GitHub's
+SHA-256 `09ae51c5845e98592497c123164829ae97c6e4c9fbcefd24dcf59c2ae0d16620`;
+the persisted JSON result equals the native process report's complete stdout.
+The ignored host copy is `temp/ci21-report-10048189242.zip`.
+
+The two DSH macOS report ZIPs were also downloaded and hash-verified against
+GitHub's artifact digests. Each contains seven signed native files, including
+the independent Node executable, with Hardened Runtime enabled and matching
+Accepted notarization/security-report submission IDs. The source fix passes
+the prior Windows pre-seal failure point on the real runner; this still does
+not supply the unavailable old-run crash stack or replace sealed installation
+and shared-UI acceptance of all platforms.
+
+All ten +13 builds completed successfully in run #21. All four macOS report
+archives were downloaded and verified against the GitHub artifact digests;
+OpenClaw signs 22 native files per architecture, and DSH signs seven. Each
+report has Hardened Runtime enabled and consistent successful signing and
+Apple Accepted records. The submitted closure hashes below are notarization
+archive hashes, not the final tar.zst or GitHub report-ZIP hashes:
+
+| Kernel / target | Accepted submission ID | Submitted closure SHA-256 |
+| --- | --- | --- |
+| DSH / arm64 | `996a9c9a-c883-47ee-8986-da94ab2e3fd4` | `16a271c4ac46762168363cfa7e0dc26e0da184ef5960beb53fca1104baf52801` |
+| DSH / x64 | `1f5327fd-205d-45e9-a69b-79530bcafb1c` | `e1209e81c7765879f8d762973e825d18401e5f4f2c9e8f7b50c12a8ce170220f` |
+| OpenClaw / arm64 | `a4a576c0-8799-4de4-a7a1-05aabf618c9a` | `e8920ef7345891953fa8ee21d987a1271e039c63fbcaa6688bdbec8b8cbe0b64` |
+| OpenClaw / x64 | `eb22d594-8025-43dc-80b6-735b271bcbfb` | `7197a365001cd403f852c0aa226123b7622c5b31b85cc6ef8f0fc68431c0e1e0` |
+
+The build stage archived ten signed runtime bundles and ten build-report ZIPs.
+All **ten single-runtime and five dual-runtime clean-machine jobs** subsequently
+passed and archived their acceptance reports: **35 artifacts in total**, with
+none expired at final verification. This covers macOS arm64/x64, Linux arm64/x64
+and Windows x64 for both kernels, including real sealed-runtime installation,
+shared-UI acceptance and side-by-side operation.
+
+Windows OpenClaw clean-machine job `102002971739` passed the sealed real
+Gateway/ACP probe (Gateway readiness **97675/98229 ms**) and production
+Package Manager acceptance in **159859 ms**, including interrupted download,
+resume, full integrity rescan and uninstall. Its 23 PE executables retain the
+explicit artifact-signature-only policy (`authenticode: false`), and the native
+history fence passed. The 34 follow-up contracts and all **12 shared-UI E2E**
+cases passed. Windows dual-runtime job `102002971568` completed the real
+integration case and cleanup in **380367 ms**, covering independent process
+IDs, corruption rejection, one-kernel repair, separate uninstall and canonical
+SQLite preservation. The last outstanding macOS Intel single-runtime job
+`102002971829` also succeeded: **162604 ms** production installation acceptance,
+34 follow-up contracts and **12 shared-UI E2E** cases.
+
+All runtime artifacts and the same-source E2E #35 above refer to executable
+source commit `45bb92609a2349ed89e50c45c64cac53f1aa2620`. Documentation-only
+completion updates do not change those runtime inputs; any later promotion
+must still select this verified build and its exact source SHA explicitly.
+No COS objects, catalog pointers, production release or installed user runtime
+were changed by this staging acceptance. Windows Authenticode and real-account
+production acceptance remain deferred.

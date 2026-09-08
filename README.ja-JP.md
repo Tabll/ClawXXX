@@ -161,7 +161,9 @@ ClawXは **Main-owned multi-kernel + unified Host API architecture**を採用し
 
 DSH の現在のソースは `0.1.3-alpha.1+clawx.13` に対応し、v2 ストリームと確定イベントを共有 SQLite に接続します。まだ alpha であり、上流は性能低下を報告しています。インストール済み runtime の更新には新しい CI artifact の検証・公開が必要です。[互換性の詳細](harness/reference/deepseek-harness-0.1.3-upgrade.md)。
 
-OpenClaw のソースと開発依存関係は `2026.9.2+clawx.13` に更新済みです。本番 bridge は共有 SQLite 履歴から Run ごとのメモリ session を作成し、新しい Agents・モデル・権限設定と 7 種の Channel plugin に対応します。隔離した実 Gateway/ACP と packaged payload でツール、キャンセル、クラッシュ復旧、入場拒否、native 履歴の非永続化を検証しました。インストール済み runtime の更新には新しい検証済み CI artifact が必要です。5 プラットフォームの署名・公開と実アカウント検証は未実施です。[設計と検証結果](harness/reference/openclaw-2026.9.2-upgrade.md)。
+OpenClaw のソースと開発依存関係は `2026.9.2+clawx.13` に更新済みです。本番 bridge は共有 SQLite 履歴から Run ごとのメモリ session を作成し、新しい Agents・モデル・権限設定と 7 種の Channel plugin に対応します。隔離した実 Gateway/ACP と packaged payload でツール、キャンセル、クラッシュ復旧、入場拒否、native 履歴の非永続化を検証しました。[設計と検証結果](harness/reference/openclaw-2026.9.2-upgrade.md)。
+
+両方の +clawx.13 カーネルは Node 24.20.0 を使用し、5 ターゲットの staging 全 25 ジョブ、macOS 公証 4 件（Accepted）、同一ソースの 3 プラットフォーム Electron E2E に合格しました。[CI 検証記録](harness/reference/windows-runtime-ci-repair.md)を参照してください。Windows は artifact 署名のみで、Authenticode は使用しません。これらの artifact は COS/catalog に未公開のため、インストール済みカーネルはまだ更新されません。本番公開と実アカウント検証は未完了です。
 
 - **プロセスモデル**：Electron Mainがsystem integration、one DataService、Package Manager、kernel別Supervisorを管理します。OpenClawとDSHは並行実行でき、Renderer/runtimeはcanonical ClawX SQLiteを直接開かず相互接続しません。
 - **Runtime 検証**：install と再スキャンのファイル検証は最大 8 並列で行い、署名済み hash・size・path の全チェックを維持します。展開ごとに独立した最大 256 件のディレクトリキャッシュで大規模パッケージの処理負荷を抑えます。キャッシュの削除はファイルシステムの再確認を増やすだけで、パス保護を緩和しません。固定されたホストツールのパッチにより、Windows の小さなファイルをメモリマップではなく通常の書き込みで展開し、tar のパス予約と全チェックを維持します。install 済みファイルは read-only とし、保護の設定に失敗した場合は install を拒否します。Windows の atomic なディレクトリ移動では、一時的な `EPERM`/`EBUSY` のみ再試行の待機時間を合計最大 1.5 秒に制限します。永続的なロックは失敗し、コピーや権限緩和で回避しません。clean-machine CI は展開・hash 検証・read-only 化などの所要時間を失敗・timeout 時にも記録します。任意の診断処理が検証結果を変えることはありません。
