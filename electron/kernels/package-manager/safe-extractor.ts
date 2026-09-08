@@ -33,21 +33,38 @@ export type SafeExtractionReport = {
   runtimeBytes: number;
 };
 
+// Closed diagnostic labels only: never send local paths, contents or errors.
+export type KernelArtifactStage =
+  | 'archive-digest-before' | 'archive-preflight' | 'archive-extract'
+  | 'archive-digest-after' | 'tree-inventory' | 'metadata-verify'
+  | 'runtime-hash' | 'readonly-seal' | 'verified';
+export type ArtifactStageObserver = (stage: KernelArtifactStage) => void;
+
+function notifyArtifactStage(observe: ArtifactStageObserver | undefined, stage: KernelArtifactStage): void {
+  // Diagnostics cannot authorize an artifact or quarantine a valid one when
+  // a logging sink fails. Only the mandatory verifier controls acceptance.
+  try { observe?.(stage); } catch { /* Best-effort diagnostics only. */ }
+}
+
 export class SafeKernelArtifactExtractor {
   async extract(
     archivePath: string,
     destination: string,
     descriptor: KernelArtifactDescriptorV1,
+    observe?: ArtifactStageObserver,
   ): Promise<SafeExtractionReport> {
+    notifyArtifactStage(observe, 'archive-digest-before');
     const archiveStats = await stat(archivePath);
     if (!archiveStats.isFile() || archiveStats.size !== descriptor.archive.compressedSize
       || await sha256File(archivePath) !== descriptor.archive.sha256) {
       throw new KernelPackageError('archive-digest', 'Runtime archive identity changed before extraction');
     }
+    notifyArtifactStage(observe, 'archive-preflight');
     await this.scanArchive(archivePath, descriptor);
     await rm(destination, { recursive: true, force: true });
     await mkdir(destination, { recursive: false, mode: 0o700 });
     try {
+      notifyArtifactStage(observe, 'archive-extract');
       const extractionGuard = new TarGuard(descriptor);
       const unpack = tar.x({
         cwd: destination,
@@ -59,16 +76,19 @@ export class SafeKernelArtifactExtractor {
       });
       await pipeArchiveToTar(archivePath, new OutputByteLimit(maxTarStreamBytes(descriptor)), unpack);
       extractionGuard.finish();
+      notifyArtifactStage(observe, 'archive-digest-after');
       if (await sha256File(archivePath) !== descriptor.archive.sha256) {
         throw new KernelPackageError('archive-digest', 'Runtime archive changed during extraction');
       }
-      const report = await verifyExtractedArtifact(destination, descriptor);
+      const report = await verifyExtractedArtifact(destination, descriptor, observe);
       await writeFile(
         inside(destination, 'metadata/descriptor.json'),
         canonicalJson(descriptor),
         { encoding: 'utf8', mode: 0o600, flag: 'wx' },
       );
+      notifyArtifactStage(observe, 'readonly-seal');
       await makeTreeReadOnly(destination);
+      notifyArtifactStage(observe, 'verified');
       return report;
     } catch (error) {
       await rm(destination, { recursive: true, force: true });
@@ -245,7 +265,9 @@ export function assertSafeArchivePath(rawPath: string): string {
 export async function verifyExtractedArtifact(
   root: string,
   descriptor: KernelArtifactDescriptorV1,
+  observe?: ArtifactStageObserver,
 ): Promise<SafeExtractionReport> {
+  notifyArtifactStage(observe, 'tree-inventory');
   const descriptorMetadataPath = inside(root, 'metadata/descriptor.json');
   const discoveredFiles = await walkRegularFiles(root);
   const allFiles = discoveredFiles.filter(path => path !== descriptorMetadataPath);
@@ -259,6 +281,7 @@ export async function verifyExtractedArtifact(
   if (allFiles.length !== descriptor.archive.fileCount || totalBytes !== descriptor.archive.unpackedSize) {
     throw new KernelPackageError('artifact-integrity', 'Extracted runtime differs from the signed archive totals');
   }
+  notifyArtifactStage(observe, 'metadata-verify');
   const artifactManifest = await readJsonFile(inside(root, 'metadata/artifact-manifest.json'), 2 * 1024 * 1024) as Record<string, unknown>;
   const expectedIdentity = {
     schemaVersion: 1,
@@ -308,6 +331,7 @@ export async function verifyExtractedArtifact(
     throw new KernelPackageError('artifact-integrity', 'Runtime file count differs from metadata/files.json');
   }
   const expectedFiles = new Map(manifest.files.map(file => [file.path, file]));
+  notifyArtifactStage(observe, 'runtime-hash');
   await forEachKernelFile(runtimeFiles, async (path) => {
     const name = relative(runtimeRoot, path).split(sep).join('/');
     const expected = expectedFiles.get(name);

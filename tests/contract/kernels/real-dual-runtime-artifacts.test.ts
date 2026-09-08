@@ -43,16 +43,17 @@ describe('two real signed runtime artifacts on one clean machine', () => {
     const root = await mkdtemp(join(tmpdir(), 'clawx-real-dual-runtime-'));
     const data = new ClawXDataService(join(root, 'state', 'clawx.sqlite'));
     const state = data.connect({ role: 'main' });
+    const trace = createArtifactTestTrace(evidencePath);
+    onTestFinished(() => trace.stop());
     const manager = new KernelPackageManager({
       root: join(root, 'kernels'),
       state,
       trustStore,
       host: compatibleHost([openClaw.descriptor, dsh.descriptor]),
       now: () => now,
+      onArtifactStage: (kernelId, stage) => trace.phase(`${kernelId}:${stage}`),
     });
     const smoke = new ControlBridgeSmokeTester();
-    const trace = createArtifactTestTrace(evidencePath);
-    onTestFinished(() => trace.stop());
     let completed = false;
     const phases = new Map<string, string>();
     const onProgress = (value: KernelDownloadProgress) => {

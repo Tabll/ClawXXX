@@ -1,0 +1,15 @@
+diff --git a/lib/get-write-flag.js b/lib/get-write-flag.js
+--- a/lib/get-write-flag.js
++++ b/lib/get-write-flag.js
+@@ -13,7 +13,10 @@ const fs = global.__FAKE_TESTING_FS__ || require('fs')
+ /* istanbul ignore next */
+ const { O_CREAT, O_TRUNC, O_WRONLY, UV_FS_O_FILEMAP = 0 } = fs.constants
+ 
+-const fMapEnabled = isWindows && !!UV_FS_O_FILEMAP
++// ClawX: mapped writes add substantial first-read overhead for large runtime
++// trees on Windows. Use ordinary writes, preserving create/truncate/mode,
++// close/error handling, path reservations and every extraction safety check.
++const fMapEnabled = false
+ const fMapLimit = 512 * 1024
+ const fMapFlag = UV_FS_O_FILEMAP | O_TRUNC | O_CREAT | O_WRONLY
+ module.exports = !fMapEnabled ? () => 'w'

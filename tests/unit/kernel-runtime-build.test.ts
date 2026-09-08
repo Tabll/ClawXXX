@@ -249,7 +249,7 @@ describe('kernel runtime build supply chain', () => {
     expect(workflow).toContain('tests/unit/openclaw-probe-lifecycle.test.ts');
     expect(workflow).toContain('tests/unit/kernel-notarization.test.ts');
     expect(workflow).toContain('tests/unit/openclaw-native-allowlist.test.ts');
-    for (const suite of ['tests/unit/kernel-runtime-archive.test.ts', 'tests/unit/extension-bridge-build.test.ts', 'tests/contract/kernels/package-manager.test.ts']) {
+    for (const suite of ['tests/unit/kernel-runtime-archive.test.ts', 'tests/unit/extension-bridge-build.test.ts', 'tests/contract/kernels/package-manager.test.ts', 'tests/unit/kernel-tar-write-mode.test.ts']) {
       expect(workflow).toContain(suite);
       expect(workflow.indexOf(suite)).toBeLessThan(workflow.indexOf('download-npm-source.mjs'));
     }

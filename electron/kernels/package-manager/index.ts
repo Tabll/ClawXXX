@@ -30,7 +30,7 @@ import { assertKernelInstallDiskSpace } from './disk-space';
 import { KernelArtifactDownloader, sha256File } from './downloader';
 import { KernelPackageError } from './errors';
 import { KernelPackageLayout } from './layout';
-import { SafeKernelArtifactExtractor, verifyExtractedArtifact } from './safe-extractor';
+import { SafeKernelArtifactExtractor, verifyExtractedArtifact, type KernelArtifactStage } from './safe-extractor';
 import { ControlBridgeSmokeTester, type KernelSmokeTester } from './smoke-test';
 import { renameRuntimeDirectory } from './runtime-directory';
 import type { KernelPackageStateStore } from './state';
@@ -49,6 +49,7 @@ export type KernelPackageManagerOptions = {
   isVersionInUse?: (kernelId: KernelId, artifactVersion: string) => boolean | Promise<boolean>;
   isKernelBusy?: (kernelId: KernelId) => boolean | Promise<boolean>;
   removeTrashPath?: (path: string) => Promise<void>;
+  onArtifactStage?: (kernelId: KernelId, stage: KernelArtifactStage) => void;
 };
 
 export type InstallFromCatalogInput = {
@@ -372,7 +373,8 @@ export class KernelPackageManager {
         await this.setLifecycle(descriptor.kernelId, 'staging', descriptor.artifactVersion);
         input.onProgress?.(progress(descriptor, 'staging', descriptor.archive.compressedSize));
         const stagingPath = this.layout.stagingPath(descriptor, randomUUID());
-        await this.extractor.extract(archivePath, stagingPath, descriptor);
+        await this.extractor.extract(archivePath, stagingPath, descriptor,
+          stage => this.options.onArtifactStage?.(descriptor.kernelId, stage));
         await this.setLifecycle(descriptor.kernelId, 'smoke-testing', descriptor.artifactVersion);
         input.onProgress?.(progress(descriptor, 'smoke-testing', descriptor.archive.compressedSize));
         try {
@@ -458,7 +460,8 @@ export class KernelPackageManager {
     if (!version) throw new KernelPackageError('rollback-unavailable', `Runtime ${kernelId}/${artifactVersion} is not recorded`);
     try {
       verifyKernelArtifactDescriptor(version.manifest, this.options.trustStore, this.now(), { allowExpired: true });
-      await verifyExtractedArtifact(this.layout.installPath(version.manifest), version.manifest);
+      await verifyExtractedArtifact(this.layout.installPath(version.manifest), version.manifest,
+        stage => this.options.onArtifactStage?.(kernelId, stage));
       const rescanned: KernelRuntimeVersionRecord = {
         ...version,
         state: 'verified',

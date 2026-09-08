@@ -348,10 +348,30 @@ describe('KernelPackageManager safe extraction', () => {
     } finally { await rm(root, { recursive: true, force: true }); }
   });
 
+  it('emits only closed phase labels while retaining every extraction and rescan check', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'clawx-extraction-stages-'));
+    const destination = join(root, 'installed');
+    const observe = vi.fn();
+    try {
+      const report = await new SafeKernelArtifactExtractor().extract(
+        artifacts[0].archivePath, destination, artifacts[0].descriptor, observe,
+      );
+      expect(observe.mock.calls).toEqual([
+        ['archive-digest-before'], ['archive-preflight'], ['archive-extract'],
+        ['archive-digest-after'], ['tree-inventory'], ['metadata-verify'],
+        ['runtime-hash'], ['readonly-seal'], ['verified'],
+      ]);
+      observe.mockClear();
+      expect(await verifyExtractedArtifact(destination, artifacts[0].descriptor, observe)).toEqual(report);
+      expect(observe.mock.calls).toEqual([['tree-inventory'], ['metadata-verify'], ['runtime-hash']]);
+    } finally { await rm(root, { recursive: true, force: true }); }
+  });
+
   it('fails closed and drains chmod work before cleanup if readonly sealing fails', async () => {
     const root = await mkdtemp(join(tmpdir(), 'clawx-readonly-failure-'));
     const originalChmod = fileSystem.chmod;
     let active = 0;
+    const observe = vi.fn();
     const seal = vi.spyOn(fileSystem, 'chmod').mockImplementation(async (path, mode) => {
       active += 1;
       try {
@@ -361,12 +381,39 @@ describe('KernelPackageManager safe extraction', () => {
       } finally { active -= 1; }
     });
     try {
-      await expect(new SafeKernelArtifactExtractor().extract(artifacts[0].archivePath, join(root, 'installed'), artifacts[0].descriptor))
+      await expect(new SafeKernelArtifactExtractor().extract(artifacts[0].archivePath, join(root, 'installed'), artifacts[0].descriptor, observe))
         .rejects.toMatchObject({ code: 'archive-unsafe' });
+      expect(observe).toHaveBeenLastCalledWith('readonly-seal');
+      expect(observe).not.toHaveBeenCalledWith('verified');
       expect(active).toBe(0);
       expect(await readdir(root)).toEqual([]);
     } finally {
       seal.mockRestore();
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+  it('keeps diagnostic failures outside the installation and quarantine authority', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'clawx-stage-sink-failure-'));
+    const service = new ClawXDataService(join(root, 'state.sqlite'));
+    const state = service.connect({ role: 'main' });
+    const observe = vi.fn(() => { throw new Error('diagnostic sink unavailable'); });
+    const manager = managerFor(root, state, { onArtifactStage: observe });
+    try {
+      await expect(manager.importOffline({ descriptorPath: artifacts[0].descriptorPath, archivePath: artifacts[0].archivePath }))
+        .resolves.toMatchObject({ activated: true });
+      expect(observe).toHaveBeenCalledWith('openclaw', 'archive-extract');
+      expect(observe).toHaveBeenCalledWith('openclaw', 'verified');
+      observe.mockClear();
+      await expect(manager.rescan('openclaw', artifacts[0].descriptor.artifactVersion))
+        .resolves.toMatchObject({ state: 'verified' });
+      expect(observe.mock.calls).toEqual([
+        ['openclaw', 'tree-inventory'], ['openclaw', 'metadata-verify'], ['openclaw', 'runtime-hash'],
+      ]);
+      await injectArtifactCorruption(manager.layout.installPath(artifacts[0].descriptor), artifacts[0].descriptor.entrypoints.control);
+      await expect(manager.rescan('openclaw', artifacts[0].descriptor.artifactVersion))
+        .rejects.toMatchObject({ code: 'artifact-integrity' });
+    } finally {
+      state.disconnect(); await service.close();
       await rm(root, { recursive: true, force: true });
     }
   });

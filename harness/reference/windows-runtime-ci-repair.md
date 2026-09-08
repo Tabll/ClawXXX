@@ -834,3 +834,110 @@ and TODO record the added portability guard. MK-1940 remains pending until a
 fresh pushed-SHA both-kernel/five-target staging run passes every job. Normal
 environment review, Windows artifact-signature-only and all existing macOS
 notarization gates remain; no COS or production catalog publication is included.
+
+## Follow-up: ordinary Windows extraction writes and stage diagnostics
+
+[Build #17](https://github.com/Tabll/ClawXXX/actions/runs/34182369085) on
+`721f3600dddd8df86795bdd5b4dffbbf9494d8c1` completed with **23/25 successful
+jobs**: ten builds, four dual-runtime and nine single-runtime jobs. All four
+macOS notarizations were accepted. Both Windows builds passed the full
+137-test preflight, including the repaired native workspace path contracts.
+The sealed Windows OpenClaw Gateway/ACP probe also passed. The same commit's
+[Electron E2E #31](https://github.com/Tabll/ClawXXX/actions/runs/34182316212)
+passed all three platforms. GitHub retained 35 nonexpired artifacts: ten runtime
+packages, ten build reports and fifteen clean-machine evidence archives.
+
+The two failures were file-operation throughput, not those old path fixtures:
+
+- Windows dual job `101928142967` installed both at **628468 ms**, passed
+  concurrent control and corruption rejection, then began OpenClaw repair at
+  **634333 ms** and exceeded the unchanged **900000 ms** deadline. Repair and
+  subsequent uninstall/SQLite checks did not complete.
+- Windows OpenClaw single job `101928143073` installed at **571913 ms** and
+  began full rescan at **571915 ms**, exceeding **600000 ms** before it finished.
+  Later host/UI steps were not reached. The equivalent #16 single install had
+  passed in 454156 ms; that prior pass does not establish robust throughput.
+
+### Native controlled measurement
+
+node-tar 6.2.1 selects `UV_FS_O_FILEMAP` for Windows files smaller than 512 KiB.
+The official [libuv filesystem documentation](https://docs.libuv.org/en/v1.x/fs.html)
+identifies this as memory-mapped Windows I/O, and the
+[Windows implementation](https://github.com/libuv/libuv/blob/v1.x/src/win/fs.c)
+has additional mapping state. That suggested an ordinary-write comparison,
+not evidence that antivirus or any particular runner component was responsible.
+Both #16 and #17 reported the same runner image version; no causal image-change
+claim is supported.
+
+An isolated Windows 11 ARM64 VM, running official x64 Node 24.15.0, used the
+same original CI #12 signed OpenClaw `2026.9.2+clawx.12` archive in fresh owned
+directories: **52729 files / 807751063 unpacked bytes**. No security settings,
+signature checks, file counts, read-only protection or runtime bytes changed.
+The baseline/candidate/baseline sequence retained the production 256-entry
+directory cache and all integrity checks:
+
+| Mode | Extract, verify and seal | Including full integrity rescan |
+| --- | ---: | ---: |
+| Original mapped writes A | 134152 ms | 146258 ms |
+| Ordinary writes B | 114041 ms | 125835 ms |
+| Original mapped writes A repeat | 136011 ms | 189952 ms |
+
+These are VM samples with x64 emulation, not native GitHub runner acceptance or
+a guaranteed speedup. Aggregate open/read/close waiting fell for B, while
+`lstat` work and CPU usage increased; the repeat also shows rescan variance.
+Reports remain ignored under `temp/filemap-vm-{baseline,candidate,baseline-repeat}.log`.
+
+### Minimal production change and regression boundary
+
+`patches/tar@6.2.1.patch` changes only `lib/get-write-flag.js` to select ordinary
+`'w'` writes; create/truncate/mode semantics, close/error handling, Windows path
+reservations and all archive guards remain unchanged. The exact patch SHA-256 is
+`3ecc5f7df99a41a333edd0714e67cb8a3ab3e173c5215b734e43e4dba20652f9`.
+The root workspace/lock pins this host-tooling patch. Frozen offline installation
+replaced just one tar instance without dependency upgrades or install scripts.
+OpenClaw's repository-lock provenance is also updated: root lock SHA-256
+`b9c2608509e47be1870d74065e8ac4f86ad5f676550de8aa5d219987b6a05ea4`
+and lock descriptor SHA-256
+`46efefa988347b339c854a95e86af9cc3682ddeeb7c08f42ac76598790a36017`.
+Its actual kernel dependency still resolves tar 7.5.22, not the host's 6.2.1.
+The kernel upstream versions, source/overlay patches and +clawx.12 revisions,
+and the separate DeepSeek Harness prepared lock remain unchanged. No
+platform/global fs override is used in production or CI.
+
+Five regression cases evaluate the actual installed selector for Windows,
+macOS and Linux inside an isolated VM context, verify original path reservation
+code remains, and check exact raw patch bytes against both LF/CRLF semantic lock
+inputs. The original dependency fails the Windows ordinary-write assertion.
+These tests run before every expensive runtime build.
+
+Production extraction and rescans accept an optional per-operation observer
+with only closed, path-free stage labels: archive digest/preflight/extraction,
+tree inventory, metadata validation, runtime hashes and read-only sealing.
+Observer failures are ignored, never treated as verification success or failure.
+The final verified stage occurs only after sealing succeeds. Two new contract
+cases cover ordered forwarding, failing sinks and actual corruption rejection;
+the existing read-only-failure regression also proves verified is not emitted.
+Single/dual real-artifact traces consume these stages with their original
+deadlines and always-uploaded failure evidence. No whole-test retry, security
+relaxation, skipped gate, COS upload or production promotion is introduced.
+
+The final native Windows dual probe used the actual production bundle and
+installed patched dependency, with no file-operation instrumentation or
+experimental patch plugin. Both original signed artifacts installed by
+**124952 ms**, concurrent control processes were distinct, injected corruption
+was rejected, and independent OpenClaw repair completed at **244451 ms**.
+Both uninstalls, surviving-kernel rescan/control and reopened canonical SQLite
+assertions passed by **248804 ms**; owned cleanup completed at **251845 ms**.
+The VM was restored to its originally stopped state, its exact GUID fixture
+root was removed, and the private VM-only fixture server was stopped. Original
+downloaded archives and ignored diagnostic reports were retained. This is
+real-artifact VM evidence, not the GitHub Vitest gate or a provider conversation.
+
+Host validation passed **59 focused**, **2328 full** (zero failures/six existing
+artifact-conditional skips) and **144 actual CI preflight** tests, plus
+typecheck, lint (zero errors/seven existing warnings), frozen source verification,
+comms replay/compare, Harness CI and diff-aware task validation/dry-run. After
+updating repository-lock provenance, all **33 source/patch/build-policy** cases
+passed again. Four README locales, rule/scenario/task and TODO are synchronized.
+MK-1940 remains pending until a fresh pushed-SHA complete staging matrix and
+same-code three-platform Electron E2E succeed.

@@ -63,6 +63,7 @@ jobs:
           tests/unit/kernel-runtime-archive.test.ts
           tests/unit/extension-bridge-build.test.ts
           tests/unit/kernel-bounded-io.test.ts
+          tests/unit/kernel-tar-write-mode.test.ts
           tests/unit/kernel-runtime-directory.test.ts
           tests/unit/kernel-artifact-test-support.test.ts
           tests/contract/kernels/package-manager.test.ts

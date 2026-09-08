@@ -126,6 +126,7 @@ describe('real signed runtime through the production KernelPackageManager path',
       host: compatibleHost(descriptor),
       now: () => now,
       fetcher,
+      onArtifactStage: (kernelId, stage) => trace.phase(`${kernelId}:${stage}`),
     });
     try {
       await state.createConversation({

@@ -132,6 +132,14 @@ reservations or archive safety. Test real trees beyond capacity and concurrent
 cache isolation. Single/dual clean-machine
 tests retain finite deadlines and incremental phase/timeout evidence; concurrent
 operations settle before removing the shared temporary installation authority.
+The hash-pinned host tar patch uses ordinary Windows file writes with unchanged
+path reservations, modes and verification. Exercise the actual installed
+selector for each platform in an isolated test VM and pin raw patch bytes;
+normalize only semantic lockfile line endings. Separate native VM throughput
+samples from complete GitHub runner acceptance. Optional per-kernel extraction
+and rescan stages contain no paths or content, tolerate a broken diagnostic
+sink without changing acceptance, and report verified only after readonly
+sealing. Keep single/dual 10/15-minute deadlines and corruption rejection.
 Windows executable-directory lock recovery remains a finite atomic rename
 policy (EPERM/EBUSY only, six attempts, 1500 ms total delays), not an install/test
 retry, a permission relaxation, a copy fallback or an active-runtime bypass.

@@ -2,7 +2,7 @@
 
 > 对应设计：[docs/zh-CN/multi-kernel-design.md](docs/zh-CN/multi-kernel-design.md)
 >
-> 状态：5aaf52ea 的第 16 轮通过 10/10 构建、4/4 macOS 公证、5/5 双内核及 9/10 单内核 clean-machine、三平台 E2E。两个旧 Windows 问题已原生通过：封包后后台工具探针通过，单内核真实安装/Range/重扫/卸载 454156 ms、双内核含独立修复 730583 ms。唯一失败是单内核任务后续 5 项宿主测试使用 POSIX-only URL/路径夹具，正在修复并增加前置防线；不是安装再次超时。未扩大原时限、关闭闸门或改变内核 +12/hash/lock；MK-1940 仍待新 SHA 全矩阵，未发布 COS/catalog。
+> 状态：721f3600 的第 17 轮为 23/25 成功：10/10 构建、4/4 macOS 公证、4/5 双内核及 9/10 单内核 clean-machine；同 SHA 三平台 E2E 成功。Windows 路径回归的 137 项前置全部通过，封包后后台工具探针通过，但大包文件操作耗时波动导致 OpenClaw 安装后重扫超过 10 分钟、双内核独立修复超过 15 分钟。普通文件写入最小宿主 tar 补丁及细阶段诊断已落地，Windows VM 双真实制品全生命周期约 249 秒通过；未扩大时限或关闭闸门。宿主 pnpm lock 及 OpenClaw 引用该 lock 的来源摘要同步更新，内核 +12/upstream/overlay 和 DSH 独立冻结 lock 不变。MK-1940 仍待新 SHA 全矩阵，未发布 COS/catalog。
 >
 > 最近完整本地证据（2026-09-01）：Vitest 243 files / 241 passed / 2 skipped、2116 tests passed / 6 skipped（其中制品依赖项只在真实 CI 制品存在时执行）；Electron E2E 既有证据 151 passed / 3 platform skips；multi-kernel chaos 既有证据 28/28；DSH `0.1.2-alpha.2` 干净精确上游树完成严格 patch/overlay 重放、冻结安装、完整 host build、12 files / 43 focused tests，并在真实 macOS `sandbox-exec` 下通过 3/3 runtime self-tests；typecheck、lint、comms 与本任务 Harness 全绿
 >
@@ -522,6 +522,10 @@
 - [x] `MK-1963` 核对 5aaf52ea 的 [第 16 轮 34178442166](https://github.com/Tabll/ClawXXX/actions/runs/34178442166)：10 build/4 公证/5 dual/9 single 成功，[E2E #30](https://github.com/Tabll/ClawXXX/actions/runs/34178397696) 三平台成功。Windows 封包后真实 Gateway/ACP 及单制品生产安装全通过（454156 ms）；双制品独立修复/卸载与 SQLite 保留原生通过（730583 ms）。剩余单任务在后续宿主契约 24/29 中失败 5 项，明确为无 Windows 盘符的 file:///workspace 与硬编码 /kernels/openclaw/；未将 24/25 任务误记为全绿。
 - [x] `MK-1964` ACP 使用 native absolute path + pathToFileURL，覆盖空格/中文/#/% round-trip、实际 cwd、非法 URL 拒绝与执行槽释放；driver 精确比较安装路径并覆盖 darwin/linux/win32（node.exe）布局和缺失执行文件拒绝，只清理自有临时根。原生 Windows 11 / Node 24.15.0 的 ACP/driver/build-policy 三套基线 5 failed/24 passed，修复加 5 项后 34/34 passed。两组回归新增到 build 前且保留 post-artifact gate，不改生产适配器、超时、重试或内核输入。
 - [x] `MK-1965` 路径修复的 2321 完整宿主与 137 实际 CI 前置检查全通过（完整宿主 0 失败/6 既有制品条件跳过）；typecheck、lint（0 错误/7 既有警告）、source verify、comms、Harness CI/任务 validate/dry-run 与 diff check 通过。四语 README 经审查无需修改；规则/场景/任务/参考证据同步。新 SHA 提交推送后须继续执行正常审批的完整 staging，MK-1940 尚未完成，COS/catalog 不变。
+- [x] `MK-1966` 读取 [第 17 轮 34182369085](https://github.com/Tabll/ClawXXX/actions/runs/34182369085) 最终 25 项任务及两个 Windows 失败日志：双内核首次安装 628468 ms、634333 ms 开始修复、900000 ms 超时；OpenClaw 单内核 571913 ms 安装完成，重扫超出 600000 ms。两种 Windows 构建均通过 137 项路径等前置；不是此前 POSIX-only 夹具复发。[同 SHA E2E #31](https://github.com/Tabll/ClawXXX/actions/runs/34182316212) 三平台成功，保留 35 份 runtime/build/evidence artifacts，不把 23/25 记为全绿。
+- [x] `MK-1967` 同一 CI #12 签名 OpenClaw +12 包在隔离 Windows 11 / Node 24.15.0 x64 上进行映射写入→普通写入→映射写入 A/B/A：完整提取/校验/只读封装 134152→114041→136011 ms，含完整重扫 146258→125835→189952 ms，52,729 文件及 807,751,063 bytes 检查一致。固定 tar 6.2.1 单文件补丁、原始补丁 SHA-256 与宿主 lock，不改路径串行保护、权限或签名验证；冻结离线安装只替换一个补丁实例，无依赖升级。VM 样本不承诺 GitHub runner 时限，未推断杀毒软件为原因。
+- [x] `MK-1968` 校验实际安装 tar selector 的三平台普通写入、LF/CRLF lock 语义及原始补丁哈希、不可影响结果的 per-kernel 阶段诊断、readonly 失败与损坏拒绝。59 focused / 2328 完整宿主 / 144 实际 CI 前置全通过（完整宿主 0 失败/6 既有条件跳过）；typecheck、lint（0 错误/7 既有警告）、source/comms/Harness CI/任务 validate/dry-run 和 diff check 通过。OpenClaw 的 repository-lock 与 descriptor 摘要同步固定，额外 33 项来源/补丁/build-policy 回归通过；实际 OpenClaw 仍使用未修改的 tar 7.5.22。
+- [x] `MK-1969` 正式生产 bundle 与已安装补丁（非实验替换/文件调用插桩）在 Windows VM 通过双 CI #12 原始签名制品全流程：124952 ms 并发安装完成、独立 PID、损坏拒绝、244451 ms 完成 OpenClaw 独立修复、248804 ms 两次卸载/剩余内核重扫与 SQLite 重开保留全部通过，251845 ms 完成清理。只删除本次 GUID 隔离目录，保留原始包/报告，关闭私有测试服务并恢复 VM 为关闭状态。这不是 GitHub 原生完整验收；提交推送后的新 SHA 全矩阵继续由 MK-1940 跟踪，COS/catalog 不变。
 
 ## 每个实现 PR 的最低检查
 

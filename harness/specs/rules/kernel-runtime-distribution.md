@@ -176,6 +176,15 @@ positive directory cache capped at 256 entries. Eviction must only require
 filesystem rechecks, never bypass node-tar's Windows path reservations or any
 archive guard. Cover capacity, invalidation, concurrent isolation and actual
 signed-tree extraction beyond the capacity; measure real archives, not mocks.
+Host node-tar 6.2.1 uses a byte-hash-pinned minimal patch to select ordinary
+Windows writes instead of UV_FS_O_FILEMAP for small files. Keep its create,
+truncate, mode, close/error handling, Windows path reservations and all archive
+checks intact. Cover the installed selector on Windows/macOS/Linux and exact
+patch/lock identity with both LF and CRLF semantic lockfile inputs. Never fake
+the running platform, override global fs or disable security software to improve
+a host installer benchmark. Update repository-lock provenance digests when the
+reviewed host lock changes; preserve upstream versions and separate runtime
+locks rather than bypassing their verifiers.
 Runtime directory moves remain native atomic renames. Windows alone may retry
 transient EPERM/EBUSY locks with at most six attempts and 1500 ms accumulated
 delays; persistent locks and all other errors remain failures. Never copy,
@@ -185,6 +194,10 @@ clean-machine tests must persist sanitized phase transitions and bounded
 heartbeats incrementally, including on timeout, without changing their existing
 10/15-minute deadlines. Keep detailed phase evidence as always-uploaded CI
 artifacts; test-only trust keys and local timing results are not release proof.
+Optional extraction/rescan diagnostics emit only closed stage labels. Their
+failure cannot alter acceptance or mask corruption; emit verified only after
+readonly sealing succeeds. Record digest, preflight, extraction, inventory,
+metadata, hashing and sealing separately for single/dual real-artifact gates.
 
 Packaged runtime tests must prove managed OpenClaw and DeepSeek Harness use the ClawX Conversation Store adapter/provider and do not create durable native conversation, cron, channel-message, or usage history. A patch revision that changes persistence behavior requires focused storage regression coverage and a new immutable artifact version.
 
