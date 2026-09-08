@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "repository": "Tabll/ClawXXX",
+  "branch": "main",
+  "buildWorkflow": ".github/workflows/kernel-runtime-build.yml",
+  "e2eWorkflow": ".github/workflows/electron-e2e.yml",
+  "kernelIds": ["openclaw", "deepseek-harness"],
+  "e2eJobs": ["Electron E2E (ubuntu-latest)", "Electron E2E (macos-latest)", "Electron E2E (windows-latest)"],
+  "catalogLifetimeHours": 168,
+  "renewBeforeHours": 48,
+  "downloadGraceHours": 24,
+  "githubReleaseTag": "kernel-runtimes",
+  "cos": {
+    "bucket": "aq-pub-1252262977",
+    "region": "ap-shanghai",
+    "rootPrefix": "clawxxx",
+    "kernelPrefix": "kernels"
+  }
+}

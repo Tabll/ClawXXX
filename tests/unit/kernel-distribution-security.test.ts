@@ -64,18 +64,21 @@ describe('kernel distribution release trust', () => {
 
   it('binds production promotion to one successful staging run and exact source SHA', () => {
     const workflow = readFileSync(join(process.cwd(), '.github/workflows/kernel-runtime-promote.yml'), 'utf8');
+    const publisher = readFileSync(join(process.cwd(), 'scripts/kernel-runtime/publish-runtimes.mjs'), 'utf8');
     expect(workflow).toContain('expected-source-sha:');
-    expect(workflow).toContain("test \"$actual_name\" = 'Build signed kernel runtimes'");
-    expect(workflow).toContain("test \"$actual_conclusion\" = 'success'");
-    expect(workflow).toContain('test "$actual_sha" = "$EXPECTED_SOURCE_SHA"');
-    expect(workflow).toContain('test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE_SHA"');
-    expect(workflow).toContain('pattern: kernel-runtime-*');
-    expect(workflow).not.toContain('pattern: kernel-*\n');
-    expect(workflow).toContain('scripts/kernel-runtime/resolve-previous-catalog.mjs');
-    expect(workflow).toContain('--trust-store temp/roots.production.json');
-    expect(workflow).toContain('--bootstrap "$BOOTSTRAP"');
-    expect(workflow).toContain('--github-repository "$GITHUB_REPOSITORY"');
-    expect(workflow).toContain('--distribution resources/kernels/distribution.json');
+    expect(workflow).toContain('scripts/kernel-runtime/lib/release-gate.mjs');
+    expect(workflow).toContain('run-id: ${{ needs.acceptance.outputs.run-id }}');
+    expect(workflow).toContain('artifact-ids: ${{ needs.acceptance.outputs.artifact-ids }}');
+    expect(workflow).not.toContain('pattern: kernel-');
+    // Publisher code and artifact source are intentionally separate. Executable
+    // rejection tests live in kernel-release-gate / production-release suites.
+    expect(workflow).toContain('ref: ${{ github.sha }}');
+    expect(publisher).toContain('candidate = await verifyReleaseCandidate(');
+    expect(publisher).toContain("candidateDigest(candidate) !== required('EXPECTED_CANDIDATE_DIGEST')");
+    expect(publisher).toContain("candidate.sourceSha !== required('EXPECTED_SOURCE_SHA')");
+    expect(publisher).toContain("readJson(resolve('temp/roots.production.json'))");
+    expect(publisher).toContain('assertReleaseDistribution(policy, distribution)');
+    expect(publisher).toContain("bootstrap: process.env.BOOTSTRAP === 'true'");
     expect(workflow).not.toContain('previous-catalog-artifact:');
   });
 

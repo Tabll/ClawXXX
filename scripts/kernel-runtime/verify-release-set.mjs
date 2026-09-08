@@ -92,7 +92,7 @@ export function assertDescriptorDistributionUrl(descriptor, distribution) {
   if (!allowed) throw new Error(`Artifact archive URL is outside configured immutable mirrors: ${identity(descriptor)}`);
 }
 
-function verifySignedValue(value, signatureField, trustStore, purpose, now) {
+export function verifySignedValue(value, signatureField, trustStore, purpose, now) {
   const signature = value?.[signatureField];
   if (signature?.algorithm !== 'Ed25519' || typeof signature.keyId !== 'string' || typeof signature.signature !== 'string') {
     throw new Error(`Missing or invalid ${signatureField}`);

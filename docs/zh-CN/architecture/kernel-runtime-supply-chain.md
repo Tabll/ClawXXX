@@ -41,7 +41,9 @@ DeepSeek Harness 直接以固定 Git commit 为 patch base。ClawX 的 bridge/pe
 
 客户端严格解析 `catalog.schema.json`，验证 artifact 与 catalog 签名、key purpose/validity/revocation、issue/expiry、唯一 artifact identity 和 HTTPS URL。它持久化最高已接受 sequence；同 sequence 不同内容视为 equivocation，低 sequence 默认拒绝。紧急降级不会降低历史最高 sequence，授权过期后也不能重放。
 
-生产晋级同样维持这条单调信任链，而不是接受操作员提供的任意本地“上一版”文件。sequence 1 只允许在受保护环境显式 bootstrap，并要求所有配置的 HTTPS catalog 镜像都返回 404/410；正常 sequence N 必须从每个镜像取回签名有效、sequence 恰为 N−1、canonical 内容完全一致的 catalog。跨云写入部分失败后可幂等修复可信的 N/N−1（首次为 N/absent）混合状态，但已签 N、请求的 issue/expiry/revocations 与完整 staging artifacts 必须吻合；同 sequence 内容分叉仍然失败关闭。执行仓库/Release tag 和 descriptor URL 也必须在任何外部写入前绑定到 `distribution.json`。晋级脚本在新 catalog 的 `issuedAt` 和 `expiresAt - 1ms` 各执行一次完整验签，因此 retained artifact、artifact key 或 catalog key 只要在 catalog 有效期内提前过期就会阻断发布；旧 artifact 必须用精确 identity 显式撤销，不能静默丢弃或把失效条目继续带入新 catalog。
+生产晋级同样维持单调信任链，不接受任意本地“上一版”。首次显式受保护 bootstrap 需要双镜像 404/410；常规 N 从一致、验签通过的 N−1 推进。不可变签名 release record 在上传及目录覆盖前固定精确 N、前驱摘要、accepted CI candidate、活跃制品最大历史目录有效期与退役清单。部分失败只能按该记录恢复 N/N−1 或 N/absent；非首次 N/absent 还要验证 N−1 记录，不能重置序号。镜像同序号分叉、改变重试候选、复用 revision 修改字节均失败关闭。新目录在签发时与到期前一刻均完整验签，有效期不超过任何所含 artifact/key 的期限。
+
+latest-only 目录每内核/目标仅保留最新版，普通退役不写安全 revocation，历史撤销账本则持续继承。被移除包的精确签名 descriptor 进入退役清单；必须等所有引用目录的最大到期时间加 24 小时、当前完整双镜像线上校验通过，才能逐对象核对 SHA-256/size 并删除旧 archive、descriptor 和 checksum。清理不采用 prefix list-delete，不碰本地安装、当前包、宿主包或其他对象。COS 版本控制 Enabled/Suspended 均拒绝自动清理；小体积签名记录/完成收据持续留存。详见 [自动发布与恢复协议](../../../harness/reference/kernel-automatic-release.md)。
 
 轮换采用“预置信任下一把公钥”：在切换 signer 至少一个 app release 前，把新公钥连同旧公钥写入受审 trust store；旧 key 保留到其 metadata 全部过期。具体操作和吊销规则见 `kernels/trust/README.md`。
 
@@ -55,7 +57,9 @@ DeepSeek Harness 直接以固定 Git commit 为 patch base。ClawX 的 bridge/pe
 
 当一次 staging run 同时构建两个内核时，第三个五目标 job 会在同一干净环境安装两份真实签名 artifact，并发启动两个控制桥，验证进程身份互不相同；再向 OpenClaw 安装注入完整性故障、从不可变缓存 repair，同时确认 DSH 继续健康，最后逐个卸载并证明同一 SQLite Conversation 仍存在。这是实际制品的并发/故障隔离证据；无模型密钥的 CI 控制面 smoke 不冒充真实付费模型对话，Chat 语义仍由共享 contract/E2E 证明。
 
-`kernel-runtime-promote.yml` 只消费已批准的 staging descriptors，不重新构建 artifact；生产环境审批后先用公开 trust roots 从两个镜像解析并保存 catalog continuity evidence，再递增 sequence 并使用 catalog key 签名。相同 artifact identity 内容变化、镜像分叉、sequence 跳跃/重置、未知撤销 identity 或有效期空洞都会被拒绝。第一镜像使用腾讯 COS `aq-pub-1252262977/clawxxx/kernels`，第二镜像使用 GitHub Release。仓库锁定腾讯官方 Node SDK；COS 上传器会验证 bucket/region/versioning、限定 object key、为下载对象设置 public-read、写入 SHA-256 metadata，不可变对象禁止覆盖且内容冲突即失败，mutable catalog 始终最后写入。`release.yml` 在宿主打包前重新运行完整 unit/contract/type/lint/chaos/comms/Harness、三平台 Electron E2E，并要求线上两个 catalog 与两个 artifact host 的 Range 演练通过。远端 matrix 未真正成功前，`TODO.md` 中相应跨平台验收保持进行中，不能用本机结果代替。
+`kernel-runtime-promote.yml` 在完整可信 runtime build 与同 SHA 三平台 E2E 成功后自动排队受保护审批；只消费已批准的 staging bytes，发布器 checkout 与 artifact source SHA 分开验证，审批后复验 run/attempt/artifact digest 与当前冻结输入。不重新构建或修改已公证 payload。策略读取启用内核和共用 required matrix，未知/缺失目标失败关闭。腾讯 COS `aq-pub-1252262977/clawxxx/kernels` 和 GitHub `kernel-runtimes` 保存相同版本化文件，后者不占用宿主 latest release。所有槽位的双镜像 Range/If-Range、强稳定 ETag 和签名大小验证后才替换 catalog，并在删除旧包前复验两个精确目录。默认目录 7 天有效，剩余 48 小时由每日受保护维护续期；审批不会被自动绕过，descriptor/key 到期仍需新审核版本或换钥。
+
+仓库使用固定腾讯官方 Node SDK；上传器验证 bucket/region/versioning、限定 object key、public-read、SHA-256 metadata 与不可覆盖策略。`release.yml` 在宿主打包前仍重跑完整 unit/contract/type/lint/chaos/comms/Harness、三平台 Electron E2E 与线上双镜像 Range。远端实际证据与本地测试分开记录，不以自动触发代替成功验收。
 
 受保护环境 secrets、首次/后续晋级命令、双镜像部分写入恢复和最终证据归档见 [可选内核运行时受保护发布 Runbook](../operations/kernel-runtime-release-runbook.md)。
 

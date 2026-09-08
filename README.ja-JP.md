@@ -165,6 +165,8 @@ OpenClaw のソースと開発依存関係は `2026.9.2+clawx.13` に更新済�
 
 両方の +clawx.13 カーネルは Node 24.20.0 を使用し、5 ターゲットの staging 全 25 ジョブ、macOS 公証 4 件（Accepted）、同一ソースの 3 プラットフォーム Electron E2E に合格しました。[CI 検証記録](harness/reference/windows-runtime-ci-repair.md)を参照してください。Windows は artifact 署名のみで、Authenticode は使用しません。これらの artifact は COS/catalog に未公開のため、インストール済みカーネルはまだ更新されません。本番公開と実アカウント検証は未完了です。
 
+全カーネルのビルドと同一ソース E2E の成功後、本番公開を保護環境へ自動で要求します。COS/GitHub のバージョン付きパッケージは上書きせず、全ターゲットの両ミラー検証後に最新セットの署名 catalog だけを置換します。旧パッケージは参照した全 catalog の有効期限＋24 時間後に安全に削除し、署名監査記録と中断再開を保持します。毎日の保護された保守は artifact/key の期限内で通常 7 日間の catalog を更新しますが、承認は引き続き必要です。初回 bootstrap と実配信の検証は別途必要です。[公開設計](harness/reference/kernel-automatic-release.md)。
+
 - **プロセスモデル**：Electron Mainがsystem integration、one DataService、Package Manager、kernel別Supervisorを管理します。OpenClawとDSHは並行実行でき、Renderer/runtimeはcanonical ClawX SQLiteを直接開かず相互接続しません。
 - **Runtime 検証**：install と再スキャンのファイル検証は最大 8 並列で行い、署名済み hash・size・path の全チェックを維持します。展開ごとに独立した最大 256 件のディレクトリキャッシュで大規模パッケージの処理負荷を抑えます。キャッシュの削除はファイルシステムの再確認を増やすだけで、パス保護を緩和しません。固定されたホストツールのパッチにより、Windows の小さなファイルをメモリマップではなく通常の書き込みで展開し、tar のパス予約と全チェックを維持します。install 済みファイルは read-only とし、保護の設定に失敗した場合は install を拒否します。Windows の atomic なディレクトリ移動では、一時的な `EPERM`/`EBUSY` のみ再試行の待機時間を合計最大 1.5 秒に制限します。永続的なロックは失敗し、コピーや権限緩和で回避しません。clean-machine CI は展開・hash 検証・read-only 化などの所要時間を失敗・timeout 時にも記録します。任意の診断処理が検証結果を変えることはありません。
 - **設定の配信**：Gateway実行中は `config.get` / `config.set` を使い、停止中または起動中は解決済みJSON5設定を更新します。通常のプロバイダー、Agent、スキル、モデル変更ではプロセスを置き換えず、認証情報は `secrets.reload` でホットリロードされます。検証済みのGatewayアクティビティが3分間ない場合、ClawXはコアRPCを検証し、自身が所有する利用不能なGatewayプロセスだけを再起動します。外部管理のGatewayは手動で復旧します。

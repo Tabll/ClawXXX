@@ -23,13 +23,13 @@ describe('Tencent COS release publisher', () => {
     for (const source of [promote, release]) {
       expect(source).toContain('TENCENTCLOUD_SECRET_ID');
       expect(source).toContain('TENCENTCLOUD_SECRET_KEY');
-      expect(source).toContain('node scripts/tencent-cos.mjs verify-bucket');
       expect(source).not.toMatch(/ossutil|OSS_ACCESS_KEY|valuecell-clawx|intelli-spectrum/);
     }
-    expect(promote.indexOf('verify-bucket')).toBeLessThan(promote.indexOf('put-immutable'));
-    expect(promote.indexOf('put-immutable')).toBeLessThan(promote.indexOf('put-mutable'));
+    expect(release).toContain('node scripts/tencent-cos.mjs verify-bucket');
+    expect(promote).toContain('node scripts/kernel-runtime/publish-runtimes.mjs');
+    expect(promote).toContain('environment: kernel-production');
     expect(release).toContain('upload-cos:');
-    expect(release).toMatch(/upload-cos:\n\s+needs: release\n\s+environment: kernel-production/);
+    expect(release).toMatch(/upload-cos:\r?\n\s+needs: release\r?\n\s+environment: kernel-production/);
     expect(release.indexOf('put-directory-immutable')).toBeLessThan(release.indexOf('sync-channel'));
     expect(distribution).toContain('aq-pub-1252262977.cos.ap-shanghai.tencentcos.cn/clawxxx/kernels/');
   });

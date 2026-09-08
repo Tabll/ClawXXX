@@ -32,7 +32,7 @@ export class TencentCosPublisher {
     return `https://${this.bucket}.cos.${this.region}.tencentcos.cn/${this.rootPrefix}/`;
   }
 
-  async verifyBucket() {
+  async verifyBucket({ requireUnversioned = false } = {}) {
     const location = await this.client.getBucketLocation(this.#bucketParams());
     const actualRegion = String(location.LocationConstraint ?? '').replace(/^cos\./, '');
     if (actualRegion !== this.region) throw new Error(`Tencent COS region mismatch: expected ${this.region}, got ${actualRegion || '<empty>'}`);
@@ -40,6 +40,9 @@ export class TencentCosPublisher {
     const status = versioning.VersioningConfiguration?.Status ?? 'Disabled';
     if (status === 'Enabled') {
       throw new Error('Tencent COS bucket versioning must not be Enabled because immutable object overwrite protection would be ineffective');
+    }
+    if (requireUnversioned && status !== 'Disabled') {
+      throw new Error('Safe kernel retirement requires a never-versioned bucket; suspended historical versions need manual reconciliation');
     }
     return { bucket: this.bucket, region: this.region, versioning: status, publicBaseUrl: this.publicBaseUrl() };
   }
@@ -80,6 +83,26 @@ export class TencentCosPublisher {
       throw new Error(`Tencent COS mutable upload verification failed: ${key}`);
     }
     return { action: 'uploaded', key, sha256: digest, size: statSync(file).size };
+  }
+
+  async deleteKernelArtifact(relativeKey, expected, kernelPrefix = 'kernels') {
+    const prefix = normalizeRelativeKey(kernelPrefix);
+    const normalized = normalizeRelativeKey(relativeKey);
+    const name = normalized.slice(prefix.length + 1);
+    if (normalized !== `${prefix}/${name}` || name.includes('/')
+      || !/^[a-z0-9][a-z0-9-]*-[0-9A-Za-z][0-9A-Za-z._+-]*\+clawx\.[1-9][0-9]*-(darwin|linux|win32)-(arm64|x64)\.(?:tar\.zst(?:\.sha256)?|descriptor\.json)$/.test(name)
+      || !/^[a-f0-9]{64}$/.test(expected?.sha256) || !Number.isSafeInteger(expected?.size) || expected.size < 1) {
+      throw new Error('Refusing a non-versioned or unbound kernel retirement object');
+    }
+    const key = this.#key(normalized);
+    const head = await this.#headOrNull(key);
+    if (!head) return { action: 'absent', key };
+    if (header(head, SHA256_METADATA_HEADER) !== expected.sha256 || Number(header(head, 'content-length')) !== expected.size) {
+      throw new Error(`Retired COS object identity differs; no deletion performed: ${key}`);
+    }
+    await this.client.deleteObject(this.#objectParams(key));
+    if (await this.#headOrNull(key)) throw new Error(`Retired COS object still exists after deletion: ${key}`);
+    return { action: 'deleted', key };
   }
 
   async putImmutableDirectory(sourceDirectory, relativePrefix) {

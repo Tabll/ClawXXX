@@ -22,8 +22,8 @@
 3. 精确 payload 必须通过领域契约、无原生 history 扫描、许可证审计、平台签名检查，并生成 SPDX、CycloneDX 与 provenance。
 4. macOS 所有 Mach-O 叶子优先签名，完整 closure 的公证结果必须为 `Accepted`；Windows 明确选择 `artifact-signature-only` 时暂缓 Authenticode，并在哈希绑定的平台报告记录 `authenticode: false`、`status: deferred`，否则必须验证 Authenticode；Linux 固化并复验 ABI/支持基线。签名失败不能自动转入暂缓模式。
 5. Ed25519 artifact key 签不可变 descriptor；独立 Ed25519 catalog key 签单调递增且有期限的生产 catalog。晋级不会重建已批准制品。
-6. 两内核、五目标完整集合通过校验后，先把不可变制品发布到腾讯 COS 和 GitHub，最后发布签名 catalog。
-7. 发布后演练要求两个入口提供完全相同的签名 catalog、正确条件缓存及两个独立支持 Range 的制品主机；失败即停止晋级。
+6. 完整两内核五目标 build/single/dual 与同源码三平台 E2E 成功后自动请求受保护 production 审批；先保留签名发布意图，再上传不可变制品到腾讯 COS/GitHub，不改动已公证字节。
+7. 全部目标在两镜像通过 Range/If-Range/强 ETag 与大小校验后才覆盖 latest-only 签名 catalog；再精确读回两目录并复验下载。失败禁止清理旧包，部分发布只按已签记录恢复。
 
 每个制品包含源码/补丁身份、archive SHA-256、storage authority、测试/许可证/平台安全报告哈希、SBOM 与 provenance。宿主在激活前拒绝过期、撤销、降级、不兼容、非 HTTPS、超预算、路径穿越、符号链接或签名错误的输入。
 
@@ -63,9 +63,11 @@ Rollback key 不参与日常发布，只离线保存并具有 `rollback` purpose
 - 通过 `minHostVersion`/`maxHostVersion`、协议版本、bridge identity、平台、架构和 mandatory capabilities 强制兼容。
 - OpenClaw 与 DSH 独立版本化；更新一个不得停止、替换或回滚另一个。
 - Package Manager 保留当前与上一个验证版本；激活原子化，健康检查失败回滚，Repair 重新验证或下载不可变字节。
-- Catalog 条目未过期/撤销且宿主线仍受支持时，该运行时受支持。宿主支持期内至少保留当前及前一个兼容版本用于回滚。
+- 本地 Package Manager 保留当前及前一个已验证兼容版本用于回滚；这不承诺云端永久保留历史包。最新目录每槽位仅提供一个版本；旧包在全部引用目录的最大到期时间加 24 小时后按签名清单清理，已安装字节和 canonical 数据不受影响。清理后该旧版本不能再从云端重装。
 - 安全撤销可立即 EOL；普通 EOL 在未来 catalog 移除前通过发行说明预告。Catalog 移除不会删除已安装字节或 canonical 用户数据。
 - DSH 上游仍为 prerelease；ClawX 只支持 descriptor 指定的精确补丁版，不支持任意上游 build。
+
+每日受保护维护在目录剩余 48 小时时续签默认 7 天的元数据，不延长 artifact/key 自身有效期，也不绕过审批。清理只接受精确 signed inventory 与当前全镜像验证，保留审计 journals/receipts，拒绝版本控制 Enabled/Suspended 的 COS bucket。见 [自动发布设计](../../harness/reference/kernel-automatic-release.md) 和 [操作手册](operations/kernel-runtime-release-runbook.md)。
 
 ## 许可证发布批准
 

@@ -154,7 +154,7 @@ describe('frozen kernel sources', () => {
   it.each(['\n', '\r\n'])('keeps all runtime CI Node installations aligned with the shared pin under %j', eol => {
     const { version } = readJson<{ version: string }>('kernels/node-runtime.json');
     for (const [file, count] of [
-      ['kernel-runtime-build.yml', 3], ['kernel-runtime-promote.yml', 1], ['multi-kernel-runtime-smoke.yml', 1],
+      ['kernel-runtime-build.yml', 3], ['kernel-runtime-promote.yml', 2], ['multi-kernel-runtime-smoke.yml', 1],
     ] as const) {
       const workflow = readFileSync(join(root, '.github/workflows', file), 'utf8').replace(/\r?\n/g, eol);
       const pins = [...workflow.matchAll(/node-version:\s*['"]?([0-9.]+)['"]?/g)].map(match => match[1]);

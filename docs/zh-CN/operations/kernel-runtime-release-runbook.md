@@ -8,7 +8,7 @@
 2. `kernel-staging` 与 `kernel-production` 是两个启用 required reviewers、禁止任意分支部署的 GitHub Environments。常规 build 无 production catalog/COS 写权限；常规 promotion 无 rollback 私钥。
 3. 五个 required targets 都可用：macOS arm64/x64、Windows x64、Linux x64/arm64。
 4. 许可证负责人已经确认 GPL/LGPL/MPL notices、source-offer/履约地址与目标分发区域。CI 许可证报告通过不等于法务批准。
-5. `issued-at`/`expires-at` 落在 catalog key、全部 retained artifact keys 和全部 retained descriptors 的共同有效期内。过期 artifact 必须用精确 identity 显式撤销。
+5. 发布器自动分配单调 sequence 和默认 7 天目录有效期，并限制在全部所含 descriptor/key 的共同有效期内。普通旧版本退役不等于安全撤销；安全事故仍需独立审核处理。
 
 ## 2. Protected environment secrets
 
@@ -25,7 +25,7 @@
 | `CLAWX_WINDOWS_SIGNING_CERT_PFX_B64` | Windows Authenticode 证书 |
 | `CLAWX_WINDOWS_SIGNING_CERT_PASSWORD` | PFX 密码 |
 
-Windows 签名可在准备阶段暂缓配置，但这不会把 Windows 目标改成可选项：完整 production promotion 和正式宿主 release 继续要求五目标签名集合并失败关闭。未配置 PFX 时只能完成不冒充正式发布的本地/局部验证。
+按当前已批准策略，可选内核使用 `artifact-signature-only` 暂缓 Windows Authenticode；Ed25519、Windows 目标完整性/安装验收和哈希绑定的 deferred 平台报告仍强制执行，失败不能自动降级。上面两个 Windows PFX secrets 仅在未来明确启用 Authenticode 后需要；宿主正式签名验收另行处理。
 
 ### `kernel-production`
 
@@ -55,7 +55,7 @@ CLAWX_KEY_BACKUP_PASSPHRASE="$(security find-generic-password -a 'Tabll/ClawXXX'
 
 生成后必须执行 `verify`。需要配置 GitHub 时，`export-ci` 可临时生成 mode `0600` 的环境 secret JSON；上传完成立即删除该明文临时文件。rollback 私钥不在其中。密文与恢复口令必须分别复制到不同的离线介质；仅留在同一 Mac 或同一云盘不算离线灾备。轮换时生成新 backup，绝不覆盖旧 backup。
 
-腾讯 COS 固定为 bucket `aq-pub-1252262977`、region `ap-shanghai`、root prefix `clawxxx`，公开下载基址为 `https://aq-pub-1252262977.cos.ap-shanghai.tencentcos.cn/clawxxx/`。CAM 凭据应是可独立吊销的最小权限子账号，仅覆盖该 prefix 所需的 bucket location/versioning/list、object head/get/put/delete/ACL 与 multipart 操作。bucket versioning 必须不是 `Enabled`，否则不可变对象的 forbid-overwrite 语义会失效。发布器在写入前验证这两项。
+腾讯 COS 固定为 bucket `aq-pub-1252262977`、region `ap-shanghai`、root prefix `clawxxx`。CAM 凭据应为可独立吊销的最小权限账号，覆盖 bucket location/versioning 查询及该 prefix 的 object head/get/put/delete/ACL、multipart 操作；本自动内核发布器不列举删除 bucket/prefix。必须是从未启用版本控制的 bucket：`Enabled` 会使 forbid-overwrite 无效，`Suspended` 仍可能留下历史版本，均停止自动发布/清理并要求人工核对；脚本不改变 bucket 设置。
 
 ## 3. 构建 staging 完整集合
 
@@ -64,64 +64,72 @@ CLAWX_KEY_BACKUP_PASSPHRASE="$(security find-generic-password -a 'Tabll/ClawXXX'
 ```bash
 gh workflow run kernel-runtime-build.yml \
   --repo Tabll/ClawXXX \
-  --ref <protected-branch> \
+  --ref main \
   -f kernel=all \
   -f artifact-base-url=https://aq-pub-1252262977.cos.ap-shanghai.tencentcos.cn/clawxxx/kernels
 ```
 
-记录 run id 与唯一 `head_sha`。只有 `Build signed kernel runtimes` conclusion 为 `success` 才可晋级。该 run 必须产生 10 个 runtime artifact（两个内核 × 五目标）、10 份 clean-machine evidence，以及 5 份同机双真实制品 evidence。任一 matrix cancel/skip/failure 都不是完整集合。
+记录 run id 与唯一 `head_sha`。准入要求完整 25 个 build/single/dual jobs 全成功，且同 SHA 的 Electron E2E 三平台全成功。该 build run 必须产生 10 个未过期、ID/digest/源码身份完整的 runtime artifact（两个内核 × 五目标），另保留 10 份 clean-machine 和 5 份同机双真实制品 evidence。任一 matrix cancel/skip/failure 都不是完整集合。发布器会验证可信仓库、main、workflow path、run attempt、来源是当前 main 祖先，冻结输入与发布工具 checkout/当前 main 一致。
 
 重点归档：
 
 - 每目标 `runtime-artifact-smoke.json`；
 - 生产 `KernelPackageManager` 断点续传/验签/安全解包/激活/rescan/uninstall evidence；
 - 双制品 distinct PID、单侧 integrity failure/repair、独立卸载与 SQLite 保留 evidence；
-- macOS signing + notary submission id、Windows Authenticode、Linux ABI/sandbox 报告；
+- macOS signing + notary submission id、Windows artifact-only/deferred（或已明确启用的 Authenticode）、Linux ABI/sandbox 报告；
 - SPDX、CycloneDX、THIRD_PARTY_NOTICES、provenance 与 license report。
 
 ## 4. 晋级 production catalog
 
-首次发布使用 sequence 1、`bootstrap=true`。脚本会先确认两个 catalog URL 都是 404/410；任一镜像存在 catalog 都会失败：
+完成任一 runtime build 或 Electron E2E 都会触发只读准入任务；GitHub 的事件是 OR，代码按同 SHA 显式汇合后才进入原 `kernel-production` 环境审批。任一依赖未完成则跳过发布，不请求生产密钥。不取消正在运行的发布；发布与维护共用一个串行组。
+
+首次发布仅通过手动 `mode=publish`、精确 build run ID、`bootstrap=true` 初始化。脚本验证双 catalog URL 都为 404/410；403、超时或服务错误绝不当作不存在。若存在部分已签 bootstrap，则只恢复它，不创建新 sequence：
 
 ```bash
 gh workflow run kernel-runtime-promote.yml \
   --repo Tabll/ClawXXX \
-  --ref <protected-branch> \
+  --ref main \
+  -f mode=publish \
   -f staging-run-id=<successful-run-id> \
   -f expected-source-sha=<exact-head-sha> \
-  -f sequence=1 \
-  -f issued-at=<ISO-8601> \
-  -f expires-at=<ISO-8601> \
-  -f bootstrap=true \
-  -f github-release-tag=kernel-runtimes
+  -f bootstrap=true
 ```
 
-后续发布使用当前 sequence + 1、`bootstrap=false`。不要提供本地 previous catalog；workflow 必须从全部生产 HTTPS mirrors 解析并验签精确 N−1。需要删除失效条目时，额外传递逗号分隔的完整 identity：
+后续由完成事件自动请求审批，手动补发仍使用上述命令但 `bootstrap=false`。无需手填 sequence/issued-at/expires-at/tag；这些由受审策略与签名连续性决定，不再接受旧参数。紧急新增安全撤销不走日常自动退役：暂停维护/发布，使用独立审核的事故恢复流程，保留新签名 journal 连续性；不要用旧低层 CLI 直接覆盖生产指针。
 
-```text
-kernelId/artifactVersion/platform-arch
-```
+审批后重新检查 candidate digest、run attempt、当前 main 冻结输入，再对下载的完整原始 archive/descriptor/checksum 做签名、SHA-256、大小与目标验证。发布器 SHA 与 artifact source SHA 分别记录，不 checkout 构建来源来运行旧发布工具，也不重建/重签已公证 payload。
 
-例如：
-
-```bash
--f revoke-artifact-identities=openclaw/2026.7.1-2+clawx.6/linux-x64
-```
-
-晋级在任何远端写入前验证：staging run/name/conclusion/head SHA、当前 GitHub repository/tag 与 `distribution.json` 绑定、descriptor URL 处于配置的 immutable mirror 根、previous catalog 签名与 sequence、完整五目标集合，以及新 catalog 在 `issuedAt` 和 `expiresAt - 1ms` 的全量有效性。
+目录只提供每内核/平台/架构一个最新版（当前 10 项）；包名含 `artifactVersion` 且不可覆盖。先持久化双镜像不可变签名发布记录，上传全部原始文件，执行全部 10 项 × 2 host 的严格 Range/If-Range/强稳定 ETag/签名大小检查，再覆盖两份签名目录、精确读回并复验线上下载。首次真实验收与运行链接在 `harness/reference/kernel-automatic-release.md` 单独记录；本地测试不算上线。
 
 ## 5. 双镜像部分发布恢复
 
-Catalog 是最后写入项，但两个服务无法构成跨云原子事务。若一个镜像已是 sequence N、另一个仍是 N−1（首次发布也可能是 N/absent），不要创建 N+1，也不要手工改 JSON：
+两个服务无法构成跨云原子事务。若一边为 N，另一边为 N−1，或 GitHub delete/re-upload 期间为 404，不要手工改 JSON、改时间或创建 N+1：
 
-1. 使用完全相同的 staging run id、source SHA、sequence、issued-at、expires-at、bootstrap 和 revocation inputs 重新触发 promotion。
-2. resolver 只接受可信签名且 sequence 恰为 N 的 ahead catalog；N 与 N−1 各自出现多份时内容必须分别完全一致。
-3. 已发布 N 的时间窗和 requested revocations 必须与重试请求相符；本次 staging 的全部 descriptors/archives 必须与 N catalog 精确匹配。
-4. workflow 复用该不可变 N catalog，向落后镜像补写并重新执行双 catalog/双 artifact host Range drill。
+1. 使用相同 staging run ID/source SHA 和 bootstrap 标志重新触发；新作业先重新走只读检查和正常审批。
+2. 从双镜像 `kernel-release-N.json` 恢复精确已签 catalog 和 candidate，验证前驱摘要。N/404 在 N>1 时必须额外验证 `kernel-release-(N-1).json`。
+3. 已保留 candidate 的来源/run attempt/descriptor set 必须相同；冲突不可覆盖。源制品已过期、记录不存在/过期、签名撤销或 main 冻结输入已变化时停止，要求审核后的恢复方案，不能悄悄重新签 N。
+4. 重复上传只允许相同 digest/size。GitHub 502 留下的同名 `starter` 且 size=0/无 digest 空 reservation 可以重试移除；含字节或身份不符则停止。
+5. 复用精确 N 向落后镜像补写，再跑全目标双镜像验证。首次签名记录可能已存在但目录尚未上传，这同样复用，不更换签发时间。
 
 若两个镜像同 sequence 但内容不同，立即停止常规发布并进入安全事件处理；不得用 `--clobber` 人工选择一边。若两个镜像都已是相同 N，重复运行是只做校验/修复的幂等操作。
 
-## 6. 宿主发布与最终签字
+## 6. 目录续期与安全清理
+
+`kernels/release-policy.json` 当前规定 catalog 默认 7 天、剩余 48 小时续期、旧引用到期后 24 小时下载缓冲。每天 UTC 03:35（北京时间 11:35）的只读作业只在续期、退役到期或镜像修复需要时请求原生产审批；GitHub 定时任务可能延迟，审批拖延也可能导致 catalog 过期。维护不会自动绕过审核，也不延长 artifact/key 自身有效期；不足 1 小时可用有效期时失败，需要审核新 revision 或轮换密钥。
+
+手动触发维护：
+
+```bash
+gh workflow run kernel-runtime-promote.yml --repo Tabll/ClawXXX --ref main -f mode=maintain
+```
+
+维护不下载 Actions artifact、不重传旧 runtime。只重签目录元数据，沿用已签发布记录中的原始验收来源。新版本发布中断必须用原候选恢复，maintenance 不能冒充它。
+
+签名记录的 `activeCatalogExpiry` 持续累计每个活跃 identity 在所有历史目录中的最大有效期，避免缩短后续 TTL 时提前删除旧包。替换版本时生成精确退役清单，在该最大期限加缓冲后，要求两个 live catalog 与记录完全相同、全目标在线验证成功，才逐个核对旧 archive/descriptor/checksum 的 SHA metadata/digest 与 size 并删除。每个文件删除前再次检查 live 指针；任一差异或权限错误即停。缺失文件幂等成功，全部三文件/两镜像完成后才写签名 receipt，部分失败下次继续。
+
+只清理签名清单中的普通退役版本，不把它们标为安全撤销；不列举清空 COS prefix，不触碰当前包、宿主 installer、未知对象、已安装本地版本或统一 SQLite。云端旧包最终不可再次下载，已验证本地 last-known-good/修复缓存不被云作业删除。小体积 `metadata/kernel-release-N.json`、`kernel-retirement-<hash>.json`（GitHub 同名文件在 release 根）长期保留；CI 的公开证据另保留 90 天。若 legacy 包没有签名记录，先人工盘点，不推测删除。
+
+## 7. 宿主发布与最终签字
 
 只有 production promotion、线上 Range drill 与法务批准完成后才创建 `v<package.json version>` tag。`release.yml` 会重新运行完整 unit/contract/type/lint/chaos/comms/Harness、macOS/Windows/Linux Electron E2E、production catalog/trust drill，再构建并验证宿主签名包。
 
@@ -132,7 +140,7 @@ Catalog 是最后写入项，但两个服务无法构成跨云原子事务。若
 - 10 个 artifact identities/SHA-256 与两个下载 host 的 Range evidence；
 - Apple notary ids、Windows signer/thumbprint、Linux runner image/glibc/kernel；
 - license/security reviewers、批准时间和适用版本；
-- `TODO.md` 中 17 个 `[-]` 项逐项对应的证据链接。
+- `TODO.md` 中尚未完成项逐项对应的证据链接，含 M20 自动发布首次线上验收。
 
 拿到证据后才把相应 TODO 改为 `[x]`。本机测试、fixture 签名、未受保护 fork Actions 或控制面 smoke 不能替代这些项目。
 

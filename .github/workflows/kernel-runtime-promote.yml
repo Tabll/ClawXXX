@@ -1,59 +1,94 @@
 name: Promote kernel catalog
 
 on:
+  # workflow_run is OR: the read-only gate explicitly joins the exact source SHA.
+  workflow_run:
+    workflows: [Build signed kernel runtimes, Electron E2E]
+    types: [completed]
+    branches: [main]
+  schedule:
+    - cron: '35 3 * * *'
   workflow_dispatch:
     inputs:
+      mode:
+        description: Publish an accepted build, or renew metadata and clean due retired packages
+        type: choice
+        options: [publish, maintain]
+        default: publish
       staging-run-id:
-        description: Successful Build signed kernel runtimes workflow run
-        required: true
-      expected-source-sha:
-        description: Exact source commit built by the successful staging workflow
-        required: true
-      sequence:
-        description: Next monotonic production catalog sequence
-        required: true
-      issued-at:
-        description: ISO-8601 issue time
-        required: true
-      expires-at:
-        description: ISO-8601 expiry time
-        required: true
-      bootstrap:
-        description: Explicitly authorize sequence 1 only after both production mirrors report no catalog
-        type: boolean
-        required: true
-        default: false
-      revoke-artifact-identities:
-        description: Optional comma-separated exact artifact identities to revoke before signing
+        description: Exact successful full runtime build run ID (required for publish)
         required: false
-      github-release-tag:
-        description: Stable GitHub release used as the kernel mirror
-        required: true
-        default: kernel-runtimes
+      expected-source-sha:
+        description: Optional additional assertion of the artifact source SHA
+        required: false
+      bootstrap:
+        description: Explicitly authorize first publication only when there is no existing signed catalog
+        type: boolean
+        default: false
 
 permissions:
+  contents: read
   actions: read
-  contents: write
-  id-token: write
 
-env:
-  TENCENT_COS_BUCKET: aq-pub-1252262977
-  TENCENT_COS_REGION: ap-shanghai
-  TENCENT_COS_ROOT_PREFIX: clawxxx
-
+# Covers publishing, catalog renewal and retirement, including approval waits.
 concurrency:
   group: kernel-runtime-production-catalog
   cancel-in-progress: false
 
 jobs:
-  promote:
-    environment: kernel-production
+  acceptance:
+    name: Read-only release acceptance
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 10
+    outputs:
+      eligible: ${{ steps.gate.outputs.eligible }}
+      mode: ${{ steps.gate.outputs.mode }}
+      run-id: ${{ steps.gate.outputs.run-id }}
+      source-sha: ${{ steps.gate.outputs.source-sha }}
+      candidate-digest: ${{ steps.gate.outputs.candidate-digest }}
+      artifact-ids: ${{ steps.gate.outputs.artifact-ids }}
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ inputs['expected-source-sha'] }}
+          # Publisher code is reviewed main, NOT the artifact's possibly older SHA.
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.20.0
+      - name: Verify frozen publisher source inputs
+        run: node scripts/kernel-runtime/verify-sources.mjs
+      - name: Join complete runtime acceptance and same-source Electron E2E
+        id: gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_MODE: ${{ inputs.mode || 'publish' }}
+          STAGING_RUN_ID: ${{ inputs['staging-run-id'] }}
+          EXPECTED_SOURCE_SHA: ${{ inputs['expected-source-sha'] }}
+          CANDIDATE_OUTPUT: accepted-candidate.json
+        run: node scripts/kernel-runtime/lib/release-gate.mjs
+      - uses: actions/upload-artifact@v4
+        if: steps.gate.outputs.mode == 'publish' && steps.gate.outputs.eligible == 'true'
+        with:
+          name: kernel-release-acceptance-${{ github.run_id }}-${{ github.run_attempt }}
+          path: accepted-candidate.json
+          retention-days: 90
+
+  promote:
+    name: Publish verified runtimes and safely retire old packages
+    needs: acceptance
+    if: needs.acceptance.outputs.eligible == 'true'
+    environment: kernel-production
+    permissions:
+      contents: write
+      actions: read
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
       - uses: pnpm/action-setup@v4
         with:
           run_install: false
@@ -61,29 +96,14 @@ jobs:
         with:
           node-version: 24.20.0
           cache: pnpm
-      - name: Install frozen promotion tooling
-        run: pnpm install --frozen-lockfile
-      - name: Bind promotion to a successful staging workflow and exact source commit
-        env:
-          GH_TOKEN: ${{ github.token }}
-          STAGING_RUN_ID: ${{ inputs['staging-run-id'] }}
-          EXPECTED_SOURCE_SHA: ${{ inputs['expected-source-sha'] }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          run_json="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${STAGING_RUN_ID}")"
-          actual_name="$(jq -r '.name' <<<"$run_json")"
-          actual_conclusion="$(jq -r '.conclusion' <<<"$run_json")"
-          actual_sha="$(jq -r '.head_sha' <<<"$run_json")"
-          test "$actual_name" = 'Build signed kernel runtimes'
-          test "$actual_conclusion" = 'success'
-          test "$actual_sha" = "$EXPECTED_SOURCE_SHA"
-          test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE_SHA"
+      - name: Install frozen publication tooling without lifecycle scripts
+        run: pnpm install --frozen-lockfile --ignore-scripts
       - uses: actions/download-artifact@v4
+        if: needs.acceptance.outputs.mode == 'publish'
         with:
           github-token: ${{ github.token }}
-          run-id: ${{ inputs['staging-run-id'] }}
-          pattern: kernel-runtime-*
+          run-id: ${{ needs.acceptance.outputs.run-id }}
+          artifact-ids: ${{ needs.acceptance.outputs.artifact-ids }}
           merge-multiple: false
           path: temp/approved-artifacts
       - name: Materialize public release trust roots
@@ -93,127 +113,25 @@ jobs:
           node scripts/kernel-runtime/build-trust-store.mjs
           --channel production
           --output temp/roots.production.json
-      - name: Resolve exact signed catalog continuity from both production mirrors
+      - name: Revalidate, publish immutable assets, replace signed catalogs, then clean safely
         env:
-          NEXT_SEQUENCE: ${{ inputs.sequence }}
-          BOOTSTRAP: ${{ inputs.bootstrap }}
-          GITHUB_RELEASE_TAG: ${{ inputs['github-release-tag'] }}
-        run: >-
-          node scripts/kernel-runtime/resolve-previous-catalog.mjs
-          --distribution resources/kernels/distribution.json
-          --trust-store temp/roots.production.json
-          --github-repository "$GITHUB_REPOSITORY"
-          --github-release-tag "$GITHUB_RELEASE_TAG"
-          --sequence "$NEXT_SEQUENCE"
-          --bootstrap "$BOOTSTRAP"
-          --expected-issued-at "${{ inputs['issued-at'] }}"
-          --expected-expires-at "${{ inputs['expires-at'] }}"
-          --required-revocations "${{ inputs['revoke-artifact-identities'] }}"
-          --output temp/kernel-catalog.previous.json
-          --published-output temp/kernel-catalog.production.json
-          --evidence temp/catalog-continuity.json
-      - name: Sign immutable production catalog without rebuilding artifacts
-        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_MODE: ${{ needs.acceptance.outputs.mode }}
+          STAGING_RUN_ID: ${{ needs.acceptance.outputs.run-id }}
+          EXPECTED_SOURCE_SHA: ${{ needs.acceptance.outputs.source-sha }}
+          EXPECTED_CANDIDATE_DIGEST: ${{ needs.acceptance.outputs.candidate-digest }}
+          BOOTSTRAP: ${{ github.event_name == 'workflow_dispatch' && inputs.bootstrap && 'true' || 'false' }}
           CLAWX_CATALOG_SIGNING_KEY_ID: ${{ secrets.CLAWX_CATALOG_SIGNING_KEY_ID }}
           CLAWX_CATALOG_SIGNING_PRIVATE_KEY_B64: ${{ secrets.CLAWX_CATALOG_SIGNING_PRIVATE_KEY_B64 }}
-          BOOTSTRAP: ${{ inputs.bootstrap }}
-          REVOKE_ARTIFACT_IDENTITIES: ${{ inputs['revoke-artifact-identities'] }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          if [ -f temp/kernel-catalog.production.json ]; then
-            echo 'Reusing the exact trusted sequence already present on at least one production mirror.'
-            exit 0
-          fi
-          previous=()
-          if [ -f temp/kernel-catalog.previous.json ]; then
-            previous=(--previous temp/kernel-catalog.previous.json)
-          fi
-          revocations=()
-          IFS=',' read -ra requested_revocations <<< "$REVOKE_ARTIFACT_IDENTITIES"
-          for identity in "${requested_revocations[@]}"; do
-            identity="${identity#"${identity%%[![:space:]]*}"}"
-            identity="${identity%"${identity##*[![:space:]]}"}"
-            if [ -n "$identity" ]; then revocations+=(--revoke "$identity"); fi
-          done
-          node scripts/kernel-runtime/promote-catalog.mjs \
-            --descriptor-dir temp/approved-artifacts \
-            --sequence "${{ inputs.sequence }}" \
-            --channel production \
-            --issued-at "${{ inputs['issued-at'] }}" \
-            --expires-at "${{ inputs['expires-at'] }}" \
-            --output temp/kernel-catalog.production.json \
-            --trust-store temp/roots.production.json \
-            --bootstrap "$BOOTSTRAP" \
-            "${previous[@]}" \
-            "${revocations[@]}"
-      - name: Verify the complete promotion set
-        run: |
-          node scripts/kernel-runtime/verify-release-set.mjs --catalog temp/kernel-catalog.production.json --trust-store temp/roots.production.json --artifacts temp/approved-artifacts --distribution resources/kernels/distribution.json --kernels openclaw,deepseek-harness
-      - name: Flatten immutable runtime assets
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p temp/publish
-          find temp/approved-artifacts -type f \( -name '*.tar.zst' -o -name '*.descriptor.json' -o -name '*.sha256' \) -exec cp {} temp/publish/ \;
-          test "$(find temp/publish -type f | wc -l | tr -d ' ')" -ge 20
-      - name: Verify the protected Tencent COS target before any external write
-        env:
           TENCENTCLOUD_SECRET_ID: ${{ secrets.TENCENTCLOUD_SECRET_ID }}
           TENCENTCLOUD_SECRET_KEY: ${{ secrets.TENCENTCLOUD_SECRET_KEY }}
-        run: node scripts/tencent-cos.mjs verify-bucket
-      - name: Publish immutable runtime assets to Tencent COS without overwrite
-        env:
-          TENCENTCLOUD_SECRET_ID: ${{ secrets.TENCENTCLOUD_SECRET_ID }}
-          TENCENTCLOUD_SECRET_KEY: ${{ secrets.TENCENTCLOUD_SECRET_KEY }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          for file in temp/publish/*; do
-            name="$(basename "$file")"
-            node scripts/tencent-cos.mjs put-immutable --file "$file" --key "kernels/$name"
-          done
-      - name: Publish immutable runtime assets to GitHub mirror without overwrite
-        env:
-          GH_TOKEN: ${{ github.token }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          tag="${{ inputs['github-release-tag'] }}"
-          gh release view "$tag" >/dev/null 2>&1 || gh release create "$tag" --title 'ClawX Kernel Runtimes' --notes 'Immutable, signed optional kernel runtime artifacts.'
-          mkdir -p temp/existing-github
-          for file in temp/publish/*; do
-            name="$(basename "$file")"
-            if gh release download "$tag" --pattern "$name" --dir temp/existing-github >/dev/null 2>&1; then
-              cmp "$file" "temp/existing-github/$name" || { echo "Immutable GitHub asset differs: $name" >&2; exit 1; }
-            else
-              gh release upload "$tag" "$file"
-            fi
-          done
-      - name: Publish signed catalog last to both mirrors
-        env:
-          GH_TOKEN: ${{ github.token }}
-          TENCENTCLOUD_SECRET_ID: ${{ secrets.TENCENTCLOUD_SECRET_ID }}
-          TENCENTCLOUD_SECRET_KEY: ${{ secrets.TENCENTCLOUD_SECRET_KEY }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          node scripts/tencent-cos.mjs put-mutable --file temp/kernel-catalog.production.json --key kernels/catalog.production.json
-          gh release upload "${{ inputs['github-release-tag'] }}" temp/kernel-catalog.production.json --clobber
-      - name: Drill both catalogs and both artifact mirrors with Range resume
-        run: >-
-          node scripts/kernel-runtime/distribution-drill.mjs
-          --distribution resources/kernels/distribution.json
-          --trust-store temp/roots.production.json
-          --platform linux --arch x64
-          --kernels openclaw,deepseek-harness
+        run: node scripts/kernel-runtime/publish-runtimes.mjs
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
-          name: kernel-production-catalog-${{ inputs.sequence }}
+          name: kernel-production-evidence-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
-            temp/kernel-catalog.production.json*
-            temp/kernel-catalog.previous.json
-            temp/catalog-continuity.json
+            temp/kernel-production-evidence/
             temp/roots.production.json
-          if-no-files-found: error
+          if-no-files-found: warn
           retention-days: 90

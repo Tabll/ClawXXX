@@ -166,6 +166,8 @@ OpenClaw 源码和开发依赖已切换为 `2026.9.2+clawx.13`。生产桥接按
 
 两个 +clawx.13 内核使用 Node 24.20.0，已通过五目标 staging 全部 25 项任务、四份 macOS 公证（Accepted）及同源码三平台 Electron E2E，详见 [CI 验收证据](harness/reference/windows-runtime-ci-repair.md)。Windows 仅使用制品签名，不启用 Authenticode。这些制品尚未发布到 COS/catalog，已安装内核暂不会更新；生产发布和真实账号验收仍待完成。
 
+完整内核构建与同源码 E2E 成功后，现会自动排队进入受保护的生产发布。腾讯 COS 和 GitHub 上的版本化包不可覆盖；全目标双镜像验证通过后只替换 latest-per-target 签名目录。旧包等全部引用目录到期再加 24 小时后安全清理，保留签名审计记录并支持中断重试。每日受保护维护在制品/密钥有效期内续签默认 7 天的目录，仍需正常审批；首次 bootstrap 和真实线上验收不以本地测试代替。参见[自动发布设计](harness/reference/kernel-automatic-release.md)和[操作手册](docs/zh-CN/operations/kernel-runtime-release-runbook.md)。
+
 - **进程模型**：Electron Main 管理系统集成、唯一 DataService、Package Manager 和逐内核独立 Supervisor；OpenClaw 与 DSH 可并行运行，Renderer 和 runtime 都不能直接打开 canonical ClawX SQLite 或互相直连。
 - **内核校验**：安装与重扫使用最多 8 路并发的文件校验，保留全部签名哈希、大小和路径检查。每次解包使用独立的 256 项目录缓存，限制大包的额外开销；缓存淘汰只触发文件系统复查，不放宽路径保护。宿主工具链的固定补丁将 Windows 小文件内存映射写入改为普通文件写入，保留 tar 路径串行保护和全部检查。安装后的文件保持只读，设置只读保护失败会拒绝安装；Windows 原子目录移动仅对短暂 `EPERM`/`EBUSY` 锁累计等待最多 1.5 秒，持久锁仍失败，不以复制或放宽权限绕过。干净环境 CI 会记录解包、哈希校验、只读封装等阶段耗时，包括失败与超时；可选诊断不能改变校验结果。
 - **配置交付**：Gateway 运行时由 Main 使用 `config.get` / `config.set`，停止或启动中则更新解析后的 JSON5 配置；普通 Provider/Agent/Skill/模型修改不会替换进程，凭据通过 `secrets.reload` 热更新。连续三分钟没有已验证的 Gateway 活动后，ClawX 会验证核心 RPC，并且只重启其自身拥有且不可用的 Gateway 进程；外部管理的 Gateway 保留给用户手动恢复。

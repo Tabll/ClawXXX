@@ -22,6 +22,7 @@ describe('production kernel distribution drill', () => {
         format: 'tar.zst',
         url: `http://primary.test/${kernelId}.tar.zst`,
         sha256: 'a'.repeat(64),
+        compressedSize: 4096,
       },
       publishedAt: '2026-08-23T00:00:00.000Z',
       expiresAt: '2027-01-01T00:00:00.000Z',
@@ -87,7 +88,7 @@ describe('production kernel distribution drill', () => {
       platform: 'linux',
       arch: 'x64',
       storage: { authority: 'clawx-data-service', nativeDurableHistory: false },
-      archive: { format: 'tar.zst', url: 'http://primary.test/openclaw.tar.zst', sha256: 'a'.repeat(64) },
+      archive: { format: 'tar.zst', url: 'http://primary.test/openclaw.tar.zst', sha256: 'a'.repeat(64), compressedSize: 4096 },
       publishedAt: '2026-08-23T00:00:00.000Z',
       expiresAt: '2027-01-01T00:00:00.000Z',
     }, 'descriptorSignature', 'artifact-key', keys.artifact.privateKey);

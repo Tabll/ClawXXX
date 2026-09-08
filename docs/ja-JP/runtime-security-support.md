@@ -41,6 +41,8 @@ Optional runtimeは`.app`ではなく独立Mach-Oです。各ファイルを`cod
 
 互換性はhost version、protocol、bridge identity、platform/arch、mandatory capabilitiesで強制します。各kernelは独立更新され、activeと直前のverified versionを保持し、atomic activation失敗時にrollbackします。Security revocationは即時EOLになり得ます。通常EOLはrelease notesで予告します。Catalogからの削除はinstalled bytesやcanonical dataを削除しません。DSHは指定されたpatched prereleaseだけをサポートします。
 
+直前バージョンの保持はローカルの方針で、クラウド履歴の永久保存ではありません。本番 catalog は各 kernel/target の最新版だけを提供します。旧パッケージは全参照 catalog の最大有効期限＋24 時間後に署名済み一覧から安全に削除し、それ以降のクラウド再ダウンロードはできません。完全な runtime/E2E 同一 SHA 検証後に保護環境へ自動要求し、全ターゲットの両ミラー Range/If-Range・強 ETag・サイズ検証前後に catalog を切り替えます。日次保守は残り 48 時間の通常 7 日間 catalog を artifact/key の期限内で更新します。承認を回避せず、署名 journal/receipt を保持し、COS バージョニング Enabled/Suspended は拒否します。[公開設計](../../harness/reference/kernel-automatic-release.md)。
+
 License auditはengineering gateであり法的助言ではありません。GPL/LGPL/MPLのsource義務と`libsignal`法務承認が公開前に必要です。無licenseのQQ QR connectorは除外し、AppID/AppSecret設定は残します。
 
 `kernel-runtime-build.yml`は各targetの実artifactをproduction Package Manager経路へ通し、別jobで同一machine上の2 artifact同時起動とfailure isolationも検証します。`kernel-runtime-promote.yml`は完全setを検証・公開します。`release.yml`はpackage前に全unit/contract/type/lint/chaos/comms/Harness、macOS/Windows/Linux Electron E2E、live 2-mirror Range drillを再実行し、`win-build-test.yml`はsigned installerのfocused検証を保持します。署名/notarization log、catalog sequence、hash、distribution drill、法務承認をreleaseと共に保持し、local testで代替しません。

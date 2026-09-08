@@ -3,6 +3,7 @@ id: multi-kernel-runtime
 title: Multi-Kernel Runtime
 type: runtime-bridge
 ownedPaths:
+  - .github/workflows/kernel-runtime-promote.yml
   - kernels/**
   - patches/openclaw@*.patch
   - patches/deepseek-harness@*.patch
@@ -63,6 +64,15 @@ This scenario governs optional OpenClaw and DeepSeek Harness runtime packages, t
 The durable architecture and release gates are defined in `harness/reference/multi-kernel-runtime.md`. Work in this scenario must also use `gateway-backend-communication` when it changes Renderer/Main, Host API, ACP, Gateway, bridge, or runtime message paths.
 
 Both runtimes must satisfy one canonical ClawX UI and storage contract. Upstream-specific models stay inside drivers and bridges. Runtime packages are immutable CI products downloaded on demand, not dependencies installed or patched on the end-user machine. Managed runtimes do not retain a second durable conversation, cron, channel-message, or usage history.
+
+Automatic distribution is governed by `harness/reference/kernel-automatic-release.md`.
+Join complete trusted same-source runtime/E2E evidence before protected publication;
+verify immutable bytes before overwriting only signed catalog pointers. Latest-only
+catalogs retire old packages without revoking them. Cleanup must use exact signed
+retirement records, maximum historical catalog expiry plus download grace, both
+live mirrors and all-target strict Range validators. Include bootstrap, partial
+publication, stale events, expiry renewal and interrupted deletion failure tests.
+Maintenance retains reviewer approval and does not modify local installed runtimes.
 
 Builder portability includes checkout/system-temp volume separation, verified
 same-volume staging and failure cleanup for both source and Node downloads.

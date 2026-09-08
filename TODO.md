@@ -536,6 +536,16 @@
 - [x] `MK-1976` 审查 Node 官方 issue 63620、维护者确认的 PR 62561 和 Git for Windows 原生状态转换源码：24.15.0 的 Windows TCP 路径有未初始化 OSVERSIONINFO 缺陷，部分 NTSTATUS 被 Bash 映射为 127。升级当前同 ABI 的 Node 24.20.0 LTS，核对官方五平台 SHA-256，同步两个 source/runtime 和 OpenClaw control 版本/hash 链至 +clawx.13；上游内核/语义补丁/依赖锁不变。增加 pre-seal 原生父进程监督与 Gateway/ACP 分阶段日志、LF/CRLF CI pin 对齐和失败退出码回归，全部原始时限/真实性/签名与存储闸门保留。
 - [x] `MK-1977` 新版 Node 的 Windows 71/71 focused 与新监督入口实包全流程 97672 ms 通过（25 阶段、原生 0/0x0、七 Channels、重启及无第二份历史均成功）；宿主 2348 全量 / 190 实际 CI 前置、typecheck/lint/source/comms/Harness 和任务 diff-aware validate/dry-run 全通过。仅清理本次 GUID 隔离目录，原始包和主机日志保留，私有服务已关闭、VM 恢复关闭。修复 45bb9260 已提交/推送，[同 SHA E2E #35](https://github.com/Tabll/ClawXXX/actions/runs/34195995688) 三平台全通过（Linux 150/5 跳过、macOS 152/3 跳过、Windows 153/2 跳过）；[完整 staging #21](https://github.com/Tabll/ClawXXX/actions/runs/34205494108) 经 Tabll 正常 kernel-staging 审批，25/25 任务全部通过，最终远端证据见已完成的 MK-1940。不能宣称旧 CI 崩溃栈已复现。
 
+## M20：已验收内核自动发布与安全退役
+
+- [x] `MK-2001` 自动汇合同源码完整 build/single/dual 与三平台 E2E，绑定可信仓库、main、运行身份及冻结输入，保留正常生产审批和显式首次 bootstrap。2026-09-08 新准入代码只读复核真实 staging #21、同 SHA E2E #35、25+3 成功任务与 10 个未过期制品通过，候选摘要见 [验收记录](harness/reference/kernel-automatic-release.md)。
+- [x] `MK-2002` 将审核过的发布工具与内核构建 SHA 分开绑定；审批后重验完整 candidate 摘要/attempt/当前 main 冻结输入与本地 signed bytes；版本化制品不改字节，双镜像全部上传/校验后才切换 latest-only 签名目录。GitHub kernel release 不抢宿主 latest 指针。
+- [x] `MK-2003` 增加不可变签名发布记录、单调序号、重复/乱序事件拒绝、N/N−1 与任意 N/404 部分发布幂等恢复，以及受 artifact/key 有效期约束的目录续期；重试不改变已签 N/时间/来源。
+- [x] `MK-2004` 签名 ledger 记录全部引用目录的最大有效期，再加 24 小时缓冲生成精确退役清单；线上验证成功后逐文件校验旧对象 hash/size 才删除，不 list-delete，保留当前包、其他 COS 内容及审计记录；缩短后续 TTL 不会提前删旧包。
+- [x] `MK-2005` 增加每日受保护清理/续期、部分删除/收据双镜像恢复、十槽位两镜像严格 Range/If-Range/强 ETag/大小演练；历史签名 matrix 快照允许未来新增内核/目标，缺失完整新矩阵或删除旧支持目标仍失败关闭。
+- [x] `MK-2006` 119 项发布/信任/来源定向回归、全量 2437 passed / 6 既有条件 skips、typecheck、lint（0 errors / 7 既有 warnings）、source verify、comms replay/compare、Harness CI（19 tests）及 task diff-aware validate/dry-run、YAML 解析与 git diff --check 通过。四语 README/安全支持、架构、设计、Runbook 和 Harness 规则同步；没有 Renderer/Main/UI 行为修改，不用这些本地测试冒充上线。
+- [-] `MK-2007` 用户于 2026-09-09 授权提交、推送并启动首次受保护发布；正常审批生产 bootstrap，验证 COS/GitHub catalog 与真实线上下载证据，记录实际版本与发布序号。执行进度见 [发布验收记录](harness/reference/kernel-automatic-release.md)；真实线上验证完成前不勾选上线验收。
+
 ## 每个实现 PR 的最低检查
 
 - [x] 对应 Harness task spec 已创建并通过 `pnpm harness validate --spec ...`。

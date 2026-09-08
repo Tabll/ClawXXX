@@ -940,7 +940,7 @@ not-installed
 
 - HTTPS 之外还必须校验 pinned public key 签名和 SHA-256。
 - Catalog envelope 必须包含单调递增 sequence、签发/过期时间和 key id；客户端持久化最高已接受 sequence，在线更新默认拒绝 rollback/freeze metadata。紧急降级必须使用单独的受签名 rollback authorization。
-- Production promotion 不信任人工指定的 previous catalog：N>1 正常路径必须从所有配置镜像取得签名有效、内容完全一致的 N−1；N=1 需要受保护 bootstrap 并证明镜像均不存在 catalog。部分发布重试只接受可信 N/N−1（首次 N/absent），且 N、请求与 staging 集合必须精确吻合；同 sequence 分叉失败关闭。执行仓库/tag 和 descriptor URL 必须属于 distribution allowlist；新 catalog 在签发时和过期前一刻都必须连同全部 retained artifacts/keys 验证通过。
+- Production promotion 不信任人工指定的 previous catalog：正常路径从双镜像验证完全一致的 N−1；N=1 需要显式受保护 bootstrap 和双镜像缺失证明。先保留不可变签名发布记录再上传，记录精确 N、前驱摘要、CI 来源及安全退役清单；只按此记录恢复 N/N−1 或 N/absent，后者非首次时还需验证 N−1 的记录。重试不得改变已保留的 N 或候选制品，同序号分叉失败关闭。执行仓库/tag/URL 必须属于 distribution allowlist；新 catalog 在签发时和过期前一刻均须通过全部签名与有效期校验。
 - Signing key rotation 使用旧/新 key 交叉签名或内置的下一代信任根；artifact signing、catalog promotion 和 CDN 写权限相互分离。
 - 支持 Range 续传；恢复前验证 partial file identity/ETag。
 - 解压拒绝绝对路径、`..`、越界 symlink/hardlink、设备文件和超出 manifest 的 file count/size。
@@ -961,6 +961,17 @@ not-installed
 - 默认只删除 runtime artifact。
 - 统一 Conversation、Cron、Channel、Usage 和 Blob refs 独立于 runtime，卸载任一内核后继续保留并可浏览。
 - 删除统一用户数据需要独立入口、二次确认和逐类选择，禁止把“卸载内核”等同于“删除对话/定时任务/密钥”。
+
+### 14.5 自动发布、云端保留与后续内核扩展
+
+- `kernel-runtime-promote.yml` 同时监听完整构建和 Electron E2E 完成事件，但显式按同一 SHA 汇合：当前两内核五目标必须全部 25 项 build/single/dual 和 3 平台 E2E 成功，10 个 Actions runtime 制品必须存在、未过期且身份/digest 完整。
+- 只接受 `Tabll/ClawXXX` 的可信 main workflow。已构建 SHA 可以早于发布器 SHA，但必须是当前 main 祖先且冻结 source manifest 与审核 checkout/当前 main 一致；审批后再次核对 candidate 摘要、run attempt 和制品身份。发布器不重新构建、不修改/重签已公证的内核字节。
+- `kernels/release-policy.json` 声明启用内核、下载目标与保留时限；required targets 读取共用 `platform-matrix.json`。新内核需先扩展真实 build/single/并发验收矩阵与 source/driver，再加入 policy；缺少任一槽位会失败，而非默默降级为局部发布。
+- 包名固定为 `<kernel>-<artifactVersion>-<platform>-<arch>.tar.zst`，对应 `.descriptor.json` 与 `.tar.zst.sha256` 均不可覆盖；仅覆盖 COS `kernels/catalog.production.json` 与 GitHub `kernel-catalog.production.json`。目录每槽位只提供最新版，撤销账本不丢失，普通退役不等于安全撤销。
+- 发布过程为“签名意图记录 → 双镜像不可变上传 → 十槽位双镜像 Range/If-Range/强 ETag/大小验证 → 切换双目录 → 精确读回及再次验证 → 到期清理”。单一 concurrency group 覆盖发布和维护，失败不以人工覆盖数据绕过。
+- 每份签名记录保存仍活跃制品在所有历史目录中的最大到期时间。旧包只在该时间加 24 小时后按精确名称/hash/size 删除，不列举删除整个 prefix，不碰其他 COS 对象、宿主包、当前包或本地已安装内核/SQLite。完成后写签名清理收据；部分删除可幂等重试。
+- 默认 catalog 7 天有效，剩余 48 小时进入续期；每日维护仍需原 `kernel-production` 审批。只重签目录元数据，不延长 descriptor 或密钥有效期。审批拖延或可用有效期不足会阻断更新，需要人工介入。bucket 必须从未启用版本控制，否则拒绝以普通 DELETE 假装清除历史版本。
+- 云端旧包清理后不能再从镜像下载该版本；本地已验证 last-known-good 与修复缓存不被此作业清理。小体积签名发布记录/收据持续留存。实现、故障测试和真实上线证据见 [自动发布参考](../../harness/reference/kernel-automatic-release.md) 与 [操作手册](operations/kernel-runtime-release-runbook.md)。
 
 ## 15. 文件与数据布局
 
