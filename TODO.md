@@ -2,7 +2,7 @@
 
 > 对应设计：[docs/zh-CN/multi-kernel-design.md](docs/zh-CN/multi-kernel-design.md)
 >
-> 状态：1f85184c 的第 15 轮通过 10/10 构建、4/4 macOS 公证、13/15 单/双 clean-machine 和三平台 E2E，Windows CRLF 问题已解决（存储 100/72 全通过）。余下 Windows 封包后工具探针与双内核重装修复超时失败均已在本地修复验证：受限后台续查、独立 256 项 tar 目录缓存；Windows VM 双真实签名包并发安装、独立故障修复/卸载及 SQLite 重开保留全部通过，约 329 秒。待新 SHA 原生 CI 最终验收。未扩大原时限、关闭闸门或改变内核 +12/hash/lock；MK-1940 仍未完成，未发布 COS/catalog。
+> 状态：5aaf52ea 的第 16 轮通过 10/10 构建、4/4 macOS 公证、5/5 双内核及 9/10 单内核 clean-machine、三平台 E2E。两个旧 Windows 问题已原生通过：封包后后台工具探针通过，单内核真实安装/Range/重扫/卸载 454156 ms、双内核含独立修复 730583 ms。唯一失败是单内核任务后续 5 项宿主测试使用 POSIX-only URL/路径夹具，正在修复并增加前置防线；不是安装再次超时。未扩大原时限、关闭闸门或改变内核 +12/hash/lock；MK-1940 仍待新 SHA 全矩阵，未发布 COS/catalog。
 >
 > 最近完整本地证据（2026-09-01）：Vitest 243 files / 241 passed / 2 skipped、2116 tests passed / 6 skipped（其中制品依赖项只在真实 CI 制品存在时执行）；Electron E2E 既有证据 151 passed / 3 platform skips；multi-kernel chaos 既有证据 28/28；DSH `0.1.2-alpha.2` 干净精确上游树完成严格 patch/overlay 重放、冻结安装、完整 host build、12 files / 43 focused tests，并在真实 macOS `sandbox-exec` 下通过 3/3 runtime self-tests；typecheck、lint、comms 与本任务 Harness 全绿
 >
@@ -519,6 +519,9 @@
 - [x] `MK-1960` 隔离 Windows 11 / 固定 Node 24.15.0 上使用 CI #12 的真实 +12 签名包（52,729 文件/807,751,063 bytes）完成 CPU/文件调用采样；定位 tar 6.2.1 在每个文件前后遍历不受限正向目录缓存。生产和 CI 解包统一使用独立 256 项 FIFO cache，淘汰只导致文件系统复查；不改变 Windows 路径串行保护、任何完整性检查、依赖锁或内核字节。提取/校验/封装 181014→149385 ms，加完整重扫 193552→162342 ms；仅为 VM 单次前后样本，不代替原生 CI。
 - [x] `MK-1961` 90 focused / 2316 完整宿主测试通过（0 失败/6 既有制品条件跳过），涵盖缓存容量/失效/并发隔离、512 新目录的真实签名夹具完整提取/重扫/只读保护及原有恶意归档/清理检查。typecheck、lint（0 错误/7 既有警告）、source/comms、Harness CI/任务 validate/dry-run 通过；四语 README、规则/场景/任务/参考文档同步。等待 Windows 双真实制品安装/独立修复/卸载验证后提交并执行新 SHA 全矩阵。
 - [x] `MK-1962` 未启用性能插桩的 Windows VM 使用两份 CI #12 原始签名制品/公钥，经生产 Package Manager 和磁盘 SQLite 完成并发安装（164947 ms）、不同 PID 控制桥、单侧损坏拒绝及独立重装（167578→319928 ms）、分别卸载/重扫、关闭重开 SQLite 后保留对话；全部断言 328871 ms 通过，清理 332322 ms 完成，保持 15 分钟上限。此为隔离真实制品探针，不冒充 GitHub 原生 Vitest 或真实供应商对话证据；新 SHA 全矩阵仍由 MK-1940 跟踪。
+- [x] `MK-1963` 核对 5aaf52ea 的 [第 16 轮 34178442166](https://github.com/Tabll/ClawXXX/actions/runs/34178442166)：10 build/4 公证/5 dual/9 single 成功，[E2E #30](https://github.com/Tabll/ClawXXX/actions/runs/34178397696) 三平台成功。Windows 封包后真实 Gateway/ACP 及单制品生产安装全通过（454156 ms）；双制品独立修复/卸载与 SQLite 保留原生通过（730583 ms）。剩余单任务在后续宿主契约 24/29 中失败 5 项，明确为无 Windows 盘符的 file:///workspace 与硬编码 /kernels/openclaw/；未将 24/25 任务误记为全绿。
+- [x] `MK-1964` ACP 使用 native absolute path + pathToFileURL，覆盖空格/中文/#/% round-trip、实际 cwd、非法 URL 拒绝与执行槽释放；driver 精确比较安装路径并覆盖 darwin/linux/win32（node.exe）布局和缺失执行文件拒绝，只清理自有临时根。原生 Windows 11 / Node 24.15.0 的 ACP/driver/build-policy 三套基线 5 failed/24 passed，修复加 5 项后 34/34 passed。两组回归新增到 build 前且保留 post-artifact gate，不改生产适配器、超时、重试或内核输入。
+- [x] `MK-1965` 路径修复的 2321 完整宿主与 137 实际 CI 前置检查全通过（完整宿主 0 失败/6 既有制品条件跳过）；typecheck、lint（0 错误/7 既有警告）、source verify、comms、Harness CI/任务 validate/dry-run 与 diff check 通过。四语 README 经审查无需修改；规则/场景/任务/参考证据同步。新 SHA 提交推送后须继续执行正常审批的完整 staging，MK-1940 尚未完成，COS/catalog 不变。
 
 ## 每个实现 PR 的最低检查
 

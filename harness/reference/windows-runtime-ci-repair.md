@@ -779,3 +779,58 @@ Final host validation passed **90 focused tests** and **2,316 full tests**
 Harness CI and diff-aware task validate/dry-run. Four README locales now document
 the bounded directory cache. Both repairs are submitted together; no runtime
 revision, lock, signing secret, workflow gate, COS or production catalog changes.
+
+## Follow-up: native workspace paths in post-artifact contracts
+
+[Build #16](https://github.com/Tabll/ClawXXX/actions/runs/34178442166) on
+`5aaf52eaa5e83ad68d4ac51c77e5e275019c8e06` completed **24/25 jobs** successfully:
+all ten builds, all four accepted macOS notarizations, all five dual-runtime
+jobs and nine of ten single-runtime jobs. The same commit's
+[Electron E2E #30](https://github.com/Tabll/ClawXXX/actions/runs/34178397696)
+passed macOS, Windows and Linux. This is not complete matrix acceptance.
+
+Both previous Windows defects now passed on the actual GitHub runner. The
+sealed real Gateway/ACP background-exec probe succeeded. The Windows single
+production installer passed interruption/Range resume, install, full integrity
+rescan, uninstall and cleanup in **454,156 ms**, under the unchanged 600,000 ms
+budget. The dual-runtime contract passed in **730,583 ms**, under 900,000 ms:
+both installed by 313,751 ms, corruption was detected at 319,044 ms, OpenClaw
+repair ran from 319,124 to 690,978 ms, and independent uninstall/rescan retained
+the canonical SQLite data. No security or verification gates were disabled.
+
+The remaining single job failed only in the subsequent nine-suite host
+regression step: **24/29 tests passed**. Four ACP tests supplied
+`file:///workspace`, which Node rejects on Windows because it has no drive.
+One driver test expected `/kernels/openclaw/` in a native backslash path. These
+are test-fixture defects, not evidence of another real installation timeout.
+
+Fixtures now use `pathToFileURL` on native absolute workspaces containing
+spaces, Unicode, `#` and `%`. They verify the exact decoded cwd passed to the
+unchanged production adapter, reject malformed encoded separators before
+native calls and prove the execution slot is released. Driver fixtures assert
+exact installed paths and all three executable layouts, including Windows
+`runtime/node/node.exe`, with missing-runtime rejection. Owned temporary roots
+are cleaned; original event, cancellation, usage, attachment, queue, lifecycle
+and data-isolation assertions remain. No production source, runtime pin, lock,
+deadline, retry policy, signing input or user runtime changed.
+
+The two repaired suites also run in all ten builds' early checks, while staying
+in the mandatory post-artifact step. Workflow-policy tests enforce both
+placements. On an isolated Windows 11 VM with pinned x64 Node 24.15.0, the exact
+old three-suite selector (ACP, driver and build-policy) reproduced **5 failures
+/24 passes**; after the repair and five additional cases it passed **34/34**
+with default deadlines and file workers. Initial VM setup lacked notices and
+unrelated OpenClaw SDK test dependencies; the recorded focused comparison was
+rerun with its complete fixture inputs, not counted as a nine-suite CI run.
+Ignored reports are `temp/path-contract-windows-{baseline,candidate}.json`.
+
+Host validation passed **2,321 tests**, zero failures and six existing
+artifact-conditional skips, plus the actual **137-test** early CI selector,
+typecheck, lint (zero errors/seven existing warnings), frozen-source verification,
+comms replay/compare, Harness CI and diff-aware task validate/dry-run. The four
+README locales were reviewed; this test-only correction changes no user-facing
+behavior or commands, so no translation update is required. Rule/scenario/task
+and TODO record the added portability guard. MK-1940 remains pending until a
+fresh pushed-SHA both-kernel/five-target staging run passes every job. Normal
+environment review, Windows artifact-signature-only and all existing macOS
+notarization gates remain; no COS or production catalog publication is included.

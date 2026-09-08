@@ -60,6 +60,14 @@ non-truncating handle with fatal flush errors; Git fixture LF bytes and driver
 path assertions must be independent of developer Git policy and host separators.
 See `harness/reference/windows-runtime-ci-repair.md`.
 
+ACP contract workspaces must use native absolute paths encoded with
+`pathToFileURL`, including spaces, Unicode and reserved URL characters. Assert
+the actual decoded ACP cwd and exact installed executable paths; Windows Node
+fixtures use `runtime/node/node.exe`. Malformed URLs still fail before native
+calls and release the execution slot. These contracts run before expensive
+builds and remain mandatory after real-artifact installation; never mock or
+relax production URL conversion to make a POSIX-only fixture pass on Windows.
+
 Windows storage/build contract suites run with one file worker so real Git
 processes and FULL-sync SQLite do not compete with unrelated cold SDK imports.
 Keep test-internal dual-kernel/message concurrency and all original deadlines.

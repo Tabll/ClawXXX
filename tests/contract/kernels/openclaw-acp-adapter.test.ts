@@ -1,16 +1,24 @@
 // @vitest-environment node
 
-import { existsSync, mkdirSync, readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { describe, expect, it, vi } from 'vitest';
+import { join, resolve } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { OpenClawAcpChatAdapter } from '@electron/kernels/openclaw/acp-chat-adapter';
 import type { AcpChatService } from '@electron/services/acp-chat-service';
 import type { AcpPermissionRequestEnvelope, AcpSessionUpdateEnvelope } from '@shared/acp-chat/types';
 import { asConversationId, asRunId, asTurnId } from '@shared/conversations/contracts';
 import type { KernelRunRequest } from '@shared/kernels/contracts';
 import { createFakeHost } from './driver-contract-kit';
+
+const workspaceRoot = resolve(tmpdir(), 'clawx workspace # % 中文');
+const reportUri = pathToFileURL(join(workspaceRoot, 'report.txt')).href;
+const ownedRoots: string[] = [];
+afterEach(() => {
+  for (const root of ownedRoots.splice(0)) rmSync(root, { recursive: true, force: true, maxRetries: 3 });
+});
 
 function request(id: string): KernelRunRequest {
   return {
@@ -20,7 +28,7 @@ function request(id: string): KernelRunRequest {
     kernelId: 'openclaw',
     generation: 1,
     agentId: 'main',
-    workspaceUri: 'file:///workspace',
+    workspaceUri: pathToFileURL(workspaceRoot).href,
     context: [{
       id: `text-${id}`,
       turnId: asTurnId(`turn-${id}`),
@@ -63,6 +71,7 @@ function fixture(overrides: Partial<Record<string, unknown>> = {}) {
 
 function runtime() {
   const root = mkdtempSync(join(tmpdir(), 'clawx-openclaw-acp-adapter-'));
+  ownedRoots.push(root);
   const tempRoot = join(root, 'tmp');
   mkdirSync(tempRoot, { recursive: true });
   return {
@@ -82,6 +91,41 @@ function runtime() {
 }
 
 describe('OpenClaw ACP execution adapter', () => {
+  it('round-trips a native absolute workspace URI and passes the exact decoded cwd to ACP', async () => {
+    // Reproduce the Windows failure even on a POSIX test host. A file URL
+    // without a drive is not a native absolute Windows workspace.
+    expect(() => fileURLToPath('file:///workspace', { windows: true }))
+      .toThrow('File URL path must be absolute');
+    const input = request('native-path');
+    expect(fileURLToPath(input.workspaceUri)).toBe(workspaceRoot);
+    expect(input.workspaceUri).toContain('%20');
+    expect(input.workspaceUri).toContain('%23');
+    expect(input.workspaceUri).toContain('%25');
+    expect(new URL(input.workspaceUri).hash).toBe('');
+    const f = fixture();
+    const adapter = new OpenClawAcpChatAdapter(f.acp);
+    await adapter.initialize({ host: createFakeHost(), generation: 1, runtime: runtime() });
+    await adapter.execute(input);
+    expect(f.acp.loadSession).toHaveBeenCalledWith(expect.objectContaining({ cwd: workspaceRoot, workspaceRoot }));
+    expect(f.acp.sendPrompt).toHaveBeenCalledWith(expect.objectContaining({ cwd: workspaceRoot }));
+    await adapter.stop();
+  });
+
+  it('rejects malformed file URLs before native calls and releases the execution slot', async () => {
+    const f = fixture();
+    const host = createFakeHost();
+    const adapter = new OpenClawAcpChatAdapter(f.acp);
+    await adapter.initialize({ host, generation: 1, runtime: runtime() });
+    await expect(adapter.execute({ ...request('invalid-path'), workspaceUri: 'file:///%2Fworkspace' }))
+      .rejects.toMatchObject({ code: 'ERR_INVALID_FILE_URL_PATH' });
+    expect(f.acp.loadSession).not.toHaveBeenCalled();
+    expect(f.acp.sendPrompt).not.toHaveBeenCalled();
+    expect(host.events).toEqual([]);
+    await adapter.execute(request('after-invalid-path'));
+    expect(f.acp.sendPrompt).toHaveBeenCalledOnce();
+    await adapter.stop();
+  });
+
   it('waits for final usage and native close before emitting a cancelled terminal', async () => {
     const prompt = Promise.withResolvers<{ success: boolean; generation: number; stopReason: string }>();
     const close = Promise.withResolvers<{ success: boolean; generation: number }>();
@@ -140,7 +184,7 @@ describe('OpenClaw ACP execution adapter', () => {
                 { type: 'text', text: 'answer' },
                 {
                   type: 'resource_link',
-                  uri: 'file:///workspace/report.txt',
+                  uri: reportUri,
                   name: 'report.txt',
                   mimeType: 'text/plain',
                 },
@@ -196,7 +240,7 @@ describe('OpenClaw ACP execution adapter', () => {
       text: 'answer',
       messageId: undefined,
       resources: [{
-        uri: 'file:///workspace/report.txt',
+        uri: reportUri,
         name: 'report.txt',
         mimeType: 'text/plain',
       }],

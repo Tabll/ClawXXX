@@ -3,8 +3,9 @@
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { describe, expect, it, vi } from 'vitest';
+import { dirname, join } from 'node:path';
+import { pathToFileURL } from 'node:url';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   OpenClawKernelDriver,
   type OpenClawChatAdapter,
@@ -27,16 +28,24 @@ import { FakeKernelDriver } from './fakes/fake-kernel-driver';
 import { asConversationId, asRunId, asTurnId } from '@shared/conversations/contracts';
 import type { KernelInstallationRecord } from '@shared/kernels/package-manager';
 
-function runtimeFixture() {
+const ownedRoots: string[] = [];
+afterEach(() => {
+  clearOpenClawRuntimeLocation();
+  for (const root of ownedRoots.splice(0)) rmSync(root, { recursive: true, force: true, maxRetries: 3 });
+});
+
+function runtimeFixture(platform: 'darwin' | 'linux' | 'win32' = process.platform === 'win32' ? 'win32' : process.platform === 'darwin' ? 'darwin' : 'linux') {
   const root = mkdtempSync(join(tmpdir(), 'clawx-openclaw-driver-'));
+  ownedRoots.push(root);
   const packageRoot = join(root, 'kernels');
   const userDataRoot = join(root, 'user-data');
   const artifactVersion = '2026.7.1-2+clawx.test';
   const installRoot = join(packageRoot, 'openclaw', 'installs', artifactVersion);
   const entryPath = join(installRoot, 'runtime', 'kernel', 'clawx-openclaw.mjs');
-  const nodePath = join(installRoot, 'runtime', 'node', 'bin', 'node');
+  const nodeRelative = platform === 'win32' ? 'runtime/node/node.exe' : 'runtime/node/bin/node';
+  const nodePath = join(installRoot, nodeRelative);
   mkdirSync(join(installRoot, 'runtime', 'kernel'), { recursive: true });
-  mkdirSync(join(installRoot, 'runtime', 'node', 'bin'), { recursive: true });
+  mkdirSync(dirname(nodePath), { recursive: true });
   writeFileSync(entryPath, 'export {};');
   writeFileSync(nodePath, 'test');
   const manifest = {
@@ -45,8 +54,8 @@ function runtimeFixture() {
     artifactVersion,
     upstreamVersion: '2026.7.1-2',
     patchRevision: 99,
-    platform: 'darwin' as const,
-    arch: 'arm64' as const,
+    platform,
+    arch: process.arch === 'arm64' ? 'arm64' as const : 'x64' as const,
     nodeVersion: '24.0.0',
     hostVersionRange: '>=0.5.4',
     contractVersion: 1 as const,
@@ -57,7 +66,7 @@ function runtimeFixture() {
     unpackedBytes: 1,
     fileCount: 2,
     entrypoints: { chat: 'runtime/kernel/clawx-openclaw.mjs' },
-    executablePaths: ['runtime/node/bin/node'],
+    executablePaths: [nodeRelative],
   };
   const installation: KernelInstallationRecord = {
     kernelId: 'openclaw',
@@ -72,12 +81,25 @@ function runtimeFixture() {
     installation,
     packageRoot,
     userDataRoot,
-    platform: 'darwin',
+    platform,
   });
-  return { root, runtime, userDataRoot };
+  return { root, runtime, userDataRoot, packageRoot, installation, installRoot, entryPath, nodePath };
 }
 
 describe('OpenClaw optional runtime driver', () => {
+  it.each(['darwin', 'linux', 'win32'] as const)('uses the exact %s executable layout and refuses a missing runtime', platform => {
+    const f = runtimeFixture(platform);
+    expect(f.runtime.installRoot).toBe(f.installRoot);
+    expect(f.runtime.entryPath).toBe(f.entryPath);
+    expect(f.runtime.nodeExecutable).toBe(f.nodePath);
+    expect(f.runtime.source).toBe('installed-artifact');
+    rmSync(f.nodePath);
+    expect(() => resolveOpenClawRuntimeLocation({
+      installation: f.installation, packageRoot: f.packageRoot, userDataRoot: f.userDataRoot, platform,
+    })).toThrow('Node runtime is missing from active artifact');
+    expect(existsSync(f.runtime.configRoot)).toBe(false);
+  });
+
   it('rejects an old or incomplete managed protocol without changing config or the installed payload', () => {
     const { root, runtime } = runtimeFixture();
     try {
@@ -103,10 +125,11 @@ describe('OpenClaw optional runtime driver', () => {
   });
 
   it('resolves only an active installation record and creates no managed data before start', async () => {
-    const { runtime, userDataRoot } = runtimeFixture();
+    const { runtime, userDataRoot, entryPath, nodePath, root } = runtimeFixture();
     const roots = getManagedOpenClawDataRoots(userDataRoot);
-    expect(runtime.entryPath).toContain('/kernels/openclaw/');
-    expect(runtime.entryPath).not.toContain('resources/openclaw');
+    expect(runtime.entryPath).toBe(entryPath);
+    expect(runtime.nodeExecutable).toBe(nodePath);
+    expect(runtime.entryPath).not.toContain(join('resources', 'openclaw'));
     expect(existsSync(roots.configRoot)).toBe(false);
 
     const gateway: OpenClawGatewayAdapter = {
@@ -159,7 +182,7 @@ describe('OpenClaw optional runtime driver', () => {
       kernelId: 'openclaw' as const,
       generation: 3,
     };
-    await driver.execute({ ...identity, context: [], agentId: 'main', workspaceUri: 'file:///workspace' });
+    await driver.execute({ ...identity, context: [], agentId: 'main', workspaceUri: pathToFileURL(join(root, 'workspace # % 中文')).href });
     expect(() => driver.cancel({ ...identity, generation: 2 })).toThrow(/outside this driver generation/);
     await driver.stop();
     expect(hooks).toEqual(['before-start', 'after-start', 'before-stop', 'after-stop']);

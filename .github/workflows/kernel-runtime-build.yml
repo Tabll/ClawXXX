@@ -66,6 +66,8 @@ jobs:
           tests/unit/kernel-runtime-directory.test.ts
           tests/unit/kernel-artifact-test-support.test.ts
           tests/contract/kernels/package-manager.test.ts
+          tests/contract/kernels/openclaw-acp-adapter.test.ts
+          tests/contract/kernels/openclaw-driver.test.ts
       - name: Fetch exact OpenClaw npm patch base
         if: matrix.kernel == 'openclaw'
         run: node scripts/kernel-runtime/download-npm-source.mjs --kernel openclaw --destination temp/kernel-source

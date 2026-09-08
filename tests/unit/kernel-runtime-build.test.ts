@@ -255,6 +255,11 @@ describe('kernel runtime build supply chain', () => {
     }
     expect(workflow.indexOf('tests/unit/openclaw-native-allowlist.test.ts')).toBeLessThan(workflow.indexOf('download-npm-source.mjs'));
     expect(workflow.indexOf('tests/unit/kernel-notarization.test.ts')).toBeLessThan(workflow.indexOf('notarize-runtime.mjs'));
+    for (const suite of ['tests/contract/kernels/openclaw-acp-adapter.test.ts', 'tests/contract/kernels/openclaw-driver.test.ts']) {
+      expect(workflow.indexOf(suite)).toBeLessThan(workflow.indexOf('download-npm-source.mjs'));
+      expect(workflow.indexOf(suite)).toBeGreaterThan(-1);
+      expect(workflow.lastIndexOf(suite)).toBeGreaterThan(workflow.indexOf('Install the real signed runtime through the production package-manager path'));
+    }
     expect(workflow).toContain('--submission temp/reports/notarization-submission.json --report temp/reports/notarization.json');
     expect(workflow).not.toContain('notarytool submit temp/notarization.zip');
     expect(smoke).toContain('waitForExit(probe, openClawProbeBudgets().totalMs)');

@@ -75,6 +75,11 @@ Windows portability also covers deterministic plugin-registry diagnostics across
 SQLite round trips, writable archive flush handles, LF-exact Git fixtures and
 native driver path assertions. Keep actual metadata/policy changes fail-closed;
 see `harness/reference/windows-runtime-ci-repair.md` for reproduction and gates.
+ACP fixtures must round-trip native absolute workspace paths through encoded
+file URLs and verify the exact cwd passed to the unchanged adapter. Include
+spaces, Unicode, `#` and `%`, malformed-URL rejection and execution-slot release,
+all three native executable layouts and owned temporary-root cleanup. Run the
+same driver/ACP suites before builds and after real-artifact installation.
 Case/8.3/junction aliases must retain the same verified physical install owner,
 without trusting a different package by ID. Full real-process startup probes
 must retain bounded platform-specific readiness, failure traces, signal/exit
