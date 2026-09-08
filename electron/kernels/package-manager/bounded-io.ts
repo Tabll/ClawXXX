@@ -2,6 +2,25 @@
 // installs have separate pools; never create one promise/stream per file.
 export const KERNEL_FILE_IO_CONCURRENCY = 8;
 
+export const KERNEL_TAR_DIRECTORY_CACHE_LIMIT = 256;
+
+// node-tar scans its positive directory cache before/after every file. An
+// unbounded cache makes large payloads quadratic, especially on Windows where
+// it also normalizes every cached path. Evicting a positive entry only forces
+// another filesystem check; it never bypasses tar's path/link reservations.
+// Each extraction owns a fresh FIFO cache, including concurrent installs.
+export function createKernelTarDirectoryCache(): Map<string, boolean> {
+  return new class extends Map<string, boolean> {
+    override set(key: string, value: boolean): this {
+      if (!this.has(key) && this.size >= KERNEL_TAR_DIRECTORY_CACHE_LIMIT) {
+        const oldest = this.keys().next();
+        if (!oldest.done) this.delete(oldest.value);
+      }
+      return super.set(key, value);
+    }
+  }();
+}
+
 export async function forEachKernelFile<T>(
   items: readonly T[],
   operation: (item: T, index: number) => Promise<void>,

@@ -239,6 +239,7 @@ describe('kernel runtime build supply chain', () => {
     expect(smoke).toContain('smokeDeepSeekHarnessHost');
     expect(smoke).toContain('scanRuntimeDataPaths(managedDataRoot)');
     expect(smoke).toContain('probe-openclaw-managed-runtime.mjs');
+    expect(smoke).toContain('dirCache: createKernelTarDirectoryCache()');
     expect(smoke.match(/verifyFileManifest\(extracted\);/g)).toHaveLength(2);
     expect(smoke.lastIndexOf('verifyFileManifest(extracted);')).toBeGreaterThan(smoke.indexOf('? await smokeOpenClawManagedEntrypoint'));
     expect(workflow).toContain('--plugins-root build/openclaw/clawx-plugins --report temp/reports/openclaw-managed-runtime.json');

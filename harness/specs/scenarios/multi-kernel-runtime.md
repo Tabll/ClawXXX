@@ -120,7 +120,11 @@ continuations, terminal output and complete provider-usage accounting.
 Large runtime file verification uses bounded concurrency without dropping any
 signed check. Drain in-flight work before failure cleanup and reject readonly
 sealing failures. Real-artifact fault injection operates only on owned temporary
-regular files with finally-restored permissions. Single/dual clean-machine
+regular files with finally-restored permissions. Production/CI extraction uses
+independent 256-entry positive directory caches to bound tar's pruning work;
+evicted hints trigger filesystem rechecks, without changing Windows path
+reservations or archive safety. Test real trees beyond capacity and concurrent
+cache isolation. Single/dual clean-machine
 tests retain finite deadlines and incremental phase/timeout evidence; concurrent
 operations settle before removing the shared temporary installation authority.
 Windows executable-directory lock recovery remains a finite atomic rename

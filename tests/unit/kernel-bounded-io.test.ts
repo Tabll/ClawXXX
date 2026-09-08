@@ -1,6 +1,38 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vitest';
-import { forEachKernelFile, KERNEL_FILE_IO_CONCURRENCY } from '@electron/kernels/package-manager/bounded-io';
+import { createKernelTarDirectoryCache, forEachKernelFile, KERNEL_FILE_IO_CONCURRENCY, KERNEL_TAR_DIRECTORY_CACHE_LIMIT } from '@electron/kernels/package-manager/bounded-io';
+
+describe('bounded positive tar directory cache', () => {
+  it('caps pruning work independently of archive size and evicts only positive hints', () => {
+    const cache = createKernelTarDirectoryCache();
+    expect(cache).toBeInstanceOf(Map);
+    expect(KERNEL_TAR_DIRECTORY_CACHE_LIMIT).toBe(256);
+    for (let index = 0; index < 10_000; index += 1) {
+      expect(cache.set(`directory/${index}`, true)).toBe(cache);
+      expect(cache.size).toBeLessThanOrEqual(256);
+    }
+    expect(cache.size).toBe(256);
+    expect(cache.get('directory/0')).toBeUndefined();
+    expect(cache.get('directory/9999')).toBe(true);
+    expect([...cache.keys()][0]).toBe('directory/9744');
+    cache.set('directory/9999', false);
+    expect(cache.size).toBe(256);
+    expect(cache.get('directory/9999')).toBe(false);
+    expect(cache.has('directory/9744')).toBe(true);
+  });
+
+  it('preserves tar invalidation semantics and never shares hints between extractions', () => {
+    const cache = createKernelTarDirectoryCache();
+    cache.set('runtime', true).set('runtime/kernel', true).set('metadata', true);
+    for (const key of cache.keys()) {
+      if (key === 'runtime' || key.startsWith('runtime/')) cache.delete(key);
+    }
+    expect([...cache]).toEqual([['metadata', true]]);
+    expect(createKernelTarDirectoryCache().size).toBe(0);
+    cache.clear();
+    expect(cache.size).toBe(0);
+  });
+});
 
 describe('bounded kernel filesystem work', () => {
   it('runs every file once with a fixed pool instead of serial or unbounded work', async () => {

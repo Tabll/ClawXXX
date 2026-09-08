@@ -165,7 +165,7 @@ ClawX 采用 **Main-owned 多内核 + Host API 统一接入架构**：React Rend
 OpenClaw 源码和开发依赖已切换为 `2026.9.2+clawx.12`。生产桥接按 Run 从统一 SQLite 历史创建独立内存会话，适配新版 Agents/模型/权限配置，并修复 7 个 Channels 插件。独立真实 Gateway/ACP 和打包 payload 测试覆盖工具、取消、崩溃恢复、入站拒绝及无原生历史写入。已安装内核仍须下载新的已验证 CI 制品；五平台签名发布和真实账号验收尚未执行。详见[升级设计与证据](harness/reference/openclaw-2026.9.2-upgrade.md)。
 
 - **进程模型**：Electron Main 管理系统集成、唯一 DataService、Package Manager 和逐内核独立 Supervisor；OpenClaw 与 DSH 可并行运行，Renderer 和 runtime 都不能直接打开 canonical ClawX SQLite 或互相直连。
-- **内核校验**：安装与重扫使用最多 8 路并发的文件校验，保留全部签名哈希、大小和路径检查。安装后的文件保持只读，设置只读保护失败会拒绝安装；Windows 原子目录移动仅对短暂 `EPERM`/`EBUSY` 锁累计等待最多 1.5 秒，持久锁仍失败，不以复制或放宽权限绕过。干净环境 CI 会记录各阶段耗时，包括失败与超时。
+- **内核校验**：安装与重扫使用最多 8 路并发的文件校验，保留全部签名哈希、大小和路径检查。每次解包使用独立的 256 项目录缓存，限制大包的额外开销；缓存淘汰只触发文件系统复查，不放宽路径保护。安装后的文件保持只读，设置只读保护失败会拒绝安装；Windows 原子目录移动仅对短暂 `EPERM`/`EBUSY` 锁累计等待最多 1.5 秒，持久锁仍失败，不以复制或放宽权限绕过。干净环境 CI 会记录各阶段耗时，包括失败与超时。
 - **配置交付**：Gateway 运行时由 Main 使用 `config.get` / `config.set`，停止或启动中则更新解析后的 JSON5 配置；普通 Provider/Agent/Skill/模型修改不会替换进程，凭据通过 `secrets.reload` 热更新。连续三分钟没有已验证的 Gateway 活动后，ClawX 会验证核心 RPC，并且只重启其自身拥有且不可用的 Gateway 进程；外部管理的 Gateway 保留给用户手动恢复。
 - **统一 Provider**：Provider 元数据、模型选择、每内核默认项和独立 projection 状态都由 SQLite 统一记录。密钥保留在 OS 安全存储，只从 preload 持有的 closed-shadow 输入框以一次性句柄交给 Main；经过身份认证的内核进程只能按已选账号和授权用途向 Credential Broker 请求。单个内核投影失败不会回滚另一个已 ready 的投影。
 - **统一 Skills**：一个 Skills catalog 统一保存不可变 package metadata、逐内核安装/启用意图、兼容性、projection 诊断和重试状态。OpenClaw 与 DeepSeek Harness 使用相互独立的物理副本，禁止交叉软链接；Both 操作保留并展示 partial success。DSH 只通过隔离的 `ctx.skills` adapter 注册兼容 instruction body，含未支持辅助文件的包会显示明确原因。

@@ -20,6 +20,7 @@ import tar from 'tar';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import fileSystem from 'node:fs/promises';
 import * as downloads from '@electron/kernels/package-manager/downloader';
+import * as boundedIo from '@electron/kernels/package-manager/bounded-io';
 import { assembleKernelArtifact } from '../../../scripts/kernel-runtime/lib/artifact.mjs';
 import {
   archiveOverheadFixture,
@@ -253,6 +254,47 @@ describe('KernelPackageManager download transport', () => {
 });
 
 describe('KernelPackageManager safe extraction', () => {
+  it('losslessly extracts and seals large directory trees after cache eviction with isolated concurrent caches', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'clawx-tar-cache-'));
+    const source = join(root, 'source');
+    const caches: Map<string, boolean>[] = [];
+    const createCache = boundedIo.createKernelTarDirectoryCache;
+    const spy = vi.spyOn(boundedIo, 'createKernelTarDirectoryCache').mockImplementation(() => {
+      const cache = createCache();
+      caches.push(cache);
+      return cache;
+    });
+    try {
+      await createFixtureRepository(source);
+      for (let index = 0; index < 512; index += 1) {
+        const directory = join(source, 'payload', `directory-${String(index).padStart(4, '0')}`);
+        await mkdir(directory);
+        await writeFile(join(directory, 'entry.txt'), `signed content ${index}`);
+      }
+      const artifact = await buildArtifact(source, '1.0.0', 1, 1_787_428_800, 'cache');
+      const destinations = [join(root, 'first'), join(root, 'second')];
+      // Drain both extractions before finally removes their shared test root.
+      const results = await Promise.allSettled(destinations.map(destination =>
+        new SafeKernelArtifactExtractor().extract(artifact.archivePath, destination, artifact.descriptor)));
+      expect(results.map(result => result.status)).toEqual(['fulfilled', 'fulfilled']);
+      expect(caches).toHaveLength(2);
+      expect(caches[0]).not.toBe(caches[1]);
+      for (const cache of caches) expect(cache.size).toBe(256);
+      for (const destination of destinations) {
+        const report = await verifyExtractedArtifact(destination, artifact.descriptor);
+        expect(report.fileCount).toBe(artifact.descriptor.archive.fileCount);
+        for (const index of [0, 255, 256, 511]) {
+          const file = join(destination, 'runtime', 'kernel', `directory-${String(index).padStart(4, '0')}`, 'entry.txt');
+          expect(await readFile(file, 'utf8')).toBe(`signed content ${index}`);
+          expect((await stat(file)).mode & 0o222).toBe(0);
+        }
+      }
+    } finally {
+      spy.mockRestore();
+      await rm(root, { recursive: true, force: true });
+    }
+  }, 60_000);
+
   it.each(['missing', 'unlisted', 'directory-link'] as const)('keeps %s rejection during a parallel installed-tree rescan', async kind => {
     const root = await mkdtemp(join(tmpdir(), 'clawx-rescan-boundary-'));
     const destination = join(root, 'installed');

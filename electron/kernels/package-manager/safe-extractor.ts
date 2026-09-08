@@ -8,7 +8,7 @@ import type { KernelArtifactDescriptorV1 } from '@shared/kernels/catalog';
 import { canonicalJson } from '../catalog';
 import { KernelPackageError } from './errors';
 import { sha256File } from './downloader';
-import { forEachKernelFile } from './bounded-io';
+import { createKernelTarDirectoryCache, forEachKernelFile } from './bounded-io';
 
 type TarEntry = {
   path: string;
@@ -54,6 +54,7 @@ export class SafeKernelArtifactExtractor {
         strict: true,
         preservePaths: false,
         unlink: true,
+        dirCache: createKernelTarDirectoryCache(),
         filter: (_path, entry) => extractionGuard.observe(entry as unknown as TarEntry),
       });
       await pipeArchiveToTar(archivePath, new OutputByteLimit(maxTarStreamBytes(descriptor)), unpack);

@@ -14,6 +14,7 @@ declare module 'tar' {
     strict?: boolean;
     preservePaths?: boolean;
     unlink?: boolean;
+    dirCache?: Map<string, boolean>;
     onentry?: (entry: ReadEntry) => void;
     filter?: (path: string, entry: ReadEntry) => boolean;
   };

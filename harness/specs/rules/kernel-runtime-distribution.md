@@ -163,6 +163,11 @@ original mode in finally; never remove production readonly protection to make a
 test pass. Verification and permission work use a fixed bounded worker pool,
 retaining every signed file/hash/size/path check and draining in-flight work on
 failure before quarantine or deletion. Readonly sealing errors are fatal.
+Both production and clean-machine tar extraction use a fresh per-extraction
+positive directory cache capped at 256 entries. Eviction must only require
+filesystem rechecks, never bypass node-tar's Windows path reservations or any
+archive guard. Cover capacity, invalidation, concurrent isolation and actual
+signed-tree extraction beyond the capacity; measure real archives, not mocks.
 Runtime directory moves remain native atomic renames. Windows alone may retry
 transient EPERM/EBUSY locks with at most six attempts and 1500 ms accumulated
 delays; persistent locks and all other errors remain failures. Never copy,

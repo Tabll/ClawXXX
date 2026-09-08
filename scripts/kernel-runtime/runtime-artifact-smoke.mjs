@@ -10,6 +10,7 @@ import { readJson, sha256File } from './lib/canonical.mjs';
 import { scanRuntimeDataPaths } from './lib/storage-contract.mjs';
 import { verifyPlatformRuntime } from './verify-platform-runtime.mjs';
 import { openClawProbeBudgets } from './lib/openclaw-probe-lifecycle.mjs';
+import { createKernelTarDirectoryCache } from '../../electron/kernels/package-manager/bounded-io.ts';
 
 const args = new Map();
 for (let index = 2; index < process.argv.length; index += 2) args.set(process.argv[index], process.argv[index + 1]);
@@ -30,7 +31,7 @@ try {
   await validateTar(tarPath);
   const extracted = join(root, 'extracted');
   mkdirSync(extracted, { recursive: true, mode: 0o700 });
-  await tar.x({ file: tarPath, cwd: extracted, strict: true, preservePaths: false });
+  await tar.x({ file: tarPath, cwd: extracted, strict: true, preservePaths: false, dirCache: createKernelTarDirectoryCache() });
   verifyFileManifest(extracted);
   const platformSecurityPath = join(extracted, 'metadata', 'platform-security.json');
   let platformSecurity;

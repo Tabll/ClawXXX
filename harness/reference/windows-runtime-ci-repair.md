@@ -719,3 +719,63 @@ tests** (zero failures, six existing artifact-conditional skips), typecheck,
 lint (zero errors, seven existing warnings), frozen-source verification, comms
 replay/compare, Harness CI and diff-aware task validate/dry-run. No Windows
 background-continuation success is claimed before the next native CI run.
+
+## Follow-up: bounded tar directory-cache pruning
+
+The Windows dual-runtime failure in build #15 is a separate measured throughput
+problem: installation finished at 457,376 ms, corruption detection at 463,196 ms,
+and repair started at 463,277 ms but exhausted the existing 900,000 ms deadline.
+There was no observed integrity or permission failure at that point.
+
+Profiling the production extractor on an isolated Windows 11 VM used the actual
+CI #12 signed OpenClaw `+clawx.12` archive (52,729 files, 807,751,063 unpacked
+bytes), pinned x64 Node 24.15.0, a fresh destination for each sample, and unchanged
+Windows security settings. It is not a reproduction of GitHub runner speed.
+CPU samples exposed node-tar 6.2.1's `pruneCache`: before and after every file it
+normalizes and scans the entire positive directory cache. An unbounded cache
+adds quadratic work as the directory tree grows. Windows' deliberate serialized
+path reservations protect against alias collisions and must not be bypassed.
+
+Production and standalone CI extraction now share a fresh **256-entry FIFO
+positive directory cache**. Eviction only removes a successful-directory hint,
+so tar must check the filesystem again; it cannot grant trust or skip a path
+reservation. Dependency versions, archive bytes, timestamps, modes, preflight
+and extraction guards, signed counts/sizes, full file hashes, readonly sealing
+and atomic activation remain unchanged. The cache is never shared between
+concurrent installs. No AV exclusions, fake platforms, looser permissions,
+skipped verification, whole-test retries or enlarged deadlines were introduced.
+
+The observed extractor-plus-sealing time fell from **181,014 to 149,385 ms**;
+including a subsequent complete rescan, **193,552 to 162,342 ms**. The sampled
+`pruneCache` frame dropped from **12,257 to 1,298 ms**, and Windows path
+normalization from **21,138 to 2,702 ms**. File-I/O timing varied between runs;
+these are one before/after VM sample, not a cross-platform speed guarantee or
+native CI acceptance. Ignored `temp/repair-throughput-vm-{before,after}.log`
+retains phase and operation counts, with bounded CPU summaries rather than
+runtime content or credentials.
+
+Regression covers the fixed capacity with 10,000 insertions, Map invalidation
+semantics, independent caches, and two simultaneous actual signed fixture
+extractions containing 512 additional directories. Every signed file is fully
+rescanned and readonly modes remain asserted; existing malicious archive,
+corruption, link and failure-cleanup cases still pass. The final native
+single/dual Windows jobs remain required before MK-1940 can be completed.
+
+The uninstrumented VM dual-artifact probe used both actual CI #12 signed
+archives, their original artifact-only public trust, the production Package
+Manager and disk-backed DataService. Both installed by **164,947 ms**; concurrent
+control bridges had distinct PIDs. After injected OpenClaw corruption was
+rejected, DeepSeek remained healthy. OpenClaw repair ran from **167,578 to
+319,928 ms**. Independent uninstall/rescan and reopening the same SQLite file
+preserved the canonical conversation; all assertions passed by **328,871 ms**
+(cleanup finished at **332,322 ms**), inside the unchanged fifteen-minute budget.
+This task-owned assertion probe mirrors the dual contract but is not a GitHub
+Vitest job or a real provider conversation. Its log is
+`temp/repair-throughput-vm-dual.log`; native runner acceptance is still pending.
+
+Final host validation passed **90 focused tests** and **2,316 full tests**
+(zero failures, six existing artifact-conditional skips), typecheck, lint
+(zero errors/seven existing warnings), frozen sources, comms replay/compare,
+Harness CI and diff-aware task validate/dry-run. Four README locales now document
+the bounded directory cache. Both repairs are submitted together; no runtime
+revision, lock, signing secret, workflow gate, COS or production catalog changes.

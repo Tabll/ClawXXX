@@ -2,7 +2,7 @@
 
 > 对应设计：[docs/zh-CN/multi-kernel-design.md](docs/zh-CN/multi-kernel-design.md)
 >
-> 状态：1f85184c 的第 15 轮通过 10/10 构建、4/4 macOS 公证、13/15 单/双 clean-machine 和三平台 E2E，Windows CRLF 问题已解决（存储 100/72 全通过）。余下 Windows 封包后工具探针与双内核重装修复超时失败；前者已在本地真实 Gateway/ACP 复现并补齐受限后台进程续查，后者继续性能定位。未扩大原时限、关闭闸门或改变内核 +12/hash/lock；MK-1940 仍未完成，未发布 COS/catalog。
+> 状态：1f85184c 的第 15 轮通过 10/10 构建、4/4 macOS 公证、13/15 单/双 clean-machine 和三平台 E2E，Windows CRLF 问题已解决（存储 100/72 全通过）。余下 Windows 封包后工具探针与双内核重装修复超时失败均已在本地修复验证：受限后台续查、独立 256 项 tar 目录缓存；Windows VM 双真实签名包并发安装、独立故障修复/卸载及 SQLite 重开保留全部通过，约 329 秒。待新 SHA 原生 CI 最终验收。未扩大原时限、关闭闸门或改变内核 +12/hash/lock；MK-1940 仍未完成，未发布 COS/catalog。
 >
 > 最近完整本地证据（2026-09-01）：Vitest 243 files / 241 passed / 2 skipped、2116 tests passed / 6 skipped（其中制品依赖项只在真实 CI 制品存在时执行）；Electron E2E 既有证据 151 passed / 3 platform skips；multi-kernel chaos 既有证据 28/28；DSH `0.1.2-alpha.2` 干净精确上游树完成严格 patch/overlay 重放、冻结安装、完整 host build、12 files / 43 focused tests，并在真实 macOS `sandbox-exec` 下通过 3/3 runtime self-tests；typecheck、lint、comms 与本任务 Harness 全绿
 >
@@ -516,6 +516,9 @@
 - [x] `MK-1957` 1f85184c 推送并正常审批 [第 15 轮 34174116971](https://github.com/Tabll/ClawXXX/actions/runs/34174116971)，10 构建/4 公证全部成功，Windows 存储 100/72 全通过；同提交 [E2E #29](https://github.com/Tabll/ClawXXX/actions/runs/34174075068) 三平台成功。13/15 clean-machine 通过，两个后续 Windows 失败明确保留，未将 23/25 写成全绿。
 - [x] `MK-1958` 真实 Gateway/ACP 强制 background 确定复现旧探针断言；修复模拟模型在原时限内最多 8 次、每次 5 秒的只读进程续查，绑定实际规范化调用 ID/固定命令/进程 ID，要求终态成功和真实输出，异常立即失败且不重复 exec。真实本地完整探针通过：1 次 process poll、7 provider requests、5 唯一已知 usage，取消/崩溃恢复/7 Channels/无原生历史均通过。内核生产代码和 workflow 未改；Windows 双内核 900 秒修复超时仍待定位。
 - [x] `MK-1959` 后台探针修复的 42 focused、2313 完整宿主测试通过（0 失败/6 既有制品条件跳过），typecheck、lint（0 错误/7 既有警告）、source/comms、Harness CI/任务 validate/dry-run、diff check 通过。四语 README 无需更改，规则/场景/任务/参考文档同步。Windows 后台续查及双内核重装修复仍须新 SHA 原生 CI 验收。
+- [x] `MK-1960` 隔离 Windows 11 / 固定 Node 24.15.0 上使用 CI #12 的真实 +12 签名包（52,729 文件/807,751,063 bytes）完成 CPU/文件调用采样；定位 tar 6.2.1 在每个文件前后遍历不受限正向目录缓存。生产和 CI 解包统一使用独立 256 项 FIFO cache，淘汰只导致文件系统复查；不改变 Windows 路径串行保护、任何完整性检查、依赖锁或内核字节。提取/校验/封装 181014→149385 ms，加完整重扫 193552→162342 ms；仅为 VM 单次前后样本，不代替原生 CI。
+- [x] `MK-1961` 90 focused / 2316 完整宿主测试通过（0 失败/6 既有制品条件跳过），涵盖缓存容量/失效/并发隔离、512 新目录的真实签名夹具完整提取/重扫/只读保护及原有恶意归档/清理检查。typecheck、lint（0 错误/7 既有警告）、source/comms、Harness CI/任务 validate/dry-run 通过；四语 README、规则/场景/任务/参考文档同步。等待 Windows 双真实制品安装/独立修复/卸载验证后提交并执行新 SHA 全矩阵。
+- [x] `MK-1962` 未启用性能插桩的 Windows VM 使用两份 CI #12 原始签名制品/公钥，经生产 Package Manager 和磁盘 SQLite 完成并发安装（164947 ms）、不同 PID 控制桥、单侧损坏拒绝及独立重装（167578→319928 ms）、分别卸载/重扫、关闭重开 SQLite 后保留对话；全部断言 328871 ms 通过，清理 332322 ms 完成，保持 15 分钟上限。此为隔离真实制品探针，不冒充 GitHub 原生 Vitest 或真实供应商对话证据；新 SHA 全矩阵仍由 MK-1940 跟踪。
 
 ## 每个实现 PR 的最低检查
 
