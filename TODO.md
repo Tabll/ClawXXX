@@ -2,7 +2,7 @@
 
 > 对应设计：[docs/zh-CN/multi-kernel-design.md](docs/zh-CN/multi-kernel-design.md)
 >
-> 状态：双内核 +12 的第 13 轮 CI 通过 8/10 build、4/4 macOS 公证和三平台 E2E；两个 Windows 均通过前置 121 项安装器回归，随后共享存储/Git 契约测试 5 秒超时，单/双 clean-machine 未执行。本轮减少真实 Git 夹具启动开销，Cron/Channels 改用真实工作完成后的事件屏障，仅限制 Windows 存储步骤的文件并发，不改变测试内部双内核并发、SQLite FULL 持久化或原时限。完整宿主 2298 项、两组 CI 存储选择器 99/71 项本地通过；内核 +12/hash/lock/签名输入不变。新五目标最终验收仍由 MK-1940 跟踪，不以本机结果代替。
+> 状态：修复提交 aa687d2b 的三平台 E2E 全部成功，第 14 轮完整内核构建已触发并审批。两个 Windows 的 storage 检查分别通过 98/99、70/71，唯一失败均为新增 workflow 断言的 CRLF/LF 不匹配，原 Git、Channels、Cron 超时检查通过；部分 macOS 公证仍在执行。本轮为语义断言增加 LF/CRLF 覆盖，44 focused、2299 完整宿主、100/72 两组 CI 存储选择器本地通过；保留原时限、真实 SQLite FULL、workflow 和全部签名/制品闸门。内核 +12/hash/lock/签名输入不变；新五目标最终验收仍由 MK-1940 跟踪。
 >
 > 最近完整本地证据（2026-09-01）：Vitest 243 files / 241 passed / 2 skipped、2116 tests passed / 6 skipped（其中制品依赖项只在真实 CI 制品存在时执行）；Electron E2E 既有证据 151 passed / 3 platform skips；multi-kernel chaos 既有证据 28/28；DSH `0.1.2-alpha.2` 干净精确上游树完成严格 patch/overlay 重放、冻结安装、完整 host build、12 files / 43 focused tests，并在真实 macOS `sandbox-exec` 下通过 3/3 runtime self-tests；typecheck、lint、comms 与本任务 Harness 全绿
 >
@@ -509,6 +509,10 @@
 - [x] `MK-1952` Node 24.15.0 完整宿主 **2298 passed / 0 failed / 6 existing conditional pending**；从 workflow 实际提取的 OpenClaw/DSH storage suites 用 Windows worker 策略分别 **99/71 passed**。typecheck、lint（0 错误/7 既有警告）、source verify、comms、Harness CI/任务 validate/dry-run 通过；四语 README 经审查无需修改，rule/scenario/task/reference 已同步。Windows 本机基线通过但未复现 CI 长停顿，最终原生平台验收仍保持未完成；不改 +12/locks/签名和任何用户安装。
 
 - [x] `MK-1953` 同 CI Node 24.15.0 x64 / Git 2.55.0.windows.5 的独立 Windows 11 VM 修复后 4 个与 1 个文件 worker 各 **43/43 passed**：Git exact/offset 367–544 ms，Channels queue 51–53 ms，Cron skip/replace 21–27 ms、restart 29–36 ms。官方工具链摘要及两个原生测试依赖的 lockfile SHA-512 已验证。原基线 Git 1274–1349 ms 也通过，未宣称复现 CI 7–10 秒停顿；原生 GitHub runner 和完整单/双制品验收继续由 MK-1940 跟踪。
+
+- [x] `MK-1954` 按用户明确授权的 GitHub 标签页重新触发/审批 [第 14 轮 34173221385](https://github.com/Tabll/ClawXXX/actions/runs/34173221385)，对应 aa687d2b，三平台 E2E 第 28 轮成功。DSH Windows 121 前置与 69 overlay 回归通过；70/71 storage 检查中仅 workflow 策略断言因 CRLF 失败。四项真实 Git patch 为 315–409 ms、Channels queue 769 ms、Cron skip/replace 420/435 ms、restart 632 ms，旧超时问题未复现；完整矩阵仍须继续验收。
+- [x] `MK-1955` 将真实 workflow 文本参数化为 LF/CRLF，旧比较确定复现 LF 通过、CRLF 失败；只在语义断言内部统一换行后 44 项 focused 全通过。未改 workflow/global Git/生产代码/严格 patch 和哈希/内核版本；四语 README 经审查无需修改，任务/规则/场景/参考文档同步。本地 Windows LF 源码复制不再被当作覆盖 CRLF checkout 的证据。
+- [x] `MK-1956` OpenClaw Windows 实际日志确认 121 前置、11 overlay 回归通过，storage 98/99 仅同一 CRLF 断言失败，无新增运行时失败。本地 Node 24.15.0 完整宿主 2299 passed / 0 failed / 6 既有条件跳过，两组实际 workflow 存储选择器在 Windows 单文件 worker 策略下 100/72 全通过（宿主 macOS，不冒充 Windows runner）；typecheck、lint（0 错误/7 既有警告）、source verify、comms、Harness CI/任务 validate/dry-run 与 diff check 通过。新 SHA 远端完整验收仍待 MK-1940。
 
 ## 每个实现 PR 的最低检查
 

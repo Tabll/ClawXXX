@@ -71,6 +71,12 @@ Retain durable readback/reopen assertions, release owned gates on failure and
 drain work before closing storage. No in-memory substitutes, relaxed fsync,
 blanket retries, skipped tests or enlarged global/per-test timeouts are allowed.
 
+Semantic workflow source-text assertions must cover both LF and CRLF checkout
+representations on every host, normalizing EOLs only inside those assertions.
+Do not rely on a copied LF-only Windows fixture to cover Git checkout behavior,
+change developer Git policy, or apply this normalization to signed/frozen input
+hashes or strict patch bytes.
+
 Windows plugin-cache realpath defaults must use native OS canonicalization so
 case, 8.3 and junction aliases agree with async installation records. Preserve
 strict owner, physical-boundary and provenance checks; an official ID alone

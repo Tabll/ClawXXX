@@ -16,9 +16,13 @@ import { describe, expect, it, vi } from 'vitest';
 const officialNodeSha256 = 'af5cfaeafe603aaf7599f287fd9d100bb41f16794f49788fa59dd3f25546930f';
 
 describe('kernel runtime build supply chain', () => {
-  it('bounds Windows storage suite file workers without changing test deadlines or internal concurrency', () => {
-    const workflow = readFileSync(join(process.cwd(), '.github/workflows/kernel-runtime-build.yml'), 'utf8');
-    const step = workflow.split('- name: Run canonical storage and runtime build contract suites')[1]!.split('- name: Record test and no-native-history evidence')[0]!;
+  it.each([
+    { label: 'LF', newline: '\n' }, { label: 'CRLF', newline: '\r\n' },
+  ])('bounds Windows storage suite file workers without changing test deadlines or internal concurrency ($label)', ({ newline }) => {
+    const workflow = readFileSync(join(process.cwd(), '.github/workflows/kernel-runtime-build.yml'), 'utf8').replace(/\r?\n/g, newline);
+    // Check workflow semantics independently of Git's checkout EOL policy.
+    // Frozen source/patch byte checks elsewhere must remain byte-exact.
+    const step = workflow.replace(/\r\n/g, '\n').split('- name: Run canonical storage and runtime build contract suites')[1]!.split('- name: Record test and no-native-history evidence')[0]!;
     expect(step).toContain('tests/unit/kernel-contract-signal.test.ts');
     expect(step).toContain('worker_args=()');
     expect(step).toContain('if [ "${{ matrix.target.platform }}" = "win32" ]; then\n            worker_args+=(--maxWorkers=1)\n          fi');

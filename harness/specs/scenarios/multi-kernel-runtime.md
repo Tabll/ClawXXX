@@ -111,6 +111,8 @@ Pure Git contracts use Node, bounded real repository setup, both autocrlf
 policies and independent exact/offset cases. Only Windows storage-suite file
 workers are serialized; internal concurrency, deadlines and release gates stay.
 Release owned execution gates and drain operations on failure before teardown.
+Workflow-policy assertions also exercise LF and CRLF text on every host;
+semantic EOL normalization must never alter frozen-source or patch-byte checks.
 
 Large runtime file verification uses bounded concurrency without dropping any
 signed check. Drain in-flight work before failure cleanup and reject readonly

@@ -631,3 +631,43 @@ SHA and pass normal `kernel-staging` approval. Keep Windows explicitly
 artifact-signature-only, macOS signing/notarization and every single/dual
 clean-machine gate. MK-1940 remains open until full new remote acceptance;
 no COS upload, catalog promotion, secret changes or installed-data mutation.
+
+## Follow-up: CRLF in the workflow-policy regression
+
+[Build #14](https://github.com/Tabll/ClawXXX/actions/runs/34173221385) was
+dispatched and normally approved on 2026-09-08 for `aa687d2b`. DSH Windows
+passed its 121 early regressions and 69 overlay tests, then passed **70/71**
+storage/build checks. The only failure was the newly added workflow policy
+assertion: the actual Windows checkout contained CRLF, while its multiline
+expected string used LF. This is a regression in the test, not a storage,
+runtime or file-worker policy failure. The earlier VM source copy retained LF
+and therefore did not cover this checkout representation.
+
+OpenClaw Windows independently passed its 121 early regressions and 11 overlay
+tests, then passed **98/99** storage/build checks. Its only failure was the same
+CRLF-sensitive assertion; the actual Gateway checks preceding it passed.
+
+The actual Windows runner now passed every Git exact/offset case in 315–409 ms,
+Channel same-thread queue in 769 ms, Cron skip/replace in 420/435 ms, and restart
+deduplication in 632 ms. Other build targets were still running when this
+repair was prepared; none of these observations is complete matrix acceptance.
+
+The test now parameterizes the real checked-in workflow as LF and CRLF text on
+every host. Before the fix, LF passed and CRLF reproduced the exact CI assertion
+failure. Normalizing CRLF only inside the semantic workflow comparison fixes
+both cases while preserving all conditional worker/invocation/deadline checks.
+The production workflow, global Git configuration, strict patch/hash checks,
+runtime payloads, dependency locks and signing inputs are unchanged. There is
+no need for a new kernel artifact revision; both remain `+clawx.12`.
+
+Node 24.15.0 validation passed **44 focused tests** and **2,299 full host tests**
+(zero failures, six existing artifact-conditional skips). Both actual workflow
+storage selectors passed **100 OpenClaw / 72 DSH tests**, without skips, using
+the Windows single-file-worker policy on the macOS host; this is not native
+Windows runner evidence. Typecheck, lint (zero errors, seven existing warnings),
+frozen source verification, comms replay/compare, Harness CI and diff-aware task
+validate/dry-run all passed. Evidence uses ignored `temp/workflow-eol-*` and
+`temp/contracts-stall-storage-*` reports. The four README locales were
+reviewed: no user-facing behavior or command changed, so no translation update
+is required. Rule/scenario/task/TODO record the new EOL coverage constraint.
+Fresh new-SHA remote acceptance is still required by MK-1940.
