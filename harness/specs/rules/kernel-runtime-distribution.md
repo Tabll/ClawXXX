@@ -111,6 +111,20 @@ before expensive builds and retain the full real Gateway/ACP/Channel gate.
 Missing output is not proof of a harmless warning or of any specific native
 crash; separate observed runner failure, native reproduction and hypotheses.
 
+Supervise the pre-seal probe as well as the extracted-artifact probe with a
+native Node parent. Git Bash can map multiple NTSTATUS failures to 127; retain
+the unmodified signed/unsigned decimal status and its hexadecimal form before
+shell translation. Journal Gateway launch/ready and ACP launch/initialize/ready
+separately across restart, without changing the original readiness deadline.
+The packaged Node and runtime CI must use the same reviewed 24.x LTS pin, now
+24.20.0 / module ABI 137, which contains the confirmed Windows TCP-connect fix
+missing from 24.15.0. Refresh all five official distribution hashes and both
+source hash chains, and increment immutable artifact revisions when Node bytes
+change. Updating only the CI host while shipping the defective Node is not a
+runtime repair. Pin-alignment and native-status regressions run before builds;
+the full real Gateway, Channels, single/dual installation and signing gates
+remain mandatory. See `harness/reference/windows-runtime-ci-repair.md`.
+
 Windows plugin-cache realpath defaults must use native OS canonicalization so
 case, 8.3 and junction aliases agree with async installation records. Preserve
 strict owner, physical-boundary and provenance checks; an official ID alone

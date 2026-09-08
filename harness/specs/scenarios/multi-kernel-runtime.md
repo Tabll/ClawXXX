@@ -134,6 +134,17 @@ Timeout or overflow cannot become success during bounded post-kill drain.
 Run deterministic close/late-output/failure contracts before expensive builds;
 do not infer a native termination's cause from an isolated module warning.
 
+The pre-seal real probe also runs under native Node supervision, preserving
+decimal/hex Windows exit status before Bash can reduce an NTSTATUS to 127.
+Separate Gateway launch/ready and ACP launch/initialize/ready journal entries
+identify restart progress without increasing deadlines. Both downloadable
+kernels and runtime CI pin Node 24.20.0 (unchanged module ABI 137), including
+the upstream Windows TCP-connect fix absent in 24.15.0. The updated official
+five-platform hashes use new immutable +clawx.13 identities; upstream kernel
+versions and semantic patches are unchanged. Source/CI pin and exit-evidence
+regressions precede expensive builds, and full real-artifact acceptance is
+still required; see `harness/reference/windows-runtime-ci-repair.md`.
+
 Large runtime file verification uses bounded concurrency without dropping any
 signed check. Drain in-flight work before failure cleanup and reject readonly
 sealing failures. Real-artifact fault injection operates only on owned temporary

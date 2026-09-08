@@ -64,6 +64,7 @@ const PHASES = new Set([
   'prepare', 'project-plugins', 'initial-startup', 'canonical-prompt', 'tool',
   'cancel', 'crash', 'restart', 'channels', 'channel-ingress',
   'channel-rejection', 'storage-scan', 'report', 'cleanup', 'complete', 'failed',
+  'gateway-launch', 'gateway-ready', 'acp-launch', 'acp-initialize', 'acp-ready',
 ]);
 
 export function createOpenClawProbeTrace(reportPath, { now = () => performance.now(), write = appendFileSync } = {}) {

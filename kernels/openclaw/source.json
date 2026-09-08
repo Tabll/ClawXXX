@@ -15,8 +15,8 @@
     "integrity": "sha512-M6C7UsnX815nv26qBJFYGe6aGzv+ftZLRzV6S9oRXUtXg2Yn67eVntpssT94kgkquKVSeUxerUg0j1ONp4WYQg=="
   },
   "license": "MIT",
-  "artifactVersion": "2026.9.2+clawx.12",
-  "patchRevision": 12,
+  "artifactVersion": "2026.9.2+clawx.13",
+  "patchRevision": 13,
   "sourceDateEpoch": 1788763473,
   "lockfile": {
     "descriptor": "kernels/openclaw/lock.json",
@@ -30,16 +30,16 @@
   },
   "runtime": {
     "path": "kernels/openclaw/runtime.json",
-    "sha256": "1e6a5010ef34c0c273e65fbe764c27fc2089ebba03de3b61cb2e7c6adc58bcfa"
+    "sha256": "f185e38a83305b1368c5827db57fcc308c2be07614777ab9a7ca60c1c490f532"
   },
   "nodeRuntime": {
     "path": "kernels/node-runtime.json",
-    "sha256": "e822be30955ff18aa415c17a030d3ece48344292191cde5689ad6d1dc7815821"
+    "sha256": "86561ae2e5afd6128f8fc39a0ea4c7a2512e76bda1bc63e9be92621d42ad2a43"
   },
   "overlay": {
     "root": "kernels/openclaw/overlay",
     "manifest": "kernels/openclaw/overlay.manifest.json",
-    "manifestSha256": "8234176eec535cce4a57637017c9bdc0bb26235e6a69f3fdec1c004e65e7d506"
+    "manifestSha256": "a18fd6e9c6c66dfc79f25e83e241699f357d4fb6f2b6947ddbbb37afb4f940eb"
   },
   "patches": [
     {

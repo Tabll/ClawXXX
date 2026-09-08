@@ -160,9 +160,9 @@ ClawX 采用 **Main-owned 多内核 + Host API 统一接入架构**：React Rend
 
 > ClawX 0.6 已实现可选 CI 预制 OpenClaw 与 DeepSeek Harness，并以 Main 独占 SQLite/Blob 为统一数据权威；公开发布仍会在受保护的跨平台签名、晋级与 packaged-test 证据不足时 fail closed。参见[多内核设计](docs/zh-CN/multi-kernel-design.md)、[实施清单](TODO.md)、[运行时安全/支持](docs/zh-CN/runtime-security-support.md)和[数据策略](docs/zh-CN/data-security-retention.md)。
 
-当前 DSH 源码已适配 `0.1.3-alpha.1+clawx.12` 的 v2 流式与结算接口，仍共用同一 SQLite 历史。它仍是 alpha，上游提示存在性能回退；必须完成新版 CI 制品验证与发布，已安装内核才可更新。详见[升级兼容性说明](harness/reference/deepseek-harness-0.1.3-upgrade.md)。
+当前 DSH 源码已适配 `0.1.3-alpha.1+clawx.13` 的 v2 流式与结算接口，仍共用同一 SQLite 历史。它仍是 alpha，上游提示存在性能回退；必须完成新版 CI 制品验证与发布，已安装内核才可更新。详见[升级兼容性说明](harness/reference/deepseek-harness-0.1.3-upgrade.md)。
 
-OpenClaw 源码和开发依赖已切换为 `2026.9.2+clawx.12`。生产桥接按 Run 从统一 SQLite 历史创建独立内存会话，适配新版 Agents/模型/权限配置，并修复 7 个 Channels 插件。独立真实 Gateway/ACP 和打包 payload 测试覆盖工具、取消、崩溃恢复、入站拒绝及无原生历史写入。已安装内核仍须下载新的已验证 CI 制品；五平台签名发布和真实账号验收尚未执行。详见[升级设计与证据](harness/reference/openclaw-2026.9.2-upgrade.md)。
+OpenClaw 源码和开发依赖已切换为 `2026.9.2+clawx.13`。生产桥接按 Run 从统一 SQLite 历史创建独立内存会话，适配新版 Agents/模型/权限配置，并修复 7 个 Channels 插件。独立真实 Gateway/ACP 和打包 payload 测试覆盖工具、取消、崩溃恢复、入站拒绝及无原生历史写入。已安装内核仍须下载新的已验证 CI 制品；五平台签名发布和真实账号验收尚未执行。详见[升级设计与证据](harness/reference/openclaw-2026.9.2-upgrade.md)。
 
 - **进程模型**：Electron Main 管理系统集成、唯一 DataService、Package Manager 和逐内核独立 Supervisor；OpenClaw 与 DSH 可并行运行，Renderer 和 runtime 都不能直接打开 canonical ClawX SQLite 或互相直连。
 - **内核校验**：安装与重扫使用最多 8 路并发的文件校验，保留全部签名哈希、大小和路径检查。每次解包使用独立的 256 项目录缓存，限制大包的额外开销；缓存淘汰只触发文件系统复查，不放宽路径保护。宿主工具链的固定补丁将 Windows 小文件内存映射写入改为普通文件写入，保留 tar 路径串行保护和全部检查。安装后的文件保持只读，设置只读保护失败会拒绝安装；Windows 原子目录移动仅对短暂 `EPERM`/`EBUSY` 锁累计等待最多 1.5 秒，持久锁仍失败，不以复制或放宽权限绕过。干净环境 CI 会记录解包、哈希校验、只读封装等阶段耗时，包括失败与超时；可选诊断不能改变校验结果。
@@ -182,7 +182,7 @@ OpenClaw 源码和开发依赖已切换为 `2026.9.2+clawx.12`。生产桥接按
 
 ### 前置要求
 
-- **Node.js**：22.22.3+ / 24.15.0+（推荐） / 25.9.0+
+- **Node.js**：对应主版本内的 22.22.3+ / 24.15.0+ / 25.9.0+；推荐 Node 24.20.0 LTS，可下载内核与运行时 CI 均锁定此版本（模块 ABI 137）。Windows 请避开存在上游 TCP 连接静默崩溃缺陷的 Node 24.0–24.15，详见[修复证据](harness/reference/windows-runtime-ci-repair.md)。
 - **包管理器**：pnpm 9+
 - **Linux（Ubuntu/Debian）**：运行 Electron 前需先安装系统库，见 [docs/zh-CN/development.md](docs/zh-CN/development.md)
 

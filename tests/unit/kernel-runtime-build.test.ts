@@ -13,7 +13,7 @@ import { applyStrictPatchSeries } from '../../scripts/kernel-runtime/lib/source-
 import { createStrictPatchFixture } from '../fixtures/kernels/strict-patch-fixture.mjs';
 import { describe, expect, it, vi } from 'vitest';
 
-const officialNodeSha256 = 'af5cfaeafe603aaf7599f287fd9d100bb41f16794f49788fa59dd3f25546930f';
+const officialNodeSha256 = 'b7bf7707070b950ba1ec5f1af3bb6de0f2b1962c5033973d94068ab021ef3014';
 
 describe('kernel runtime build supply chain', () => {
   it.each([
@@ -87,7 +87,7 @@ describe('kernel runtime build supply chain', () => {
 
   it.each([
     ['darwin', 'arm64', officialNodeSha256],
-    ['win32', 'x64', 'cc5149eabd53779ce1e7bdc5401643622d0c7e6800ade18928a767e940bb0e62'],
+    ['win32', 'x64', '6cac9ffbca8f6a47091e4b5c772e0606049c3871cb67d900c0cedde630e545ba'],
   ])('creates deterministic signed %s/%s tar.zst artifacts with audited esbuild and traceable metadata', async (platform, arch, nodeSha256) => {
     const root = mkdtempSync(join(tmpdir(), 'clawx-artifact-test-'));
     try {
@@ -147,7 +147,7 @@ describe('kernel runtime build supply chain', () => {
 
       expect(readFileSync(first.archivePath)).toEqual(readFileSync(second.archivePath));
       expect(readFileSync(first.descriptorPath)).toEqual(readFileSync(second.descriptorPath));
-      expect(first.descriptor).toMatchObject({ artifactVersion: '2026.9.2+clawx.12', patchRevision: 12, platform, arch });
+      expect(first.descriptor).toMatchObject({ artifactVersion: '2026.9.2+clawx.13', patchRevision: 13, platform, arch });
       expect(first.descriptor.storage).toMatchObject({ authority: 'clawx-data-service', nativeDurableHistory: false });
       expect(first.descriptor.supplyChain).toEqual(expect.objectContaining({
         sourceSha256: expect.stringMatching(/^[a-f0-9]{64}$/),
@@ -162,7 +162,7 @@ describe('kernel runtime build supply chain', () => {
       writeFileSync(`${esbuildExecutable}.unreviewed`, Buffer.from('4d5a0000', 'hex'));
       const rejected = join(root, 'rejected');
       await expect(assembleKernelArtifact({ ...common, outputDir: rejected })).rejects.toThrow(/not in the audited native allowlist/);
-      expect(existsSync(join(rejected, `openclaw-2026.9.2+clawx.12-${platform}-${arch}.tar.zst`))).toBe(false);
+      expect(existsSync(join(rejected, `openclaw-2026.9.2+clawx.13-${platform}-${arch}.tar.zst`))).toBe(false);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
@@ -262,12 +262,17 @@ describe('kernel runtime build supply chain', () => {
     expect(smoke.lastIndexOf('verifyFileManifest(extracted);')).toBeGreaterThan(smoke.indexOf('? await smokeOpenClawManagedEntrypoint'));
     expect(workflow).toContain('--plugins-root build/openclaw/clawx-plugins --report temp/reports/openclaw-managed-runtime.json');
     expect(workflow).toContain('probe-openclaw-plugin-registry.mjs --package-dir build/openclaw --report temp/reports/openclaw-plugin-registry.json');
-    expect(workflow.indexOf('probe-openclaw-plugin-registry.mjs')).toBeLessThan(workflow.indexOf('probe-openclaw-managed-runtime.mjs'));
+    expect(workflow.indexOf('probe-openclaw-plugin-registry.mjs')).toBeLessThan(workflow.indexOf('run-openclaw-managed-probe.mjs'));
+    const supervised = readFileSync(join(process.cwd(), 'scripts/kernel-runtime/run-openclaw-managed-probe.mjs'), 'utf8');
+    expect(supervised).toContain('probe-openclaw-managed-runtime.mjs');
+    expect(supervised).toContain('collectOpenClawProbe(probe, { timeoutMs: openClawProbeBudgets().totalMs })');
+    expect(supervised).toContain('`${reportPath}.process.json`');
+    expect(supervised).toContain('result.failure || result.exitCode !== 0 || result.signal !== null');
     expect(workflow).toContain('tests/unit/openclaw-plugin-registry.test.ts');
     expect(workflow).toContain('tests/unit/openclaw-probe-lifecycle.test.ts');
     expect(workflow).toContain('tests/unit/kernel-notarization.test.ts');
     expect(workflow).toContain('tests/unit/openclaw-native-allowlist.test.ts');
-    for (const suite of ['tests/unit/kernel-runtime-archive.test.ts', 'tests/unit/extension-bridge-build.test.ts', 'tests/contract/kernels/package-manager.test.ts', 'tests/unit/kernel-tar-write-mode.test.ts', 'tests/unit/openclaw-probe-lifecycle.test.ts']) {
+    for (const suite of ['tests/unit/kernel-runtime-archive.test.ts', 'tests/unit/extension-bridge-build.test.ts', 'tests/contract/kernels/package-manager.test.ts', 'tests/unit/kernel-tar-write-mode.test.ts', 'tests/unit/openclaw-probe-lifecycle.test.ts', 'tests/unit/kernel-source-manifests.test.ts']) {
       expect(workflow).toContain(suite);
       expect(workflow.indexOf(suite)).toBeLessThan(workflow.indexOf('download-npm-source.mjs'));
     }
@@ -298,7 +303,9 @@ describe('kernel runtime build supply chain', () => {
       expect(probe).toContain(`once(${name}, 'close')`);
       expect(probe).not.toContain(`once(${name}, 'exit')`);
     }
-    expect(workflow.indexOf('probe-openclaw-managed-runtime.mjs')).toBeLessThan(workflow.indexOf('scripts/kernel-runtime/sign-macos-runtime.mjs'));
+    expect(workflow.indexOf('run-openclaw-managed-probe.mjs')).toBeGreaterThan(-1);
+    expect(workflow.indexOf('run-openclaw-managed-probe.mjs')).toBeLessThan(workflow.indexOf('scripts/kernel-runtime/sign-macos-runtime.mjs'));
+    for (const phase of ['gateway-launch', 'gateway-ready', 'acp-launch', 'acp-initialize', 'acp-ready']) expect(probe).toContain(`phase('${phase}')`);
     expect(workflow).toContain('tests/contract/kernels/openclaw-conversation-store.test.ts');
     expect(workflow).toContain('tests/e2e/chat-acp-session-controls.spec.ts');
     expect(workflow).toContain('tests/e2e/agents-multi-kernel.spec.ts');

@@ -2,7 +2,7 @@
 
 > 对应设计：[docs/zh-CN/multi-kernel-design.md](docs/zh-CN/multi-kernel-design.md)
 >
-> 状态：第 18 轮 24/25 的封包后探针输出读取边界及失败证据已修复；第 19 轮 78588bc0 的三平台 E2E 全通过，但 Windows OpenClaw 在更早的 SQLite 契约测试超出原 5 秒限制（174 前置通过、closure 10/11），未到达真实制品探针。已补齐该早期步骤遗漏的 Windows 单文件 worker 策略，保留全部持久化/重开/历史断言并新增阶段证据，不增加超时。隔离 Windows 原始与修复版 11 项契约均通过；本地 2339 完整、125 存储契约通过。上一轮 Windows 双内核全生命周期已原生通过 287847 ms，仍不可代替新 SHA 完整验收。MK-1940 待新一轮全矩阵，未发布 COS/catalog。
+> 状态：第 20 轮 5d2250c4 的三平台 E2E、9/10 build、4/4 macOS 公证成功；Windows 早期 SQLite 全流程已通过（190 ms），但预封包真实探针在重启阶段无报告退出，Bash 状态为 127。发现当前 Node 24.15.0 存在维护者确认修复的 Windows TCP-connect 原生缺陷；已将共享 Node/运行时 CI 升至 24.20.0 LTS、ABI 137 不变，双内核递增不可变 +clawx.13、刷新官方五平台哈希链，并补齐预封包原生退出码/细分阶段证据。新版 Node 的隔离 Windows 完整探针 173990 ms 通过，本地 2348 项全量测试通过；不能据此宣称旧 CI 的原生崩溃栈已被复现。MK-1940 仍待新 SHA 全部单/双内核矩阵成功，未发布 COS/catalog。
 >
 > 最近完整本地证据（2026-09-01）：Vitest 243 files / 241 passed / 2 skipped、2116 tests passed / 6 skipped（其中制品依赖项只在真实 CI 制品存在时执行）；Electron E2E 既有证据 151 passed / 3 platform skips；multi-kernel chaos 既有证据 28/28；DSH `0.1.2-alpha.2` 干净精确上游树完成严格 patch/overlay 重放、冻结安装、完整 host build、12 files / 43 focused tests，并在真实 macOS `sandbox-exec` 下通过 3/3 runtime self-tests；typecheck、lint、comms 与本任务 Harness 全绿
 >
@@ -493,7 +493,7 @@
 - [x] `MK-1937` 用真实 Jimp 文件名及隔离夹具复现 USTAR 截断/同前缀碰撞；启用 portable PAX、固定 epoch/排序，在输出归档和签名前逐文件核对解码路径、唯一性、内容 SHA-256、大小与 mode。覆盖长 ASCII/多字节/深路径、跨副本确定性，以及截断、重复、缺失、内容和权限损坏拒绝。
 - [x] `MK-1938` build:vite 显式前置生成两份 ignored 扩展桥，build/package 共用该入口；隔离无扩展/未安装扩展两场景旧实现均失败、新实现通过。生产安装/重扫覆盖长路径，PAX 越界/绝对/保留路径、大小写/Unicode 碰撞、链接及 size/解压流超额仍拒绝；回归前置于全部 CI 平台构建，不移除任何签名/公证/clean-machine 闸门。
 - [x] `MK-1939` 双内核 +12 source/runtime/overlay 摘要校验通过；upstream/compiled patch/依赖锁/Node/DSH overlay 不变。49 项 focused、2265 项完整宿主通过，0 失败/6 项既有条件跳过；528 份 tracked 构建输入的干净副本（不带 generated bridges）完成实际 UI/Main/Preload/SQLite 构建。24 个真实 Jimp 文件按 runtime 路径完整往返；typecheck、lint（0 错误/7 项既有警告）、source verify、comms、Harness CI/任务 validate/dry-run 通过，四语 README/设计/规则/场景同步。不是 CI 原生制品或平台签名验收。
-- [ ] `MK-1940` +12 提交/推送并在新 SHA dispatch/审批后，取得双内核五目标 staging、全部单/双 clean-machine 的最终通过证据；新 run 链接随交付记录提供，未完成远端验收前不勾选。COS/catalog/生产发布仍不在本轮范围。
+- [ ] `MK-1940` 当前 +13 提交/推送并在新 SHA dispatch/审批后，取得双内核五目标 staging、全部单/双 clean-machine 的最终通过证据；新 run 链接随交付记录提供，未完成远端验收前不勾选。COS/catalog/生产发布仍不在本轮范围。
 - [x] `MK-1941` +12 经 `02560a1a` 提交/推送并 dispatch/审批 [34093118132](https://github.com/Tabll/ClawXXX/actions/runs/34093118132)：9/10 build、三个 macOS 公证及三平台 E2E 成功。OpenClaw Intel 前置 96 项测试中 95 项通过，新增流预算测试 5,031 ms 超时（DSH Intel 同测试 3,792 ms 通过），未进入该目标内核构建/公证；单/双 clean-machine 跳过，保留 9 份 runtime/9 份报告，不是发布成功。
 - [x] `MK-1942` 定位旧测试在 TAR EOF 后放置 11 MiB 空白，node-tar 反复拼接尾部；隔离真实解析器测得边界前累计复制 3,369,189,377 bytes。改用有效 bounded PAX records 填满相同预算，保留 64 KiB EOF trailer，复制降到 212,993 bytes。真实 Zstandard/生产解压器验证 10,485,761 bytes 接受、再多 1 byte 按精确流预算错误拒绝；旧夹具不能通过新增确定性工作量回归。不放宽 5 秒测试/生产安全上限，不 mock、retry 或 skip。
 - [x] `MK-1943` 32 focused / 98 CI preflight / 2267 完整宿主通过（0 失败/6 既有条件跳过）；10 轮共 30 项边界/工作量检查全部通过，最慢约 48 ms。typecheck、lint（0 错误/7 既有警告）、source verify、comms、Harness CI/任务 validate/dry-run 与 diff check 通过。生产代码、构建器、workflow、内核 +12/hash/lock/签名输入不变；四语 README 经审查无需改变，规则/场景/任务/参考文档已记录。提交/推送后新 CI 的最终验收继续由 MK-1940 跟踪。
@@ -531,6 +531,10 @@
 - [x] `MK-1972` 隔离 Windows VM / Node 24.15.0 x64 校验第 18 轮原始 ZIP SHA-256 后，原脚本加诊断观察与修复原脚本均通过完整实包探针；未复现旧 CI 异常，不将输出读取缺陷冒充已证明的终止原因。修复版嵌套探针 98653 ms 完成、15 阶段记录完整、exit 0/signal null，真实工具后台轮询 2 次、七 Channels、拒绝转交与无原生历史检查通过。宿主 51 focused / 2337 完整（0 失败/6 既有跳过）/174 CI 前置、typecheck/lint/source/comms/Harness 全通过；四语 README 经审查无需修改。新 SHA 全矩阵结果仍由 MK-1940 跟踪。
 - [x] `MK-1973` 读取 [第 19 轮](https://github.com/Tabll/ClawXXX/actions/runs/34190465955) Windows OpenClaw job 101947300320：174 前置（含 30 探针生命周期）全部通过，早期 closure 中 SQLite hydrate/compact/branch/restart 5180 ms 超出原 5000 ms；其余 10 项通过，明确未到达封包后探针。补齐早期重复存储套件遗漏的 Windows-only 单文件 worker，其他平台默认并发不变；LF/CRLF 策略回归、独立早期 JSON 与数据库阶段 JSONL、always-upload 和自有目录关闭后清理同步覆盖。
 - [x] `MK-1974` 同一 #18 原始签名 SDK / Windows 11 / Node 24.15.0 x64 的基线 4 worker 和修复 1 worker 各 11/11 通过，SQLite 生命周期分别 116/65 ms；修复版完整阶段证据及关闭重开断言通过，未宣称复现 runner 的具体停顿原因。宿主 39 focused / 2339 完整（0 失败/6 既有条件跳过）/125 实际存储选择器、typecheck/lint/source/comms/Harness 与任务 validate/dry-run 全通过；生产数据库/内核字节/锁/签名/时限不变，四语 README 经审查无需修改。[第 19 轮同 SHA E2E #33](https://github.com/Tabll/ClawXXX/actions/runs/34190433259) 三平台全通过，新 SHA 完整远端验收仍由 MK-1940 跟踪。
+
+- [x] `MK-1975` 核验 [第 20 轮](https://github.com/Tabll/ClawXXX/actions/runs/34191696751) 最终 9/10 build、四个 macOS Accepted，单/双 clean-machine 因构建失败跳过；[同 SHA E2E #34](https://github.com/Tabll/ClawXXX/actions/runs/34191626715) 三平台成功。Windows 174 前置与 11 closure 全通过，SQLite 完整生命周期 190 ms；真实探针最后阶段为 restart（156406 ms），约 259 秒时 Bash 返回 127，无 failed/cleanup/final JSON，未误判为 5 秒 SQLite 复发或正常警告。
+- [x] `MK-1976` 审查 Node 官方 issue 63620、维护者确认的 PR 62561 和 Git for Windows 原生状态转换源码：24.15.0 的 Windows TCP 路径有未初始化 OSVERSIONINFO 缺陷，部分 NTSTATUS 被 Bash 映射为 127。升级当前同 ABI 的 Node 24.20.0 LTS，核对官方五平台 SHA-256，同步两个 source/runtime 和 OpenClaw control 版本/hash 链至 +clawx.13；上游内核/语义补丁/依赖锁不变。增加 pre-seal 原生父进程监督与 Gateway/ACP 分阶段日志、LF/CRLF CI pin 对齐和失败退出码回归，全部原始时限/真实性/签名与存储闸门保留。
+- [-] `MK-1977` 新版 Node 的 Windows 71/71 focused 与新监督入口实包全流程 97672 ms 通过（25 阶段、原生 0/0x0、七 Channels、重启及无第二份历史均成功）；宿主 2348 全量 / 190 实际 CI 前置、typecheck/lint/source/comms/Harness 和任务 diff-aware validate/dry-run 全通过。仅清理本次 GUID 隔离目录，原始包和主机日志保留，私有服务已关闭、VM 恢复关闭。提交/推送并正常审批全量 staging 待完成；不能宣称旧 CI 崩溃栈已复现，MK-1940 仍等待新 SHA 全矩阵最终通过。
 
 ## 每个实现 PR 的最低检查
 

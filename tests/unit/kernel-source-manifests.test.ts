@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { join } from 'node:path';
@@ -115,13 +116,17 @@ describe('frozen kernel sources', () => {
     }
   });
 
-  it('freezes Node 24.15.0 and all five official distributions', () => {
+  it('freezes the Windows TCP-connect repair in Node 24.20.0 without changing the module ABI', () => {
     const runtime = readJson<{
       version: string;
       moduleAbi: number;
-      assets: Array<{ platform: string; arch: string; sha256: string }>;
+      source: string;
+      signedChecksums: { url: string; signatureUrl: string };
+      assets: Array<{ platform: string; arch: string; filename: string; archiveRoot: string; sha256: string }>;
     }>('kernels/node-runtime.json');
-    expect(runtime).toMatchObject({ version: '24.15.0', moduleAbi: 137 });
+    expect(runtime).toMatchObject({ version: '24.20.0', moduleAbi: 137 });
+    expect(runtime.source).toBe('https://nodejs.org/download/release/v24.20.0/');
+    expect(runtime.signedChecksums).toEqual({ url: `${runtime.source}SHASUMS256.txt`, signatureUrl: `${runtime.source}SHASUMS256.txt.sig` });
     expect(runtime.assets.map((asset) => `${asset.platform}-${asset.arch}`).sort()).toEqual([
       'darwin-arm64',
       'darwin-x64',
@@ -129,7 +134,32 @@ describe('frozen kernel sources', () => {
       'linux-x64',
       'win32-x64',
     ]);
-    expect(runtime.assets.every((asset) => /^[a-f0-9]{64}$/.test(asset.sha256))).toBe(true);
+    // Official release checksums, not arbitrary hash-shaped strings. Both
+    // kernels must ship the same fixed native runtime, not only a newer CI Node.
+    expect(Object.fromEntries(runtime.assets.map(asset => [asset.filename, asset.sha256]))).toEqual({
+      'node-v24.20.0-darwin-arm64.tar.xz': 'b7bf7707070b950ba1ec5f1af3bb6de0f2b1962c5033973d94068ab021ef3014',
+      'node-v24.20.0-darwin-x64.tar.xz': '26fc30891004603d094eed11de5efcd03bbd2efbc35c177fc72648d5d7a7701b',
+      'node-v24.20.0-linux-arm64.tar.xz': '5f4ddab610c1ab2016b3c227cebdbf6d9495161487e4739c7b90090595f465f7',
+      'node-v24.20.0-linux-x64.tar.xz': '2f2c0da162318f0de47665410c7c8c2ed3d36c8f3105de4bbc61176c70a7cbf2',
+      'node-v24.20.0-win-x64.zip': '6cac9ffbca8f6a47091e4b5c772e0606049c3871cb67d900c0cedde630e545ba',
+    });
+    for (const asset of runtime.assets) expect(asset.archiveRoot).toBe(asset.filename.replace(/(?:\.tar\.xz|\.zip)$/, ''));
+    for (const kernel of ['openclaw', 'deepseek-harness']) {
+      const manifest = readJson<SourceManifest>(`kernels/${kernel}/source.json`);
+      expect(manifest.patchRevision).toBe(13);
+      expect(manifest.nodeRuntime.sha256).toBe(sha256('kernels/node-runtime.json'));
+    }
+  });
+
+  it.each(['\n', '\r\n'])('keeps all runtime CI Node installations aligned with the shared pin under %j', eol => {
+    const { version } = readJson<{ version: string }>('kernels/node-runtime.json');
+    for (const [file, count] of [
+      ['kernel-runtime-build.yml', 3], ['kernel-runtime-promote.yml', 1], ['multi-kernel-runtime-smoke.yml', 1],
+    ] as const) {
+      const workflow = readFileSync(join(root, '.github/workflows', file), 'utf8').replace(/\r?\n/g, eol);
+      const pins = [...workflow.matchAll(/node-version:\s*['"]?([0-9.]+)['"]?/g)].map(match => match[1]);
+      expect(pins).toEqual(Array(count).fill(version));
+    }
   });
 
   it('freezes the required five runtime targets and only defers arm64 RPM packaging', () => {

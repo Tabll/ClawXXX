@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { EventEmitter } from 'node:events';
 import { spawn } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
@@ -9,6 +9,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { openClawProbeBudgets, waitForGatewayReady } from '../../scripts/kernel-runtime/lib/openclaw-probe-lifecycle.mjs';
 import { nextOpenClawProbeToolCall, PROBE_PROCESS_POLL_LIMIT, PROBE_PROCESS_POLL_MS } from '../../scripts/kernel-runtime/lib/openclaw-probe-provider.mjs';
 import { collectOpenClawProbe, createOpenClawProbeTrace } from '../../scripts/kernel-runtime/lib/openclaw-probe-process.mjs';
+import { runOpenClawManagedProbe } from '../../scripts/kernel-runtime/run-openclaw-managed-probe.mjs';
 
 const child = () => Object.assign(new EventEmitter(), { exitCode: null as number | null, signalCode: null as string | null });
 const clock = () => {
@@ -17,6 +18,74 @@ const clock = () => {
 };
 
 const outputChild = () => Object.assign(child(), { stdout: new PassThrough(), stderr: new PassThrough(), kill: vi.fn(() => true) });
+
+describe('pre-seal native OpenClaw probe supervision', () => {
+  const fixture = () => {
+    const root = mkdtempSync(join(tmpdir(), 'clawx-supervised-probe-'));
+    writeFileSync(join(root, 'package.json'), JSON.stringify({ version: '2026.9.2' }));
+    return { root, input: { nodePath: join(root, 'owned node.exe'), packageDir: root, pluginsRoot: join(root, 'plugins'), reportPath: join(root, 'reports', 'probe.json') } };
+  };
+
+  it.each([3221226505, -1073740791])('retains native status %d before a shell can collapse it to 127', async exitCode => {
+    const { root, input } = fixture();
+    const process = outputChild();
+    const spawnProbe = vi.fn(() => {
+      queueMicrotask(() => {
+        process.exitCode = exitCode;
+        process.emit('exit', exitCode, null);
+        process.stderr.write('bounded native failure tail');
+        process.emit('close', exitCode, null);
+      });
+      return process;
+    });
+    try {
+      await expect(runOpenClawManagedProbe(input, { spawnProbe })).rejects.toThrow(`code=${exitCode}/0xc0000409`);
+      const report = JSON.parse(readFileSync(`${input.reportPath}.process.json`, 'utf8'));
+      expect(report).toMatchObject({ exitCode, exitCodeHex: '0xc0000409', signal: null, stderr: 'bounded native failure tail' });
+      expect(spawnProbe).toHaveBeenCalledWith(input.nodePath, expect.arrayContaining(['--node', input.nodePath, '--plugins-root', input.pluginsRoot, '--report', input.reportPath]), { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
+      expect(process.kill).not.toHaveBeenCalled();
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
+
+  it.each([
+    { ok: false, version: '2026.9.2', nativeDurableHistory: false },
+    { ok: true, version: 'wrong-version', nativeDurableHistory: false },
+    { ok: true, version: '2026.9.2', nativeDurableHistory: true },
+    { ok: true, version: '2026.9.2', nativeDurableHistory: false },
+  ])('requires complete successful evidence even with native exit zero: %o', async evidence => {
+    const { root, input } = fixture();
+    const spawnProbe = () => {
+      const process = outputChild();
+      queueMicrotask(() => {
+        process.stdout.write(JSON.stringify(evidence));
+        process.exitCode = 0;
+        process.emit('close', 0, null);
+      });
+      return process;
+    };
+    try {
+      const result = runOpenClawManagedProbe(input, { spawnProbe });
+      if (evidence.ok && evidence.version === '2026.9.2' && !evidence.nativeDurableHistory) await expect(result).resolves.toEqual(evidence);
+      else await expect(result).rejects.toThrow('evidence is invalid');
+      expect(JSON.parse(readFileSync(`${input.reportPath}.process.json`, 'utf8')).exitCodeHex).toBe('0x0');
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
+
+  it('fails closed on evidence write failure after the owned child has closed', async () => {
+    const { root, input } = fixture();
+    mkdirSync(`${input.reportPath}.process.json`, { recursive: true });
+    const process = outputChild();
+    const spawnProbe = () => {
+      queueMicrotask(() => { process.exitCode = 0; process.emit('close', 0, null); });
+      return process;
+    };
+    try {
+      await expect(runOpenClawManagedProbe(input, { spawnProbe })).rejects.toThrow();
+      expect(process.listenerCount('close')).toBe(0);
+      expect(process.kill).not.toHaveBeenCalled();
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
+});
 
 describe('sealed OpenClaw process output and failure evidence', () => {
   it('waits for close and retains output arriving after exit instead of reading a partial report', async () => {

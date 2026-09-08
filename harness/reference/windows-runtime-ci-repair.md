@@ -1069,3 +1069,111 @@ comms replay/compare, Harness CI and diff-aware task validation/dry-run passed.
 [Electron E2E #33](https://github.com/Tabll/ClawXXX/actions/runs/34190433259) on
 the #19 source SHA passed all three platforms. MK-1940 remains pending until
 the next pushed-SHA full staging matrix succeeds; COS/catalog remains unchanged.
+
+## Follow-up: Node 24.15.0 Windows TCP failure and native exit supervision
+
+[Build #20](https://github.com/Tabll/ClawXXX/actions/runs/34191696751), source
+`5d2250c45c31194c0e9d1a87e43b72b74862a24e`, finished with nine successful
+builds and one failed Windows OpenClaw build (`101951749069`). The single/dual
+clean-machine matrices were skipped because their build dependency failed.
+[Same-source E2E #34](https://github.com/Tabll/ClawXXX/actions/runs/34191626715)
+passed all three platforms. All four macOS notarizations were Accepted:
+
+| Kernel / target | Submission ID | Submitted closure archive SHA-256 |
+| --- | --- | --- |
+| DSH / arm64 | `eba90210-41bd-4a56-8dc8-7ec16a2da783` | `324643641695abce4fc3707043a53f483a474badb9c57b3b6a1a8f6d8088a615` |
+| DSH / x64 | `1db8a58a-3c45-4690-b7c3-d82d34b6ba05` | `673e00a1c1aaf9d995836f241aceda9aee7d219f57b6aa725fa13ecb0efec549` |
+| OpenClaw / arm64 | `21db48b9-5866-4757-bbf5-e79f19795eb2` | `ae630dbf6fd5002885cc1e7d4e77134cd37d9e75e15ee5f91ce0b871e6c4eec7` |
+| OpenClaw / x64 | `7a1b1d6a-2be6-4616-909b-be03a527f901` | `31909a512abe2cebcb47da0889605ad169790e54f5519dbeff6857dfe441b44f` |
+
+The Windows early worker-policy repair was confirmed: **174 preflight** and
+**11 closure cases** passed; the SQLite lifecycle including cleanup took
+**190 ms**. The registry probe also passed. The later real managed probe
+reached initial startup, canonical prompt, tool execution, cancel, deliberate
+crash and `restart` at **156406 ms**, then its parent vanished at about
+**259 seconds**. Bash returned **127**; no final JSON, failure or cleanup phase
+was emitted. This was not a deadline or reported JavaScript assertion.
+Artifact `10042711715`, `kernel-build-reports-openclaw-win32-x64`, is retained
+as ignored `temp/ci20-windows-probe-evidence.zip`, SHA-256
+`1d5320509d3d662799c22b82b7326cd3b4ab2cea1de6fa574128d065ee190610`.
+
+Primary-source diagnosis found a known defect in the exact pinned runtime:
+
+- [Node issue 63620](https://github.com/nodejs/node/issues/63620) describes
+  silent Windows TCP-connect termination on 24.15.0 without JS exit/error
+  events. A [Node maintainer confirms the fix](https://github.com/nodejs/node/issues/63620#issuecomment-4566643447).
+- [Node PR 62561](https://github.com/nodejs/node/pull/62561) replaces the old
+  uninitialized `OSVERSIONINFOW` Windows-version query with a helper that sets
+  the required structure size before calling `RtlGetVersion`. This fix is in
+  24.16.0 and later 24.x releases. It is not a ClawX storage change.
+- [Git for Windows status translation](https://github.com/git-for-windows/msys2-runtime/blob/main/winsup/cygwin/pinfo.cc)
+  maps otherwise-unclassified Windows NTSTATUS failures to 127. Therefore
+  127 here is not proof of a missing executable or of one particular native
+  crash code. We do not have the #20 runner's raw status or crash stack.
+
+Use current [Node 24.20.0 LTS](https://nodejs.org/en/blog/release/v24.20.0)
+with module ABI **137** unchanged, rather than stopping at the first fixed
+release and omitting subsequent security fixes. The five official archive
+hashes are pinned from the [release checksum file](https://nodejs.org/download/release/v24.20.0/SHASUMS256.txt).
+The actual downloaded Windows x64 ZIP and macOS ARM64 tar.xz matched those
+hashes; both native identities report 24.20.0 / ABI 137 / libuv 1.52.1.
+Both kernels' source hash chains and runtime-related CI now use the same pin.
+The immutable versions advance to **2026.9.2+clawx.13** and
+**0.1.3-alpha.1+clawx.13**. Upstream commits, semantic patches, dependency locks,
+capability/storage contracts, trust and all signing/notarization gates remain
+unchanged. No existing installed runtime or published catalog is replaced.
+
+The pre-seal real probe now has a native Node supervisor using the same bounded
+close-based collector as sealed probing. Its mandatory process report preserves
+decimal status and hexadecimal NTSTATUS before any shell translation, even if
+the child cannot emit final JSON. Nonzero/signal/spawn/timeout/overflow remains
+fatal, and complete successful version-matched no-native-history output is
+still required. Gateway launch/ready and ACP launch/initialize/ready are
+distinct closed journal labels for both initial startup and restart. All
+original Gateway/ACP/provider/Channel deadlines and assertions are unchanged.
+Pin-alignment (including LF/CRLF) and native status/report regressions run
+before expensive builds. Four README locales now explain the Node pin and
+Windows development recommendation.
+
+An isolated Windows 11 ARM64 VM (official x64 Node under emulation) ran the
+unchanged #18 signed OpenClaw payload with the #20 raw probe and MinGit Bash
+5.3.15(2). Old Node 24.15.0 plus diagnostic-only process observation passed
+the complete baseline; no broad process-kill or console signal was observed.
+A bounded high-rate loopback diagnostic also did not reproduce a native crash;
+it accumulated ordinary request failures and exited 1, so it is **not** causal
+or successful stability evidence. No registry, dump, networking or antivirus
+settings were changed. These controlled samples do not identify the #20 crash.
+
+The unchanged real probe with Node 24.20.0, **without observation hooks**,
+passed all assertions and cleanup in **173990 ms**: Gateway readiness
+**92184/22765 ms**, one real background poll, seven provider requests/five usage
+events, seven Channel modules, rejected canonical handoff and zero native
+history. This tests new-Node compatibility against unmodified kernel bytes,
+not a newly signed +13 artifact. Native supervisor regressions and full
+current-source staging acceptance remain separate gates; MK-1940 stays open.
+
+The final **new supervised entrypoint**, Node 24.20.0 and the same unmodified
+signed Windows payload passed in **97672 ms**, without observation hooks.
+All **25** phases completed, native exit was **0 / 0x0**, signal was null,
+Gateway readiness was **32953/18785 ms**, and the seven provider requests,
+five usage events, real background poll, restart, seven Channels, rejected
+handoff and no-native-history assertions remained intact. The bounded native
+process report and complete phase journal are retained in ignored
+`temp/restart-probe-vm-supervised.log` on the host.
+
+The Windows VM also passed **71/71** focused regressions. Its copied source
+fixture initially contained macOS tar AppleDouble metadata, which strict
+overlay validation correctly rejected; only the owned temporary metadata was
+removed, with no manifest exception added. Source-manifest tests explicitly
+use the Node environment because they require filesystem APIs, not a DOM.
+Host Node 24.20.0 passed **2348 tests / 0 failed / 6 existing artifact-conditional
+skips**, **190 actual CI preflight cases**, typecheck, lint (zero errors/seven
+existing Fast Refresh warnings), both source hash verifications, communication
+replay/compare, Harness CI and diff-aware task validate/dry-run. These are
+local validation results, not a replacement for the new full remote matrix.
+
+After confirming zero owned Node/Git processes, the GUID-scoped VM fixture
+was removed; a read-only check followed by cleanup removed two remaining
+empty directories. The host's original archives and logs remain available.
+The private fixture HTTP service was stopped and the initially stopped VM
+was restored to stopped state. No installed runtime or user data was touched.

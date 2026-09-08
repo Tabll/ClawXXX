@@ -176,9 +176,12 @@ try {
     return child;
   };
   const startPair = async () => {
+  phase('gateway-launch');
   const gateway = launch(['gateway', 'run', '--port', String(gatewayPort), '--bind', 'loopback']);
   gateway.stdout.on('data', bytes => { logs = `${logs}${bytes}`.slice(-16000); });
   startups.push(await waitForGatewayReady(gateway, `http://127.0.0.1:${gatewayPort}/healthz`, { timeoutMs: probeBudgets.gatewayReadyMs }));
+  phase('gateway-ready');
+  phase('acp-launch');
   acp = launch(['acp']);
   lines = createInterface({ input: acp.stdout });
   lines.on('line', line => {
@@ -197,7 +200,9 @@ try {
       if (message.id && pending.has(message.id)) pending.get(message.id)(message);
     } catch { logs += `\nNon-JSON ACP line: ${line.slice(0, 200)}`; }
   });
+  phase('acp-initialize');
   await request('initialize', { protocolVersion: 1, clientCapabilities: {}, clientInfo: { name: 'clawx', version: '1' } });
+  phase('acp-ready');
   return gateway;
   };
   phase('initial-startup');
