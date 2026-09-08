@@ -261,6 +261,9 @@ describe('kernel runtime build supply chain', () => {
     expect(probe).toContain("OPENCLAW_GATEWAY_STARTUP_TRACE: '1'");
     expect(probe).toContain('rawInput?.command === toolCommand');
     expect(probe).toContain('Approved tool must actually execute the fixed script');
+    expect(probe).toContain('nextOpenClawProbeToolCall(request.messages, toolCommand)');
+    expect(probe).toContain('6 + processPolls');
+    expect(probe).toContain('4 + processPolls');
     expect(probe).toContain('report.startups = startups');
     expect(workflow.indexOf('probe-openclaw-managed-runtime.mjs')).toBeLessThan(workflow.indexOf('scripts/kernel-runtime/sign-macos-runtime.mjs'));
     expect(workflow).toContain('tests/contract/kernels/openclaw-conversation-store.test.ts');

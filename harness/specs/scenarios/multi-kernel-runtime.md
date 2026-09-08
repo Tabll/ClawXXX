@@ -113,6 +113,9 @@ workers are serialized; internal concurrency, deadlines and release gates stay.
 Release owned execution gates and drain operations on failure before teardown.
 Workflow-policy assertions also exercise LF and CRLF text on every host;
 semantic EOL normalization must never alter frozen-source or patch-byte checks.
+The loopback model exercises background exec and native process polling,
+including adapter-normalized call IDs, exact command/session binding, bounded
+continuations, terminal output and complete provider-usage accounting.
 
 Large runtime file verification uses bounded concurrency without dropping any
 signed check. Drain in-flight work before failure cleanup and reject readonly

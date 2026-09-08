@@ -77,6 +77,14 @@ Do not rely on a copied LF-only Windows fixture to cover Git checkout behavior,
 change developer Git policy, or apply this normalization to signed/frozen input
 hashes or strict patch bytes.
 
+The real Gateway probe's loopback provider must exercise native background
+exec and bounded process continuation. Bind normalized tool-call IDs to the
+exact owned command and returned session, never reissue exec after any tool
+result, and require terminal success plus actual output before ending the turn.
+Running output is not completion. Count each completed poll response in usage;
+retain cancellation and no-native-history checks, fixed deadlines and a finite
+provider-request budget. Invalid fixture continuations must fail immediately.
+
 Windows plugin-cache realpath defaults must use native OS canonicalization so
 case, 8.3 and junction aliases agree with async installation records. Preserve
 strict owner, physical-boundary and provenance checks; an official ID alone

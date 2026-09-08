@@ -671,3 +671,51 @@ validate/dry-run all passed. Evidence uses ignored `temp/workflow-eol-*` and
 reviewed: no user-facing behavior or command changed, so no translation update
 is required. Rule/scenario/task/TODO record the new EOL coverage constraint.
 Fresh new-SHA remote acceptance is still required by MK-1940.
+
+## Follow-up: sealed Windows probe background execution
+
+[Build #15](https://github.com/Tabll/ClawXXX/actions/runs/34174116971) on
+`1f85184cc9a005879f091780913ea95185fe7344` passed all **10 builds**, all **4 macOS
+notarizations** and **13/15 clean-machine jobs**. Both Windows storage suites
+passed completely (**100 OpenClaw / 72 DSH**); the CRLF regression is resolved.
+[Electron E2E #29](https://github.com/Tabll/ClawXXX/actions/runs/34174075068)
+passed all three platforms on the same commit. Two later Windows checks failed:
+
+- Sealed OpenClaw's real Gateway/ACP probe approved the fixed script, but the
+  loopback model returned its final response after a tool response without
+  waiting for background execution. Approval at 01:24:39 UTC was followed by
+  background-task registration and another provider call at 01:24:49 UTC,
+  matching the native exec default 10-second yield. CI did not retain the tool
+  response body, so timing alone was not used as proof.
+- The dual-runtime test completed installation and concurrent control startup
+  at **457,486 ms**, detected the injected corruption at **463,196 ms**, then
+  reached the unchanged **900,000 ms** deadline during `repair-openclaw`.
+  This is a separate installer performance investigation, not a passing gate.
+
+Forcing `background: true` through the real local Gateway/ACP reproduced the
+exact old assertion with three provider calls (`temp/probe-background-before.*`).
+The fixture now performs at most eight read-only process polls of 5 seconds,
+under unchanged outer deadlines, tied to the exact command and the native
+session. It handles call IDs normalized by the provider adapter, retains output
+across running polls, and requires successful terminal exit plus the actual
+marker. It never treats a running command or `tool_call_update` as completion.
+A separate finite request budget and immediate rejection prevent malformed
+fixtures from repeatedly executing the command. This is probe code only; native
+tool authorization, production kernel payloads and storage fences are unchanged.
+
+The final real local probe (`temp/probe-background-after2.*`) passed the full
+Gateway/ACP path, one background continuation, all seven Channels, cancellation,
+crash rehydration, rejected ingress and zero native durable history. It observed
+seven requests (including two interrupted responses) and five distinct known
+usage events. The exact baseline request counts now add only validated process
+poll responses; unknown provider cost remains absent. Deterministic tests cover
+running/terminal/error results, partial output, normalized IDs, foreign or
+missing identities, and exhausted bounds in the existing CI-selected suite.
+The four README locales need no change for this isolated test-probe correction.
+Rule/scenario/task/TODO retain the pending Windows repair and full CI acceptance.
+
+Local Node 24.15.0 validation passed **42 focused tests**, **2,313 full host
+tests** (zero failures, six existing artifact-conditional skips), typecheck,
+lint (zero errors, seven existing warnings), frozen-source verification, comms
+replay/compare, Harness CI and diff-aware task validate/dry-run. No Windows
+background-continuation success is claimed before the next native CI run.

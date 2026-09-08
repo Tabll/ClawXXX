@@ -2,7 +2,7 @@
 
 > 对应设计：[docs/zh-CN/multi-kernel-design.md](docs/zh-CN/multi-kernel-design.md)
 >
-> 状态：修复提交 aa687d2b 的三平台 E2E 全部成功，第 14 轮完整内核构建已触发并审批。两个 Windows 的 storage 检查分别通过 98/99、70/71，唯一失败均为新增 workflow 断言的 CRLF/LF 不匹配，原 Git、Channels、Cron 超时检查通过；部分 macOS 公证仍在执行。本轮为语义断言增加 LF/CRLF 覆盖，44 focused、2299 完整宿主、100/72 两组 CI 存储选择器本地通过；保留原时限、真实 SQLite FULL、workflow 和全部签名/制品闸门。内核 +12/hash/lock/签名输入不变；新五目标最终验收仍由 MK-1940 跟踪。
+> 状态：1f85184c 的第 15 轮通过 10/10 构建、4/4 macOS 公证、13/15 单/双 clean-machine 和三平台 E2E，Windows CRLF 问题已解决（存储 100/72 全通过）。余下 Windows 封包后工具探针与双内核重装修复超时失败；前者已在本地真实 Gateway/ACP 复现并补齐受限后台进程续查，后者继续性能定位。未扩大原时限、关闭闸门或改变内核 +12/hash/lock；MK-1940 仍未完成，未发布 COS/catalog。
 >
 > 最近完整本地证据（2026-09-01）：Vitest 243 files / 241 passed / 2 skipped、2116 tests passed / 6 skipped（其中制品依赖项只在真实 CI 制品存在时执行）；Electron E2E 既有证据 151 passed / 3 platform skips；multi-kernel chaos 既有证据 28/28；DSH `0.1.2-alpha.2` 干净精确上游树完成严格 patch/overlay 重放、冻结安装、完整 host build、12 files / 43 focused tests，并在真实 macOS `sandbox-exec` 下通过 3/3 runtime self-tests；typecheck、lint、comms 与本任务 Harness 全绿
 >
@@ -513,6 +513,9 @@
 - [x] `MK-1954` 按用户明确授权的 GitHub 标签页重新触发/审批 [第 14 轮 34173221385](https://github.com/Tabll/ClawXXX/actions/runs/34173221385)，对应 aa687d2b，三平台 E2E 第 28 轮成功。DSH Windows 121 前置与 69 overlay 回归通过；70/71 storage 检查中仅 workflow 策略断言因 CRLF 失败。四项真实 Git patch 为 315–409 ms、Channels queue 769 ms、Cron skip/replace 420/435 ms、restart 632 ms，旧超时问题未复现；完整矩阵仍须继续验收。
 - [x] `MK-1955` 将真实 workflow 文本参数化为 LF/CRLF，旧比较确定复现 LF 通过、CRLF 失败；只在语义断言内部统一换行后 44 项 focused 全通过。未改 workflow/global Git/生产代码/严格 patch 和哈希/内核版本；四语 README 经审查无需修改，任务/规则/场景/参考文档同步。本地 Windows LF 源码复制不再被当作覆盖 CRLF checkout 的证据。
 - [x] `MK-1956` OpenClaw Windows 实际日志确认 121 前置、11 overlay 回归通过，storage 98/99 仅同一 CRLF 断言失败，无新增运行时失败。本地 Node 24.15.0 完整宿主 2299 passed / 0 failed / 6 既有条件跳过，两组实际 workflow 存储选择器在 Windows 单文件 worker 策略下 100/72 全通过（宿主 macOS，不冒充 Windows runner）；typecheck、lint（0 错误/7 既有警告）、source verify、comms、Harness CI/任务 validate/dry-run 与 diff check 通过。新 SHA 远端完整验收仍待 MK-1940。
+- [x] `MK-1957` 1f85184c 推送并正常审批 [第 15 轮 34174116971](https://github.com/Tabll/ClawXXX/actions/runs/34174116971)，10 构建/4 公证全部成功，Windows 存储 100/72 全通过；同提交 [E2E #29](https://github.com/Tabll/ClawXXX/actions/runs/34174075068) 三平台成功。13/15 clean-machine 通过，两个后续 Windows 失败明确保留，未将 23/25 写成全绿。
+- [x] `MK-1958` 真实 Gateway/ACP 强制 background 确定复现旧探针断言；修复模拟模型在原时限内最多 8 次、每次 5 秒的只读进程续查，绑定实际规范化调用 ID/固定命令/进程 ID，要求终态成功和真实输出，异常立即失败且不重复 exec。真实本地完整探针通过：1 次 process poll、7 provider requests、5 唯一已知 usage，取消/崩溃恢复/7 Channels/无原生历史均通过。内核生产代码和 workflow 未改；Windows 双内核 900 秒修复超时仍待定位。
+- [x] `MK-1959` 后台探针修复的 42 focused、2313 完整宿主测试通过（0 失败/6 既有制品条件跳过），typecheck、lint（0 错误/7 既有警告）、source/comms、Harness CI/任务 validate/dry-run、diff check 通过。四语 README 无需更改，规则/场景/任务/参考文档同步。Windows 后台续查及双内核重装修复仍须新 SHA 原生 CI 验收。
 
 ## 每个实现 PR 的最低检查
 

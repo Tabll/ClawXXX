@@ -15,6 +15,7 @@ import { pathToFileURL } from 'node:url';
 import { projectOpenClawConfigForRuntime } from '../../electron/gateway/config-projection.ts';
 import { fixupPluginManifest } from '../../electron/utils/plugin-manifest.ts';
 import { openClawProbeBudgets, waitForGatewayReady } from './lib/openclaw-probe-lifecycle.mjs';
+import { nextOpenClawProbeToolCall, PROBE_PROCESS_POLL_LIMIT } from './lib/openclaw-probe-provider.mjs';
 
 const args = new Map();
 for (let i = 2; i < process.argv.length; i += 2) args.set(process.argv[i], process.argv[i + 1]);
@@ -38,6 +39,8 @@ let provider;
 let lines;
 let sequence = 0;
 let acp;
+let processPolls = 0;
+let completedProviderResponses = 0;
 try {
   const state = join(root, 'state');
   const workspace = join(root, 'workspace');
@@ -63,29 +66,40 @@ try {
       for await (const chunk of req) body += chunk;
       const request = JSON.parse(body);
       providerRequests.push(request);
+      assert.ok(providerRequests.length <= 6 + PROBE_PROCESS_POLL_LIMIT, 'Loopback probe exceeded its finite provider-request budget');
       if (JSON.stringify(request.messages).includes('DELAY_USER_MARKER')) {
         res.writeHead(200, { 'content-type': 'text/event-stream' });
         res.flushHeaders();
         return; // cancellation/disconnect closes this owned loopback stream
       }
       const id = `clawx-provider-${providerRequests.length}`;
-      const wantsTool = JSON.stringify(request.messages).includes('TOOL_USER_MARKER') && !request.messages.some(item => item.role === 'tool');
-      const message = wantsTool
-        ? { role: 'assistant', content: null, tool_calls: [{ index: 0, id: 'clawx-probe-exec', type: 'function', function: { name: 'exec', arguments: JSON.stringify({ command: toolCommand }) } }] }
+      const nextTool = JSON.stringify(request.messages).includes('TOOL_USER_MARKER')
+        ? nextOpenClawProbeToolCall(request.messages, toolCommand)
+        : undefined;
+      if (nextTool?.function.name === 'process') processPolls += 1;
+      const message = nextTool
+        ? { role: 'assistant', content: null, tool_calls: [nextTool] }
         : { role: 'assistant', content: 'CANONICAL_PROBE_OK' };
+      completedProviderResponses += 1;
       const usage = { prompt_tokens: 11, completion_tokens: 5, total_tokens: 16 };
       if (request.stream) {
         res.writeHead(200, { 'content-type': 'text/event-stream' });
         for (const value of [
           { id, object: 'chat.completion.chunk', model: 'clawx-probe', choices: [{ index: 0, delta: message, finish_reason: null }] },
-          { id, object: 'chat.completion.chunk', model: 'clawx-probe', choices: [{ index: 0, delta: {}, finish_reason: wantsTool ? 'tool_calls' : 'stop' }], usage },
+          { id, object: 'chat.completion.chunk', model: 'clawx-probe', choices: [{ index: 0, delta: {}, finish_reason: nextTool ? 'tool_calls' : 'stop' }], usage },
         ]) res.write(`data: ${JSON.stringify(value)}\n\n`);
         res.end('data: [DONE]\n\n');
       } else {
         res.writeHead(200, { 'content-type': 'application/json' });
-        res.end(JSON.stringify({ id, object: 'chat.completion', model: 'clawx-probe', choices: [{ index: 0, message, finish_reason: 'stop' }], usage }));
+        res.end(JSON.stringify({ id, object: 'chat.completion', model: 'clawx-probe', choices: [{ index: 0, message, finish_reason: nextTool ? 'tool_calls' : 'stop' }], usage }));
       }
-    } catch { res.writeHead(500); res.end(); }
+    } catch (error) {
+      logs = `${logs}\nLoopback provider rejected probe continuation: ${error.stack ?? error}`.slice(-16_000);
+      res.writeHead(500); res.end();
+      // Fail the owned probe RPC immediately; do not let a malformed fixture
+      // response turn into native provider retries or repeated exec commands.
+      for (const [id, settle] of pending) settle({ id, error: { message: String(error) } });
+    }
   });
   await new Promise(accept => provider.listen(0, '127.0.0.1', accept));
   const reservation = createServer();
@@ -216,6 +230,7 @@ try {
   assert.ok(updates.some(item => item.sessionId === toolRun.sessionId && item.update.sessionUpdate === 'tool_call_update'), 'Native tool completion did not reach ACP');
   assert.ok(permissions.length > 0, `Guarded execution did not ask for scoped approval: ${JSON.stringify(providerRequests.flatMap(item => item.messages?.filter(message => message.role === 'tool') ?? []))}`);
   assert.ok(providerRequests.some(item => item.messages?.some(message => message.role === 'tool' && JSON.stringify(message.content).includes('CLAWX_TOOL_OK'))), 'Approved tool must actually execute the fixed script');
+  assert.ok(processPolls > 0, 'The real probe must exercise background process continuation');
   await request('session/close', { sessionId: toolRun.sessionId });
   const cancelRun = await newRun('cancel-turn');
   const cancelling = promptRun(cancelRun, 'DELAY_USER_MARKER');
@@ -263,7 +278,8 @@ try {
   rejected.stdout.resume();
   assert.notEqual((await once(rejected, 'exit'))[0], 0, 'Rejected canonical admission must fail, not run a native fallback');
   assert.equal(handoffs.length, 1);
-  assert.equal(providerRequests.length, 6, 'A native Channel/automatic-title model run bypassed canonical admission');
+  assert.equal(providerRequests.length, 6 + processPolls, 'A native Channel/automatic-title model run bypassed canonical admission');
+  assert.equal(completedProviderResponses, 4 + processPolls, 'Only the owned bounded process polls may add completed model responses');
   await stopChildren();
   const databases = [];
   const scan = async path => {
@@ -288,15 +304,16 @@ try {
   };
   await scan(root);
   const usage = updates.filter(item => item.update.sessionUpdate === 'usage_update');
-  assert.equal(usage.length, 4, 'Only completed provider responses may produce known billable usage');
+  assert.equal(usage.length, completedProviderResponses, 'Only completed provider responses may produce known billable usage');
   for (const event of usage) {
     assert.equal(event.update._meta.clawx.input, 11);
     assert.equal(event.update._meta.clawx.output, 5);
     assert.equal(event.update._meta.clawx.cost, undefined, 'Provider did not report billed cost; configured zero pricing is not a billing fact');
   }
-  assert.equal(new Set(usage.map(item => item.update._meta.clawx.eventKey)).size, 4);
+  assert.equal(new Set(usage.map(item => item.update._meta.clawx.eventKey)).size, completedProviderResponses);
   const report = { ok: true, version, realGateway: true, realAcp: true, provider: 'loopback-test-only', providerCalls: providerRequests.length, rolesPreserved: true, toolApproval: true, cancel: true, crashRehydrate: true, nativeDurableHistory: false, channelHandoffs: handoffs.length, rejectedChannelFailsClosed: true, channelLoad: channelLoad?.results.map(({ channel, sendCapable }) => ({ channel, sendCapable })), usage: usage.map(item => item.update._meta.clawx), databases };
   report.startups = startups;
+  report.processPolls = processPolls;
   if (args.has('--report')) {
     const reportPath = resolve(args.get('--report'));
     await mkdir(join(reportPath, '..'), { recursive: true });
@@ -309,7 +326,7 @@ try {
     await mkdir(join(reportPath, '..'), { recursive: true });
     await writeFile(reportPath, `${JSON.stringify({ ok: false, version, startups, error: String(error.stack ?? error), logs, providerCalls: providerRequests.length }, null, 2)}\n`, { mode: 0o600 });
   }
-  process.stderr.write(`${error.stack ?? error}\n${logs}\nProvider probe message roles: ${JSON.stringify(providerRequests.map(item => item.messages?.map(message => message.role)))}\n`);
+  process.stderr.write(`${error.stack ?? error}\n${logs}\nLast probe messages: ${JSON.stringify(providerRequests.at(-1)?.messages?.slice(-3)).slice(0, 8_000)}\n`);
   process.exitCode = 1;
 } finally {
   await stopChildren();
