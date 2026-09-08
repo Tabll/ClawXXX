@@ -16,9 +16,12 @@ import { projectOpenClawConfigForRuntime } from '../../electron/gateway/config-p
 import { fixupPluginManifest } from '../../electron/utils/plugin-manifest.ts';
 import { openClawProbeBudgets, waitForGatewayReady } from './lib/openclaw-probe-lifecycle.mjs';
 import { nextOpenClawProbeToolCall, PROBE_PROCESS_POLL_LIMIT } from './lib/openclaw-probe-provider.mjs';
+import { createOpenClawProbeTrace } from './lib/openclaw-probe-process.mjs';
 
 const args = new Map();
 for (let i = 2; i < process.argv.length; i += 2) args.set(process.argv[i], process.argv[i + 1]);
+const phase = createOpenClawProbeTrace(args.has('--report') ? resolve(args.get('--report')) : undefined);
+phase('prepare');
 const packageDir = resolve(args.get('--package-dir') || 'node_modules/openclaw');
 const node = resolve(args.get('--node') || process.execPath);
 const toolCommand = `${process.platform === 'win32' ? 'node.exe' : 'node'} clawx-tool-probe.cjs`;
@@ -117,6 +120,7 @@ try {
     tools: { profile: 'full', sessions: { visibility: 'self' }, agentToAgent: { enabled: false } },
   };
   if (args.has('--plugins-root')) {
+    phase('project-plugins');
     const pluginsRoot = resolve(args.get('--plugins-root'));
     const installRecords = {};
     for (const [name, mirror] of [['@openclaw/discord', 'discord'], ['@openclaw/whatsapp', 'whatsapp'], ['@openclaw/qqbot', 'qqbot'], ['@soimy/dingtalk', 'dingtalk'], ['@larksuite/openclaw-lark', 'feishu-openclaw-plugin'], ['@wecom/wecom-openclaw-plugin', 'wecom'], ['@tencent-weixin/openclaw-weixin', 'openclaw-weixin']]) {
@@ -196,6 +200,7 @@ try {
   await request('initialize', { protocolVersion: 1, clientCapabilities: {}, clientInfo: { name: 'clawx', version: '1' } });
   return gateway;
   };
+  phase('initial-startup');
   let gateway = await startPair();
   const identity = { conversationId: 'canonical-probe', runId: randomUUID(), turnId: 'current', generation: 1 };
   const digest = createHash('sha256').update(JSON.stringify([identity.conversationId, identity.runId, identity.generation])).digest('hex');
@@ -205,6 +210,7 @@ try {
     { id: 'prior-assistant', turnId: 'a1', role: 'assistant', position: 0, type: 'text', visibility: 'portable', text: 'CANONICAL_ASSISTANT_MARKER' },
   ];
   const session = await request('session/new', { cwd: workspace, mcpServers: [], _meta: { sessionKey: key, prefixCwd: false, clawx: { protocol: 'clawx.openclaw-session/v1', ...identity, agentId: 'main', history, model: 'clawx-probe/clawx-probe', permissionMode: 'read-only' } } });
+  phase('canonical-prompt');
   const prompt = await request('session/prompt', { sessionId: session.sessionId, prompt: [{ type: 'text', text: 'CURRENT_USER_MARKER' }], _meta: { messageId: identity.runId, prefixCwd: false } });
   assert.equal(prompt.stopReason, 'end_turn');
   assert.ok(providerRequests.length > 0, 'The real provider execution path was not called');
@@ -222,6 +228,7 @@ try {
     return { ...admitted, sessionId: created.sessionId };
   };
   const promptRun = (run, marker) => request('session/prompt', { sessionId: run.sessionId, prompt: [{ type: 'text', text: marker }], _meta: { messageId: run.runId, prefixCwd: false } });
+  phase('tool');
   const toolRun = await newRun('tool-turn');
   await request('session/set_config_option', { sessionId: toolRun.sessionId, configId: 'clawx_model', value: 'clawx-probe/clawx-probe' });
   await request('session/set_config_option', { sessionId: toolRun.sessionId, configId: 'clawx_permission_mode', value: 'guarded' });
@@ -232,12 +239,14 @@ try {
   assert.ok(providerRequests.some(item => item.messages?.some(message => message.role === 'tool' && JSON.stringify(message.content).includes('CLAWX_TOOL_OK'))), 'Approved tool must actually execute the fixed script');
   assert.ok(processPolls > 0, 'The real probe must exercise background process continuation');
   await request('session/close', { sessionId: toolRun.sessionId });
+  phase('cancel');
   const cancelRun = await newRun('cancel-turn');
   const cancelling = promptRun(cancelRun, 'DELAY_USER_MARKER');
   await waitFor(() => providerRequests.some(item => JSON.stringify(item.messages).includes('DELAY_USER_MARKER')));
   acp.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', method: 'session/cancel', params: { sessionId: cancelRun.sessionId } })}\n`);
   assert.equal((await cancelling).stopReason, 'cancelled');
   await request('session/close', { sessionId: cancelRun.sessionId });
+  phase('crash');
   const interruptRun = await newRun('disconnect-turn');
   const beforeInterrupted = providerRequests.length;
   const interrupted = promptRun(interruptRun, 'DELAY_USER_MARKER');
@@ -247,6 +256,7 @@ try {
   await interruptionCheck;
   await stopChildren();
   lines.close();
+  phase('restart');
   gateway = await startPair();
   const continuedHistory = [...history, { id: 'previous-current', turnId: 'previous-current', role: 'user', position: 0, type: 'text', visibility: 'portable', text: 'CURRENT_USER_MARKER' }, { id: 'previous-final', turnId: 'previous-final', role: 'assistant', position: 0, type: 'text', visibility: 'portable', text: 'CANONICAL_PROBE_OK', kernelId: 'deepseek-harness' }];
   const resumed = await newRun('restart-turn', 2, continuedHistory, 'read-only');
@@ -255,32 +265,36 @@ try {
     assert.equal(providerRequests.at(-1).messages.filter(message => JSON.stringify(message.content).includes(marker)).length, 1, `Cold restart duplicated ${marker}`);
   }
   await request('session/close', { sessionId: resumed.sessionId });
+  phase('channels');
   let channelLoad;
   if (args.has('--plugins-root')) {
     const inspect = launch(['gateway', 'call', 'clawx.test.channels', '--params', JSON.stringify({ channels: ['discord', 'whatsapp', 'qqbot', 'dingtalk', 'feishu', 'wecom', 'openclaw-weixin'] }), '--json']);
     let output = '';
     inspect.stdout.on('data', bytes => { output += bytes; });
-    assert.equal((await once(inspect, 'exit'))[0], 0, output);
+    assert.equal((await once(inspect, 'close'))[0], 0, output);
     channelLoad = JSON.parse(output.slice(output.indexOf('{')));
     assert.ok(channelLoad.results.every(item => item.sendCapable), `Channel execution module failed to load: ${JSON.stringify(channelLoad)}`);
     assert.ok(channelLoad.results.every(item => item.plugins?.every(plugin => plugin.status !== 'error')), `Channel registration failed: ${JSON.stringify(channelLoad)}`);
   }
+  phase('channel-ingress');
   const ingress = launch(['gateway', 'call', 'clawx.test.ingress', '--params', JSON.stringify({ messageId: 'channel-probe-1', text: 'CANONICAL_CHANNEL_MARKER' }), '--json']);
   let ingressOutput = '';
   ingress.stdout.on('data', bytes => { ingressOutput += bytes; });
-  const [ingressCode] = await once(ingress, 'exit');
+  const [ingressCode] = await once(ingress, 'close');
   assert.equal(ingressCode, 0, `Real Channel dispatch failed: ${ingressOutput}`);
   assert.equal(handoffs.length, 1, 'Channel ingress did not reach canonical admission exactly once');
   assert.equal(handoffs[0].externalMessageId, 'channel-probe-1');
   assert.equal(handoffs[0].text, 'CANONICAL_CHANNEL_MARKER');
+  phase('channel-rejection');
   rejectHandoff = true;
   const rejected = launch(['gateway', 'call', 'clawx.test.ingress', '--params', JSON.stringify({ messageId: 'channel-rejected', text: 'REJECTED_CHANNEL_MARKER' }), '--json']);
   rejected.stdout.resume();
-  assert.notEqual((await once(rejected, 'exit'))[0], 0, 'Rejected canonical admission must fail, not run a native fallback');
+  assert.notEqual((await once(rejected, 'close'))[0], 0, 'Rejected canonical admission must fail, not run a native fallback');
   assert.equal(handoffs.length, 1);
   assert.equal(providerRequests.length, 6 + processPolls, 'A native Channel/automatic-title model run bypassed canonical admission');
   assert.equal(completedProviderResponses, 4 + processPolls, 'Only the owned bounded process polls may add completed model responses');
   await stopChildren();
+  phase('storage-scan');
   const databases = [];
   const scan = async path => {
     for (const item of await readdir(path, { withFileTypes: true })) {
@@ -311,6 +325,7 @@ try {
     assert.equal(event.update._meta.clawx.cost, undefined, 'Provider did not report billed cost; configured zero pricing is not a billing fact');
   }
   assert.equal(new Set(usage.map(item => item.update._meta.clawx.eventKey)).size, completedProviderResponses);
+  phase('report');
   const report = { ok: true, version, realGateway: true, realAcp: true, provider: 'loopback-test-only', providerCalls: providerRequests.length, rolesPreserved: true, toolApproval: true, cancel: true, crashRehydrate: true, nativeDurableHistory: false, channelHandoffs: handoffs.length, rejectedChannelFailsClosed: true, channelLoad: channelLoad?.results.map(({ channel, sendCapable }) => ({ channel, sendCapable })), usage: usage.map(item => item.update._meta.clawx), databases };
   report.startups = startups;
   report.processPolls = processPolls;
@@ -321,6 +336,7 @@ try {
   }
   process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
 } catch (error) {
+  phase('failed');
   if (args.has('--report')) {
     const reportPath = resolve(args.get('--report'));
     await mkdir(join(reportPath, '..'), { recursive: true });
@@ -329,13 +345,19 @@ try {
   process.stderr.write(`${error.stack ?? error}\n${logs}\nLast probe messages: ${JSON.stringify(providerRequests.at(-1)?.messages?.slice(-3)).slice(0, 8_000)}\n`);
   process.exitCode = 1;
 } finally {
-  await stopChildren();
-  lines?.close();
-  if (provider) {
-    provider.closeAllConnections();
-    await new Promise(accept => provider.close(accept));
+  try {
+    phase('cleanup');
+  } finally {
+    // Even a failed evidence write must not strand owned processes or state.
+    await stopChildren();
+    lines?.close();
+    if (provider) {
+      provider.closeAllConnections();
+      await new Promise(accept => provider.close(accept));
+    }
+    await rm(root, { recursive: true, force: true, maxRetries: 3 });
   }
-  await rm(root, { recursive: true, force: true, maxRetries: 3 });
+  phase('complete');
 }
 
 function request(method, params) {

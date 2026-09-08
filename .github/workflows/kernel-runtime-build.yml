@@ -69,6 +69,7 @@ jobs:
           tests/contract/kernels/package-manager.test.ts
           tests/contract/kernels/openclaw-acp-adapter.test.ts
           tests/contract/kernels/openclaw-driver.test.ts
+          tests/unit/openclaw-probe-lifecycle.test.ts
       - name: Fetch exact OpenClaw npm patch base
         if: matrix.kernel == 'openclaw'
         run: node scripts/kernel-runtime/download-npm-source.mjs --kernel openclaw --destination temp/kernel-source
@@ -357,7 +358,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p temp/reports
-          node scripts/kernel-runtime/runtime-artifact-smoke.mjs --artifact-dir temp/artifact | tee temp/reports/runtime-artifact-smoke.json
+          node scripts/kernel-runtime/runtime-artifact-smoke.mjs --artifact-dir temp/artifact --evidence-dir temp/reports | tee temp/reports/runtime-artifact-smoke.json
       - name: Install the real signed runtime through the production package-manager path
         env:
           CLAWX_REAL_ARTIFACT_REQUIRED: '1'
@@ -421,6 +422,7 @@ jobs:
           name: kernel-evidence-${{ matrix.kernel }}-clean-machine-${{ matrix.target.platform }}-${{ matrix.target.arch }}
           path: |
             temp/reports/runtime-artifact-smoke.json
+            temp/reports/openclaw-sealed-probe*.json*
             temp/reports/package-manager-artifact-install.json
             temp/reports/package-manager-artifact-install.vitest.json
             temp/reports/package-manager-artifact-install.json.progress.jsonl

@@ -10,6 +10,7 @@ import { readJson, sha256File } from './lib/canonical.mjs';
 import { scanRuntimeDataPaths } from './lib/storage-contract.mjs';
 import { verifyPlatformRuntime } from './verify-platform-runtime.mjs';
 import { openClawProbeBudgets } from './lib/openclaw-probe-lifecycle.mjs';
+import { collectOpenClawProbe } from './lib/openclaw-probe-process.mjs';
 import { createKernelTarDirectoryCache } from '../../electron/kernels/package-manager/bounded-io.ts';
 
 const args = new Map();
@@ -178,18 +179,12 @@ async function smokeOpenClawManagedEntrypoint({ nodePath, extracted, descriptor,
     stdio: ['ignore', 'pipe', 'pipe'],
     windowsHide: true,
   });
-  let stdout = '';
-  let stderr = '';
-  child.stdout.setEncoding('utf8');
-  child.stderr.setEncoding('utf8');
-  child.stdout.on('data', (chunk) => { stdout = `${stdout}${chunk}`.slice(-16_384); });
-  child.stderr.on('data', (chunk) => { stderr = `${stderr}${chunk}`.slice(-16_384); });
-  await waitForExit(child, descriptor.budgets.coldReadyMs);
-  if (child.exitCode !== 0) {
-    throw new Error(`OpenClaw managed entrypoint failed --version (${child.exitCode}); stderr=${stderr}`);
+  const versionResult = await collectOpenClawProbe(child, { timeoutMs: descriptor.budgets.coldReadyMs, stdoutLimit: 16384, stderrLimit: 16384 });
+  if (versionResult.failure || versionResult.exitCode !== 0 || versionResult.signal !== null) {
+    throw new Error(`OpenClaw managed entrypoint failed --version (code=${versionResult.exitCode}, signal=${versionResult.signal}, reason=${versionResult.failure ?? 'exit'}); stderr=${versionResult.stderr}`);
   }
   const expectedVersion = String(descriptor.upstreamVersion ?? descriptor.artifactVersion).split('+')[0];
-  const versionOutput = `${stdout}\n${stderr}`.trim();
+  const versionOutput = `${versionResult.stdout}\n${versionResult.stderr}`.trim();
   if (!versionOutput.includes(expectedVersion)) {
     throw new Error(`OpenClaw managed entrypoint version mismatch: expected ${expectedVersion}, output=${versionOutput}`);
   }
@@ -198,16 +193,19 @@ async function smokeOpenClawManagedEntrypoint({ nodePath, extracted, descriptor,
     '--package-dir', join(extracted, 'runtime', 'kernel'),
     '--node', nodePath,
     '--plugins-root', join(extracted, 'runtime', 'kernel', 'clawx-plugins'),
+    ...(args.has('--evidence-dir') ? ['--report', resolve(args.get('--evidence-dir'), 'openclaw-sealed-probe.json')] : []),
   ], { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
-  let report = '';
-  let probeErrors = '';
-  probe.stdout.setEncoding('utf8');
-  probe.stderr.setEncoding('utf8');
-  probe.stdout.on('data', chunk => { report += chunk; });
-  probe.stderr.on('data', chunk => { probeErrors = `${probeErrors}${chunk}`.slice(-32_768); });
-  await waitForExit(probe, openClawProbeBudgets().totalMs);
-  if (probe.exitCode !== 0) throw new Error(`Sealed OpenClaw real Gateway/ACP probe failed: ${probeErrors}`);
-  const evidence = JSON.parse(report);
+  const result = await collectOpenClawProbe(probe, { timeoutMs: openClawProbeBudgets().totalMs });
+  if (args.has('--evidence-dir')) {
+    const evidenceDir = resolve(args.get('--evidence-dir'));
+    mkdirSync(evidenceDir, { recursive: true });
+    writeFileSync(join(evidenceDir, 'openclaw-sealed-probe-process.json'), `${JSON.stringify(result, null, 2)}\n`, { mode: 0o600 });
+  }
+  if (result.failure || result.exitCode !== 0 || result.signal !== null) {
+    const hex = Number.isInteger(result.exitCode) ? `0x${(result.exitCode >>> 0).toString(16)}` : 'none';
+    throw new Error(`Sealed OpenClaw real Gateway/ACP probe failed (code=${result.exitCode}/${hex}, signal=${result.signal}, reason=${result.failure ?? 'exit'}, spawn=${result.spawnError ?? 'none'}): ${result.stderr}`);
+  }
+  const evidence = JSON.parse(result.stdout);
   if (!evidence.ok || evidence.version !== expectedVersion || evidence.nativeDurableHistory !== false) {
     throw new Error('Sealed OpenClaw real runtime evidence is invalid');
   }

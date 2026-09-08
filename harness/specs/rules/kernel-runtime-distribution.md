@@ -93,6 +93,18 @@ Running output is not completion. Count each completed poll response in usage;
 retain cancellation and no-native-history checks, fixed deadlines and a finite
 provider-request budget. Invalid fixture continuations must fail immediately.
 
+Sealed probe and CLI output readers must wait for stdio close, not process exit,
+before parsing complete reports. Preserve nonzero exit codes, signal-only and
+spawn failures, including decimal/hex Windows status, with bounded stdout and
+stderr capture. Timeout/overflow remains fatal even if cleanup later returns
+zero; bounded post-kill drain time is cleanup, not extra acceptance time.
+Persist closed, content-free phase labels before final reports and always
+upload nested probe/process evidence on failure. A diagnostic write failure
+must not strand owned children or temporary state. Exercise these contracts
+before expensive builds and retain the full real Gateway/ACP/Channel gate.
+Missing output is not proof of a harmless warning or of any specific native
+crash; separate observed runner failure, native reproduction and hypotheses.
+
 Windows plugin-cache realpath defaults must use native OS canonicalization so
 case, 8.3 and junction aliases agree with async installation records. Preserve
 strict owner, physical-boundary and provenance checks; an official ID alone

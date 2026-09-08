@@ -1,14 +1,148 @@
 // @vitest-environment node
 import { EventEmitter } from 'node:events';
+import { spawn } from 'node:child_process';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { PassThrough } from 'node:stream';
 import { describe, expect, it, vi } from 'vitest';
 import { openClawProbeBudgets, waitForGatewayReady } from '../../scripts/kernel-runtime/lib/openclaw-probe-lifecycle.mjs';
 import { nextOpenClawProbeToolCall, PROBE_PROCESS_POLL_LIMIT, PROBE_PROCESS_POLL_MS } from '../../scripts/kernel-runtime/lib/openclaw-probe-provider.mjs';
+import { collectOpenClawProbe, createOpenClawProbeTrace } from '../../scripts/kernel-runtime/lib/openclaw-probe-process.mjs';
 
 const child = () => Object.assign(new EventEmitter(), { exitCode: null as number | null, signalCode: null as string | null });
 const clock = () => {
   let elapsed = 0;
   return { now: () => elapsed, sleep: async (ms: number) => { elapsed += ms; }, advance: (ms: number) => { elapsed += ms; } };
 };
+
+const outputChild = () => Object.assign(child(), { stdout: new PassThrough(), stderr: new PassThrough(), kill: vi.fn(() => true) });
+
+describe('sealed OpenClaw process output and failure evidence', () => {
+  it('waits for close and retains output arriving after exit instead of reading a partial report', async () => {
+    const process = outputChild();
+    const settled = vi.fn();
+    const result = collectOpenClawProbe(process, { timeoutMs: 1000 }).then(settled);
+    process.stdout.write('{"ok":');
+    process.stderr.write('early warning\n');
+    process.exitCode = 37;
+    process.emit('exit', 37, null);
+    await Promise.resolve();
+    expect(settled).not.toHaveBeenCalled();
+    process.stdout.write('false}\n');
+    process.stderr.write('late failure detail');
+    process.emit('close', 37, null);
+    await result;
+    expect(settled).toHaveBeenCalledWith({ exitCode: 37, signal: null, stdout: '{"ok":false}\n', stderr: 'early warning\nlate failure detail' });
+    expect(process.listenerCount('close')).toBe(0);
+    expect(process.listenerCount('error')).toBe(0);
+    expect(process.stdout.listenerCount('data')).toBe(0);
+  });
+
+  it('collects the complete output and real nonzero status of a native child', async () => {
+    const process = spawn(globalThis.process.execPath, ['-e', 'process.stdout.write("x".repeat(90000)); process.stderr.write("native failure tail"); process.exitCode=37;'], { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
+    const result = await collectOpenClawProbe(process, { timeoutMs: 3000 });
+    expect(result).toMatchObject({ exitCode: 37, signal: null, stderr: 'native failure tail' });
+    expect(result.stdout).toBe('x'.repeat(90000));
+    expect(result.failure).toBeUndefined();
+  });
+
+  it('preserves signal-only termination and spawn errors without inventing a zero exit', async () => {
+    for (const kind of ['signal', 'spawn']) {
+      const process = outputChild();
+      const result = collectOpenClawProbe(process, { timeoutMs: 1000 });
+      if (kind === 'signal') process.signalCode = 'SIGTERM';
+      else {
+        process.exitCode = -2;
+        process.emit('error', Object.assign(new Error('missing executable'), { code: 'ENOENT' }));
+      }
+      process.emit('close', process.exitCode, process.signalCode);
+      expect(await result).toMatchObject(kind === 'signal'
+        ? { exitCode: null, signal: 'SIGTERM' }
+        : { exitCode: -2, signal: null, failure: 'process-error', spawnError: 'ENOENT' });
+      expect(process.kill).not.toHaveBeenCalled();
+    }
+  });
+
+  it('does not turn a timeout into success when close later reports zero', async () => {
+    vi.useFakeTimers();
+    try {
+      const process = outputChild();
+      const result = collectOpenClawProbe(process, { timeoutMs: 100, killDrainMs: 50 });
+      await vi.advanceTimersByTimeAsync(100);
+      expect(process.kill).toHaveBeenCalledOnce();
+      expect(process.kill).toHaveBeenCalledWith('SIGKILL');
+      process.exitCode = 0;
+      process.stderr.write('tail after termination request');
+      process.emit('close', 0, null);
+      expect(await result).toMatchObject({ failure: 'timeout', exitCode: 0, stderr: 'tail after termination request' });
+      expect(vi.getTimerCount()).toBe(0);
+    } finally { vi.useRealTimers(); }
+  });
+
+  it('bounds failed drain cleanup without killing an already exited process', async () => {
+    vi.useFakeTimers();
+    try {
+      const process = outputChild();
+      const result = collectOpenClawProbe(process, { timeoutMs: 100, killDrainMs: 50 });
+      process.exitCode = 0;
+      process.emit('exit', 0, null);
+      await vi.advanceTimersByTimeAsync(150);
+      expect(await result).toMatchObject({ failure: 'timeout', exitCode: 0 });
+      expect(process.kill).not.toHaveBeenCalled();
+      expect(process.stdout.destroyed).toBe(true);
+      expect(process.stderr.destroyed).toBe(true);
+      expect(process.listenerCount('close')).toBe(0);
+      expect(vi.getTimerCount()).toBe(0);
+    } finally { vi.useRealTimers(); }
+  });
+
+  it('rejects oversized reports while retaining bounded stdout and the stderr tail', async () => {
+    const process = outputChild();
+    const result = collectOpenClawProbe(process, { timeoutMs: 1000, stdoutLimit: 8, stderrLimit: 8 });
+    process.stderr.write('0123456789');
+    process.stdout.write('0123456789');
+    process.exitCode = 1;
+    process.emit('close', 1, null);
+    expect(await result).toMatchObject({ failure: 'stdout-limit', stdout: '01234567', stderr: '23456789', exitCode: 1 });
+    expect(process.kill).toHaveBeenCalledOnce();
+  });
+
+  it('rejects invalid collection budgets before registering listeners', () => {
+    const process = outputChild();
+    for (const timeoutMs of [undefined, 0, -1, Infinity, 1.5]) {
+      expect(() => collectOpenClawProbe(process, { timeoutMs })).toThrow('Invalid probe process collection budget');
+    }
+    expect(process.listenerCount('close')).toBe(0);
+  });
+
+  it('persists only bounded closed phase labels before a final report exists', () => {
+    const root = mkdtempSync(join(tmpdir(), 'clawx-probe-trace-'));
+    const report = join(root, 'nested', 'probe.json');
+    let now = 10;
+    try {
+      const phase = createOpenClawProbeTrace(report, { now: () => now });
+      phase('prepare');
+      now = 135;
+      phase('tool');
+      phase('failed');
+      const rows = readFileSync(`${report}.progress.jsonl`, 'utf8').trim().split('\n').map(row => JSON.parse(row));
+      expect(rows.map(row => [row.sequence, row.phase, row.elapsedMs])).toEqual([[1, 'prepare', 0], [2, 'tool', 125], [3, 'failed', 125]]);
+      expect(Object.keys(rows[0]).sort()).toEqual(['elapsedMs', 'event', 'phase', 'schemaVersion', 'sequence']);
+      expect(() => phase('arbitrary local path')).toThrow('Unknown OpenClaw probe phase');
+      for (let index = 3; index < 64; index++) phase('cleanup');
+      expect(() => phase('complete')).toThrow('phase budget exceeded');
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
+
+  it('does not silently claim that failed evidence writes were persisted', () => {
+    const root = mkdtempSync(join(tmpdir(), 'clawx-probe-trace-failure-'));
+    try {
+      const phase = createOpenClawProbeTrace(join(root, 'probe.json'), { write: () => { throw new Error('owned evidence volume full'); } });
+      expect(() => phase('report')).toThrow('owned evidence volume full');
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
+});
 
 describe('real OpenClaw probe lifecycle', () => {
   it('limits the Windows full-runtime budget without changing other platforms', () => {

@@ -249,7 +249,7 @@ describe('kernel runtime build supply chain', () => {
     expect(workflow).toContain('tests/unit/openclaw-probe-lifecycle.test.ts');
     expect(workflow).toContain('tests/unit/kernel-notarization.test.ts');
     expect(workflow).toContain('tests/unit/openclaw-native-allowlist.test.ts');
-    for (const suite of ['tests/unit/kernel-runtime-archive.test.ts', 'tests/unit/extension-bridge-build.test.ts', 'tests/contract/kernels/package-manager.test.ts', 'tests/unit/kernel-tar-write-mode.test.ts']) {
+    for (const suite of ['tests/unit/kernel-runtime-archive.test.ts', 'tests/unit/extension-bridge-build.test.ts', 'tests/contract/kernels/package-manager.test.ts', 'tests/unit/kernel-tar-write-mode.test.ts', 'tests/unit/openclaw-probe-lifecycle.test.ts']) {
       expect(workflow).toContain(suite);
       expect(workflow.indexOf(suite)).toBeLessThan(workflow.indexOf('download-npm-source.mjs'));
     }
@@ -262,7 +262,12 @@ describe('kernel runtime build supply chain', () => {
     }
     expect(workflow).toContain('--submission temp/reports/notarization-submission.json --report temp/reports/notarization.json');
     expect(workflow).not.toContain('notarytool submit temp/notarization.zip');
-    expect(smoke).toContain('waitForExit(probe, openClawProbeBudgets().totalMs)');
+    expect(smoke).toContain('collectOpenClawProbe(probe, { timeoutMs: openClawProbeBudgets().totalMs })');
+    expect(smoke).toContain('collectOpenClawProbe(child, { timeoutMs: descriptor.budgets.coldReadyMs, stdoutLimit: 16384, stderrLimit: 16384 })');
+    expect(smoke).toContain('result.failure || result.exitCode !== 0 || result.signal !== null');
+    expect(smoke).toContain('openclaw-sealed-probe-process.json');
+    expect(workflow).toContain('--evidence-dir temp/reports');
+    expect(workflow).toContain('temp/reports/openclaw-sealed-probe*.json*');
     const probe = readFileSync(join(process.cwd(), 'scripts/kernel-runtime/probe-openclaw-managed-runtime.mjs'), 'utf8');
     expect(probe).toContain("OPENCLAW_GATEWAY_STARTUP_TRACE: '1'");
     expect(probe).toContain('rawInput?.command === toolCommand');
@@ -271,6 +276,10 @@ describe('kernel runtime build supply chain', () => {
     expect(probe).toContain('6 + processPolls');
     expect(probe).toContain('4 + processPolls');
     expect(probe).toContain('report.startups = startups');
+    for (const name of ['inspect', 'ingress', 'rejected']) {
+      expect(probe).toContain(`once(${name}, 'close')`);
+      expect(probe).not.toContain(`once(${name}, 'exit')`);
+    }
     expect(workflow.indexOf('probe-openclaw-managed-runtime.mjs')).toBeLessThan(workflow.indexOf('scripts/kernel-runtime/sign-macos-runtime.mjs'));
     expect(workflow).toContain('tests/contract/kernels/openclaw-conversation-store.test.ts');
     expect(workflow).toContain('tests/e2e/chat-acp-session-controls.spec.ts');

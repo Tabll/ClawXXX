@@ -122,6 +122,14 @@ The loopback model exercises background exec and native process polling,
 including adapter-normalized call IDs, exact command/session binding, bounded
 continuations, terminal output and complete provider-usage accounting.
 
+Sealed probe reports and Channel CLI replies are read after stdio close, with
+bounded output, explicit exit/signal/spawn status and unchanged acceptance
+deadlines. Persist incremental closed phase labels and nested process evidence
+for failed clean-machine jobs; diagnostic writes must not prevent cleanup.
+Timeout or overflow cannot become success during bounded post-kill drain.
+Run deterministic close/late-output/failure contracts before expensive builds;
+do not infer a native termination's cause from an isolated module warning.
+
 Large runtime file verification uses bounded concurrency without dropping any
 signed check. Drain in-flight work before failure cleanup and reject readonly
 sealing failures. Real-artifact fault injection operates only on owned temporary

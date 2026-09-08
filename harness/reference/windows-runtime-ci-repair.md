@@ -941,3 +941,80 @@ updating repository-lock provenance, all **33 source/patch/build-policy** cases
 passed again. Four README locales, rule/scenario/task and TODO are synchronized.
 MK-1940 remains pending until a fresh pushed-SHA complete staging matrix and
 same-code three-platform Electron E2E succeed.
+
+## Follow-up: sealed probe termination and complete output evidence
+
+[Build #18](https://github.com/Tabll/ClawXXX/actions/runs/34186582673), commit
+`1cc3898ff4d4aa1ffacd2dacfd915c5d8dfa885d`, completed **24/25** jobs:
+all ten builds, all four Accepted notarizations, all five dual-runtime gates
+and nine single-runtime gates. Its 35 runtime/build/evidence artifacts were
+retained. [Electron E2E #32](https://github.com/Tabll/ClawXXX/actions/runs/34186554700)
+passed on macOS, Linux and Windows.
+
+Windows dual job `101941620051` installed both kernels by **122140 ms**,
+completed independent repair by **244485 ms**, and passed uninstall, remaining
+kernel health, canonical SQLite preservation and cleanup by **287847 ms**.
+This native GitHub result resolves that run's earlier installer throughput
+failure; it is not a universal timing guarantee.
+
+Only Windows OpenClaw single job `101941620174` failed, during the earlier
+sealed real Gateway/ACP probe. It never reached production installation,
+host contracts or shared UI. The step lasted approximately 320 seconds, below
+the nested probe's unchanged 600-second limit. The parent error included only
+`MODULE_TYPELESS_PACKAGE_JSON`; it omitted the child's exit status and signal,
+and no nested report had been persisted. The parent exited 1, but that does
+not establish the child's status or the warning as the cause.
+
+The parent parsed output at `exit`, although stdio may still be open according
+to the [Node child-process contract](https://nodejs.org/api/child_process.html#event-close).
+Three Channel CLI reply readers had the same boundary. This is a separately
+confirmed output-collection defect, not proof of the unexplained CI termination.
+The repair waits for `close`, bounds stdout to 1 MiB and stderr tail to 32 KiB,
+and reports numeric/hex exit codes, signals and spawn errors. Version queries
+retain their existing 16 KiB capture and cold-ready budget. The original
+platform-specific probe deadline still rejects late completion: at most five
+seconds of post-kill drain is cleanup only and cannot convert failure to success.
+
+An optional evidence directory now retains the nested probe JSON, process
+outcome and synchronous phase JSONL before a final report exists. Phase rows
+have only a schema, closed label, sequence and elapsed time, capped at 64 rows;
+they contain no request bodies, paths or credentials. CI always uploads these
+files on failure. A failing phase write cannot bypass owned-child/state
+cleanup. The existing real tool execution, usage accounting, seven Channels,
+cancel/crash/restart and no-native-history assertions remain intact. No
+runtime bytes, source pins, locks, signatures, security checks or deadlines
+changed, and no retries or skipped gates were introduced.
+
+The original #18 Windows artifact ZIP (165927692 bytes) was downloaded and
+verified against SHA-256
+`a0100298c87f45127800a7a8e4ab49e17648e0fbdb80bae3b98962afb539cca3`.
+An isolated Windows 11 ARM64 VM with official Node 24.15.0 x64 ran the original
+`1cc3898f` raw scripts, adding only diagnostic phase/exit observation outside
+the signed payload. The complete baseline passed: nested exit 0 at 200660 ms,
+parent exit 0 at 209468 ms, real Gateway/ACP, fixed background tool, seven
+Channels and storage checks. Therefore the CI termination did **not** reproduce
+in this controlled run; the Windows warning is not classified as the cause.
+
+Nine additional process/trace cases cover post-exit output, a real child with
+90000 output bytes and exit 37, signal/spawn failure, late zero exit after a
+timeout, bounded stalled drain, overflow, invalid budgets and phase persistence
+including a failing evidence sink. They run before every expensive platform
+build and remain in OpenClaw storage contracts. The four README locales were
+reviewed: app behavior, install flow, architecture and user interfaces are
+unchanged, so no README edit is needed for this CI-only collection repair.
+The repaired raw scripts, without the diagnostic preload, also passed against
+the same unmodified #18 artifact in a separate owned VM scratch directory.
+The nested probe completed all assertions and cleanup in **98653 ms**, with
+Gateway startup timings **37289/20131 ms**, two actual background process polls,
+all seven Channels, rejected handoff and native-history scans. The retained
+process report has exit 0, null signal, complete JSON and no collection failure;
+all 15 phase rows were present. These timings have a different start boundary
+from the baseline observer above and must not be compared as a speedup.
+
+Final host validation passed **51 focused**, **2337 full** (zero failures/six
+existing artifact-conditional skips), and **174 actual CI preflight** cases.
+Typecheck, lint (zero errors/seven existing warnings), frozen source verification,
+comms replay/compare, Harness CI and diff-aware task validation/dry-run passed.
+Native evidence is retained under ignored `temp/sealed-probe-vm-*.log` alongside
+the original downloaded ZIP. Fresh full-matrix acceptance is still required
+before MK-1940 can be closed; no COS/catalog or production change is included.
