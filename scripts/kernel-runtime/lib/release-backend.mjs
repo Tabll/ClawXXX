@@ -81,12 +81,18 @@ export class GitHubReleaseMirror {
     let release = await this.api(`/releases/tags/${encodeURIComponent(this.policy.githubReleaseTag)}`, { allowMissing: true });
     if (!release) release = await this.request('POST', '/releases', {
       tag_name: this.policy.githubReleaseTag, target_commitish: this.policy.branch,
-      name: 'ClawX Kernel Runtimes', body: 'Verified immutable optional kernel runtimes and signed publication records.',
-      draft: false, prerelease: false, make_latest: 'false',
+      name: 'ClawX Kernel Runtimes',
+      body: 'Verified immutable optional kernel runtimes and signed publication records.\n\nThis fixed-tag asset container uses GitHub\'s prerelease label only to stay out of host-app latest-release discovery. Runtime eligibility is determined by the signed production catalog; the label does not change runtime versions, signatures, download URLs or catalog channel.',
+      // With no host release, GitHub's /releases/latest can still select the
+      // sole full release despite make_latest=false. This fixed-tag asset
+      // container must stay excluded from host-app discovery. The signed
+      // production catalog, not this GitHub UI label, is the runtime channel.
+      draft: false, prerelease: true, make_latest: 'false',
     });
     if (!Number.isSafeInteger(release.id) || release.tag_name !== this.policy.githubReleaseTag || release.draft || release.immutable === true) {
       throw new Error('GitHub kernel release identity is invalid');
     }
+    if (release.prerelease !== true) throw new Error('Kernel asset release must be marked prerelease to exclude it from host latest discovery');
     this.releaseId = release.id;
     return release;
   }

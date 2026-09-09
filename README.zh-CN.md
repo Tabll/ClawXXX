@@ -170,6 +170,8 @@ OpenClaw 源码和开发依赖已切换为 `2026.9.2+clawx.13`。生产桥接按
 
 目录切换后先有界等待镜像公开读取到精确已签版本，再严格读回和允许清理。旧目录或暂时缺失绝不算成功，签名目录冲突立即终止发布。
 
+固定的 GitHub 内核资源页标为 Pre-release，仅用于排除宿主 App 的 `latest` 自动发现。内核签名目录仍为 `production`，版本、签名和固定下载地址不变。
+
 - **进程模型**：Electron Main 管理系统集成、唯一 DataService、Package Manager 和逐内核独立 Supervisor；OpenClaw 与 DSH 可并行运行，Renderer 和 runtime 都不能直接打开 canonical ClawX SQLite 或互相直连。
 - **内核校验**：安装与重扫使用最多 8 路并发的文件校验，保留全部签名哈希、大小和路径检查。每次解包使用独立的 256 项目录缓存，限制大包的额外开销；缓存淘汰只触发文件系统复查，不放宽路径保护。宿主工具链的固定补丁将 Windows 小文件内存映射写入改为普通文件写入，保留 tar 路径串行保护和全部检查。安装后的文件保持只读，设置只读保护失败会拒绝安装；Windows 原子目录移动仅对短暂 `EPERM`/`EBUSY` 锁累计等待最多 1.5 秒，持久锁仍失败，不以复制或放宽权限绕过。干净环境 CI 会记录解包、哈希校验、只读封装等阶段耗时，包括失败与超时；可选诊断不能改变校验结果。
 - **配置交付**：Gateway 运行时由 Main 使用 `config.get` / `config.set`，停止或启动中则更新解析后的 JSON5 配置；普通 Provider/Agent/Skill/模型修改不会替换进程，凭据通过 `secrets.reload` 热更新。连续三分钟没有已验证的 Gateway 活动后，ClawX 会验证核心 RPC，并且只重启其自身拥有且不可用的 Gateway 进程；外部管理的 Gateway 保留给用户手动恢复。

@@ -1,9 +1,12 @@
 # Automatic kernel production publication
 
-Status: code implementation and local verification completed on 2026-09-08.
-On 2026-09-09 the user authorized commit, push and the first protected production
-publication. This operation is in progress; completion requires actual live
-catalog/mirror evidence, not just a successful source commit.
+Status: first protected production publication completed on 2026-09-09.
+[Production #4](https://github.com/Tabll/ClawXXX/actions/runs/34296346239)
+finished successfully at 00:47:50 UTC. Sequence 1 serves all ten original
+revision-13 kernel archives on COS/GitHub, with matching verified signed
+catalogs and all-target Range/If-Range evidence. No packages were retired by
+this initial publication. Host-app release and real-account acceptance are
+separate, uncompleted gates.
 
 ## Scope and invariants
 
@@ -109,8 +112,9 @@ conflicting immutable object or missing legacy journal stops normal automation
 for explicit reconciliation. Untracked legacy objects are never guessed/deleted.
 
 The kernel GitHub release must allow catalog asset replacement; GitHub immutable
-release mode is rejected. It is created with `make_latest=false` so it cannot
-replace the host app's latest-release pointer. Only a documented empty `starter`
+release mode is rejected. Its fixed-tag asset container uses `prerelease=true`
+and `make_latest=false` to exclude it from host-app latest-release discovery.
+The GitHub label is not the signed runtime catalog's production channel. Only a documented empty `starter`
 asset left by a failed GitHub upload may be removed for upload retry; nonempty or
 digest-conflicting assets are never clobbered. Both mirrors and all required
 targets must expose HTTPS, exact signed size, 206 ranges and stable strong ETags.
@@ -177,8 +181,8 @@ Channel account test, or host App/DMG Gatekeeper acceptance.
 - The attempt stopped at 00:30:54 UTC on immediate post-write catalog readback,
   before the existing bounded visibility retry could execute. No deletion was
   performed. The immutable sequence-1 journal and both uploaded catalog assets
-  were preserved. Recovery is pending the narrow verifier-order repair; this
-  is not yet a successful protected workflow result.
+  were preserved. This failed attempt alone is not a successful protected
+  workflow result; subsequent recovery is recorded below.
 - Independent live verification using the protected CI public roots subsequently
   passed: both exact signed catalogs returned 200/conditional 304, and all ten
   targets on both hosts returned 206 for Range and If-Range with stable strong
@@ -203,6 +207,66 @@ Channel account test, or host App/DMG Gatekeeper acceptance.
   skips; typecheck, lint (zero errors/seven existing warnings), frozen sources,
   comms replay/compare, Harness CI (19 tests), task validate/dry-run and diff
   checks passed. The repair changes no frozen runtime input or signed package.
+
+### Successful protected recovery
+
+[Production #4](https://github.com/Tabll/ClawXXX/actions/runs/34296346239)
+ran from repair commit `5574a907b56ae7a7a139d5f53b890eeec3dfc1c4`, starting
+at `2026-09-09T00:45:20Z` and finishing at `2026-09-09T00:47:50Z` with both
+jobs successful. It used `bootstrap=false`, because both sequence-1 catalogs
+already existed and matched; the original build ID/source SHA were unchanged.
+The read-only gate and normal production reviewer approval both ran again.
+
+The protected result was `ok=true`, `mode=already-published`, `sequence=1`;
+`deleted`, `deferred` and `alreadyCompleted` were all empty. Both catalog URLs
+returned 200 and conditional 304. All ten kernel/target entries passed both
+hosts' Range and If-Range probes (40 responses, all 206, strong stable ETag,
+exact signed size). The successful public roots and signed journal bytes were
+compared with the first attempt and are identical; no issue time, expiration,
+sequence, runtime revision or original signature changed. GitHub has 32 release
+assets: 10 archives, 10 descriptors, 10 checksums, one catalog and one journal.
+
+Successful evidence artifact `10083318832`
+(`kernel-production-evidence-34296346239-1`) has ZIP SHA-256
+`7258a3329505d2bae2efef358b5ba95d47c184c83349c0967f52fa08cffd328c`.
+Its ZIP identity, signed journal, unchanged public roots and all 40 online
+responses were independently inspected. This genuinely exercises idempotent
+acceptance of the already uploaded release; the repaired fresh-pointer
+propagation path is covered by regression tests, not a newly minted sequence.
+
+Available versions are OpenClaw `2026.9.2+clawx.13` and DeepSeek Harness
+`0.1.3-alpha.1+clawx.13`, each for macOS arm64/x64, Linux arm64/x64 and Windows
+x64, with Node 24.20.0. Existing installed runtimes/SQLite were not mutated.
+No historical-package deletion can be claimed from an empty retirement list.
+Future protected maintenance must renew the seven-day catalog before its
+expiry; ordinary environment approval remains required.
+
+### Host-app latest-discovery isolation
+
+Final live inspection found the repository had no host releases, so GitHub's
+`/releases/latest` selected the sole full `kernel-runtimes` release despite
+the original `make_latest=false`. The GitHub resource page was changed at
+`2026-09-09T00:57:19Z` to `prerelease=true`, preserving its tag, all 32 assets
+and public fixed download URLs. `/releases/latest` then returned 404, correctly
+reflecting that no host-app release exists. Release notes explain that this
+classification is only to exclude the asset container from App discovery;
+the independently signed catalog remains `channel=production`.
+
+The publisher now creates only this excluded classification and rejects an
+existing kernel container whose prerelease flag is false/missing. This requires
+explicit metadata reconciliation instead of silently publishing into the host
+latest pool. Two rejection regressions and the creation-payload assertion cover
+the behavior. Neither `electron-builder.yml` nor the App updater's legacy feed
+configuration was changed; host-app packaging/distribution is a separate task.
+
+After reclassification, an independent check matched all 32 GitHub assets'
+names, sizes, uploaded states and SHA-256 values to the original signed journal
+and catalog. Both signed catalogs again returned 200/304 and all 40 Range/
+If-Range responses were 206. Local validation reached **2447 passed / six
+existing conditional skips**, with typecheck, lint (zero errors/seven existing
+warnings), frozen-source verification and task validate/dry-run passing.
+[Repair E2E #38](https://github.com/Tabll/ClawXXX/actions/runs/34296175354)
+for commit `5574a907` completed successfully on all three platforms.
 
 ## API references
 

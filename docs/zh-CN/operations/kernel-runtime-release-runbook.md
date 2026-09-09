@@ -99,6 +99,8 @@ gh workflow run kernel-runtime-promote.yml \
 
 审批后重新检查 candidate digest、run attempt、当前 main 冻结输入，再对下载的完整原始 archive/descriptor/checksum 做签名、SHA-256、大小与目标验证。发布器 SHA 与 artifact source SHA 分别记录，不 checkout 构建来源来运行旧发布工具，也不重建/重签已公证 payload。
 
+固定 `kernel-runtimes` GitHub Release 是资源容器，必须使用 `prerelease=true` 和 `make_latest=false`，以免仓库尚无宿主版本时被 `/releases/latest` 自动选中。此 GitHub 页面标签不是内核发布通道：App 仍只信任 `channel=production` 的签名目录与固定 URL。已有资源页分类不符时发布器拒绝继续；仅校正页面分类/说明，保留全部文件、tag、签名和下载地址，不删除重建 Release。
+
 目录只提供每内核/平台/架构一个最新版（当前 10 项）；包名含 `artifactVersion` 且不可覆盖。先持久化双镜像不可变签名发布记录，上传全部原始文件，执行全部 10 项 × 2 host 的严格 Range/If-Range/强稳定 ETag/签名大小检查，再覆盖两份签名目录、精确读回并复验线上下载。首次真实验收与运行链接在 `harness/reference/kernel-automatic-release.md` 单独记录；本地测试不算上线。
 
 目录上传完成不代表两个公开下载入口已同时可见。切换后先执行有界的精确目录重试（默认最多 6 次、间隔 5 秒，每个网络请求有独立超时），再执行最终严格一致性读回；两端都仍是旧目录也不能通过。同序号签名内容冲突或观察到更高序号立即停止；超出重试预算仍失败，不删除旧包。恢复只复用已经保留的签名记录，不重新签发序号或时间。
@@ -107,7 +109,7 @@ gh workflow run kernel-runtime-promote.yml \
 
 两个服务无法构成跨云原子事务。若一边为 N，另一边为 N−1，或 GitHub delete/re-upload 期间为 404，不要手工改 JSON、改时间或创建 N+1：
 
-1. 使用相同 staging run ID/source SHA 和 bootstrap 标志重新触发；新作业先重新走只读检查和正常审批。
+1. 使用相同 staging run ID/source SHA 重新触发，并重新走只读检查和正常审批。两端已是相同已签 N 时使用 `bootstrap=false` 幂等验收；仅首次尚未完成的 N=1/404（或双目录尚未写出）恢复仍需要明确的 `bootstrap=true`，不得为正常已有目录重复声明空目录初始化。
 2. 从双镜像 `kernel-release-N.json` 恢复精确已签 catalog 和 candidate，验证前驱摘要。N/404 在 N>1 时必须额外验证 `kernel-release-(N-1).json`。
 3. 已保留 candidate 的来源/run attempt/descriptor set 必须相同；冲突不可覆盖。源制品已过期、记录不存在/过期、签名撤销或 main 冻结输入已变化时停止，要求审核后的恢复方案，不能悄悄重新签 N。
 4. 重复上传只允许相同 digest/size。GitHub 502 留下的同名 `starter` 且 size=0/无 digest 空 reservation 可以重试移除；含字节或身份不符则停止。

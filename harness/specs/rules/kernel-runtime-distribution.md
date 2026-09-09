@@ -254,4 +254,11 @@ reuses the immutable signed record, never a fresh sequence or signature.
 
 The GitHub repository/release tag and descriptor URLs must be bound to the reviewed distribution mirrors before any external write. The newly signed catalog must remain verifiable at both issue time and immediately before expiry, including every offered artifact and signing-key validity window. The stable kernel GitHub release must not replace the host application's latest-release pointer.
 
+The fixed-tag GitHub kernel asset container must use prerelease=true and
+make_latest=false; the latter alone does not exclude a sole full release from
+/releases/latest. This metadata label is separate from the signed production
+catalog channel. Reject false/missing prerelease flags on existing containers
+instead of silently competing with App releases. Reclassification must preserve
+all immutable assets, tag identity, signatures and fixed download URLs.
+
 The primary object mirror is Tencent COS under one reviewed bucket, region and root prefix. CI must use the repository-pinned official SDK, verify bucket location and versioning before writes, constrain every object key below the root, publish public-readable objects with SHA-256 metadata, refuse overwrite of immutable artifacts, and publish the mutable signed catalog last. Tencent credentials belong only to the protected production environment. Artifact and catalog private keys remain separated by environment; the rollback private key is offline-only. Any local recovery backup must be authenticated encryption under a git-ignored owner-only path, and its passphrase must be stored separately.

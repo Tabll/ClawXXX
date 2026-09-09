@@ -110,7 +110,7 @@ describe('scoped GitHub release mirror', () => {
     const asset = { ...expected, id: 300, state: 'uploaded', digest: `sha256:${expected.sha256}` };
     const fetcher = vi.fn(async (url: string, init?: RequestInit) => {
       if (init?.method === 'DELETE') return new Response(null, { status: 204 });
-      if (url.includes('/releases/tags/')) return Response.json({ id: 1, tag_name: 'kernel-runtimes', draft: false });
+      if (url.includes('/releases/tags/')) return Response.json({ id: 1, tag_name: 'kernel-runtimes', draft: false, prerelease: true });
       return Response.json([asset]);
     });
     const mirror = new GitHubReleaseMirror(f.policy, { token: 'test-token', fetcher });
@@ -124,11 +124,19 @@ describe('scoped GitHub release mirror', () => {
   it('creates a separate kernel release without stealing the host latest-release pointer', async () => {
     const f = releaseFixture();
     const fetcher = vi.fn(async (_url: string, init?: RequestInit) => init?.method === 'POST'
-      ? Response.json({ id: 9, tag_name: 'kernel-runtimes', draft: false }) : new Response(null, { status: 404 }));
+      ? Response.json({ id: 9, tag_name: 'kernel-runtimes', draft: false, prerelease: true }) : new Response(null, { status: 404 }));
     const mirror = new GitHubReleaseMirror(f.policy, { token: 'test-token', fetcher });
     await mirror.ensureRelease();
     const payload = JSON.parse(String(fetcher.mock.calls[1][1]?.body));
-    expect(payload).toMatchObject({ tag_name: 'kernel-runtimes', target_commitish: 'main', make_latest: 'false' });
+    expect(payload).toMatchObject({ tag_name: 'kernel-runtimes', target_commitish: 'main', draft: false, prerelease: true, make_latest: 'false' });
+  });
+
+  it.each([false, undefined])('refuses a kernel release eligible for host latest discovery (%s)', async prerelease => {
+    const f = releaseFixture();
+    const fetcher = vi.fn(async () => Response.json({ id: 1, tag_name: 'kernel-runtimes', draft: false, prerelease }));
+    const mirror = new GitHubReleaseMirror(f.policy, { token: 'test-token', fetcher });
+    await expect(mirror.ensureRelease()).rejects.toThrow(/must be marked prerelease/);
+    expect(fetcher).toHaveBeenCalledTimes(1);
   });
 
   it('deletes only an exact matched runtime asset ID and handles a retry as absent', async () => {
@@ -137,7 +145,7 @@ describe('scoped GitHub release mirror', () => {
     let present = true;
     const fetcher = vi.fn(async (url: string, init?: RequestInit) => {
       if (init?.method === 'DELETE') { present = false; return new Response(null, { status: 204 }); }
-      if (url.includes('/releases/tags/')) return Response.json({ id: 1, tag_name: 'kernel-runtimes', draft: false });
+      if (url.includes('/releases/tags/')) return Response.json({ id: 1, tag_name: 'kernel-runtimes', draft: false, prerelease: true });
       return Response.json(present ? [{ ...expected, id: 301, state: 'uploaded', digest: `sha256:${expected.sha256}` }] : []);
     });
     const mirror = new GitHubReleaseMirror(f.policy, { token: 'test-token', fetcher });
@@ -162,7 +170,7 @@ describe('scoped GitHub release mirror', () => {
         uploadedBytes = Buffer.concat(chunks);
         return Response.json({ ...expected, state: 'uploaded', digest: `sha256:${expected.sha256}` });
       }
-      if (url.includes('/releases/tags/')) return Response.json({ id: 1, tag_name: 'kernel-runtimes', draft: false });
+      if (url.includes('/releases/tags/')) return Response.json({ id: 1, tag_name: 'kernel-runtimes', draft: false, prerelease: true });
       return Response.json([{ id: 301, name: expected.name, size: 0, state: 'starter', digest: null }]);
     };
     const mirror = new GitHubReleaseMirror(f.policy, { token: 'test-token', fetcher });
@@ -179,7 +187,7 @@ describe('scoped GitHub release mirror', () => {
     const fetcher = vi.fn(async (url: string, init?: RequestInit) => {
       if (init?.method === 'DELETE') return new Response(null, { status: 204 });
       if (init?.method === 'POST') return new Response(null, { status: 502 });
-      if (url.includes('/releases/tags/')) return Response.json({ id: 1, tag_name: 'kernel-runtimes', draft: false });
+      if (url.includes('/releases/tags/')) return Response.json({ id: 1, tag_name: 'kernel-runtimes', draft: false, prerelease: true });
       return Response.json([{ id: 301, name: 'kernel-catalog.production.json', digest: 'sha256:old', size: 2 },
         { id: 302, name: 'unrelated.zip', size: 2 }]);
     });

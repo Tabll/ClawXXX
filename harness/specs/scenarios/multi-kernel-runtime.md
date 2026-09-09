@@ -77,6 +77,10 @@ reach the exact new signed catalog, then pass strict final readback. Cover
 temporary 404, one/both stale mirrors, exhaustion and immediate signed-fork or
 newer-sequence rejection; no stale observation permits retirement deletion.
 Maintenance retains reviewer approval and does not modify local installed runtimes.
+The fixed GitHub asset container is labeled prerelease to exclude it from App
+latest discovery even before the first host release exists. The signed runtime
+catalog remains production; cover creation and rejection of misclassified
+existing containers without changing package bytes or download URLs.
 
 Builder portability includes checkout/system-temp volume separation, verified
 same-volume staging and failure cleanup for both source and Node downloads.

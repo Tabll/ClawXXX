@@ -169,6 +169,8 @@ OpenClaw のソースと開発依存関係は `2026.9.2+clawx.13` に更新済�
 
 catalog 置換後は回数を制限した伝播確認で正確な署名済み版への一致を待ち、最後の厳密な再読込後にのみ削除を許可します。古い版や一時的な欠落を成功とせず、署名 catalog の競合は即座に公開を停止します。
 
+固定 GitHub カーネル資産ページの Pre-release ラベルは、ホスト App の `latest` 検出から除外するためだけに使用します。署名済みカーネル catalog は `production` のままで、バージョン・署名・固定ダウンロード URL は変わりません。
+
 - **プロセスモデル**：Electron Mainがsystem integration、one DataService、Package Manager、kernel別Supervisorを管理します。OpenClawとDSHは並行実行でき、Renderer/runtimeはcanonical ClawX SQLiteを直接開かず相互接続しません。
 - **Runtime 検証**：install と再スキャンのファイル検証は最大 8 並列で行い、署名済み hash・size・path の全チェックを維持します。展開ごとに独立した最大 256 件のディレクトリキャッシュで大規模パッケージの処理負荷を抑えます。キャッシュの削除はファイルシステムの再確認を増やすだけで、パス保護を緩和しません。固定されたホストツールのパッチにより、Windows の小さなファイルをメモリマップではなく通常の書き込みで展開し、tar のパス予約と全チェックを維持します。install 済みファイルは read-only とし、保護の設定に失敗した場合は install を拒否します。Windows の atomic なディレクトリ移動では、一時的な `EPERM`/`EBUSY` のみ再試行の待機時間を合計最大 1.5 秒に制限します。永続的なロックは失敗し、コピーや権限緩和で回避しません。clean-machine CI は展開・hash 検証・read-only 化などの所要時間を失敗・timeout 時にも記録します。任意の診断処理が検証結果を変えることはありません。
 - **設定の配信**：Gateway実行中は `config.get` / `config.set` を使い、停止中または起動中は解決済みJSON5設定を更新します。通常のプロバイダー、Agent、スキル、モデル変更ではプロセスを置き換えず、認証情報は `secrets.reload` でホットリロードされます。検証済みのGatewayアクティビティが3分間ない場合、ClawXはコアRPCを検証し、自身が所有する利用不能なGatewayプロセスだけを再起動します。外部管理のGatewayは手動で復旧します。

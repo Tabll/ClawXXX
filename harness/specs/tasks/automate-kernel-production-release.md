@@ -63,6 +63,7 @@ acceptance:
   - Preserve small release records and cleanup receipts. Scheduled maintenance uses the same protected environment for due cleanup and bounded metadata renewal, never an approval bypass.
   - Exercise bootstrap, duplicate/out-of-order events, missing/failed E2E, partial upload/catalog switch, concurrent stale plans, renewal, current-object protection and interrupted cleanup with deterministic failure-injection tests.
   - After pointer writes, perform bounded exact-catalog propagation checks before final strict readback; stale or absent mirrors never allow cleanup, and signed same-sequence conflicts or newer catalogs fail immediately.
+  - Exclude the fixed-tag GitHub kernel asset container from host-app latest discovery using prerelease=true plus make_latest=false; preserve the signed production channel and reject misclassified existing containers.
 docs:
   required: true
 ---

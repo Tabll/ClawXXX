@@ -2,6 +2,8 @@
 
 > 对应设计：[docs/zh-CN/multi-kernel-design.md](docs/zh-CN/multi-kernel-design.md)
 >
+> 最新状态（2026-09-09）：自动发布实现 `1dc4ebea` 与目录传播验收修复 `5574a907` 已提交/推送。首次发布通过正常生产审批后，由[生产 #4](https://github.com/Tabll/ClawXXX/actions/runs/34296346239) 成功完成序号 1 的幂等验收。双内核 +clawx.13 的 10 个目标包、descriptor/checksum、签名目录及 journal 已在 COS/GitHub 发布；两端目录 200/304、40 个 Range/If-Range 全部 206。原始签名、公证、序号和有效期不变，没有删除任何旧对象；目录到期为北京时间 2026-09-16 08:25，后续维护仍需正常审批。MK-2007 已完成；宿主 App 发布及真实账号验收另行跟踪。
+>
 > 状态（2026-09-08）：共享 Node 已升级为 24.20.0 LTS（ABI 137 不变），双内核制品为 +clawx.13；修复提交 45bb9260 已推送 main。[完整 staging #21](https://github.com/Tabll/ClawXXX/actions/runs/34205494108) 经正常审批，25/25 任务全部成功（10 构建、10 单内核与 5 双内核 clean-machine），四份 macOS 公证均 Accepted，35 份制品/报告已归档；[同提交 E2E #35](https://github.com/Tabll/ClawXXX/actions/runs/34195995688) 三平台全通过，MK-1940 已完成。Windows 隔离环境 71 项回归和新监督入口实包全流程 97672 ms 通过，宿主 2348 全量与 190 实际 CI 前置检查通过。未发布 COS/catalog，Windows 保持制品签名、不启用 Authenticode。旧 #20 的原生崩溃栈未复现，不将上游 Node 已知缺陷误写为已证明的唯一根因。
 >
 > 历史本地基线（2026-09-01）：Vitest 243 files / 241 passed / 2 skipped、2116 tests passed / 6 skipped（其中制品依赖项只在真实 CI 制品存在时执行）；Electron E2E 既有证据 151 passed / 3 platform skips；multi-kernel chaos 既有证据 28/28；DSH `0.1.2-alpha.2` 干净精确上游树完成严格 patch/overlay 重放、冻结安装、完整 host build、12 files / 43 focused tests，并在真实 macOS `sandbox-exec` 下通过 3/3 runtime self-tests；typecheck、lint、comms 与本任务 Harness 全绿
@@ -406,7 +408,7 @@
 - [x] `MK-1706` 在干净源码树完成 `pnpm install --frozen-lockfile`、`build:lib:host`、12 files / 43 focused tests 与真实 macOS sandbox self-test 3/3。
 - [x] `MK-1707` 完成仓库 typecheck、lint（0 errors / 7 existing warnings）、241 files / 2116 tests、comms replay/compare 和本任务 Harness fast/comms profiles。
 - [x] `MK-1708` 同步四语言 release notes、架构/reference、THIRD_PARTY_NOTICES 与本清单；README 四版本经复核无需改动功能描述。
-- [-] `MK-1709` 从升级后的 `main` commit 重新执行受保护五目标 runtime build、macOS 公证、COS/GitHub 镜像上传、线上 Range/If-Range 演练与 production promotion；旧 DSH 输入运行禁止审批或晋级。
+- [x] `MK-1709` 受保护五目标 runtime build、macOS 公证、COS/GitHub 镜像上传、线上 Range/If-Range 演练与 production promotion 已由后续 DSH `0.1.3-alpha.1+clawx.13` 完成（staging #21 / production #4，见 MK-1940 / MK-2007）；旧 DSH 失败输入没有晋级。
   - [x] 取消旧运行 `33412268471`，从升级 commit 启动并审批 `33971358333`；读取所有失败目标的真实日志。
   - [x] 修复跨平台 LF、upstream/prepared lock 校验、Linux 原生 Landlock 构建与 Windows 显式延后 Authenticode；失败时保留安全报告。
   - [x] 将会重解析依赖的 legacy hoisted deploy 改为 shared-lock deploy；本机验证锁定 Koffi `3.1.1`，显式执行已审计 spawn-helper 后处理，移除 builder 路径元数据并裁剪/精确白名单化原生包。
@@ -417,14 +419,14 @@
   - [x] 运行 `34007295656` 的两种 macOS（均含公证）和两种 Linux 构建通过；Windows 沙箱 self-test 通过，后续审计发现 sharp 合包的复合许可证漏识别。核验官方 `0.35.3` npm 包与冻结 SHA-512 后补齐精确 `AND` 表达式和独立履约记录；实包审计与 2137 项全量测试通过，不降级为仅 Apache，也不冒充法务批准。
     - `.10` 公证报告 ZIP 已按 GitHub artifact SHA-256 核验：arm64 `8cf9ffaa-acd3-4ba5-90db-1ae6734d70b0`、x64 `7913dfdf-979d-4f67-a054-3431f9df95f9` 均为 Apple `Accepted`；本轮 clean-machine matrix 因 Windows build 失败而跳过，不能记为通过。
   - [x] 上轮真实 macOS arm64 `.9` 制品通过生产 PackageManager 安装链路：注入中断后的 Range/If-Range 续传、签名、解包、控制桥、激活、重扫、卸载与 SQLite 保留全部通过（本机证据，不替代五平台 clean runner）。
-  - [-] 修复提交推送后重新执行五目标 CI，取得全部制品、干净机器和线上分发证据；失败的旧构建不得晋级。2026-09-06 自动审批将 Windows 许可证元数据/履约记录修复判为超出此前“暂不处理法务”的授权，已拦截提交与推送；6 个相关文件仅保留在本地，远端仍为 `878f53c7`，需用户明确授权该最小修复后继续。COS 上传与线上 Range 演练尚未执行。
+  - [x] 后续版本通过完整 staging #21 的 25 项任务及同 SHA E2E #35，再以 production #4 完成双镜像/线上分发验收；不晋级旧失败集合。2026-09-06 的提交审批中断是历史记录，不再代表当前远端或发布状态；当前验收证据见 MK-1940 / MK-2007，不将构建许可证元数据审计视为法务批准。
 
 ### M17 Acceptance
 
 - [x] 已批准冻结的 DSH 上游版本、ClawX patch revision、所有 descriptor/hash 和文档身份完全一致；9 月 4 日新增的 `0.1.3-alpha.1` 有持久化破坏性变更及已知性能回退，不在构建中静默切换。
 - [x] ClawX 统一 SQLite、并行多内核、凭据、Agent、Skill、权限、取消与 rich event 适配边界未退化。
 - [x] 升级输入可由干净 checkout 严格复现并通过冻结安装、完整 host build、focused tests 与本机沙箱自检。
-- [-] 五平台签名制品、Apple `Accepted`/staple/Gatekeeper、COS/GitHub 双镜像和线上断点续传证据待新 commit 的受保护 CI 完成。
+- [-] 五目标内核签名制品、四份 Apple `Accepted`、COS/GitHub 双镜像及线上断点续传已由后续版本完成（MK-1940 / MK-2007）；宿主 App/DMG 的 staple/Gatekeeper 发布验收仍是独立未完成项，不以原始内核包公证替代。
 
 ## M18：DeepSeek Harness 0.1.3-alpha.1 破坏性接口升级
 
@@ -544,7 +546,9 @@
 - [x] `MK-2004` 签名 ledger 记录全部引用目录的最大有效期，再加 24 小时缓冲生成精确退役清单；线上验证成功后逐文件校验旧对象 hash/size 才删除，不 list-delete，保留当前包、其他 COS 内容及审计记录；缩短后续 TTL 不会提前删旧包。
 - [x] `MK-2005` 增加每日受保护清理/续期、部分删除/收据双镜像恢复、十槽位两镜像严格 Range/If-Range/强 ETag/大小演练；历史签名 matrix 快照允许未来新增内核/目标，缺失完整新矩阵或删除旧支持目标仍失败关闭。
 - [x] `MK-2006` 119 项发布/信任/来源定向回归、全量 2437 passed / 6 既有条件 skips、typecheck、lint（0 errors / 7 既有 warnings）、source verify、comms replay/compare、Harness CI（19 tests）及 task diff-aware validate/dry-run、YAML 解析与 git diff --check 通过。四语 README/安全支持、架构、设计、Runbook 和 Harness 规则同步；没有 Renderer/Main/UI 行为修改，不用这些本地测试冒充上线。
-- [-] `MK-2007` 用户于 2026-09-09 授权后，`1dc4ebea` 已提交/推送；[首次生产 #2](https://github.com/Tabll/ClawXXX/actions/runs/34294723902) 正常准入/审批，10 个版本化包及序号 1 已上传两端，切换前 40 个 Range/If-Range 全通过，但立即一致性读回先于有界重试导致作业失败、未删除任何对象。独立复核两端签名目录及全部目标线上下载已通过，正在修复验收顺序并恢复同一签名记录；CI 恢复成功前不勾选。`1dc4ebea` E2E #37 第二次运行三平台全通过。证据见[发布验收记录](harness/reference/kernel-automatic-release.md)。
+- [x] `MK-2007` `1dc4ebea` 自动发布实现与 `5574a907` 传播验收修复均已提交/推送；[首次生产 #2](https://github.com/Tabll/ClawXXX/actions/runs/34294723902) 上传全部产物后安全停止于立即目录读回，未删除对象；[生产 #4](https://github.com/Tabll/ClawXXX/actions/runs/34296346239) 重走正常准入/审批，以 `bootstrap=false` 完成原始序号 1 的 `already-published` 幂等验收，两项 job 全部成功。双镜像精确签名目录 200/304，10 目标共 40 个 Range/If-Range 全部 206，原始 journal/信任根字节完全一致，cleanup 三个数组均为空。八项新回归与 2445 全量测试通过；`1dc4ebea` E2E #37 第二次运行三平台全通过。未声明真实旧包清理/宿主 App 公证完成，证据见[发布验收记录](harness/reference/kernel-automatic-release.md)。
+
+- [x] `MK-2008` 实证 `make_latest=false` 不能阻止仓库唯一正式 Release 被 GitHub `/releases/latest` 选中；将固定内核资源容器标为 Pre-release 并补说明，签名目录仍为 production。发布器创建/既有分类保护与两项拒绝回归完成；32 个文件的名称/大小/摘要对照原始签名记录完全一致，latest 返回 404（无宿主版本），两端目录 200/304 与 40 个下载响应 206 复核通过。2447 全量、typecheck/lint/source 与 Harness task 验证通过；未修改宿主更新源。
 
 ## 每个实现 PR 的最低检查
 
