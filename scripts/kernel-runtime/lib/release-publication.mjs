@@ -75,8 +75,10 @@ export async function publishRuntimeRelease(input) {
   await io.verifyOnline(record.catalog, false);
   await assertSwitchableCatalogs(io, catalogs, record, context);
   await io.writeCatalog(record.catalog);
-  await assertLiveCatalog(io, record.catalog, context);
+  // Let the existing bounded online verifier observe pointer propagation before
+  // the strict final read. No cleanup is allowed while either mirror is stale.
   await io.verifyOnline(record.catalog, true);
+  await assertLiveCatalog(io, record.catalog, context);
   current = record.catalog;
   currentRecord = record;
   return { mode: catalogs.partial ? 'resumed-publication' : candidate ? 'published' : 'renewed',

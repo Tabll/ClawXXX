@@ -138,6 +138,39 @@ describe('protected latest-only runtime release transaction', () => {
     expect(f.io.deleted).toEqual([]);
   });
 
+  it('waits for bounded online verification before asserting newly written catalog visibility', async () => {
+    const f = releaseFixture();
+    vi.spyOn(f.io, 'writeCatalog').mockImplementationOnce(async catalog => {
+      f.io.events.push(`catalog:${catalog.sequence}`);
+      f.io.catalogs = [structuredClone(catalog), undefined];
+    });
+    const original = f.io.verifyOnline.bind(f.io);
+    vi.spyOn(f.io, 'verifyOnline').mockImplementation(async (catalog, pointers) => {
+      if (pointers) {
+        expect(f.io.deleted).toEqual([]);
+        // The production adapter performs bounded, exact-catalog HTTP retries.
+        f.io.catalogs = [structuredClone(catalog), structuredClone(catalog)];
+      }
+      await original(catalog, pointers);
+    });
+    await expect(publishRuntimeRelease({ ...f.input(), bootstrap: true })).resolves.toMatchObject({ mode: 'published', sequence: 1 });
+    expect(f.io.events.slice(0, 5)).toEqual(['record:1', 'upload:1', 'assets:1', 'catalog:1', 'live:1']);
+    expect(f.io.records.size).toBe(1);
+  });
+
+  it('still refuses cleanup if catalogs diverge after the bounded online check', async () => {
+    const f = releaseFixture();
+    await publishRuntimeRelease({ ...f.input(), bootstrap: true });
+    const original = f.io.verifyOnline.bind(f.io);
+    vi.spyOn(f.io, 'verifyOnline').mockImplementation(async (catalog, pointers) => {
+      await original(catalog, pointers);
+      if (pointers) f.io.catalogs[1] = undefined;
+    });
+    await expect(publishRuntimeRelease(f.input(2, new Date(f.now.getTime() + 9 * 24 * HOUR)))).rejects.toThrow(/exact same live catalog/);
+    expect(f.io.deleted).toEqual([]);
+    expect(f.io.receipts.size).toBe(0);
+  });
+
   it('renews only metadata and idempotently resumes due cleanup after deletion interruption', async () => {
     const f = releaseFixture();
     await publishRuntimeRelease({ ...f.input(), bootstrap: true });

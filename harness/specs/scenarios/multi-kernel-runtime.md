@@ -72,6 +72,10 @@ catalogs retire old packages without revoking them. Cleanup must use exact signe
 retirement records, maximum historical catalog expiry plus download grace, both
 live mirrors and all-target strict Range validators. Include bootstrap, partial
 publication, stale events, expiry renewal and interrupted deletion failure tests.
+Post-write visibility checks retry only within a bounded probe budget and must
+reach the exact new signed catalog, then pass strict final readback. Cover
+temporary 404, one/both stale mirrors, exhaustion and immediate signed-fork or
+newer-sequence rejection; no stale observation permits retirement deletion.
 Maintenance retains reviewer approval and does not modify local installed runtimes.
 
 Builder portability includes checkout/system-temp volume separation, verified

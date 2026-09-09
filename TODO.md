@@ -544,7 +544,7 @@
 - [x] `MK-2004` 签名 ledger 记录全部引用目录的最大有效期，再加 24 小时缓冲生成精确退役清单；线上验证成功后逐文件校验旧对象 hash/size 才删除，不 list-delete，保留当前包、其他 COS 内容及审计记录；缩短后续 TTL 不会提前删旧包。
 - [x] `MK-2005` 增加每日受保护清理/续期、部分删除/收据双镜像恢复、十槽位两镜像严格 Range/If-Range/强 ETag/大小演练；历史签名 matrix 快照允许未来新增内核/目标，缺失完整新矩阵或删除旧支持目标仍失败关闭。
 - [x] `MK-2006` 119 项发布/信任/来源定向回归、全量 2437 passed / 6 既有条件 skips、typecheck、lint（0 errors / 7 既有 warnings）、source verify、comms replay/compare、Harness CI（19 tests）及 task diff-aware validate/dry-run、YAML 解析与 git diff --check 通过。四语 README/安全支持、架构、设计、Runbook 和 Harness 规则同步；没有 Renderer/Main/UI 行为修改，不用这些本地测试冒充上线。
-- [-] `MK-2007` 用户于 2026-09-09 授权提交、推送并启动首次受保护发布；正常审批生产 bootstrap，验证 COS/GitHub catalog 与真实线上下载证据，记录实际版本与发布序号。执行进度见 [发布验收记录](harness/reference/kernel-automatic-release.md)；真实线上验证完成前不勾选上线验收。
+- [-] `MK-2007` 用户于 2026-09-09 授权后，`1dc4ebea` 已提交/推送；[首次生产 #2](https://github.com/Tabll/ClawXXX/actions/runs/34294723902) 正常准入/审批，10 个版本化包及序号 1 已上传两端，切换前 40 个 Range/If-Range 全通过，但立即一致性读回先于有界重试导致作业失败、未删除任何对象。独立复核两端签名目录及全部目标线上下载已通过，正在修复验收顺序并恢复同一签名记录；CI 恢复成功前不勾选。`1dc4ebea` E2E #37 第二次运行三平台全通过。证据见[发布验收记录](harness/reference/kernel-automatic-release.md)。
 
 ## 每个实现 PR 的最低检查
 

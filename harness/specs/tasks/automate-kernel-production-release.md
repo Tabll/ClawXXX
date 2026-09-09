@@ -62,6 +62,7 @@ acceptance:
   - Gate deletion on exact matching live catalogs and all-target strict Range/ETag checks, verified signed retirement records, expiry plus grace and object identity; never list-delete a whole bucket or runtime prefix.
   - Preserve small release records and cleanup receipts. Scheduled maintenance uses the same protected environment for due cleanup and bounded metadata renewal, never an approval bypass.
   - Exercise bootstrap, duplicate/out-of-order events, missing/failed E2E, partial upload/catalog switch, concurrent stale plans, renewal, current-object protection and interrupted cleanup with deterministic failure-injection tests.
+  - After pointer writes, perform bounded exact-catalog propagation checks before final strict readback; stale or absent mirrors never allow cleanup, and signed same-sequence conflicts or newer catalogs fail immediately.
 docs:
   required: true
 ---

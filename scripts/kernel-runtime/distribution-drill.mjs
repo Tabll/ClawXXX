@@ -6,19 +6,27 @@ import { canonicalJson, readJson } from './lib/canonical.mjs';
 import { verifyCatalogEnvelope } from './verify-release-set.mjs';
 import { readBoundedBody } from './lib/release-http.mjs';
 
+class CatalogIntegrityError extends Error {}
+
 export async function drillKernelDistribution(input) {
   const distribution = input.distribution;
   const probeAttempts = input.probeAttempts ?? 6;
   const retryDelayMs = input.retryDelayMs ?? 5_000;
   const { acceptedCatalog, catalogResults } = await retryProbe(
-    () => probeCatalogMirrors({ ...input, distribution }),
+    async () => {
+      const result = await probeCatalogMirrors({ ...input, distribution });
+      // Both caches can briefly agree on the previous valid catalog after a
+      // pointer write. Convergence includes the exact reserved release, not
+      // just agreement between mirrors; never probe/accept stale package sets.
+      if (input.expectedCatalog && canonicalJson(result.acceptedCatalog) !== canonicalJson(input.expectedCatalog)) {
+        throw new Error('Live catalogs do not match the exact expected release');
+      }
+      return result;
+    },
     probeAttempts,
     retryDelayMs,
   );
 
-  if (input.expectedCatalog && canonicalJson(acceptedCatalog) !== canonicalJson(input.expectedCatalog)) {
-    throw new Error('Live catalogs do not match the exact expected release');
-  }
   const artifactResults = await probeArtifactMirrors({ ...input, catalog: acceptedCatalog });
   return { schemaVersion: 1, ok: true, catalogSequence: acceptedCatalog.sequence, catalogs: catalogResults, artifacts: artifactResults };
 }
@@ -74,6 +82,13 @@ async function probeCatalogMirrors(input) {
     if (!response.ok) { await response.body?.cancel(); throw new Error(`Catalog probe failed ${response.status}: ${url}`); }
     if (response.url) assertProductionUrl(response.url, input.allowHttp);
     const catalog = verifyCatalogEnvelope(JSON.parse((await readBoundedBody(response, 2 * 1024 * 1024)).toString('utf8')), input.trustStore, input.now);
+    if (input.expectedCatalog && (catalog.sequence > input.expectedCatalog.sequence
+      || (catalog.sequence === input.expectedCatalog.sequence && canonicalJson(catalog) !== canonicalJson(input.expectedCatalog)))) {
+      throw new CatalogIntegrityError('Live catalog conflicts with or is newer than the exact expected release');
+    }
+    if (acceptedCatalog && catalog.sequence === acceptedCatalog.sequence && canonicalJson(catalog) !== canonicalJson(acceptedCatalog)) {
+      throw new CatalogIntegrityError('Catalog mirrors have a same-sequence fork');
+    }
     if (acceptedCatalog && (catalog.sequence !== acceptedCatalog.sequence || canonicalJson(catalog) !== canonicalJson(acceptedCatalog))) {
       throw new Error('Catalog mirrors do not serve the exact same signed sequence');
     }
@@ -103,6 +118,7 @@ async function retryProbe(operation, attempts, delayMs) {
     try {
       return await operation();
     } catch (error) {
+      if (error instanceof CatalogIntegrityError) throw error;
       lastError = error;
       if (attempt < attempts && delayMs > 0) await new Promise(resolveDelay => setTimeout(resolveDelay, delayMs));
     }

@@ -41,6 +41,13 @@ the frozen source manifests. This permits promotion of already verified build
    means no longer offered, not security-revoked. Never delete a current catalog
    reference, installed runtime, host installer or arbitrary untracked COS key.
 
+Post-write verification first allows bounded HTTP propagation (six probes,
+five-second intervals, independently bounded requests), including two mirrors
+still serving the same old catalog. It requires the exact reserved catalog
+before any post-switch archive drill or final strict readback. A signed same-sequence
+conflict or newer sequence fails immediately rather than being hidden by retry.
+Exhaustion, late divergence and Range failure still prohibit cleanup.
+
 ## Retention and maintenance
 
 Catalogs normally last seven days, capped by artifact and signing-key expiry.
@@ -150,6 +157,52 @@ on 2026-09-09 is tracked separately in MK-2007. The genuine same-source staging/
 acceptance above is read-only evidence, not proof of a published catalog. This design does not claim that a
 successful CI build alone proves production publication, a real Provider or
 Channel account test, or host App/DMG Gatekeeper acceptance.
+
+## First protected publication — 2026-09-09
+
+- Implementation commit `1dc4ebea233c097e6f3a8ecda853d7572e2d8082` was pushed to
+  `main`. [E2E #37](https://github.com/Tabll/ClawXXX/actions/runs/34250881803)
+  passed all three platforms on attempt 2; the first Windows attempt had two
+  `electronApplication.firstWindow` startup timeouts. Only failed jobs were
+  rerun; no test was skipped, weakened or assigned a larger deadline.
+- [Production #2](https://github.com/Tabll/ClawXXX/actions/runs/34294723902)
+  started at 00:22:21 UTC with `publish`, build `34205494108`, exact source
+  `45bb92609a2349ed89e50c45c64cac53f1aa2620` and explicit `bootstrap=true`.
+  Read-only acceptance passed and normal `kernel-production` review was
+  approved at 00:24 UTC, without changing environment protection.
+- All ten original archives plus their descriptors/checksums reached both
+  mirrors. The archived pre-switch drill passed all 40 Range/If-Range requests.
+  COS preflight reported `ap-shanghai`, versioning `Disabled`. No kernel bytes,
+  notarizations, artifact signatures or revision-13 source pins were changed.
+- The attempt stopped at 00:30:54 UTC on immediate post-write catalog readback,
+  before the existing bounded visibility retry could execute. No deletion was
+  performed. The immutable sequence-1 journal and both uploaded catalog assets
+  were preserved. Recovery is pending the narrow verifier-order repair; this
+  is not yet a successful protected workflow result.
+- Independent live verification using the protected CI public roots subsequently
+  passed: both exact signed catalogs returned 200/conditional 304, and all ten
+  targets on both hosts returned 206 for Range and If-Range with stable strong
+  ETags and exact signed sizes. The observed convergence supports a transient
+  post-upload visibility failure; the first failing read did not archive raw
+  per-mirror responses, so its precise stale response is not asserted.
+- Sequence 1 issued at `2026-09-09T00:25:09.207Z`, expires at
+  `2026-09-16T00:25:09.207Z`. Catalog file SHA-256 (including final newline):
+  `11ef22322d85a1d05e8b9b452105cf8c2329ed4b7174ca480b0876d882033ccd`;
+  canonical JSON digest: `3e4fc5dfac49b64fa5e7cea58b3aeb310df4a590ef4c6c842a7eee5826acda14`.
+  Journal file SHA-256:
+  `132b184e4a1dd5f2bd56d12e89aa2cd544dd9556e65b702bf229b057034e2523`.
+  The signed retirement list is empty: first bootstrap cannot prove a real
+  historical-package deletion.
+- Evidence artifact `10082893235` (`kernel-production-evidence-34294723902-1`)
+  SHA-256: `566f108662c96123fa3aff6e0c4eac1a709a8390f1e1073740ee20a9d962537a`.
+  Downloaded ZIP identity and signed release record were independently checked.
+- The visibility-order repair adds eight regressions (temporary missing/old
+  mirrors, exact-release retry exhaustion, immediate signed conflict/newer
+  rejection, post-write ordering and late-divergence cleanup protection).
+  All **2445 unit tests passed**, with the same six pre-existing conditional
+  skips; typecheck, lint (zero errors/seven existing warnings), frozen sources,
+  comms replay/compare, Harness CI (19 tests), task validate/dry-run and diff
+  checks passed. The repair changes no frozen runtime input or signed package.
 
 ## API references
 
