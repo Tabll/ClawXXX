@@ -47,7 +47,7 @@ DSH 是 release candidate，不是稳定版。OpenClaw 同步冻结 Discord/What
 - DSH：完整 Host 编译、13 个文件 / 70 项 overlay 与真实本机 sandbox 回归通过；包括 V3 replacement 去重、失败重试、并行 Run、persona、SessionHandle 冷恢复和无第二套历史。
 - DSH 实际独立生产部署闭包启动 2219 ms、RSS 111738880 bytes；实际工具读写、只读拒绝、sandbox/ask 策略、孤立权限请求拒绝、正常退出与无原生历史检查通过。此 payload 尚未签名/封装，不能冒充公证制品。
 - 两个实际 macOS arm64 payload 的精确 native 审计通过。许可证审计分别覆盖 OpenClaw 626 个包、DSH 107 个包；保留既有 reciprocal obligations。Discord/WhatsApp 9.4 的 MIT 继承只新增精确版本，不扩大例外范围。
-- 最终宿主回归 273 文件 / 2509 项 passed，2 文件 / 6 项既有条件跳过；typecheck、lint（0 errors / 7 existing warnings）、comms replay/compare、Harness CI（19 tests）、task validate/dry-run 与 diff 检查通过。跳过项不是已通过的签名制品证据。
+- 初次宿主回归 273 文件 / 2509 项 passed；首轮 CI 环境修复后全量重跑为 2512 passed，2 文件 / 6 项既有条件跳过。typecheck、lint（0 errors / 7 existing warnings）、comms replay/compare、Harness CI（19 tests）、task validate/dry-run 与 diff 检查通过。跳过项不是已通过的签名制品证据。
 - 本机 12 项聚焦 Electron 回归通过：已有 schema 19 Agent DB 的真实 Node/子进程及两代 Gateway，共享 SQLite 的 OpenClaw → DSH → OpenClaw 会话，Agents / Channels / Cron / Skills / kernel catalog。未跑完整三平台 Electron suite，也未新增用户此前暂缓的安装状态 E2E。
 - 将新增 native 闭包、平台门禁与 Windows temp 补丁回归前置到 CI 源码下载之前，单 worker 控制此小组的并行压力；既有运行时测试 deadline、完整矩阵和失败日志保留策略不变。
 
@@ -60,6 +60,9 @@ DSH 是 release candidate，不是稳定版。OpenClaw 同步冻结 Discord/What
 - [同 SHA Electron E2E](https://github.com/Tabll/ClawXXX/actions/runs/34682752346)：由上述 push 自动触发，覆盖 Linux/macOS/Windows。
 - 16:16 使用正常 Review deployments → Approve and deploy 批准 `kernel-staging`；10 个 build job 随后开始执行，没有使用 Start all waiting jobs 旁路。
 - 本记录创建时两条 workflow 仍在运行，公证、完整单/双内核安装、同 SHA E2E 以及受保护生产推广尚未验收。后续仅补充此记录的文档提交不改变 #22 绑定的代码 SHA，不重复启动整套内核矩阵。
+- #22 的两个 Windows job 在前置 `kernel-platform-security` 测试发现旧断言使用 `split('/')`，把 Windows 的绝对路径误当 basename；Mach-O 检测本身正确，其他 40 项前置测试通过。修复为比较由 `path.join` 构造的精确绝对路径，并用 finally 清理 fixture；不关闭 Windows 门禁或修改生产扫描器。此测试修复需新提交和新一轮完整构建，#22 的失败不以重跑旧 SHA 冒充已修复。
+- 同 SHA Linux E2E 的真实 Node fixture 仅传 DISPLAY、漏传 xvfb-run 的 XAUTHORITY，隔离 HOME 后无法认证 X server（147 passed，唯一失败为该真实启动测试）。将 OS 环境 allowlist 提取为纯函数，保留 DISPLAY＋XAUTHORITY，新增 Linux 认证路径、Windows 原生变量和空环境回归，同时验证不继承用户 home、provider secrets 或 Node/Electron 注入参数。不禁用 X 认证，不跳过真实 Gateway 回归。
+- 上述两项环境修复后：53 focused 与 2512 全量宿主测试通过；本机真实 Electron 已有 DB 两代 Gateway 重跑通过（10.6 s），typecheck/lint/comms 与 task validate/dry-run 通过。Windows/Linux 真实结果必须由修复后新 SHA 的 CI 给出。
 
 ## 主要剩余风险
 

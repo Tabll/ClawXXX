@@ -70,3 +70,15 @@ Use a new upgrade reference and TODO section for patch dispositions, exact
 candidate evidence and remote run links. Earlier host repair specs remain
 applicable to their retained worktree changes. The previously deferred
 installation-status E2E is not a waiver for runtime artifact acceptance.
+
+Initial staging run #22 exposed a POSIX-only basename assertion in the existing
+Mach-O fixture on Windows. Preserve the scanner's native absolute-path contract,
+fix the assertion and cleanup, and dispatch a new full build for the corrected
+commit; never weaken the platform gate or claim rerunning the old SHA fixes it.
+
+The same-source Linux E2E exposed missing XAUTHORITY in the isolated real-Node
+Electron fixture: DISPLAY alone cannot authenticate to xvfb-run's X server.
+Retain only the explicit host launch environment allowlist, pass through the
+display authority path without logging its contents, and preserve isolated HOME
+and user data. Unit-test that secrets and Electron/Node injection variables are
+still excluded. Do not disable X authentication or skip the real runtime test.

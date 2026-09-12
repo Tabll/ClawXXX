@@ -5,9 +5,34 @@ import { delimiter, dirname, join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import nodeRuntime from '../../kernels/node-runtime.json';
 import { buildKernelNodeEnvironment, resolveDevelopmentKernelNode } from '@electron/kernels/node-runtime';
+import { pickKernelNodeElectronHostEnvironment } from '../e2e/fixtures/kernel-node-environment';
 
 const roots: string[] = [];
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
+
+describe('isolated real-Node Electron test environment', () => {
+  it('preserves Xvfb display authentication without inheriting the original home or secrets', () => {
+    const source = Object.freeze({ DISPLAY: ':99', XAUTHORITY: '/tmp/xvfb-run.fixture/Xauthority',
+      PATH: '/usr/bin', HOME: '/home/runner', USERPROFILE: '/home/runner', OPENAI_API_KEY: 'test-only',
+      NODE_OPTIONS: '--require unsafe.cjs', NODE_PATH: '/unsafe', ELECTRON_RUN_AS_NODE: '1',
+      ELECTRON_OVERRIDE_DIST_PATH: '/unsafe', ELECTRON_DISABLE_SANDBOX: '1' });
+    expect(pickKernelNodeElectronHostEnvironment(source)).toEqual({ DISPLAY: ':99',
+      XAUTHORITY: '/tmp/xvfb-run.fixture/Xauthority', PATH: '/usr/bin', ELECTRON_DISABLE_SANDBOX: '1' });
+    expect(source.HOME).toBe('/home/runner');
+  });
+
+  it('preserves native Windows launch variables without inheriting user data directories', () => {
+    expect(pickKernelNodeElectronHostEnvironment({ Path: 'C:\\Windows\\System32', SystemRoot: 'C:\\Windows',
+      ComSpec: 'C:\\Windows\\System32\\cmd.exe', PATHEXT: '.COM;.EXE;.CMD', LANG: 'en_US.UTF-8',
+      APPDATA: 'C:\\Users\\runner\\AppData\\Roaming', LOCALAPPDATA: 'C:\\Users\\runner\\AppData\\Local' }))
+      .toEqual({ Path: 'C:\\Windows\\System32', SystemRoot: 'C:\\Windows',
+        ComSpec: 'C:\\Windows\\System32\\cmd.exe', PATHEXT: '.COM;.EXE;.CMD', LANG: 'en_US.UTF-8' });
+  });
+
+  it('does not invent an X display or authority when the host supplies neither', () => {
+    expect(pickKernelNodeElectronHostEnvironment({ DISPLAY: undefined, XAUTHORITY: '' })).toEqual({});
+  });
+});
 
 describe('kernel standalone Node selection', () => {
   it('fails closed instead of falling back to Electron or system PATH', () => {

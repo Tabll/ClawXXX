@@ -11,10 +11,18 @@ import { verifyPlatformRuntime } from '../../scripts/kernel-runtime/verify-platf
 describe('kernel platform signing and support evidence', () => {
   it('detects thin and universal Mach-O binaries without treating scripts as executables', () => {
     const root = mkdtempSync(join(tmpdir(), 'clawx-macho-'));
-    writeFileSync(join(root, 'thin.node'), Buffer.from('feedfacf00000000', 'hex'));
-    writeFileSync(join(root, 'universal'), Buffer.from('cafebabe00000000', 'hex'));
-    writeFileSync(join(root, 'script.js'), '#!/usr/bin/env node\n');
-    expect(listMachOFiles(root).map(path => path.split('/').at(-1))).toEqual(['thin.node', 'universal']);
+    try {
+      const thin = join(root, 'thin.node');
+      const universal = join(root, 'universal');
+      writeFileSync(thin, Buffer.from('feedfacf00000000', 'hex'));
+      writeFileSync(universal, Buffer.from('cafebabe00000000', 'hex'));
+      writeFileSync(join(root, 'script.js'), '#!/usr/bin/env node\n');
+      // The scanner returns native absolute paths, including backslashes on
+      // Windows. Compare the full contract, not POSIX-only basename splitting.
+      expect(listMachOFiles(root)).toEqual([thin, universal]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 
   it('requires accepted notarization and emits a canonical macOS security report', () => {

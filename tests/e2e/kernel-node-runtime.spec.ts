@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { createRequire } from 'node:module';
 import nodeRuntime from '../../kernels/node-runtime.json';
+import { pickKernelNodeElectronHostEnvironment } from './fixtures/kernel-node-environment';
 
 const requireFromRepo = createRequire(resolve('package.json'));
 
@@ -20,10 +21,7 @@ test('real Electron restarts the real OpenClaw Gateway with an existing SQLite d
       define: { 'import.meta.url': '__clawxImportMetaUrl' },
       banner: { js: 'const __clawxImportMetaUrl = require("node:url").pathToFileURL(__filename).href;' },
       alias: { '@shared': resolve('shared'), '@electron': resolve('electron') } });
-    const env: Record<string, string> = {};
-    for (const key of ['PATH', 'Path', 'SystemRoot', 'ComSpec', 'PATHEXT', 'DISPLAY', 'ELECTRON_DISABLE_SANDBOX', 'LANG']) {
-      if (process.env[key]) env[key] = process.env[key]!;
-    }
+    const env = pickKernelNodeElectronHostEnvironment(process.env);
     app = await electron.launch({ executablePath: requireFromRepo('electron'), args: [entry], cwd: resolve('.'),
       env: { ...env, HOME: root, USERPROFILE: root, APPDATA: join(root, 'appdata'), LOCALAPPDATA: join(root, 'localappdata'),
         ...(process.env.CLAWX_E2E_EXISTING_AGENT_DATABASE ? { CLAWX_NODE_TEST_EXISTING_AGENT_DATABASE: resolve(process.env.CLAWX_E2E_EXISTING_AGENT_DATABASE) } : {}),
