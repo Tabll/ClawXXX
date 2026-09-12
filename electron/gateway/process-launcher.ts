@@ -1,10 +1,13 @@
-import { app, utilityProcess } from 'electron';
+import { app } from 'electron';
+import { spawn, type ChildProcess } from 'node:child_process';
 import { existsSync, writeFileSync } from 'fs';
 import path from 'path';
 import type { GatewayLaunchContext } from './config-sync';
 import type { GatewayLifecycleState } from './process-policy';
 import { logger } from '../utils/logger';
 import { appendNodeRequireToNodeOptions } from '../utils/paths';
+import { requireOpenClawRuntimeLocation } from '../kernels/openclaw/runtime-location';
+import { buildKernelNodeEnvironment } from '../kernels/node-runtime';
 
 const GATEWAY_FETCH_PRELOAD_SOURCE = `'use strict';
 (function () {
@@ -112,9 +115,9 @@ export async function launchGatewayProcess(options: {
   getShouldReconnect: () => boolean;
   onStderrLine: (line: string) => void;
   onSpawn: (pid: number | undefined) => void;
-  onExit: (child: Electron.UtilityProcess, code: number | null) => void;
-  onError: (error: Error) => void;
-}): Promise<{ child: Electron.UtilityProcess; lastSpawnSummary: string }> {
+  onExit: (child: ChildProcess, code: number | null) => void;
+  onError: (error: Error, child: ChildProcess) => void;
+}): Promise<{ child: ChildProcess; lastSpawnSummary: string }> {
   const {
     openclawDir,
     entryScript,
@@ -132,7 +135,8 @@ export async function launchGatewayProcess(options: {
   );
   const lastSpawnSummary = `mode=${mode}, entry="${entryScript}", args="${options.sanitizeSpawnArgs(gatewayArgs).join(' ')}", cwd="${openclawDir}"`;
 
-  const runtimeEnv = buildGatewayRuntimeEnv(forkEnv);
+  const { nodeExecutable } = requireOpenClawRuntimeLocation();
+  const runtimeEnv = buildGatewayRuntimeEnv(buildKernelNodeEnvironment(nodeExecutable, forkEnv));
 
   // Disable OpenClaw's mDNS/Bonjour gateway advertiser unconditionally.
   //
@@ -153,10 +157,8 @@ export async function launchGatewayProcess(options: {
   // buildGatewayRuntimeEnv() applies both this policy and startup tracing
   // before any development-only environment augmentation below.
 
-  // Only apply the fetch/child_process preload in dev mode.
-  // In packaged builds Electron's UtilityProcess rejects NODE_OPTIONS
-  // with --require, logging "Most NODE_OPTIONs are not supported in
-  // packaged apps" and the preload never loads.
+  // Preserve the existing development-only preload policy. The child is now
+  // standalone Node, never an Electron Helper posing as a Node executable.
   if (!app.isPackaged) {
     try {
       const preloadPath = ensureGatewayFetchPreload();
@@ -171,12 +173,13 @@ export async function launchGatewayProcess(options: {
     }
   }
 
-  return await new Promise<{ child: Electron.UtilityProcess; lastSpawnSummary: string }>((resolve, reject) => {
-    const child = utilityProcess.fork(entryScript, gatewayArgs, {
+  return await new Promise<{ child: ChildProcess; lastSpawnSummary: string }>((resolve, reject) => {
+    const child = spawn(nodeExecutable, [entryScript, ...gatewayArgs], {
       cwd: openclawDir,
-      stdio: 'pipe',
+      stdio: ['ignore', 'pipe', 'pipe'],
       env: runtimeEnv as NodeJS.ProcessEnv,
-      serviceName: 'OpenClaw Gateway',
+      windowsHide: true,
+      shell: false,
     });
 
     let settled = false;
@@ -194,11 +197,11 @@ export async function launchGatewayProcess(options: {
     child.on('error', (error: unknown) => {
       const normalizedError = error instanceof Error ? error : new Error(String(error));
       logger.error('Gateway process spawn error:', error);
-      options.onError(normalizedError);
+      options.onError(normalizedError, child);
       rejectOnce(normalizedError);
     });
 
-    child.on('exit', (code: number) => {
+    child.on('exit', (code: number | null, signal: NodeJS.Signals | null) => {
       // Only check shouldReconnect — not current state.  On Windows the WS
       // close handler fires before the process exit handler and sets state to
       // 'stopped', which would make an unexpected crash look like a planned
@@ -206,7 +209,7 @@ export async function launchGatewayProcess(options: {
       // sets it to false (expected), crashes leave it true (unexpected).
       const expectedExit = !options.getShouldReconnect();
       const level = expectedExit ? logger.info : logger.warn;
-      level(`Gateway process exited (code=${code}, expected=${expectedExit ? 'yes' : 'no'})`);
+      level(`Gateway process exited (code=${code}, signal=${signal ?? 'none'}, expected=${expectedExit ? 'yes' : 'no'})`);
       options.onExit(child, code);
     });
 
@@ -218,7 +221,7 @@ export async function launchGatewayProcess(options: {
     });
 
     child.on('spawn', () => {
-      logger.info(`Gateway process started (pid=${child.pid})`);
+      logger.info(`Gateway process started (pid=${child.pid}, node="${nodeExecutable}")`);
       options.onSpawn(child.pid);
       resolveOnce();
     });

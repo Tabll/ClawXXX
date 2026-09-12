@@ -5,6 +5,7 @@
 import { app } from 'electron';
 import path from 'path';
 import { EventEmitter } from 'events';
+import type { ChildProcess } from 'node:child_process';
 import WebSocket from 'ws';
 import { PORTS } from '../utils/config';
 import { JsonRpcNotification, isNotification, isResponse } from './protocol';
@@ -182,8 +183,9 @@ export interface GatewayManagerEvents {
  * Handles starting, stopping, and communicating with the OpenClaw Gateway
  */
 export class GatewayManager extends EventEmitter {
-  private process: Electron.UtilityProcess | null = null;
-  private processExitCode: number | null = null; // set by exit event, replaces exitCode/signalCode
+  private process: ChildProcess | null = null;
+  private processExitCode: number | null = null;
+  private processExitSignal: NodeJS.Signals | null = null;
   private ownsProcess = false;
   private ws: WebSocket | null = null;
   private status: GatewayStatus = { state: 'stopped', port: PORTS.OPENCLAW_GATEWAY };
@@ -406,7 +408,7 @@ export class GatewayManager extends EventEmitter {
           await this.connect(port, externalToken);
         },
         onConnectedToExistingGateway: () => {
-          // If the existing gateway is actually our own spawned UtilityProcess
+          // If the existing gateway is actually our own spawned Node process
           // (e.g. after a self-restart code=1012), keep ownership so that
           // stop() can still terminate the process during a restart() cycle.
           const isOwnProcess = this.process?.pid != null && this.ownsProcess;
@@ -440,6 +442,7 @@ export class GatewayManager extends EventEmitter {
           await waitForGatewayReady({
             port,
             getProcessExitCode: () => this.processExitCode,
+            getProcessExitSignal: () => this.processExitSignal,
             // A code-1012 in-process reload normally returns within seconds.
             // Do not hold the lifecycle lock for the general 2400-attempt cold
             // startup budget when the owned process is alive but no longer serves WS.
@@ -975,6 +978,7 @@ export class GatewayManager extends EventEmitter {
     const launchContext = await prepareGatewayLaunchContext(this.status.port);
     await unloadLaunchctlGatewayService();
     this.processExitCode = null;
+    this.processExitSignal = null;
 
     // Per-process diagnostics reset on each new spawn so retries never mix
     // timings or stderr deduplication state from different Gateway children.
@@ -1029,6 +1033,7 @@ export class GatewayManager extends EventEmitter {
       },
       onExit: (exitedChild, code) => {
         this.processExitCode = code;
+        this.processExitSignal = exitedChild.signalCode;
         this.ownsProcess = false;
         this.connectionMonitor.clear();
         this.cancelDeadlineRecovery();
@@ -1060,9 +1065,9 @@ export class GatewayManager extends EventEmitter {
         // guards, so intentional stop() remains a no-op.
         this.scheduleReconnect();
       },
-      onError: () => {
+      onError: (_error, failedChild) => {
         this.ownsProcess = false;
-        if (this.process === child) {
+        if (this.process === failedChild) {
           this.process = null;
         }
       },
@@ -1131,7 +1136,7 @@ export class GatewayManager extends EventEmitter {
           // cause double start() attempts or port conflicts during TCP TIME_WAIT.
           //
           // Exception: code=1012 means the Gateway is performing an in-process
-          // restart (e.g. config reload).  The UtilityProcess stays alive, so
+          // restart (e.g. config reload). The Node process stays alive, so
           // `onExit` will never fire — we MUST reconnect from the WS close path.
           if (process.platform !== 'win32' || closeCode === 1012) {
             this.scheduleReconnect();

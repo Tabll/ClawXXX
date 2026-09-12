@@ -867,7 +867,7 @@ function findFilesByName(rootDir, matcher) {
 }
 
 function patchBundledRuntime(outputDir) {
-  // OpenClaw 2026.9.2 routes ordinary child-process execution through
+  // OpenClaw 2026.9.4 routes ordinary child-process execution through
   // resolveChildProcessInvocation(), which already sets windowsHide=true.
   // PTY execution remains patched below because node-pty follows a separate
   // launch path and is disabled on Windows in ClawX packaged builds.
@@ -900,7 +900,7 @@ function patchBundledRuntime(outputDir) {
 
   const ptyTargets = findFilesByName(
     path.join(outputDir, 'dist'),
-    /^(supervisor|bash-tools)-.*\.js$/,
+    /^(supervisor|bash-tools)-.*\.[cm]?js$/,
   );
   const ptyPatches = [
     {
@@ -947,7 +947,7 @@ function patchBundledRuntime(outputDir) {
       }
     }
     if (!matchedAny) {
-      throw new Error(`Required OpenClaw 2026.9.2 patch not found: ${patch.label}`);
+      throw new Error(`Required OpenClaw 2026.9.4 patch not found: ${patch.label}`);
     }
   }
 
@@ -971,7 +971,7 @@ function patchBundledRuntime(outputDir) {
   let hintCount = 0;
   if (fs.existsSync(distDir)) {
     for (const file of fs.readdirSync(distDir)) {
-      if (!file.endsWith('.js')) continue;
+      if (!/\.[cm]?js$/.test(file)) continue;
       const filePath = path.join(distDir, file);
       try {
         const content = fs.readFileSync(filePath, 'utf8');

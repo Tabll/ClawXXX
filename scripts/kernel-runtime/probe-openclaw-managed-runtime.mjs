@@ -347,7 +347,7 @@ try {
     await mkdir(join(reportPath, '..'), { recursive: true });
     await writeFile(reportPath, `${JSON.stringify({ ok: false, version, startups, error: String(error.stack ?? error), logs, providerCalls: providerRequests.length }, null, 2)}\n`, { mode: 0o600 });
   }
-  process.stderr.write(`${error.stack ?? error}\n${logs}\nLast probe messages: ${JSON.stringify(providerRequests.at(-1)?.messages?.slice(-3)).slice(0, 8_000)}\n`);
+  process.stderr.write(`${error.stack ?? error}\n${logs}\nLast probe messages: ${(JSON.stringify(providerRequests.at(-1)?.messages?.slice(-3)) ?? 'none').slice(0, 8_000)}\n`);
   process.exitCode = 1;
 } finally {
   try {

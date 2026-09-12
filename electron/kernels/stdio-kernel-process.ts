@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { EventEmitter } from 'node:events';
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { createInterface } from 'node:readline';
+import { buildKernelNodeEnvironment } from './node-runtime';
 import type {
   KernelGeneration,
   KernelId,
@@ -25,6 +26,8 @@ export type KernelProcessLaunch = {
   args: string[];
   cwd?: string;
   env?: NodeJS.ProcessEnv;
+  /** Node kernels sanitize the final inherited environment, not just overrides. */
+  nodeRuntime?: boolean;
   /** Immutable package-manager artifact selected before this process starts. */
   artifactVersion?: string;
   startupTimeoutMs?: number;
@@ -155,17 +158,20 @@ export class StdioKernelProcess extends EventEmitter {
     this.unexpectedExitEmitted = false;
     this.lastExit = undefined;
     this.startedAt = new Date().toISOString();
+    const environment = {
+      ...process.env,
+      ...this.launch.env,
+      CLAWX_KERNEL_ID: this.kernelId,
+      CLAWX_KERNEL_GENERATION: String(this.generation),
+      ...(this.launch.artifactVersion
+        ? { CLAWX_KERNEL_ARTIFACT_VERSION: this.launch.artifactVersion }
+        : {}),
+    };
     const child = spawn(this.launch.command, this.launch.args, {
       cwd: this.launch.cwd,
-      env: {
-        ...process.env,
-        ...this.launch.env,
-        CLAWX_KERNEL_ID: this.kernelId,
-        CLAWX_KERNEL_GENERATION: String(this.generation),
-        ...(this.launch.artifactVersion
-          ? { CLAWX_KERNEL_ARTIFACT_VERSION: this.launch.artifactVersion }
-          : {}),
-      },
+      env: this.launch.nodeRuntime
+        ? buildKernelNodeEnvironment(this.launch.command, environment)
+        : environment,
       stdio: ['pipe', 'pipe', 'pipe'],
       windowsHide: true,
       detached: process.platform !== 'win32',

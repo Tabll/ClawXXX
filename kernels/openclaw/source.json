@@ -3,34 +3,34 @@
   "kernelId": "openclaw",
   "displayName": "OpenClaw",
   "upstream": "https://github.com/openclaw/openclaw",
-  "version": "2026.9.2",
+  "version": "2026.9.4",
   "patchBase": "npm-tarball",
   "git": {
-    "tag": "v2026.9.2",
-    "tagObject": "87d32a44ab9744903d36a33b399c26cfc2b078d6",
-    "commit": "3928bad9badfcb6c7d140530435e806fb8092190"
+    "tag": "v2026.9.4",
+    "tagObject": "8bec206f3c1f787e1e9c45cfd34d3de2a78c7b8e",
+    "commit": "3a9d69db306cd7f081e06254cb89c4bcc14a7107"
   },
   "npm": {
-    "package": "openclaw@2026.9.2",
-    "integrity": "sha512-M6C7UsnX815nv26qBJFYGe6aGzv+ftZLRzV6S9oRXUtXg2Yn67eVntpssT94kgkquKVSeUxerUg0j1ONp4WYQg=="
+    "package": "openclaw@2026.9.4",
+    "integrity": "sha512-lTQpEEe1Xm3u2PCHaPEr+vP8paGk1vLdHuzdItsNToaLI6hAqRVvgJYg+GxukJhETJp4tPy/S1Gftl4KuB8n7A=="
   },
   "license": "MIT",
-  "artifactVersion": "2026.9.2+clawx.13",
-  "patchRevision": 13,
-  "sourceDateEpoch": 1788763473,
+  "artifactVersion": "2026.9.4+clawx.14",
+  "patchRevision": 14,
+  "sourceDateEpoch": 1789171200,
   "lockfile": {
     "descriptor": "kernels/openclaw/lock.json",
-    "descriptorSha256": "46efefa988347b339c854a95e86af9cc3682ddeeb7c08f42ac76598790a36017",
+    "descriptorSha256": "6e5a7dbfeed3509832bdca39f2a380ec580380e7f25702eede62972c975da4f9",
     "contentPath": "pnpm-lock.yaml",
-    "contentSha256": "b9c2608509e47be1870d74065e8ac4f86ad5f676550de8aa5d219987b6a05ea4"
+    "contentSha256": "595c28c81cba6557741cc3a34f2912f0889d040ea0c64fde6bb9aae5bc56ccd7"
   },
   "patchSeries": {
     "path": "kernels/openclaw/patches/series",
-    "sha256": "66dba48c89ec268dcf7eb9d987c29a8a1ba781a1d308b0a13d9dd1ec03e14969"
+    "sha256": "4e93e30fcaec46a91ffae0cfca119c978b544a77a856aec88734a4eb9b261db5"
   },
   "runtime": {
     "path": "kernels/openclaw/runtime.json",
-    "sha256": "f185e38a83305b1368c5827db57fcc308c2be07614777ab9a7ca60c1c490f532"
+    "sha256": "dec65eeb588867248dfc59338bfccc78bb7a401e6ff503c5906c90199f964d47"
   },
   "nodeRuntime": {
     "path": "kernels/node-runtime.json",
@@ -39,12 +39,12 @@
   "overlay": {
     "root": "kernels/openclaw/overlay",
     "manifest": "kernels/openclaw/overlay.manifest.json",
-    "manifestSha256": "a18fd6e9c6c66dfc79f25e83e241699f357d4fb6f2b6947ddbbb37afb4f940eb"
+    "manifestSha256": "f9497606cdc7ecb431371000bf8e0d00640e42d777624f2bfb5afa2cbafbde62"
   },
   "patches": [
     {
-      "path": "patches/openclaw@2026.9.2.patch",
-      "sha256": "abc0e5d05157cf65239c7ceed25195377c376f6f62c3a86b44dc4c4cab714ed8"
+      "path": "patches/openclaw@2026.9.4.patch",
+      "sha256": "a12b34a8562abdd7aea2dbb232b3daf209b7738850972d14833903295eb4f6c9"
     }
   ]
 }

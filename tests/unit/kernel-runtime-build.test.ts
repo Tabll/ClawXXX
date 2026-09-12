@@ -17,6 +17,65 @@ const officialNodeSha256 = 'b7bf7707070b950ba1ec5f1af3bb6de0f2b1962c5033973d9406
 
 describe('kernel runtime build supply chain', () => {
   it.each([
+    ['darwin', 'arm64', '', 'cffaedfe'], ['darwin', 'x64', '', 'cffaedfe'],
+    ['linux', 'arm64', '-gnu', '7f454c46'], ['linux', 'x64', '-gnu', '7f454c46'],
+    ['win32', 'x64', '-msvc', '4d5a0000'],
+  ])('audits the flattened Discord DAVE dependency on %s/%s', (platform, arch, suffix, magic) => {
+    const root = mkdtempSync(join(tmpdir(), 'clawx-discord-dave-'));
+    const runtime = JSON.parse(readFileSync('kernels/openclaw/runtime.json', 'utf8'));
+    const target = `${platform}-${arch}${suffix}`;
+    const directory = join(root, 'runtime/kernel/clawx-plugins/discord/node_modules/@snazzah', `davey-${target}`);
+    try {
+      mkdirSync(directory, { recursive: true });
+      writeFileSync(join(directory, `davey.${target}.node`), Buffer.from(magic, 'hex'));
+      const allowlist = runtime.nativePayloadAllowlist[`${platform}-${arch}`];
+      expect(() => validateNativePayloads(root, platform, arch, [])).toThrow(/allowlist/);
+      expect(() => validateNativePayloads(root, platform, arch, allowlist)).not.toThrow();
+      writeFileSync(join(directory, 'unexpected.node'), Buffer.from(magic, 'hex'));
+      expect(() => validateNativePayloads(root, platform, arch, allowlist)).toThrow(/allowlist/);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it.each([
+    ['darwin', 'arm64', 'bin/system.node', 'cffaedfe'],
+    ['darwin', 'x64', 'bin/system.node', 'cffaedfe'],
+    ['linux', 'arm64', 'bin/glibc/system.node', '7f454c46'],
+    ['linux', 'x64', 'bin/glibc/system.node', '7f454c46'],
+    ['linux', 'arm64', 'bin/landlock-run', '7f454c46'],
+    ['linux', 'x64', 'bin/landlock-run', '7f454c46'],
+  ])('admits only the reviewed DSH system binary %s/%s/%s', (platform, arch, binary, magic) => {
+    const root = mkdtempSync(join(tmpdir(), 'clawx-dsh-system-'));
+    const runtime = JSON.parse(readFileSync('kernels/deepseek-harness/runtime.json', 'utf8'));
+    const prefix = `runtime/kernel/node_modules/@deepseek-ai/node-addon-system-${platform}-${arch}`;
+    const directory = join(root, prefix, binary.slice(0, binary.lastIndexOf('/')));
+    try {
+      mkdirSync(directory, { recursive: true });
+      writeFileSync(join(root, prefix, binary), Buffer.from(magic, 'hex'));
+      const allowlist = runtime.nativePayloadAllowlist[`${platform}-${arch}`];
+      expect(() => validateNativePayloads(root, platform, arch, [])).toThrow(/allowlist/);
+      expect(() => validateNativePayloads(root, platform, arch, allowlist)).not.toThrow();
+      writeFileSync(join(root, prefix, `${binary}.unexpected`), Buffer.from(magic, 'hex'));
+      expect(() => validateNativePayloads(root, platform, arch, allowlist)).toThrow(/allowlist/);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('builds full DSH system payloads instead of the upstream host-addon-only shortcut', () => {
+    const workflow = readFileSync('.github/workflows/kernel-runtime-build.yml', 'utf8');
+    expect(workflow).toContain('run: pnpm --dir native/system run build:native');
+    expect(workflow).toContain("if: matrix.kernel == 'deepseek-harness' && matrix.target.platform != 'win32'");
+    expect(workflow).not.toContain('run: pnpm run build:native-system');
+    const earlyGate = workflow.split('- name: Verify upgraded kernel packaging contracts before fetching sources')[1]!.split('- name: Fetch exact OpenClaw npm patch base')[0]!;
+    expect(earlyGate).toContain('tests/unit/kernel-runtime-build.test.ts');
+    expect(earlyGate).toContain('tests/unit/kernel-platform-security.test.ts');
+    expect(earlyGate).toContain('tests/unit/deepseek-sandbox-temp-parity-patch.test.ts');
+    expect(earlyGate).toContain('--maxWorkers=1');
+  });
+
+  it.each([
     { label: 'LF', newline: '\n' }, { label: 'CRLF', newline: '\r\n' },
   ])('bounds Windows storage suite file workers without changing test deadlines or internal concurrency ($label)', ({ newline }) => {
     const workflow = readFileSync(join(process.cwd(), '.github/workflows/kernel-runtime-build.yml'), 'utf8').replace(/\r?\n/g, newline);
@@ -147,7 +206,7 @@ describe('kernel runtime build supply chain', () => {
 
       expect(readFileSync(first.archivePath)).toEqual(readFileSync(second.archivePath));
       expect(readFileSync(first.descriptorPath)).toEqual(readFileSync(second.descriptorPath));
-      expect(first.descriptor).toMatchObject({ artifactVersion: '2026.9.2+clawx.13', patchRevision: 13, platform, arch });
+      expect(first.descriptor).toMatchObject({ artifactVersion: '2026.9.4+clawx.14', patchRevision: 14, platform, arch });
       expect(first.descriptor.storage).toMatchObject({ authority: 'clawx-data-service', nativeDurableHistory: false });
       expect(first.descriptor.supplyChain).toEqual(expect.objectContaining({
         sourceSha256: expect.stringMatching(/^[a-f0-9]{64}$/),
@@ -162,7 +221,7 @@ describe('kernel runtime build supply chain', () => {
       writeFileSync(`${esbuildExecutable}.unreviewed`, Buffer.from('4d5a0000', 'hex'));
       const rejected = join(root, 'rejected');
       await expect(assembleKernelArtifact({ ...common, outputDir: rejected })).rejects.toThrow(/not in the audited native allowlist/);
-      expect(existsSync(join(rejected, `openclaw-2026.9.2+clawx.13-${platform}-${arch}.tar.zst`))).toBe(false);
+      expect(existsSync(join(rejected, `openclaw-2026.9.4+clawx.14-${platform}-${arch}.tar.zst`))).toBe(false);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
@@ -221,6 +280,12 @@ describe('kernel runtime build supply chain', () => {
       ]).concat([
         { path: '@deepseek-ai/node-addon-landlock-run-linux-x64', keep: platform === 'linux' && arch === 'x64' },
         { path: '@deepseek-ai/node-addon-landlock-run-linux-arm64', keep: platform === 'linux' && arch === 'arm64' },
+        ...targets.filter(([os]) => os !== 'win32').map(([os, cpu]) => ({
+          path: `@deepseek-ai/node-addon-system-${os}-${cpu}/bin${os === 'linux' ? '/glibc' : ''}`,
+          keep: platform === os && arch === cpu,
+        })),
+        { path: '@deepseek-ai/node-addon-system-linux-x64/bin/musl', keep: false },
+        { path: '@deepseek-ai/node-addon-system-linux-arm64/bin/musl', keep: false },
         { path: '@koromix/koffi-linux-x64/linux_x64', keep: platform === 'linux' && arch === 'x64' },
         { path: '@koromix/koffi-linux-arm64/linux_arm64', keep: platform === 'linux' && arch === 'arm64' },
         { path: '@koromix/koffi-linux-x64/musl_x64', keep: false },

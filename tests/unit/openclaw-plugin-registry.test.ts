@@ -14,7 +14,7 @@ describe('OpenClaw deterministic plugin discovery and SQLite freshness', () => {
       '--fixture-path-mode', fixturePathMode,
     ], { encoding: 'utf8', timeout: 20_000, killSignal: 'SIGKILL', windowsHide: true, maxBuffer: 1024 * 1024 });
     expect(JSON.parse(stdout)).toMatchObject({
-      ok: true, version: '2026.9.2', duplicateDiagnostics: 2, persistedRoundTrips: 3,
+      ok: true, version: '2026.9.4', duplicateDiagnostics: 2, persistedRoundTrips: 3,
       staleChangesRejected: ['manifest', 'source', 'policy', 'diagnostic'],
       physicalAliasTrust: true, unrelatedPathRejected: true,
       invalidProvenanceRejected: true, ambiguousOwnerRejected: true,

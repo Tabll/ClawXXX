@@ -8,6 +8,8 @@ import { describe, expect, it, vi } from 'vitest';
 import { KernelSupervisorRegistry } from '@electron/kernels/supervisor-registry';
 import { createKernelsApi } from '@electron/services/kernels-api';
 import { RuntimeLifecycleCoordinator } from '@electron/kernels/runtime-lifecycle-coordinator';
+import { KernelLaunchRegistry } from '@electron/kernels/launch-registry';
+import { StdioKernelProcess } from '@electron/kernels/stdio-kernel-process';
 import { asConversationId, asRunId, asTurnId } from '@shared/conversations/contracts';
 import type { KernelStdioEvent } from '@shared/kernels/runtime-protocol';
 
@@ -36,6 +38,130 @@ function isPidAlive(pid: number): boolean {
 }
 
 describe('KernelSupervisorRegistry', () => {
+  it('registers an installed second kernel after a failed start without replacing the first process', async () => {
+    const launches = new KernelLaunchRegistry();
+    const registry = new KernelSupervisorRegistry((id, generation) => launches.resolve(id, generation));
+    const launch = () => ({ command: process.execPath, args: [fixture], nodeRuntime: true, artifactVersion: 'fixture-v1' });
+    launches.register('openclaw', launch);
+    try {
+      const openclaw = await registry.start('openclaw');
+      await registry.refreshLaunchRegistration('deepseek-harness', async () => ({ installed: true }));
+      await expect(registry.start('deepseek-harness')).rejects.toThrow('no registered runtime driver');
+      expect(registry.status('deepseek-harness')).toMatchObject({ state: 'failed', generation: 0 });
+      const registered = await registry.refreshLaunchRegistration('deepseek-harness', async () => {
+        launches.register('deepseek-harness', launch);
+        return { installed: true };
+      });
+      expect(registered).toMatchObject({ state: 'installed', generation: 0, restartRequired: false });
+      expect(registered.lastError).toBeUndefined();
+      const dsh = await registry.start('deepseek-harness');
+      expect(dsh).toMatchObject({ state: 'ready', generation: 1, artifactVersion: 'fixture-v1' });
+      expect(registry.status('openclaw')).toMatchObject({ state: 'ready', generation: 1, pid: openclaw.pid });
+      expect((await registry.restart('deepseek-harness')).generation).toBe(2);
+    } finally { await registry.stopAll(); }
+  });
+
+  it('serializes registration with start and does not replace a live launch or stop it on deferred restart', async () => {
+    const launches = new KernelLaunchRegistry();
+    const registry = new KernelSupervisorRegistry((id, generation) => launches.resolve(id, generation));
+    let release!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    const registering = registry.refreshLaunchRegistration('deepseek-harness', async () => {
+      await gate;
+      launches.register('deepseek-harness', () => ({ command: process.execPath, args: [fixture] }));
+      return { installed: true };
+    });
+    const starting = registry.start('deepseek-harness');
+    try {
+      release();
+      await registering;
+      const ready = await starting;
+      const replace = vi.fn(async () => ({ installed: true }));
+      expect(await registry.refreshLaunchRegistration('deepseek-harness', replace)).toMatchObject({
+        state: 'ready', generation: 1, pid: ready.pid, restartRequired: true,
+      });
+      expect(replace).not.toHaveBeenCalled();
+      await expect(registry.restart('deepseek-harness')).rejects.toThrow('Restart ClawX');
+      expect(registry.status('deepseek-harness').pid).toBe(ready.pid);
+    } finally {
+      release();
+      await Promise.allSettled([registering, starting]);
+      await registry.stopAll();
+    }
+  });
+
+  it('reports registration failure and clears pending restart and errors after repair or uninstall', async () => {
+    const registry = new KernelSupervisorRegistry(() => { throw new Error('no driver'); });
+    await registry.refreshLaunchRegistration('openclaw', async () => ({ installed: true, restartRequired: true }));
+    expect(registry.snapshots().find(item => item.kernelId === 'openclaw')).toMatchObject({
+      state: 'installed', restartRequired: true,
+    });
+    await expect(registry.start('openclaw')).rejects.toThrow('Restart ClawX');
+    expect(registry.status('openclaw').state).toBe('installed');
+    await expect(registry.refreshLaunchRegistration('openclaw', async () => { throw new Error('missing entrypoint'); }))
+      .rejects.toThrow('missing entrypoint');
+    expect(registry.status('openclaw')).toMatchObject({ state: 'failed', lastError: 'missing entrypoint' });
+    await registry.refreshLaunchRegistration('openclaw', async () => ({ installed: true }));
+    expect(registry.status('openclaw')).toMatchObject({ state: 'installed', restartRequired: false, lastError: undefined });
+    await registry.refreshLaunchRegistration('openclaw', async () => ({ installed: false }));
+    expect(registry.status('openclaw')).toMatchObject({ state: 'not-installed', restartRequired: false });
+    await expect(registry.start('openclaw')).rejects.toThrow('no driver');
+    expect(registry.status('openclaw').state).toBe('not-installed');
+  });
+
+  it('ignores a queued old-process exit after a replacement registration', async () => {
+    const launches = new KernelLaunchRegistry();
+    launches.register('deepseek-harness', () => ({ command: process.execPath, args: [fixture] }));
+    const registry = new KernelSupervisorRegistry((id, generation) => launches.resolve(id, generation), {
+      restartPolicy: { autoRestart: false },
+    });
+    let release!: () => void;
+    let entered!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    const enteredHealth = new Promise<void>(resolve => { entered = resolve; });
+    const health = vi.spyOn(StdioKernelProcess.prototype, 'health').mockImplementationOnce(async () => {
+      entered(); await gate; throw new Error('probe interrupted by child exit');
+    });
+    let healthOperation: Promise<unknown> | undefined;
+    let registration: Promise<unknown> | undefined;
+    try {
+      await registry.start('deepseek-harness');
+      healthOperation = registry.health('deepseek-harness').catch(() => undefined);
+      await enteredHealth;
+      registration = registry.refreshLaunchRegistration('deepseek-harness', async () => {
+        launches.unregister('deepseek-harness');
+        launches.register('deepseek-harness', () => ({ command: process.execPath, args: [fixture] }));
+        return { installed: true };
+      });
+      await registry.request('deepseek-harness', 'fixture.crash');
+      await waitFor(() => !registry.isKernelBusy('deepseek-harness') ? true : undefined);
+      release();
+      await Promise.all([healthOperation, registration]);
+      // Drain the already-queued old exit observer, not a timer-based readiness guess.
+      await new Promise<void>(resolve => setImmediate(resolve));
+      expect(registry.status('deepseek-harness')).toMatchObject({ state: 'installed', lastError: undefined, pid: undefined });
+      expect(await registry.start('deepseek-harness')).toMatchObject({ state: 'ready', generation: 2 });
+    } finally {
+      release();
+      await Promise.allSettled([healthOperation, registration]);
+      health.mockRestore();
+      await registry.stopAll();
+    }
+  });
+
+  it('sanitizes Node kernel overrides after environment inheritance', async () => {
+    const registry = new KernelSupervisorRegistry(() => ({
+      command: process.execPath, args: [fixture], nodeRuntime: true,
+      env: { NODE_OPTIONS: '--require nonexistent-preload.cjs', NODE_PATH: '/untrusted', ELECTRON_RUN_AS_NODE: '1' },
+    }));
+    try {
+      await registry.start('deepseek-harness');
+      expect(await registry.request('deepseek-harness', 'fixture.node-environment')).toEqual({
+        node: process.versions.node, execPath: process.execPath, electron: null, leakedKeys: [],
+      });
+    } finally { await registry.stopAll(); }
+  });
+
   it('keeps PID, generation, live prompt, restart, log, and health state isolated per kernel', async () => {
     const registry = new KernelSupervisorRegistry(kernelId => ({
       command: process.execPath,

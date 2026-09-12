@@ -1,6 +1,6 @@
 # @clawx/dsh-clawx-persistence
 
-ClawX-owned DeepSeek Harness v2 `SessionHandle` compatibility provider. It uses a narrow authenticated RPC client, never opens SQLite, and never writes JSONL. The removed upstream coordinator is not used.
+ClawX-owned DeepSeek Harness V3 `SessionHandle` compatibility provider. It uses a narrow authenticated RPC client, never opens SQLite, and never writes JSONL. The removed upstream coordinator is not used. Read slices return `{ events, eventState: 'detached' }` after cloning and validation; mutable values are never advertised as shared-frozen.
 
 This is an optional, contract-tested seam, not a second production store. The production host does not mount this provider: it hydrates transient Agents from canonical context and writes normalized events through the existing Main API. No native-session RPC server or migration is introduced by this upgrade.
 
@@ -14,4 +14,4 @@ This storage adapter adds no direct model-facing text. It persists and restores 
 
 ## Known Limitations and Deferred Work
 
-The internal protocol is `clawx.dsh-session-store/v2`; it is separate from the unchanged canonical Conversation Store v1 and opaque checkpoint v1. Handles serialize accepted operations, route live Session events, retain failed live batches, drain on checkpoint/close, reject stale owners and closed handles, and roll back late acquisitions after cancellation or teardown. Tests exercise the upstream handle contract, cross-client writer exclusion and cold Agent resume. Compression and a production native-session transport remain out of scope.
+The internal protocol is `clawx.dsh-session-store/v3`; it is separate from the unchanged canonical Conversation Store v1 and opaque checkpoint v1. Handles serialize accepted operations, route live Session events, retain failed live batches, drain on checkpoint/close, reject stale owners and closed handles, and roll back late acquisitions after cancellation or teardown. Tests exercise the upstream handle contract, cross-client writer exclusion and cold Agent resume. Compression and a production native-session transport remain out of scope.

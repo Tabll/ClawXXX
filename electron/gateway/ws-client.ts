@@ -73,6 +73,7 @@ export async function probeGatewayReady(
 export async function waitForGatewayReady(options: {
   port: number;
   getProcessExitCode: () => number | null;
+  getProcessExitSignal?: () => NodeJS.Signals | null;
   retries?: number;
   intervalMs?: number;
 }): Promise<void> {
@@ -81,9 +82,11 @@ export async function waitForGatewayReady(options: {
 
   for (let i = 0; i < retries; i++) {
     const exitCode = options.getProcessExitCode();
-    if (exitCode !== null) {
-      logger.error(`Gateway process exited before ready (code=${exitCode})`);
-      throw new Error(`Gateway process exited before becoming ready (code=${exitCode})`);
+    const signal = options.getProcessExitSignal?.() ?? null;
+    if (exitCode !== null || signal !== null) {
+      const detail = signal ? `signal=${signal}` : `code=${exitCode}`;
+      logger.error(`Gateway process exited before ready (${detail})`);
+      throw new Error(`Gateway process exited before becoming ready (${detail})`);
     }
 
     try {

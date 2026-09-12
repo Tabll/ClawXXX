@@ -1,7 +1,7 @@
 // @vitest-environment node
 
 import { mkdir, readFile, rm, writeFile } from 'fs/promises';
-import { join } from 'path';
+import { join, resolve } from 'path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { testHome, testUserData, getSettingMock, setSettingMock } = vi.hoisted(() => {
@@ -38,6 +38,20 @@ vi.mock('@electron/utils/store', () => ({
   getSetting: getSettingMock,
   setSetting: setSettingMock,
 }));
+
+// Auth integration still executes the real standalone Node worker. Only its
+// selected runtime/state roots are test-owned; no user installation is used.
+vi.mock('@electron/utils/openclaw-agent-auth-writer', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@electron/utils/openclaw-agent-auth-writer')>();
+  return { writeOpenClawAgentAuth: async (...args: Parameters<typeof actual.writeOpenClawAgentAuth>) => {
+    const runtime = await import('@electron/kernels/openclaw/runtime-location');
+    runtime.configureOpenClawRuntimeLocation(runtime.createDevelopmentOpenClawRuntimeLocation({
+      packageDir: resolve('node_modules/openclaw'), userDataRoot: join(testHome, '.clawx'),
+      artifactVersion: 'auth-regression', nodeExecutable: process.execPath,
+    }));
+    return actual.writeOpenClawAgentAuth(...args);
+  } };
+});
 
 vi.mock('@electron/utils/paths', async () => {
   const actual = await vi.importActual<typeof import('@electron/utils/paths')>('@electron/utils/paths');

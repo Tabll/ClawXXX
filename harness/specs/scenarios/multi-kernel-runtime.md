@@ -65,6 +65,17 @@ The durable architecture and release gates are defined in `harness/reference/mul
 
 Both runtimes must satisfy one canonical ClawX UI and storage contract. Upstream-specific models stay inside drivers and bridges. Runtime packages are immutable CI products downloaded on demand, not dependencies installed or patched on the end-user machine. Managed runtimes do not retain a second durable conversation, cron, channel-message, or usage history.
 
+Development uses the same installed-artifact authority as packaged ClawX.
+Post-install driver registration must preserve running generations and peer
+kernels, clear stale errors on recovery, and distinguish missing installations,
+failed launches, inactive downloads and required app restarts. See
+`harness/reference/installed-kernel-activation.md` for lifecycle and UI contracts.
+
+Real Electron integration must exercise the selected standalone Node and warm
+startup with existing native SQLite state, in addition to standalone CI probes.
+`harness/reference/electron-kernel-node-launch.md` governs Node selection,
+grandchild environments and independently authenticated local public roots.
+
 Automatic distribution is governed by `harness/reference/kernel-automatic-release.md`.
 Join complete trusted same-source runtime/E2E evidence before protected publication;
 verify immutable bytes before overwriting only signed catalog pointers. Latest-only
@@ -158,10 +169,18 @@ Separate Gateway launch/ready and ACP launch/initialize/ready journal entries
 identify restart progress without increasing deadlines. Both downloadable
 kernels and runtime CI pin Node 24.20.0 (unchanged module ABI 137), including
 the upstream Windows TCP-connect fix absent in 24.15.0. The updated official
-five-platform hashes use new immutable +clawx.13 identities; upstream kernel
-versions and semantic patches are unchanged. Source/CI pin and exit-evidence
+five-platform hashes originally used immutable +clawx.13 identities without
+changing upstream versions in that Node-only upgrade. Source/CI pin and exit-evidence
 regressions precede expensive builds, and full real-artifact acceptance is
 still required; see `harness/reference/windows-runtime-ci-repair.md`.
+
+The 2026-09-12 source upgrade now pins OpenClaw 2026.9.4 and DSH 0.1.5-rc.2,
+both +clawx.14. Exercise V3 append-versus-replacement semantics, system persona,
+stable billing, explicit Host build references, full native/system packaging,
+bounded ACP memory state and strict Channel admission. Reuse neither old
+artifact acceptance nor a healthy Gateway as proof of a new ACP launch.
+See `harness/reference/kernel-upgrade-2026-09-12.md` for exact identities and
+the separation between local candidate checks and protected remote release.
 
 Large runtime file verification uses bounded concurrency without dropping any
 signed check. Drain in-flight work before failure cleanup and reject readonly
@@ -186,3 +205,8 @@ policy (EPERM/EBUSY only, six attempts, 1500 ms total delays), not an install/te
 retry, a permission relaxation, a copy fallback or an active-runtime bypass.
 
 Skills are canonical immutable packages with per-kernel desired and projection state. OpenClaw and DeepSeek Harness roots must be physically independent: no shared root, nesting, root/package symlink, or cross-root resource reference is allowed. Both-target mutations report each result and retain partial state. DeepSeek Harness registers converted instructions through its process-local `ctx.skills` adapter while SQLite remains the sole metadata authority.
+
+OpenClaw native Agent auth synchronization delegates schema admission and writes
+to its selected kernel SDK; it never downgrades schema metadata. Test existing
+Agent state through auth sync and real Electron restart, as documented in
+`harness/reference/openclaw-agent-schema-ownership.md`.

@@ -10,6 +10,10 @@
     "openData": "Open data", "openLogs": "Open logs", "exportLogs": "Export logs",
     "activeVersion": "Active version", "availableVersion": "Available version",
     "generation": "Generation", "memory": "Memory",
+    "appRestartRequired": "Restart ClawX required",
+    "appRestartRequiredDescription": "This runtime needs app-level bindings to be rebuilt. Fully quit and reopen ClawX (restart pnpm dev in development), then start the kernel. The kernel Restart button is not sufficient.",
+    "activationPending": "Downloaded, pending activation",
+    "activationPendingDescription": "Version {{version}} has been downloaded but is not active. Stop this kernel, then click Update to activate the compatible catalog version. Other kernels can keep running.",
     "uninstallTitle": "Uninstall {{name}}?",
     "uninstallMessage": "The runtime and cached versions will be removed. Shared conversations, schedules, agents, skills, channels and usage data are preserved."
   },

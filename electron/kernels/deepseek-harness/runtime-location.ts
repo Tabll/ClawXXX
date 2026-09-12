@@ -86,7 +86,7 @@ export function createDevelopmentDeepSeekHarnessRuntimeLocation(input: {
   userDataRoot: string;
   artifactVersion?: string;
   capabilitiesDigest?: string;
-  nodeExecutable?: string;
+  nodeExecutable: string;
 }): DeepSeekHarnessRuntimeLocation {
   const packageDir = resolve(input.packageDir);
   const entryPath = join(packageDir, 'lib', 'bin.js');
@@ -98,7 +98,7 @@ export function createDevelopmentDeepSeekHarnessRuntimeLocation(input: {
     installRoot: packageDir,
     packageDir,
     entryPath,
-    nodeExecutable: input.nodeExecutable ?? process.execPath,
+    nodeExecutable: input.nodeExecutable,
     ...dataRoots(input.userDataRoot),
     source: 'development-deploy',
   };

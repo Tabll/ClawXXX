@@ -29,7 +29,7 @@ describe('OpenClaw LM Studio tool-schema patch', () => {
 
   it('keeps the LM Studio compatibility fix in the registered pnpm patch', async () => {
     const patch = await readFile(
-      path.join(root, 'patches/openclaw@2026.9.2.patch'),
+      path.join(root, 'patches/openclaw@2026.9.4.patch'),
       'utf8',
     );
     const addedAnchoredPatterns = patch
@@ -39,19 +39,19 @@ describe('OpenClaw LM Studio tool-schema patch', () => {
       .split('\n')
       .filter((line) => line.startsWith('-') && line.trimEnd().endsWith(oversizedTriggerLimitSource));
 
-    expect(patch).toContain('diff --git a/dist/cron-tool-DbVyRyAj.js');
-    expect(patch).toContain('diff --git a/dist/src-BiL5aQto.js');
+    expect(patch).toContain('diff --git a/dist/cron-tool-BdlgEE9d.mjs');
+    expect(patch).toContain('diff --git a/dist/src-7tzZ8j12.mjs');
     expect(addedAnchoredPatterns).toHaveLength(3);
     expect(removedOversizedTriggerLimits).toHaveLength(2);
   });
 
   it('applies anchored patterns to the installed OpenClaw bundles', async () => {
     const cronToolBundle = await readFile(
-      path.join(root, 'node_modules/openclaw/dist/cron-tool-DbVyRyAj.js'),
+      path.join(root, 'node_modules/openclaw/dist/cron-tool-BdlgEE9d.mjs'),
       'utf8',
     );
     const protocolSchemaBundle = await readFile(
-      path.join(root, 'node_modules/openclaw/dist/src-BiL5aQto.js'),
+      path.join(root, 'node_modules/openclaw/dist/src-7tzZ8j12.mjs'),
       'utf8',
     );
 

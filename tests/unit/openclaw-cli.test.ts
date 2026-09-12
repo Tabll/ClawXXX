@@ -108,7 +108,7 @@ describe('OpenClaw CLI over an optional verified runtime', () => {
     );
   });
 
-  it('uses a generated managed wrapper but rejects an unrelated file at the same path', async () => {
+  it('keeps the shell shortcut but never delegates host launches to a potentially stale wrapper', async () => {
     await activateRuntime();
     const wrapper = '/Users/test/.local/bin/openclaw';
     fsMocks.existsSync.mockImplementation((path) => String(path) === wrapper);
@@ -116,9 +116,15 @@ describe('OpenClaw CLI over an optional verified runtime', () => {
     const { getOpenClawCliCommand, getOpenClawCliSpawnSpec } = await import('@electron/utils/openclaw-cli');
 
     expect(getOpenClawCliCommand()).toBe(`'${wrapper}'`);
-    expect(getOpenClawCliSpawnSpec()).toEqual({ command: wrapper, args: [], shell: false });
+    expect(getOpenClawCliSpawnSpec()).toMatchObject({
+      command: '/kernels/openclaw/2026.8.1/runtime/node/bin/node',
+      args: ['/kernels/openclaw/2026.8.1/runtime/kernel/openclaw.mjs'],
+      shell: false,
+      env: expect.objectContaining({ OPENCLAW_HISTORY_MODE: 'clawx-data-service' }),
+    });
 
     fsMocks.readFileSync.mockReturnValue('# user-owned wrapper');
+    expect(getOpenClawCliCommand()).not.toBe(`'${wrapper}'`);
     expect(getOpenClawCliSpawnSpec()).toMatchObject({
       command: '/kernels/openclaw/2026.8.1/runtime/node/bin/node',
       args: ['/kernels/openclaw/2026.8.1/runtime/kernel/openclaw.mjs'],

@@ -146,6 +146,8 @@ import {
   loadKernelDistributionConfiguration,
 } from '../kernels/package-manager/config';
 import type { KernelRuntimeSnapshot } from '@shared/kernels/contracts';
+import { resolveDevelopmentKernelNode } from '../kernels/node-runtime';
+import { resolveManagedKernelRuntime } from '../kernels/managed-runtime-selection';
 
 const WINDOWS_APP_USER_MODEL_ID = 'app.clawx.desktop';
 const isE2EMode = process.env.CLAWX_E2E === '1';
@@ -265,29 +267,31 @@ function sendMainWindowEvent(channel: string, payload: unknown): void {
 
 async function resolveManagedOpenClawRuntime(): Promise<OpenClawRuntimeLocation | undefined> {
   const userDataRoot = app.getPath('userData');
-  if (app.isPackaged) {
-    const installation = await mainDataClient?.call<import('@shared/kernels/package-manager').KernelInstallationRecord | undefined>(
+  return resolveManagedKernelRuntime({
+    packaged: app.isPackaged,
+    getInstallation: async () => mainDataClient?.call<import('@shared/kernels/package-manager').KernelInstallationRecord | undefined>(
       'getKernelInstallation',
       'openclaw',
-    );
-    if (!installation) return undefined;
-    return resolveOpenClawRuntimeLocation({
+    ),
+    resolveInstalled: installation => resolveOpenClawRuntimeLocation({
       installation,
       packageRoot: join(userDataRoot, 'kernels'),
       userDataRoot,
-    });
-  }
-
-  const packageDir = process.env.CLAWX_OPENCLAW_DEV_PACKAGE_DIR?.trim()
-    || join(__dirname, '../../node_modules/openclaw');
-  const packagePath = join(packageDir, 'package.json');
-  const entryPath = join(packageDir, 'openclaw.mjs');
-  if (!existsSync(packagePath) || !existsSync(entryPath)) return undefined;
-  const metadata = JSON.parse(readFileSync(packagePath, 'utf8')) as { version?: string };
-  return createDevelopmentOpenClawRuntimeLocation({
-    packageDir,
-    userDataRoot,
-    artifactVersion: metadata.version ? `${metadata.version}+development` : 'development',
+    }),
+    resolveDevelopment: () => {
+      const packageDir = process.env.CLAWX_OPENCLAW_DEV_PACKAGE_DIR?.trim()
+        || join(__dirname, '../../node_modules/openclaw');
+      const packagePath = join(packageDir, 'package.json');
+      const entryPath = join(packageDir, 'openclaw.mjs');
+      if (!existsSync(packagePath) || !existsSync(entryPath)) return undefined;
+      const metadata = JSON.parse(readFileSync(packagePath, 'utf8')) as { version?: string };
+      return createDevelopmentOpenClawRuntimeLocation({
+        packageDir,
+        userDataRoot,
+        nodeExecutable: resolveDevelopmentKernelNode(join(__dirname, '../..')),
+        artifactVersion: metadata.version ? `${metadata.version}+development` : 'development',
+      });
+    },
   });
 }
 
@@ -385,25 +389,28 @@ async function registerManagedOpenClawRuntime(window: BrowserWindow): Promise<vo
 
 async function resolveManagedDeepSeekHarnessRuntime(): Promise<DeepSeekHarnessRuntimeLocation | undefined> {
   const userDataRoot = app.getPath('userData');
-  if (app.isPackaged) {
-    const installation = await mainDataClient?.call<import('@shared/kernels/package-manager').KernelInstallationRecord | undefined>(
+  return resolveManagedKernelRuntime({
+    packaged: app.isPackaged,
+    getInstallation: async () => mainDataClient?.call<import('@shared/kernels/package-manager').KernelInstallationRecord | undefined>(
       'getKernelInstallation',
       'deepseek-harness',
-    );
-    if (!installation) return undefined;
-    return resolveDeepSeekHarnessRuntimeLocation({
+    ),
+    resolveInstalled: installation => resolveDeepSeekHarnessRuntimeLocation({
       installation,
       packageRoot: join(userDataRoot, 'kernels'),
       userDataRoot,
-    });
-  }
-  const packageDir = process.env.CLAWX_DSH_DEV_PACKAGE_DIR?.trim();
-  if (!packageDir) return undefined;
-  return createDevelopmentDeepSeekHarnessRuntimeLocation({
-    packageDir,
-    userDataRoot,
-    artifactVersion: process.env.CLAWX_DSH_DEV_ARTIFACT_VERSION ?? 'development',
-    capabilitiesDigest: process.env.CLAWX_DSH_DEV_CAPABILITIES_DIGEST ?? 'development-unverified',
+    }),
+    resolveDevelopment: () => {
+      const packageDir = process.env.CLAWX_DSH_DEV_PACKAGE_DIR?.trim();
+      if (!packageDir) return undefined;
+      return createDevelopmentDeepSeekHarnessRuntimeLocation({
+        packageDir,
+        userDataRoot,
+        nodeExecutable: resolveDevelopmentKernelNode(join(__dirname, '../..')),
+        artifactVersion: process.env.CLAWX_DSH_DEV_ARTIFACT_VERSION ?? 'development',
+        capabilitiesDigest: process.env.CLAWX_DSH_DEV_CAPABILITIES_DIGEST ?? 'development-unverified',
+      });
+    },
   });
 }
 
@@ -416,6 +423,7 @@ async function registerManagedDeepSeekHarnessRuntime(): Promise<void> {
   const location = deepSeekHarnessRuntimeLocation;
   kernelLaunchRegistry.register('deepseek-harness', (generation) => ({
     command: location.nodeExecutable,
+    nodeRuntime: true,
     args: [location.entryPath],
     cwd: location.packageDir,
     env: buildDeepSeekHarnessEnvironment(location, generation),
@@ -484,7 +492,7 @@ async function initializeChannelRuntime(): Promise<void> {
     channelHandoffServer = new ChannelHandoffServer();
     const endpoint = await channelHandoffServer.start();
     configureOpenClawChannelHandoffEndpoint(endpoint);
-    const pluginPath = app.isPackaged
+    const pluginPath = openClawRuntimeLocation.source === 'installed-artifact'
       ? join(openClawRuntimeLocation.packageDir, 'clawx-channel-handoff')
       : join(process.cwd(), 'kernels', 'openclaw', 'overlay', 'clawx-channel-handoff');
     if (!existsSync(join(pluginPath, 'openclaw.plugin.json'))) {
@@ -782,26 +790,30 @@ async function initialize(): Promise<void> {
     onProgress: progress => sendMainWindowEvent(HOST_EVENT_CHANNELS.kernels.packageProgress, progress),
     onChanged: () => sendMainWindowEvent(HOST_EVENT_CHANNELS.kernels.catalogChanged, undefined),
     onActivated: async (kernelId) => {
-      // The immutable launch resolver captures an exact verified artifact.
-      // Prevent a stale launch after activation; the next app generation
-      // rebuilds all dependent adapters and projections from the new pointer.
-      kernelLaunchRegistry.unregister(kernelId);
-      if (kernelId === 'openclaw') {
-        clearOpenClawRuntimeLocation();
-        openClawRuntimeLocation = undefined;
-      } else if (kernelId === 'deepseek-harness') {
-        deepSeekHarnessRuntimeLocation = undefined;
-      }
-      return { restartRequired: true };
+      const snapshot = await kernelSupervisorRegistry.refreshLaunchRegistration(kernelId, async () => {
+        kernelLaunchRegistry.unregister(kernelId);
+        if (kernelId === 'deepseek-harness') {
+          await registerManagedDeepSeekHarnessRuntime();
+          if (!deepSeekHarnessRuntimeLocation) throw new Error('Activated DeepSeek Harness runtime is unavailable');
+          return { installed: true };
+        }
+        // OpenClaw ACP/Channel bindings are app-scoped. Rebuild those on app
+        // restart; never swap paths underneath an existing captured adapter.
+        return { installed: true, restartRequired: true };
+      });
+      return { restartRequired: snapshot.restartRequired };
     },
     onUninstalled: async (kernelId) => {
-      kernelLaunchRegistry.unregister(kernelId);
-      if (kernelId === 'openclaw') {
-        clearOpenClawRuntimeLocation();
-        openClawRuntimeLocation = undefined;
-      } else if (kernelId === 'deepseek-harness') {
-        deepSeekHarnessRuntimeLocation = undefined;
-      }
+      await kernelSupervisorRegistry.refreshLaunchRegistration(kernelId, async () => {
+        kernelLaunchRegistry.unregister(kernelId);
+        if (kernelId === 'openclaw') {
+          clearOpenClawRuntimeLocation();
+          openClawRuntimeLocation = undefined;
+        } else if (kernelId === 'deepseek-harness') {
+          deepSeekHarnessRuntimeLocation = undefined;
+        }
+        return { installed: false };
+      });
     },
     openDirectory: async (kernelId, kind) => {
       const directory = kind === 'logs'
@@ -882,8 +894,14 @@ async function initialize(): Promise<void> {
 
   // Optional OpenClaw is registered only after DataService and the window exist.
   // In packaged builds absence is the normal first-launch state.
-  await registerManagedOpenClawRuntime(window);
-  await registerManagedDeepSeekHarnessRuntime();
+  await kernelSupervisorRegistry.refreshLaunchRegistration('openclaw', async () => {
+    await registerManagedOpenClawRuntime(window);
+    return { installed: Boolean(openClawRuntimeLocation) };
+  }).catch(error => logger.error('OpenClaw launch registration failed', error));
+  await kernelSupervisorRegistry.refreshLaunchRegistration('deepseek-harness', async () => {
+    await registerManagedDeepSeekHarnessRuntime();
+    return { installed: Boolean(deepSeekHarnessRuntimeLocation) };
+  }).catch(error => logger.error('DeepSeek Harness launch registration failed', error));
   const dshSkillRoot = join(app.getPath('userData'), 'kernel-config', 'deepseek-harness', 'skills');
   await assertIndependentSkillRoots(getOpenClawSkillsDir(), dshSkillRoot);
   skillPackageStore = new CanonicalSkillPackageStore(join(dataRoot, 'skill-packages'));

@@ -57,6 +57,7 @@ type SupervisorSlot = {
   process?: ManagedKernelRuntime;
   lastSnapshot?: KernelRuntimeSnapshot;
   lastError?: string;
+  restartRequired?: boolean;
   policy: KernelRestartPolicy;
   crashTimes: number[];
   crashes: KernelCrashRecord[];
@@ -133,6 +134,45 @@ export class KernelSupervisorRegistry extends EventEmitter {
     });
   }
 
+  /** Rebind only an idle kernel, serialized with start/restart/stop. */
+  async refreshLaunchRegistration(
+    kernelId: KernelId,
+    register: () => Promise<{ installed: boolean; restartRequired?: boolean }>,
+  ): Promise<KernelRuntimeSnapshot> {
+    return this.withKernelLock(kernelId, async () => {
+      const slot = this.ensureSlot(kernelId);
+      if (this.isKernelBusy(kernelId)) {
+        // Installation can finish while a previously queued start is running.
+        // Its immutable launch and credentials must remain untouched.
+        slot.restartRequired = true;
+        this.emitStatus(slot);
+        return this.snapshotFor(slot);
+      }
+      slot.desiredRunning = false;
+      this.clearRestartTimer(slot);
+      this.resetRecoveryBudget(slot);
+      slot.restartRequired = false;
+      try {
+        // An exited child may still have a queued exit observer behind this
+        // operation. Detach it before rebinding so it cannot mark the new
+        // registration failed; also finish its owned cleanup hooks.
+        if (slot.process) await this.stopUnlocked(slot);
+        slot.lastSnapshot = undefined;
+        const result = await register();
+        slot.state = result.installed ? 'installed' : 'not-installed';
+        slot.restartRequired = result.restartRequired === true;
+      } catch (error) {
+        slot.state = 'failed';
+        slot.lastError = redactDiagnosticText(errorMessage(error));
+        this.addLog(slot, 'error', 'lifecycle', `Launch registration failed: ${slot.lastError}`);
+        throw error;
+      } finally {
+        this.emitStatus(slot);
+      }
+      return this.snapshotFor(slot);
+    });
+  }
+
   request<T = unknown>(
     kernelId: KernelId,
     method: string,
@@ -159,6 +199,9 @@ export class KernelSupervisorRegistry extends EventEmitter {
   async restart(kernelId: KernelId): Promise<KernelRuntimeSnapshot> {
     return this.withKernelLock(kernelId, async () => {
       const slot = this.ensureSlot(kernelId);
+      if (slot.restartRequired) {
+        throw new Error(`Restart ClawX before restarting kernel ${kernelId}; runtime activation is pending`);
+      }
       slot.desiredRunning = false;
       this.clearRestartTimer(slot);
       await this.stopUnlocked(slot);
@@ -364,12 +407,19 @@ export class KernelSupervisorRegistry extends EventEmitter {
     cause: 'manual' | 'manual-restart' | 'automatic',
   ): Promise<KernelRuntimeSnapshot> {
     if (slot.process?.snapshot().state === 'ready') return this.snapshotFor(slot);
+    if (slot.restartRequired) {
+      slot.desiredRunning = false;
+      throw new Error(`Restart ClawX before starting kernel ${slot.kernelId}; runtime activation is pending`);
+    }
     const generation = slot.generation + 1;
     let launch: KernelRuntimeLaunch;
     try {
       launch = await this.resolveLaunch(slot.kernelId, generation);
     } catch (error) {
-      slot.state = 'not-installed';
+      // Missing drivers and invalid launch paths are startup failures, not
+      // evidence that an already installed package disappeared.
+      if (slot.state !== 'not-installed') slot.state = 'failed';
+      slot.desiredRunning = false;
       slot.lastError = redactDiagnosticText(errorMessage(error));
       this.addLog(slot, 'error', 'lifecycle', `Launch resolution failed: ${slot.lastError}`);
       this.emitStatus(slot);
@@ -531,6 +581,7 @@ export class KernelSupervisorRegistry extends EventEmitter {
       kernelId: slot.kernelId,
       state: slot.state,
       generation: slot.generation,
+      restartRequired: slot.restartRequired === true,
       version: base?.version,
       artifactVersion: base?.artifactVersion,
       pid: slot.process?.pid,

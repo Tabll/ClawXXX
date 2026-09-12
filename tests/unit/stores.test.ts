@@ -178,4 +178,63 @@ describe('Kernel Store', () => {
     expect(useKernelStore.getState().runtimes.openclaw?.state).toBe('ready');
     expect(useKernelStore.getState().pending.openclaw).toBeUndefined();
   });
+
+  it('hydrates and clears app restart requirements from Main, including renderer refresh', async () => {
+    hostApiMock.kernels.list.mockResolvedValue([{ ...openClawRuntime, restartRequired: true }]);
+    await useKernelStore.getState().refresh();
+    expect(useKernelStore.getState().restartRequired.openclaw).toBe(true);
+    hostApiMock.kernels.list.mockResolvedValue([{ ...openClawRuntime, state: 'installed', restartRequired: false }]);
+    await useKernelStore.getState().refresh();
+    expect(useKernelStore.getState().restartRequired.openclaw).toBe(false);
+    hostApiMock.kernels.list.mockResolvedValue([{ ...openClawRuntime, state: 'not-installed', restartRequired: false }]);
+    await useKernelStore.getState().refresh();
+    expect(useKernelStore.getState().restartRequired.openclaw).toBe(false);
+  });
+
+  it('keeps canonical installation and failed launch state after a post-install registration error', async () => {
+    hostApiMock.kernels.install.mockRejectedValue(new Error('registration failed'));
+    hostApiMock.kernels.list.mockResolvedValue([{ ...openClawRuntime, state: 'failed', generation: 0 }]);
+    expect(await useKernelStore.getState().install('openclaw')).toBe(false);
+    const state = useKernelStore.getState();
+    expect(state.catalog?.entries[0].installation.state).toBe('installed');
+    expect(state.runtimes.openclaw.state).toBe('failed');
+    expect(state.errors.openclaw).toBe('registration failed');
+    expect(state.pending.openclaw).toBeUndefined();
+  });
+
+  it('retains host restart requirements through partial and total refresh failures', async () => {
+    hostApiMock.kernels.list.mockRejectedValue(new Error('temporary transport failure'));
+    hostApiMock.kernels.catalog.mockResolvedValue({
+      ...catalog, entries: [{ ...catalog.entries[0], runtime: { ...openClawRuntime, restartRequired: true } }],
+    });
+    await useKernelStore.getState().refresh();
+    expect(useKernelStore.getState().restartRequired.openclaw).toBe(true);
+    hostApiMock.kernels.catalog.mockRejectedValue(new Error('offline'));
+    await useKernelStore.getState().refresh();
+    expect(useKernelStore.getState().restartRequired.openclaw).toBe(true);
+  });
+
+  it('does not overwrite a newer runtime event with an in-flight refresh snapshot', async () => {
+    useKernelStore.setState({ runtimes: { openclaw: openClawRuntime } });
+    let resolveList!: (value: Array<typeof openClawRuntime>) => void;
+    hostApiMock.kernels.list.mockReturnValueOnce(new Promise(resolve => { resolveList = resolve; }));
+    const refreshing = useKernelStore.getState().refresh();
+    // Same immutable state update performed by the host status subscription.
+    useKernelStore.setState({ runtimes: { openclaw: { ...openClawRuntime, restartRequired: true } } });
+    resolveList([openClawRuntime]);
+    await refreshing;
+    expect(useKernelStore.getState().runtimes.openclaw.restartRequired).toBe(true);
+    expect(useKernelStore.getState().restartRequired.openclaw).toBe(true);
+  });
+
+  it('ignores an older refresh that completes after the latest one', async () => {
+    let resolveList!: (value: Array<typeof openClawRuntime>) => void;
+    hostApiMock.kernels.list.mockReturnValueOnce(new Promise(resolve => { resolveList = resolve; }));
+    const older = useKernelStore.getState().refresh();
+    hostApiMock.kernels.list.mockResolvedValue([{ ...openClawRuntime, restartRequired: true }]);
+    await useKernelStore.getState().refresh();
+    resolveList([openClawRuntime]);
+    await older;
+    expect(useKernelStore.getState().restartRequired.openclaw).toBe(true);
+  });
 });

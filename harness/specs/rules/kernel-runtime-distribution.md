@@ -11,7 +11,26 @@ requiredProfiles:
 
 OpenClaw and DeepSeek Harness runtime packages must be reproducible, immutable, platform-and-architecture-specific CI artifacts. End-user installations must not run package-manager installation, source builds, or patch application.
 
-For DSH 0.1.3+, use ClawX's explicit awaited service composition, not the removed demo spine or upstream app profiles. Capture the process launch environment and own proxy-dispatcher teardown. Live assistant frames and durable v2 message/attempt settlements have separate identities: failed attempts replace transient answer text (including an empty snapshot), and only settled request usage is persisted, keyed by run and stable settlement sequence. Never sum intermediate usage snapshots or replay durable streams as live deltas. A failed usage delivery must not result in a successful terminal run. The optional SessionHandle seam requires server-side single-writer fencing, retained failed batches and drain/release lifecycle tests; it must not enable a second production history store. See `harness/reference/deepseek-harness-0.1.3-upgrade.md`.
+Development and packaged hosts must prefer active installed artifacts, including
+their Node and Channel plugin paths, before any development fallback. Invalid
+installed records fail closed. Idle runtime rebinding shares the per-kernel
+supervisor lock; mutations include their registration callback in serialization.
+Do not replace a live generation, silently unregister a usable peer, or classify
+registration failures as missing installations. App-scoped bindings may defer
+activation with Main-owned restart requirements exposed in status/events and
+localized Settings; inactive downloads are a distinct state. See
+`harness/reference/installed-kernel-activation.md`.
+
+Native Agent schema ownership stays with the selected kernel. Auth synchronization
+must not create partial native schemas or reset version/ownership markers. Use
+the active runtime's SQLite SDK under standalone Node, pass secrets via bounded
+stdin and await an atomic auth write. Reject incompatible admission; do not bump
+database versions to silence migration errors. Regression must include an existing
+Agent database, credential sync while running and restart. Incident repairs need
+a retained private backup, proof on an isolated copy and exact live-state guards.
+See `harness/reference/openclaw-agent-schema-ownership.md`.
+
+For DSH, use ClawX's explicit awaited service composition, not the removed demo spine or upstream app profiles. Capture the launch environment and own proxy-dispatcher teardown. V3 model-only replacement copies and system messages must never become user replies, tool settlements or repeated usage. Use append-origin settlements and the final reported usage snapshot of failed attempts, keyed by run and stable event identity; never sum live usage or replay durable streams as deltas. Failed usage delivery cannot produce a successful terminal run. Scope persona through the exported prefix section, with system messages in the model request. The optional SessionHandle seam returns explicit detached ownership, requires server-side fencing and drain/release tests, and must not enable another production history store. Register ClawX source aliases and references in the upstream Host graph. See `harness/reference/kernel-upgrade-2026-09-12.md`.
 
 CI must pin and verify upstream inputs, apply reviewed repository patches, run runtime smoke and contract tests, generate license notices, and emit a signed manifest containing artifact integrity, build provenance, capability contract, Conversation Store protocol/checkpoint codecs, entrypoints, and app compatibility.
 
@@ -22,15 +41,17 @@ Upstream migration/default changes must not widen session visibility or
 permissions. A candidate test must explicitly select its package and exact
 version, never silently test the installed old SDK. Failed real-process storage
 probes block promotion even when host mocks and control smoke pass. The source
-pin is now 2026.9.2+clawx.12; actual per-Run incognito/ACP storage probes run before
+pin is now 2026.9.4+clawx.14; actual per-Run incognito/ACP storage probes run before
 sealing and again against extracted artifacts. Verify the sealed file manifest
 again after first launch, and never let upstream postinstall prune patch files.
 See
-`harness/reference/openclaw-2026.9.2-upgrade.md`.
+`harness/reference/kernel-upgrade-2026-09-12.md`.
 
 License audits must retain compound `AND` expressions and require explicit package-scoped copyleft obligation records, including Windows sharp's bundled libvips. Do not replace the declaration with a permissive component or interpret a machine-readable obligation record as legal approval.
 
 Frozen inputs must retain LF bytes on Windows; raw upstream and prepared lockfile hashes are checked at their respective stages. DeepSeek Harness Linux builds must compile the pinned native Landlock launcher on each architecture before sandbox tests and include it in the audited runtime payload. Platform reports must be retained even after a later build failure.
+
+DSH node-addon-system combines Landlock and POSIX flock: use the full native/system build, not the root host-addon-only shortcut. Audit exact macOS/Linux binaries, retain static Landlock but prune non-target and musl flock packages, and keep the Windows Koffi path. OpenClaw's compiled .mjs patch targets and bounded ACP memory ledger must exist in the actual payload; successful Gateway health alone does not prove ACP readiness. A diagnostic failure before the first provider request must preserve the original error.
 
 Native allowlists must use the integrity-pinned package's actual installed
 layout, not an inferred shared layout across operating systems. For esbuild,
@@ -240,6 +261,15 @@ Main downloads into staging, verifies before activation, uses atomic version-dir
 Install, update, repair, rollback, and uninstall operations are Main-owned and journaled. Renderer must not choose URLs, execute archives, or trust server-provided entrypoints without manifest allowlist validation.
 
 Production host packaging must be blocked on the complete unit/contract/type/lint/chaos/comms/Harness gates, Electron E2E on macOS/Windows/Linux, and a live signed-catalog/two-artifact-host Range drill. Protected signing, notarization, promotion, and legal evidence cannot be replaced by local test results.
+
+The Electron host must launch Node kernels using their selected standalone Node,
+never Electron Helper or a PATH fallback. Development uses the same reviewed Node
+pin; sanitize Node/Electron overrides after inheritance, including grandchildren.
+Require real Electron warm-start/restart coverage with an existing native SQLite
+database; mocked UI E2E and standalone artifact probes alone do not prove host
+integration. Public trust roots need independently authenticated provenance and
+must not be TOFU-fetched with an unverified catalog. See
+`harness/reference/electron-kernel-node-launch.md`.
 
 Production catalog promotion must normally extend a cryptographically verified, exact N-1 catalog served identically by every configured HTTPS catalog mirror. Sequence 1 requires an explicit protected bootstrap and every mirror must report the catalog absent. Persist an immutable signed release record before uploads/pointer writes, binding exact catalog bytes, accepted source/run/attempt/artifact evidence and its predecessor digest. A retry may repair N/N-1 or N/absent only through that record; N/absent after sequence 1 additionally requires the verified predecessor record. Changed candidate intent and same-sequence divergence are hard failures. Publisher code uses the reviewed workflow commit, not an arbitrary artifact source checkout. The read-only gate and protected recheck must bind trusted repository/main/workflow path, current frozen sources, all required build/single/dual jobs, same-source three-platform E2E, artifact IDs/digests and expiry; a workflow_run completion alone is not acceptance.
 

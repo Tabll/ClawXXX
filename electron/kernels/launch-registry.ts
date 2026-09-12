@@ -36,7 +36,7 @@ export class KernelLaunchRegistry {
 
   resolve(kernelId: KernelId, generation: number): KernelRuntimeLaunch | Promise<KernelRuntimeLaunch> {
     const resolver = this.resolvers.get(kernelId);
-    if (!resolver) throw new Error(`Kernel ${kernelId} is not installed or has no runtime driver`);
+    if (!resolver) throw new Error(`Kernel ${kernelId} has no registered runtime driver`);
     return resolver(generation);
   }
 }

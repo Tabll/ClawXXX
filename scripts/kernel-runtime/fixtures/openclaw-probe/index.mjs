@@ -10,7 +10,7 @@ export default {
         // Version-specific test seam, never distributed in the runtime. This
         // forces the real loader to execute lazy channel modules without an
         // external account, network login or sending any real message.
-        const { t: bootstrap } = await import(pathToFileURL(join(process.env.CLAWX_OPENCLAW_PACKAGE_DIR, 'dist/channel-bootstrap.runtime-B3F9K4Uk.js')).href);
+        const { t: bootstrap } = await import(pathToFileURL(join(process.env.CLAWX_OPENCLAW_PACKAGE_DIR, 'dist/channel-bootstrap.runtime-DfwVn_3N.mjs')).href);
         const results = params.channels.map(channel => {
           const registry = bootstrap({ cfg: api.config, channel, agentId: 'main' });
           const entry = registry?.channels.find(item => item.plugin.id === channel);

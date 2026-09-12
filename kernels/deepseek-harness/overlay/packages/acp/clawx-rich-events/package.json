@@ -1,7 +1,7 @@
 {
   "name": "@clawx/dsh-rich-events",
   "description": "DeepSeek Harness session-event to rich ACP projection for ClawX",
-  "version": "0.1.3-alpha.1",
+  "version": "0.1.5-rc.2",
   "private": true,
   "type": "module",
   "main": "lib/index.js",

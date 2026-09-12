@@ -1,0 +1,38 @@
+diff --git a/tsconfig.base.json b/tsconfig.base.json
+index 83cabd9e4adf5a16d82af6ce6bb2fa5b7a775f85..6d2a60a61c482bf7649525465873bc105346ff9d 100644
+--- a/tsconfig.base.json
++++ b/tsconfig.base.json
+@@ -28,6 +28,14 @@
+     // not declaration path aliases, keep each package/vendor source compiled
+     // under its own tsconfig boundary.
+     "paths": {
++      "@clawx/dsh-rich-events": ["./packages/acp/clawx-rich-events/src/index.ts"],
++      "@clawx/dsh-acp-bridge": ["./packages/acp/clawx-acp-bridge/src/index.ts"],
++      "@clawx/dsh-agent-catalog": ["./packages/agents/clawx-dsh-agent-catalog/src/index.ts"],
++      "@clawx/dsh-skill-catalog": ["./packages/skills/clawx-dsh-skill-catalog/src/index.ts"],
++      "@clawx/dsh-credential-provider": ["./packages/credentials/clawx-dsh-credential-provider/src/index.ts"],
++      "@clawx/dsh-control-bridge": ["./packages/control/clawx-control-bridge/src/index.ts"],
++      "@clawx/dsh-clawx-persistence": ["./packages/session/session-persistence-clawx/src/index.ts"],
++      "@clawx/dsh-runtime-host": ["./packages/runtime/clawx-runtime-host/src/index.ts"],
+       "@deepseek-ai/cordis": ["./vendor/cordis/src"],
+       "@deepseek-ai/cosmokit": ["./vendor/cosmokit/src"],
+       "@deepseek-ai/schemastery": ["./vendor/schemastery/src"],
+diff --git a/tsconfig.host.json b/tsconfig.host.json
+index c5a3f118b3c64682bfe595cb260ffbb6f760522c..ec789f064b4de32727c27aa09ef180fc3f3677e2 100644
+--- a/tsconfig.host.json
++++ b/tsconfig.host.json
+@@ -133,6 +133,14 @@
+     "scripts/client-bundle-purity.spec.ts"
+   ],
+   "references": [
++    { "path": "./packages/acp/clawx-rich-events" },
++    { "path": "./packages/acp/clawx-acp-bridge" },
++    { "path": "./packages/agents/clawx-dsh-agent-catalog" },
++    { "path": "./packages/skills/clawx-dsh-skill-catalog" },
++    { "path": "./packages/credentials/clawx-dsh-credential-provider" },
++    { "path": "./packages/control/clawx-control-bridge" },
++    { "path": "./packages/session/session-persistence-clawx" },
++    { "path": "./packages/runtime/clawx-runtime-host" },
+     { "path": "./packages/client/ui-deliverables/tsconfig.host.json" },
+     { "path": "./vendor/cosmokit" },
+     { "path": "./vendor/schemastery" },

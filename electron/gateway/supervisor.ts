@@ -1,4 +1,5 @@
-import { app, utilityProcess } from 'electron';
+import { app } from 'electron';
+import { spawn, type ChildProcess } from 'node:child_process';
 import path from 'path';
 import { existsSync } from 'fs';
 import { getOpenClawDir, getOpenClawEntryPath } from '../utils/paths';
@@ -7,7 +8,7 @@ import { isPythonReady, setupManagedPython } from '../utils/uv-setup';
 import { logger } from '../utils/logger';
 import { prependPathEntry } from '../utils/env-path';
 import { probeGatewayReady } from './ws-client';
-import { buildManagedOpenClawEnvironment } from '../kernels/openclaw/runtime-location';
+import { buildManagedOpenClawEnvironment, requireOpenClawRuntimeLocation } from '../kernels/openclaw/runtime-location';
 
 export function warmupManagedPythonReadiness(): void {
   void isPythonReady().then((pythonReady) => {
@@ -22,7 +23,8 @@ export function warmupManagedPythonReadiness(): void {
   });
 }
 
-export async function terminateOwnedGatewayProcess(child: Electron.UtilityProcess): Promise<void> {
+export async function terminateOwnedGatewayProcess(child: ChildProcess): Promise<void> {
+  if (child.exitCode != null || child.signalCode != null) return;
   const terminateWindowsProcessTree = async (pid: number): Promise<void> => {
     const cp = await import('child_process');
     await new Promise<void>((resolve) => {
@@ -296,10 +298,12 @@ export async function runOpenClawDoctorRepair(): Promise<boolean> {
       OPENCLAW_NO_RESPAWN: '1',
     };
 
-    const child = utilityProcess.fork(entryScript, doctorArgs, {
+    const child = spawn(requireOpenClawRuntimeLocation().nodeExecutable, [entryScript, ...doctorArgs], {
       cwd: openclawDir,
       stdio: 'pipe',
       env: forkEnv as NodeJS.ProcessEnv,
+      windowsHide: true,
+      shell: false,
     });
 
     let settled = false;
@@ -343,7 +347,7 @@ export async function runOpenClawDoctorRepair(): Promise<boolean> {
       }
     });
 
-    child.on('exit', (code: number) => {
+    child.on('exit', (code: number | null) => {
       clearTimeout(timeout);
       if (code === 0) {
         logger.info('OpenClaw doctor repair completed successfully');

@@ -124,7 +124,7 @@ describe('DeepSeek Harness managed driver/runtime contract', () => {
       files: string[]; dependencies: Record<string, string>;
     };
 
-    expect(source.git.commit).toBe('d347e703908d0406b7a7ef80e3a0e594d86b2215');
+    expect(source.git.commit).toBe('fb2c4b9e698e30edb738bca4cf0618587db7d203');
     expect(runtime.artifactVersion).toBe(source.artifactVersion);
     expect(runtime.entrypoints).toEqual({
       chat: 'runtime/kernel/node_modules/@clawx/dsh-acp-bridge/lib/index.js',

@@ -46,8 +46,12 @@ let initPromise: Promise<void> | undefined;
 let subscriptions: Array<() => void> | undefined;
 
 export const useKernelStore = create<KernelStore>((set, get) => {
+  let refreshSequence = 0;
   const updateRuntime = (snapshot: KernelRuntimeSnapshot) => {
-    set(state => ({ runtimes: { ...state.runtimes, [snapshot.kernelId]: snapshot } }));
+    set(state => ({
+      runtimes: { ...state.runtimes, [snapshot.kernelId]: snapshot },
+      restartRequired: { ...state.restartRequired, [snapshot.kernelId]: snapshot.restartRequired === true },
+    }));
   };
 
   const run = async (
@@ -63,11 +67,6 @@ export const useKernelStore = create<KernelStore>((set, get) => {
       const result = await operation();
       if (result && typeof result === 'object' && 'runtime' in result) {
         updateRuntime((result as { runtime: KernelRuntimeSnapshot }).runtime);
-        if ((result as { restartRequired?: boolean }).restartRequired) {
-          set(state => ({
-            restartRequired: { ...state.restartRequired, [kernelId]: true },
-          }));
-        }
       } else if (result && typeof result === 'object' && 'kernelId' in result && 'state' in result) {
         updateRuntime(result as KernelRuntimeSnapshot);
       }
@@ -77,6 +76,8 @@ export const useKernelStore = create<KernelStore>((set, get) => {
       set(state => ({
         errors: { ...state.errors, [kernelId]: errorMessage(error) },
       }));
+      // Installation may have committed before host registration failed.
+      await get().refresh(false);
       return false;
     } finally {
       set(state => ({ pending: { ...state.pending, [kernelId]: undefined } }));
@@ -112,16 +113,30 @@ export const useKernelStore = create<KernelStore>((set, get) => {
     },
 
     refresh: async (refreshRemote = false) => {
+      const sequence = ++refreshSequence;
+      const beforeRefresh = get().runtimes;
       const [catalogResult, runtimeResult] = await Promise.allSettled([
         hostApi.kernels.catalog(refreshRemote),
         hostApi.kernels.list(),
       ]);
+      if (sequence !== refreshSequence) return;
       const runtimeList = runtimeResult.status === 'fulfilled' ? runtimeResult.value : [];
-      const runtimes = Object.fromEntries(runtimeList.map(runtime => [runtime.kernelId, runtime]));
       const catalog = catalogResult.status === 'fulfilled'
         ? catalogResult.value
         : fallbackCatalog(runtimeList, errorMessage(catalogResult.reason));
-      set({ catalog, runtimes });
+      const runtimes = Object.fromEntries((runtimeResult.status === 'fulfilled'
+        ? runtimeList
+        : catalogResult.status === 'fulfilled' ? catalog.entries.map(entry => entry.runtime) : Object.values(get().runtimes))
+        .map(runtime => [runtime.kernelId, runtime]));
+      // A status event or mutation response can arrive while catalog I/O is
+      // pending. Do not overwrite it with the earlier list/status snapshot.
+      for (const [kernelId, runtime] of Object.entries(get().runtimes)) {
+        if (runtime !== beforeRefresh[kernelId]) runtimes[kernelId] = runtime;
+      }
+      const restartRequired = Object.fromEntries(
+        Object.values(runtimes).map(runtime => [runtime.kernelId, runtime.restartRequired === true]),
+      );
+      set({ catalog, runtimes, restartRequired });
     },
 
     install: kernelId => run(kernelId, 'install', () => hostApi.kernels.install(kernelId)),

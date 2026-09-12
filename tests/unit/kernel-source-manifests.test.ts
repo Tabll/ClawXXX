@@ -70,8 +70,8 @@ describe('frozen kernel sources', () => {
   });
 
   it.each([
-    ['openclaw', '2026.9.2'],
-    ['deepseek-harness', '0.1.3-alpha.1'],
+    ['openclaw', '2026.9.4'],
+    ['deepseek-harness', '0.1.5-rc.2'],
   ] as const)('pins %s to an exact reviewed source', (kernelId, version) => {
     const manifest = readJson<SourceManifest>(`kernels/${kernelId}/source.json`);
     expect(manifest).toMatchObject({
@@ -146,7 +146,7 @@ describe('frozen kernel sources', () => {
     for (const asset of runtime.assets) expect(asset.archiveRoot).toBe(asset.filename.replace(/(?:\.tar\.xz|\.zip)$/, ''));
     for (const kernel of ['openclaw', 'deepseek-harness']) {
       const manifest = readJson<SourceManifest>(`kernels/${kernel}/source.json`);
-      expect(manifest.patchRevision).toBe(13);
+      expect(manifest.patchRevision).toBe(14);
       expect(manifest.nodeRuntime.sha256).toBe(sha256('kernels/node-runtime.json'));
     }
   });

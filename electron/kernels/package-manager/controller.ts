@@ -51,6 +51,7 @@ export class KernelPackageController {
   private readonly channel: KernelCatalogStateRecord['channel'];
   private readonly catalogUrls: string[];
   private readonly now: () => Date;
+  private readonly operationTails = new Map<KernelId, Promise<void>>();
 
   constructor(private readonly options: KernelPackageControllerOptions) {
     this.channel = options.channel ?? 'production';
@@ -126,6 +127,10 @@ export class KernelPackageController {
   }
 
   async install(kernelId: KernelId): Promise<KernelPackageMutationResult> {
+    return this.withOperation(kernelId, () => this.installUnlocked(kernelId));
+  }
+
+  private async installUnlocked(kernelId: KernelId): Promise<KernelPackageMutationResult> {
     const result = await this.requireManager().installFromCatalog({
       kernelId,
       channel: this.channel,
@@ -137,11 +142,10 @@ export class KernelPackageController {
     const activation = result.activated
       ? await this.options.onActivated?.(kernelId, result.installation)
       : undefined;
-    this.options.onChanged?.();
     return {
       installation: result.installation,
       runtime: normalizeRuntime(this.options.supervisors.status(kernelId), result.installation),
-      ...(activation?.restartRequired || !result.activated ? { restartRequired: true } : {}),
+      restartRequired: activation?.restartRequired === true,
     };
   }
 
@@ -150,34 +154,43 @@ export class KernelPackageController {
   }
 
   async repair(kernelId: KernelId): Promise<KernelPackageMutationResult> {
+    return this.withOperation(kernelId, () => this.repairUnlocked(kernelId));
+  }
+
+  private async repairUnlocked(kernelId: KernelId): Promise<KernelPackageMutationResult> {
     const result = await this.requireManager().repair(kernelId);
     const activation = result.activated
       ? await this.options.onActivated?.(kernelId, result.installation)
       : undefined;
-    this.options.onChanged?.();
     return {
       installation: result.installation,
       runtime: normalizeRuntime(this.options.supervisors.status(kernelId), result.installation),
-      ...(activation?.restartRequired || !result.activated ? { restartRequired: true } : {}),
+      restartRequired: activation?.restartRequired === true,
     };
   }
 
   async rollback(kernelId: KernelId): Promise<KernelPackageMutationResult> {
+    return this.withOperation(kernelId, () => this.rollbackUnlocked(kernelId));
+  }
+
+  private async rollbackUnlocked(kernelId: KernelId): Promise<KernelPackageMutationResult> {
     const installation = await this.requireManager().rollback(kernelId);
     const activation = await this.options.onActivated?.(kernelId, installation);
-    this.options.onChanged?.();
     return {
       installation,
       runtime: normalizeRuntime(this.options.supervisors.status(kernelId), installation),
-      ...(activation?.restartRequired ? { restartRequired: true } : {}),
+      restartRequired: activation?.restartRequired === true,
     };
   }
 
   async uninstall(kernelId: KernelId): Promise<KernelUninstallMutationResult> {
+    return this.withOperation(kernelId, () => this.uninstallUnlocked(kernelId));
+  }
+
+  private async uninstallUnlocked(kernelId: KernelId): Promise<KernelUninstallMutationResult> {
     await this.options.supervisors.stop(kernelId);
     const result = await this.requireManager().uninstall(kernelId);
     await this.options.onUninstalled?.(kernelId);
-    this.options.onChanged?.();
     const installation = await this.options.state.getKernelInstallation(kernelId) ?? notInstalled(kernelId, this.now());
     return {
       ...result,
@@ -193,6 +206,19 @@ export class KernelPackageController {
   async openDirectory(kernelId: KernelId, kind: KernelDirectoryKind): Promise<void> {
     if (!this.options.openDirectory) throw new Error('Kernel directory access is unavailable');
     await this.options.openDirectory(kernelId, kind);
+  }
+
+  private withOperation<T>(kernelId: KernelId, operation: () => Promise<T>): Promise<T> {
+    // Include the host registration callback, not just the package-manager
+    // transaction, so a late callback cannot rebind an uninstalled/older artifact.
+    const previous = this.operationTails.get(kernelId) ?? Promise.resolve();
+    const result = previous.catch(() => undefined).then(operation).finally(() => this.options.onChanged?.());
+    const tail = result.then(() => undefined, () => undefined);
+    this.operationTails.set(kernelId, tail);
+    void tail.then(() => {
+      if (this.operationTails.get(kernelId) === tail) this.operationTails.delete(kernelId);
+    });
+    return result;
   }
 
   private requireManager(): KernelPackageManager {

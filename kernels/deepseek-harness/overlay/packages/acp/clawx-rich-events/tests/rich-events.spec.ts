@@ -1,7 +1,6 @@
 import { Context } from '@deepseek-ai/cordis'
 import { createUserMessage, LlmAdapter, LlmAttemptId, ToolCallId, type StreamChunk } from '@deepseek-ai/dsh-llm'
 import AgentLoop from '@deepseek-ai/dsh-agent-loop'
-import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import { mountAgentLoopTestDependencies } from '@deepseek-ai/dsh-agent-loop-testkit'
 import { SessionId, SessionSeq } from '@deepseek-ai/dsh-session'
 import { defineContentToolFixture } from '@deepseek-ai/dsh-tools'
@@ -40,17 +39,26 @@ class ScriptedAdapter extends LlmAdapter {
   }
 }
 
-describe('ClawX DSH v2 rich event projection', () => {
+describe('ClawX DSH V3 rich event projection', () => {
   let ctx: Context | undefined
   afterEach(async () => { await ctx?.fiber.dispose(); ctx = undefined })
 
   it('projects live text once, tools and settled usage through a real AgentLoop', async () => {
     ctx = new Context()
     await mountAgentLoopTestDependencies(ctx)
-    await ctx.plugin(SessionProjectionRegistry)
     await ctx.plugin(AgentLoop, { agents: [] })
     ctx.llm.registerAdapter(['mock'], new ScriptedAdapter())
     const rich: unknown[] = []
+    const replacements: unknown[] = []
+    ctx.on('session/event', (_session, event) => {
+      if (event.type !== 'assistant/message' && event.type !== 'tool/result' && event.type !== 'system/message') return
+      // A new log identity for a model-context replacement must not bill or
+      // re-publish a copied tool result, even when its original had usage.
+      replacements.push(...RichEvents.projectSessionEvent({
+        ...event, seq: SessionSeq(event.seq + 10_000),
+        surfaceOp: { op: 'replace', startSeq: event.seq, endSeq: event.seq },
+      }))
+    })
     await ctx.plugin(RichEvents, {
       sink: { sessionUpdate: (_id, update) => { rich.push(update); return Promise.resolve() } },
       contextWindow: 32_768,
@@ -79,6 +87,7 @@ describe('ClawX DSH v2 rich event projection', () => {
     ]))
     expect(rich.filter(update => (update as { sessionUpdate: string }).sessionUpdate === 'agent_message_chunk')).toHaveLength(1)
     expect(rich.filter(update => (update as { sessionUpdate: string }).sessionUpdate === 'usage_update')).toHaveLength(1)
+    expect(replacements).toEqual([])
     await handle.dispose()
   })
 

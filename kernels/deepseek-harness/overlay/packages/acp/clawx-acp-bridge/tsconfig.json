@@ -12,6 +12,7 @@
     { "path": "../../core/agent-loop" },
     { "path": "../../preset/agent-presets" },
     { "path": "../../core/session" },
+    { "path": "../../core/system-prompt" },
     { "path": "../../attachment/attachment" },
     { "path": "../../llm/llm" },
     { "path": "../../interaction/user-approval" },

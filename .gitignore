@@ -64,10 +64,13 @@ resources/bin
 *.pem
 *.key
 .clawx-secrets/
+# Local materialization of reviewed public roots; release CI supplies its own.
+resources/kernels/trust/roots.production.json
 
 build/
 artifacts/
 temp/
+.local-backups/
 .delivery/
 docs/pr-session-notes-*.md
 

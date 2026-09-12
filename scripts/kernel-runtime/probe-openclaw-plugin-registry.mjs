@@ -9,7 +9,7 @@ import { pathToFileURL } from 'node:url';
 const args = new Map();
 for (let index = 2; index < process.argv.length; index += 2) args.set(process.argv[index], process.argv[index + 1]);
 const packageDir = resolve(args.get('--package-dir') ?? 'node_modules/openclaw');
-assert.equal(JSON.parse(readFileSync(join(packageDir, 'package.json'), 'utf8')).version, '2026.9.2');
+assert.equal(JSON.parse(readFileSync(join(packageDir, 'package.json'), 'utf8')).version, '2026.9.4');
 const fixturePathMode = args.get('--fixture-path-mode') ?? 'alias';
 assert.ok(['native', 'alias'].includes(fixturePathMode), 'Invalid fixture path mode');
 const fixture = mkdtempSync(join(tmpdir(), 'clawx-registry-probe-'));
@@ -52,10 +52,10 @@ try {
   };
   writeFileSync(join(state, 'openclaw.json'), JSON.stringify(config));
   const chunk = name => import(pathToFileURL(join(packageDir, 'dist', name)).href);
-  const { a: load } = await chunk('plugin-registry-snapshot-Dy15Ew18.js');
-  const { o: write } = await chunk('installed-plugin-index-store-write-DRg854w2.js');
-  const { i: createCache, f: withCache } = await chunk('plugin-cache-DGWspMEc.js');
-  ({ n: closeDatabase } = await chunk('openclaw-state-db-cache-C7ljO0xP.js'));
+  const { a: load } = await chunk('plugin-registry-snapshot-DLQ8-bCw.mjs');
+  const { o: write } = await chunk('installed-plugin-index-store-write-BUPxwvHC.mjs');
+  const { i: createCache, f: withCache } = await chunk('plugin-cache-DM29eWEU.mjs');
+  ({ r: closeDatabase } = await chunk('openclaw-state-db-cache-BXmHZWzx.mjs'));
   const read = (extra = {}) => withCache(createCache(), () => load({ config, env: process.env, workspaceDir: workspace, allowCurrent: false, ...extra }));
   const initial = read({ preferPersisted: false, installRecords });
   // Discovery first reads through the configured alias and later uses a
@@ -110,14 +110,14 @@ try {
   const unrelated = join(root, 'UnrelatedOfficial');
   for (const directory of [physical, unrelated]) {
     mkdirSync(directory);
-    writeFileSync(join(directory, 'package.json'), JSON.stringify({ name: '@openclaw/discord', version: '2026.9.2', type: 'module', openclaw: { extensions: ['./index.js'] } }));
+    writeFileSync(join(directory, 'package.json'), JSON.stringify({ name: '@openclaw/discord', version: '2026.9.4', type: 'module', openclaw: { extensions: ['./index.js'] } }));
     writeFileSync(join(directory, 'openclaw.plugin.json'), JSON.stringify({ id: 'discord', configSchema: { type: 'object', properties: {} } }));
     writeFileSync(join(directory, 'index.js'), 'throw new Error("Metadata probes must never execute plugins");\n');
   }
   symlinkSync(realpathSync.native(physical), alias, process.platform === 'win32' ? 'junction' : 'dir');
   const configuredPath = process.platform === 'win32' ? physical.toUpperCase() : physical;
-  const officialRecord = { source: 'npm', spec: '@openclaw/discord', resolvedName: '@openclaw/discord', resolvedSpec: '@openclaw/discord@2026.9.2', version: '2026.9.2', installPath: realpathSync.native(physical) };
-  const { n: loadManifests } = await chunk('manifest-registry-DCCgYk7q.js');
+  const officialRecord = { source: 'npm', spec: '@openclaw/discord', resolvedName: '@openclaw/discord', resolvedSpec: '@openclaw/discord@2026.9.4', version: '2026.9.4', installPath: realpathSync.native(physical) };
+  const { n: loadManifests } = await chunk('manifest-registry-BOlRuDPy.mjs');
   const manifestFor = (path, records) => withCache(createCache(), () => loadManifests({
     config: { agents: { defaults: { workspace } }, plugins: { allow: ['discord'], entries: { discord: { enabled: true } }, load: { paths: [path] } } },
     env: process.env, workspaceDir: workspace, installRecords: records,
@@ -129,7 +129,7 @@ try {
   assert.equal(manifestFor(configuredPath, { discord: officialRecord, other: { ...officialRecord } })?.trust?.reason, 'owner-ambiguous', 'Two owners of one physical path must fail closed');
 
   // Canonical cache paths must not weaken the original checked-file policy.
-  const { c: readFile } = await chunk('plugin-cache-files-DLPF_Tw2.js');
+  const { c: readFile } = await chunk('plugin-cache-files-BGqeZeMl.mjs');
   const checkedRead = (relativePath, rejectHardlinks = true) => withCache(createCache(), () => readFile({ rootDir: physical, relativePath, rejectHardlinks }));
   assert.equal(checkedRead('../UnrelatedOfficial/openclaw.plugin.json').ok, false, 'Lexical traversal must remain rejected');
   symlinkSync(realpathSync.native(unrelated), join(physical, 'escape'), process.platform === 'win32' ? 'junction' : 'dir');
@@ -138,7 +138,7 @@ try {
   assert.equal(checkedRead('hardlinked.json', false).ok, true);
   assert.equal(checkedRead('hardlinked.json').ok, false, 'Strict hardlink rejection must remain intact');
 
-  const report = { schemaVersion: 1, ok: true, version: '2026.9.2', platform: process.platform, fixturePathMode, manifestHashesVerified: true, unsafePathsRejected: true, duplicateDiagnostics: duplicates.length, persistedRoundTrips: 3, staleChangesRejected: ['manifest', 'source', 'policy', 'diagnostic'], physicalAliasTrust: true, unrelatedPathRejected: true, invalidProvenanceRejected: true, ambiguousOwnerRejected: true };
+  const report = { schemaVersion: 1, ok: true, version: '2026.9.4', platform: process.platform, fixturePathMode, manifestHashesVerified: true, unsafePathsRejected: true, duplicateDiagnostics: duplicates.length, persistedRoundTrips: 3, staleChangesRejected: ['manifest', 'source', 'policy', 'diagnostic'], physicalAliasTrust: true, unrelatedPathRejected: true, invalidProvenanceRejected: true, ambiguousOwnerRejected: true };
   if (args.has('--report')) {
     const output = resolve(args.get('--report'));
     mkdirSync(dirname(output), { recursive: true, mode: 0o700 });

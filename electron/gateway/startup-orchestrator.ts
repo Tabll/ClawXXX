@@ -69,7 +69,7 @@ export async function runGatewayStartupSequence(hooks: StartupHooks): Promise<vo
       }
 
       // When the Gateway did an in-process restart (WS close 1012), the
-      // UtilityProcess is still alive but its WS server may be mid-rebuild,
+      // Node process is still alive but its WS server may be mid-rebuild,
       // so findExistingGateway's quick probe returns null.  Rather than
       // waiting for the port to free (it never will — the process holds it)
       // and then spawning a duplicate, wait for the existing process to

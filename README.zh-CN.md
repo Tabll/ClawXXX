@@ -160,9 +160,9 @@ ClawX 采用 **Main-owned 多内核 + Host API 统一接入架构**：React Rend
 
 > ClawX 0.6 已实现可选 CI 预制 OpenClaw 与 DeepSeek Harness，并以 Main 独占 SQLite/Blob 为统一数据权威；公开发布仍会在受保护的跨平台签名、晋级与 packaged-test 证据不足时 fail closed。参见[多内核设计](docs/zh-CN/multi-kernel-design.md)、[实施清单](TODO.md)、[运行时安全/支持](docs/zh-CN/runtime-security-support.md)和[数据策略](docs/zh-CN/data-security-retention.md)。
 
-当前 DSH 源码已适配 `0.1.3-alpha.1+clawx.13` 的 v2 流式与结算接口，仍共用同一 SQLite 历史。它仍是 alpha，上游提示存在性能回退；必须完成新版 CI 制品验证与发布，已安装内核才可更新。详见[升级兼容性说明](harness/reference/deepseek-harness-0.1.3-upgrade.md)。
+DSH 源码候选版本为 `0.1.5-rc.2+clawx.14`（预发布版），已适配 V3 系统消息、按 Run 隔离的 persona 和追加来源的结算事件；模型上下文替换不能重复生成回复或计费。统一 SQLite 仍是唯一数据源，已安装内核须等新版 CI 制品验证并发布后才可更新。详见[本次升级兼容性说明](harness/reference/kernel-upgrade-2026-09-12.md)。
 
-OpenClaw 源码和开发依赖已切换为 `2026.9.2+clawx.13`。生产桥接按 Run 从统一 SQLite 历史创建独立内存会话，适配新版 Agents/模型/权限配置，并修复 7 个 Channels 插件。独立真实 Gateway/ACP 和打包 payload 测试覆盖工具、取消、崩溃恢复、入站拒绝及无原生历史写入。详见[升级设计与证据](harness/reference/openclaw-2026.9.2-upgrade.md)。
+OpenClaw 源码和开发依赖已切换为 `2026.9.4+clawx.14`，Discord/WhatsApp 同步更新。重基后的 `.mjs` 补丁保留有界内存 ACP 状态、统一历史、Main 管理的配置和严格的渠道准入；Node 继续固定为 24.20.0。本地候选验证与尚待完成的平台验收见[升级设计与证据](harness/reference/kernel-upgrade-2026-09-12.md)。
 
 两个 +clawx.13 内核使用 Node 24.20.0，已通过五目标 staging 全部 25 项任务、四份 macOS 公证（Accepted）及同源码三平台 Electron E2E，详见 [CI 验收证据](harness/reference/windows-runtime-ci-repair.md)。Windows 仅使用制品签名，不启用 Authenticode。生产目录状态、受保护发布恢复及真实线上验证见[发布验收记录](harness/reference/kernel-automatic-release.md)；真实账号验收仍待完成。
 
@@ -187,6 +187,12 @@ OpenClaw 源码和开发依赖已切换为 `2026.9.2+clawx.13`。生产桥接按
 > 完整架构说明（进程图、配置协调、ACP 文件活动语义与 Gateway 排障）请参阅 [docs/zh-CN/architecture.md](docs/zh-CN/architecture.md)。
 
 ## 开发指南
+
+`pnpm dev` 首次运行会准备锁定的独立内核 Node（24.20.0）；Gateway、ACP、CLI、Doctor 不再借用 Electron Helper。已安装的内核仍使用各自包内已验证的 Node。直接启动 Electron 前请先运行 `pnpm run kernel:dev:prepare`。本地下载还需导入经过独立验证的生产公钥，参见 [Node 启动与本地验签配置](harness/reference/electron-kernel-node-launch.md)。
+
+Agent 认证写入使用当前内核的 SQLite SDK；ClawX 不再创建残缺的原生表结构或改写版本标记。已有状态修复须先备份并在隔离副本验证，参见 [Agent 数据库所有权与修复](harness/reference/openclaw-agent-schema-ownership.md)。
+
+开发模式与打包应用均优先使用正式安装的内核包，而不是开发目录。空闲的 DeepSeek Harness 安装或修复后即可启动；OpenClaw 激活后仍需完整重启 ClawX，以重建 ACP/Channels 绑定。设置页会区分“需重启应用”和“已下载待激活”（停止内核后点击更新），详见 [已安装内核的选择与激活](harness/reference/installed-kernel-activation.md)。
 
 ### 前置要求
 

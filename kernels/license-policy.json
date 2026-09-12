@@ -48,7 +48,7 @@
   "inheritance": [
     {
       "namePattern": "^@openclaw/",
-      "versionPattern": "^2026\\.(7\\.1|9\\.2)$",
+      "versionPattern": "^2026\\.(7\\.1|9\\.2|9\\.4)$",
       "license": "MIT",
       "evidence": "Internal extension packages are built from the frozen MIT-licensed openclaw/openclaw source tree recorded in kernels/openclaw/source.json."
     }

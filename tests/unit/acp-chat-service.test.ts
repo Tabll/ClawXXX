@@ -169,6 +169,7 @@ describe('AcpChatService', () => {
       packageDir,
       userDataRoot: join(runtimeRoot, 'user-data'),
       artifactVersion: 'test+clawx.1',
+      nodeExecutable: process.execPath,
     }));
   });
 

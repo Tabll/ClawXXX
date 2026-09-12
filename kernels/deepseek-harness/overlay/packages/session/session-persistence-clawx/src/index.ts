@@ -7,13 +7,13 @@ import {
   assertContiguous, assertStoredId, assertVersion,
   materializeAppendBatch, materializeCreateHeader, validateStoredEvents,
   type SessionAccess, type SessionHandle, type SessionHandleAppendOptions,
-  type SessionHandleFlushOptions, type SessionHandleReadOptions,
+  type SessionHandleFlushOptions, type SessionHandleReadOptions, type SessionHandleReadResult,
   type SessionPersistenceCreateOptions, type SessionPersistenceOpenOptions,
   type SessionPersistenceStatOptions, type SessionPersistenceListOptions,
   type SessionPersistenceSnapshot,
 } from '@deepseek-ai/dsh-session-persistence'
 
-export const CLAWX_DSH_STORE_PROTOCOL = 'clawx.dsh-session-store/v2' as const
+export const CLAWX_DSH_STORE_PROTOCOL = 'clawx.dsh-session-store/v3' as const
 
 /** Server-issued capability bound to one authenticated client and generation. */
 export interface ClawXSessionLease {
@@ -85,7 +85,7 @@ class RpcSessionHandle implements SessionHandle {
     return result
   }
 
-  read(offset = 0, length?: number, options?: SessionHandleReadOptions): Promise<readonly SessionEvent[]> {
+  read(offset = 0, length?: number, options?: SessionHandleReadOptions): Promise<SessionHandleReadResult> {
     return this.ordered('read', false, options?.signal, async () => {
       await this.drainLive()
       for (const value of [offset, ...(length === undefined ? [] : [length])]) {
@@ -100,7 +100,9 @@ class RpcSessionHandle implements SessionHandle {
         throw new Error('ClawX Session read returned an invalid or regressed prefix')
       }
       if (events.length > 0) this.observedEnd = Math.max(this.observedEnd, offset + events.length)
-      return events
+      // RPC bytes are cloned and validated above; the caller owns this entire
+      // event slice. Do not claim shared-frozen ownership for mutable clones.
+      return { events, eventState: 'detached' }
     })
   }
 

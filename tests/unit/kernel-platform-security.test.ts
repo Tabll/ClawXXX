@@ -70,7 +70,7 @@ describe('kernel platform signing and support evidence', () => {
     expect(workflow).toContain('sign-windows-runtime.ps1');
     expect(workflow).toContain("inputs['windows-signing'] == 'authenticode'");
     expect(workflow).toContain('default: artifact-signature-only');
-    expect(workflow).toContain('pnpm --dir native/landlock-run build:native');
+    expect(workflow).toContain('pnpm --dir native/system run build:native');
     expect(workflow).toContain('--platform linux');
     expect(workflow).toContain('--platform-security temp/reports/platform-security.json');
     const release = readFileSync(join(process.cwd(), '.github/workflows/release.yml'), 'utf8');

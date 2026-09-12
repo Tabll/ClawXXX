@@ -28,7 +28,7 @@ const distDir = join(process.cwd(), 'node_modules', 'openclaw', 'dist');
 let patchedCount = 0;
 try {
   for (const file of readdirSync(distDir)) {
-    if (!file.endsWith('.js')) continue;
+    if (!/\.[cm]?js$/.test(file)) continue;
     const filePath = join(distDir, file);
     let content = readFileSync(filePath, 'utf-8');
     let changed = false;

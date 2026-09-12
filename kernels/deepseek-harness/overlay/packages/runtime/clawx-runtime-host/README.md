@@ -10,11 +10,19 @@ owns the DSH home lock and every live Agent handle, speaks
 `clawx.kernel-stdio/v1`, sends diagnostics only to stderr, and never mounts a
 native durable conversation backend.
 
-For DSH 0.1.3-alpha.1, ClawX explicitly mounts and awaits the services in
+For DSH 0.1.5-rc.2 (a prerelease), ClawX explicitly mounts and awaits the services in
 `src/composition.ts`; the removed demo spine is not a dependency. Launch-time
 HTTP proxy configuration comes from the captured process environment, without
 loading a user `.env` or upstream app profile. Shutdown and failed startup
 dispose the plugin world, proxy dispatcher and home lock.
+
+V3 system messages and model-context replacements are not user replies.
+Persona uses the run-scoped `deployment:persona-prefix` section; successful
+append-origin settlements and failed attempts retain their stable billing
+identities. Replacement copies must never duplicate usage or tool results.
+The frozen closure explicitly supplies `node-addon-system` and `dsh-util-values`.
+CI builds POSIX flock and Linux static Landlock from the pinned native sources;
+Windows keeps its upstream Koffi/ACL path.
 
 `session.new` only validates the ClawX run identity; `session.prompt` creates a
 transient per-run Agent from the canonical context supplied by Main. Terminal

@@ -39,7 +39,7 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
   await ctx.plugin(SessionStore)
   await ctx.plugin(SessionProjectionRegistry)
   await ctx.plugin(SessionTitle, { fallbackMaxWords: 5, fallbackMaxBytes: 40, maxTitleBytes: 80 })
-  await ctx.plugin(SystemPrompt, { includeHarnessIdentity: true, includeRuntimeContext: true, persona: '' })
+  await ctx.plugin(SystemPrompt, { includeHarnessIdentity: true, includeRuntimeContext: true, personaPrefix: '', personaSuffix: '' })
   await ctx.plugin(ToolRuntime, { mode: 'native' })
   await ctx.plugin(SkillRegistry)
   await ctx.plugin(SkillFileSystem, {

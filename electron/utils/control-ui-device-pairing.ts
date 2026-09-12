@@ -1,4 +1,5 @@
-import { app, utilityProcess } from 'electron';
+import { app } from 'electron';
+import { spawn } from 'node:child_process';
 import { existsSync } from 'fs';
 import { readFile } from 'fs/promises';
 import { join } from 'path';
@@ -8,6 +9,7 @@ import { logger } from './logger';
 import { getOpenClawConfigDir, getOpenClawDir, getOpenClawEntryPath } from './paths';
 import { getSetting } from './store';
 import { getUvMirrorEnv } from './uv-env';
+import { buildManagedOpenClawEnvironment, requireOpenClawRuntimeLocation } from '../kernels/openclaw/runtime-location';
 
 /** Browser Control UI client id used in OpenClaw 2026.5.x connect frames. */
 export const CONTROL_UI_BROWSER_CLIENT_ID = 'openclaw-control-ui';
@@ -128,7 +130,7 @@ function getBundledBinPath(): string {
 }
 
 /**
- * Run `openclaw devices approve` in-process (not shown to the user).
+ * Run `openclaw devices approve` using the same managed Node as the Gateway.
  * OpenClaw falls back to local pending.json on loopback when RPC is unavailable.
  */
 async function approveViaOpenClawCli(requestId: string, _port: number): Promise<boolean> {
@@ -150,15 +152,17 @@ async function approveViaOpenClawCli(requestId: string, _port: number): Promise<
   const uvEnv = await getUvMirrorEnv();
 
   return await new Promise<boolean>((resolve) => {
-    const child = utilityProcess.fork(entryScript, args, {
+    const child = spawn(requireOpenClawRuntimeLocation().nodeExecutable, [entryScript, ...args], {
       cwd: openclawDir,
       stdio: 'pipe',
-      env: {
+      env: buildManagedOpenClawEnvironment(undefined, {
         ...baseEnv,
         ...uvEnv,
         OPENCLAW_NO_RESPAWN: '1',
         OPENCLAW_EMBEDDED_IN: 'ClawX',
-      } as NodeJS.ProcessEnv,
+      }),
+      windowsHide: true,
+      shell: false,
     });
 
     let settled = false;
@@ -184,7 +188,7 @@ async function approveViaOpenClawCli(requestId: string, _port: number): Promise<
       finish(false);
     });
 
-    child.on('exit', (code: number) => {
+    child.on('exit', (code: number | null) => {
       clearTimeout(timeout);
       finish(code === 0);
     });

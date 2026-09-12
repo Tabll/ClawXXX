@@ -445,7 +445,7 @@ async function readAuthProfiles(agentId = 'main'): Promise<AuthProfilesStore> {
 }
 
 async function writeAuthProfiles(store: AuthProfilesStore, agentId = 'main'): Promise<void> {
-  writeAuthProfilesToSqlite(store, agentId);
+  await writeAuthProfilesToSqlite(store, agentId);
   try {
     await writeJsonFile(getAuthProfilesPath(agentId), store);
   } catch (error) {

@@ -69,6 +69,8 @@ export type KernelRuntimeSnapshot = {
   kernelId: KernelId;
   state: KernelLifecycleState;
   generation: KernelGeneration;
+  /** Main-owned: activation requires rebuilding app-scoped runtime bindings. */
+  restartRequired?: boolean;
   version?: string;
   artifactVersion?: string;
   pid?: number;

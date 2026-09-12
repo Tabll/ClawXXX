@@ -2,8 +2,8 @@
   "schemaVersion": 1,
   "kernelId": "openclaw",
   "displayName": "OpenClaw",
-  "artifactVersion": "2026.9.2+clawx.13",
-  "patchRevision": 13,
+  "artifactVersion": "2026.9.4+clawx.14",
+  "patchRevision": 14,
   "minHostVersion": "0.6.0",
   "maxHostVersion": "0.6.x",
   "capabilityContractVersion": 1,
@@ -60,7 +60,7 @@
       "runtime/kernel/node_modules/@earendil-works/pi-tui/native/darwin/prebuilds/darwin-arm64/**",
       "runtime/kernel/clawx-plugins/dingtalk/node_modules/@napi-rs/canvas-darwin-arm64/**",
       "runtime/kernel/clawx-plugins/wecom/node_modules/@wecom/cli-darwin-arm64/**",
-      "runtime/kernel/clawx-plugins/discord/node_modules/@discordjs/voice/node_modules/@snazzah/davey-darwin-arm64/**"
+      "runtime/kernel/clawx-plugins/discord/node_modules/@snazzah/davey-darwin-arm64/davey.darwin-arm64.node"
     ],
     "darwin-x64": [
       "runtime/kernel/node_modules/@img/sharp-darwin-x64/**",
@@ -86,7 +86,7 @@
       "runtime/kernel/node_modules/@earendil-works/pi-tui/native/darwin/prebuilds/darwin-x64/**",
       "runtime/kernel/clawx-plugins/dingtalk/node_modules/@napi-rs/canvas-darwin-x64/**",
       "runtime/kernel/clawx-plugins/wecom/node_modules/@wecom/cli-darwin-x64/**",
-      "runtime/kernel/clawx-plugins/discord/node_modules/@discordjs/voice/node_modules/@snazzah/davey-darwin-x64/**"
+      "runtime/kernel/clawx-plugins/discord/node_modules/@snazzah/davey-darwin-x64/davey.darwin-x64.node"
     ],
     "linux-arm64": [
       "runtime/kernel/node_modules/@img/sharp-linux-arm64/**",
@@ -110,7 +110,7 @@
       "runtime/kernel/node_modules/sqlite-vec-linux-arm64/**",
       "runtime/kernel/clawx-plugins/dingtalk/node_modules/@napi-rs/canvas-linux-arm64-gnu/**",
       "runtime/kernel/clawx-plugins/wecom/node_modules/@wecom/cli-linux-arm64/**",
-      "runtime/kernel/clawx-plugins/discord/node_modules/@discordjs/voice/node_modules/@snazzah/davey-linux-arm64-gnu/**"
+      "runtime/kernel/clawx-plugins/discord/node_modules/@snazzah/davey-linux-arm64-gnu/davey.linux-arm64-gnu.node"
     ],
     "linux-x64": [
       "runtime/kernel/node_modules/@img/sharp-linux-x64/**",
@@ -134,7 +134,7 @@
       "runtime/kernel/node_modules/sqlite-vec-linux-x64/**",
       "runtime/kernel/clawx-plugins/dingtalk/node_modules/@napi-rs/canvas-linux-x64-gnu/**",
       "runtime/kernel/clawx-plugins/wecom/node_modules/@wecom/cli-linux-x64/**",
-      "runtime/kernel/clawx-plugins/discord/node_modules/@discordjs/voice/node_modules/@snazzah/davey-linux-x64-gnu/**"
+      "runtime/kernel/clawx-plugins/discord/node_modules/@snazzah/davey-linux-x64-gnu/davey.linux-x64-gnu.node"
     ],
     "win32-x64": [
       "runtime/kernel/node_modules/@img/sharp-win32-x64/**",
@@ -158,7 +158,7 @@
       "runtime/kernel/node_modules/@earendil-works/pi-tui/native/win32/prebuilds/win32-x64/**",
       "runtime/kernel/clawx-plugins/dingtalk/node_modules/@napi-rs/canvas-win32-x64-msvc/**",
       "runtime/kernel/clawx-plugins/wecom/node_modules/@wecom/cli-win32-x64/**",
-      "runtime/kernel/clawx-plugins/discord/node_modules/@discordjs/voice/node_modules/@snazzah/davey-win32-x64-msvc/**"
+      "runtime/kernel/clawx-plugins/discord/node_modules/@snazzah/davey-win32-x64-msvc/davey.win32-x64-msvc.node"
     ]
   },
   "budgets": {

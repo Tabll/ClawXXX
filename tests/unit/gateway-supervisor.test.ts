@@ -85,7 +85,7 @@ describe('gateway supervisor process cleanup', () => {
     const child = new MockUtilityChild(4321);
     const { terminateOwnedGatewayProcess } = await import('@electron/gateway/supervisor');
 
-    const stopPromise = terminateOwnedGatewayProcess(child as unknown as Electron.UtilityProcess);
+    const stopPromise = terminateOwnedGatewayProcess(child as unknown as import('node:child_process').ChildProcess);
     child.emit('exit', 0);
     await stopPromise;
 
@@ -104,7 +104,7 @@ describe('gateway supervisor process cleanup', () => {
     const child = new MockUtilityChild(9876);
     const { terminateOwnedGatewayProcess } = await import('@electron/gateway/supervisor');
 
-    const stopPromise = terminateOwnedGatewayProcess(child as unknown as Electron.UtilityProcess);
+    const stopPromise = terminateOwnedGatewayProcess(child as unknown as import('node:child_process').ChildProcess);
     child.emit('exit', 0);
     await stopPromise;
 

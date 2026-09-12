@@ -22,7 +22,7 @@ const scopes = {
   '@esbuild': /^(darwin|linux|win32|android|freebsd|netbsd|openbsd|sunos|aix|openharmony)-(x64|arm64|arm|ia32|loong64|mips64el|ppc64|riscv64|s390x)/,
   '@openai': /^codex-(darwin|linux|win32)-(x64|arm64)$/,
   '@koromix': /^koffi-(darwin|linux|win32|freebsd|openbsd)-(x64|arm64|arm|ia32|loong64|riscv64)$/,
-  '@deepseek-ai': /^node-addon-landlock-run-(linux)-(x64|arm64)$/,
+  '@deepseek-ai': /^node-addon-(?:landlock-run|system)-(darwin|linux)-(x64|arm64)$/,
   '@openclaw': /^fs-safe-(darwin|linux|win32)-(x64|arm64)(?:-(gnu|musl|msvc))?$/,
   '@trycua': /^cua-driver-(darwin|linux|win32)-(x64|arm64)(?:-(gnu|musl|msvc))?$/,
   '@ubjs': /^node-(darwin|linux|win32)-(x64|arm64)(?:-(gnu|musl|msvc))?$/,
@@ -58,6 +58,10 @@ for (const nodeModules of findDirectories(payload, 'node_modules')) {
   // ClawX's independent Node distribution and support contract are glibc-only.
   const scopedKoffiMusl = join(nodeModules, '@koromix', `koffi-linux-${arch}`, `musl_${arch}`);
   if (platform === 'linux' && existsSync(scopedKoffiMusl)) remove(scopedKoffiMusl);
+  // DSH 0.1.5 combines POSIX flock and static Landlock in node-addon-system.
+  // Keep the static launcher, but only the glibc flock addon for our Node.
+  const systemMusl = join(nodeModules, '@deepseek-ai', `node-addon-system-linux-${arch}`, 'bin', 'musl');
+  if (platform === 'linux' && existsSync(systemMusl)) remove(systemMusl);
   for (const packageName of ['tree-sitter-bash', 'node-pty', 'bare-fs', 'bare-os', 'bare-url']) {
     const prebuilds = join(nodeModules, packageName, 'prebuilds');
     if (!existsSync(prebuilds)) continue;

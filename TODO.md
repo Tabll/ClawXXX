@@ -550,6 +550,40 @@
 
 - [x] `MK-2008` 实证 `make_latest=false` 不能阻止仓库唯一正式 Release 被 GitHub `/releases/latest` 选中；将固定内核资源容器标为 Pre-release 并补说明，签名目录仍为 production。发布器创建/既有分类保护与两项拒绝回归完成；32 个文件的名称/大小/摘要对照原始签名记录完全一致，latest 返回 404（无宿主版本），两端目录 200/304 与 40 个下载响应 206 复核通过。2447 全量、typecheck/lint/source 与 Harness task 验证通过；未修改宿主更新源。
 
+## M21 — Electron 宿主独立 Node 与本地验签修复（2026-09-11）
+
+- [x] `MK-2101` Gateway、ACP、CLI、Doctor、设备配对 CLI 统一选择独立 Node；DSH 在最终继承环境合并后清理 Node/Electron 覆盖。开发模式使用经过官方 archive SHA-256 验证的锁定 Node 24.20.0；不回退到 Electron 或系统 PATH。
+- [x] `MK-2102` 增加真实 Electron＋真实 OpenClaw 的已有 SQLite 状态回归：readonly worker、孙进程 Node 身份、两代 PID、HTTP/WS 就绪、状态保留和进程退出；接入默认三平台 E2E。仅 macOS 本地已执行，不冒充 Windows/Linux CI 成功。
+- [x] `MK-2103` 从成功发布证据恢复本地 git-ignored 生产公钥，核验备份和公钥 SHA-256；加入严格本地公钥导入命令。双镜像目录 200/304、两内核 darwin-arm64 共八次 Range/If-Range 206。未修改线上包、签名、目录或私钥。
+- [x] `MK-2104` 本轮验证：unit/contract 2458 passed / 6 skipped；完整 macOS Electron E2E 153 passed / 3 skipped；typecheck、lint（0 errors / 7 existing warnings）、comms replay/compare、kernel sources verify、Harness CI、task validate/dry-run、`git diff --check` 均通过。README 四语言和回归说明同步；未提交或推送。
+- [x] `MK-2105` 用户已授权后续备份、隔离验证和修复；确认并非旧表未迁移，而是认证同步将已是 v19 的数据库标记降回 v1。副本及原库的受保护标记修复已完成，完整跟踪见 M22。
+
+## M22 — Agent 数据库所有权与已备份本机修复（2026-09-11）
+
+- [x] `MK-2201` 停止准确的开发实例写入，保留原 Agent DB＋WAL/SHM 和全局原生 DB 备份，目录权限 0700、文件 0600、Git 排除；保留指纹、副本与修复证据，不上传私密备份。
+- [x] `MK-2202` 副本通过内核自身 v19 结构校验；复现 Doctor 旧迁移失败且回滚不改数据。仅修复两处错误版本标记后，全部业务表指纹一致、quick_check=ok、FK 错误=0；原库应用相同事务和精确前置指纹保护，统一 clawx.sqlite 字节摘要未变。
+- [x] `MK-2203` 删除 Main 里的残缺 Agent DDL 和版本写入，认证改为所选内核 Node＋公开 SQLite SDK、stdin 传密钥、原子写入和有界脱敏错误；同步调用完成后才 reload。旧/未来版本拒绝准入，不偷偷改版本。
+- [x] `MK-2204` 修复后的真实副本通过 Electron 回归（10.5s）；默认回归加入原生 Agent 状态、预启动与运行中认证同步、两代 Gateway、状态保留与 HTTP/WS 就绪。Windows/Linux 待 CI，不冒充已通过。
+- [x] `MK-2205` 2464 unit/contract passed / 6 skipped；153 macOS Electron E2E passed / 3 skipped；typecheck、lint（0 errors / 7 existing warnings）、comms replay/compare、source verify、Harness CI（19 tests）、task validate/dry-run、git diff --check 全通过。恢复真实 pnpm dev：Gateway PID 66693、约 6.2s 完成握手、运行超过 2 分钟无退出/重启，UI 显示 OpenClaw 就绪、输入框启用，healthz=live；认证同步后原库仍 v19，quick_check=ok、FK=0。四语 README 与证据同步；未提交、推送或触发远端流水线。详见 [设计与证据](harness/reference/openclaw-agent-schema-ownership.md)。
+
+## M23 — 正式安装包解析与安装后驱动注册
+
+- [x] `MK-2301` 统一 dev/packaged 安装记录优先级；正式包使用自身 Node/入口与 OpenClaw Channel 插件，损坏安装拒绝准入，不回退开发依赖。
+- [x] `MK-2302` DeepSeek Harness 空闲安装/修复/回滚后重新注册；与 start/restart/stop 共用 per-kernel 锁，包操作覆盖激活回调，运行代次与其他内核不受替换。
+- [x] `MK-2303` Main 持有需重启标记；OpenClaw 的 ACP/Channels 仍安全延期至应用重启。启动/注册失败准确显示 failed，下载待激活与需重启分开说明，四语设置提示与按钮同步。
+- [x] `MK-2304` 49 focused / 2497 全量 unit-contract passed（6 既有条件跳过）；typecheck、lint（0 errors / 7 existing warnings）、build:vite、comms replay/compare、Harness CI（19 tests）、task validate/dry-run 和 diff 检查通过。覆盖旧进程延迟退出与过期 refresh 覆盖新状态的竞态。真实已安装 DSH `0.1.3-alpha.1+clawx.13` 在隔离临时数据目录通过失败后注册→第一代启动/健康→第二代重启/健康→进程清理，两次分别 5307/514 ms；未发送模型请求，未启动用户数据目录的内核进程。
+- [x] `MK-2305` 按用户本次要求暂不新增对应 Electron E2E；保留已有 E2E 文件。四语 README、规则/场景/任务与 [设计说明](harness/reference/installed-kernel-activation.md)同步，不修改用户数据库或已发布内核包，不提交/推送。
+
+## M24 — 双内核 2026-09-12 上游兼容升级
+
+- [x] `MK-2401` 建立任务规格，核验 OpenClaw 2026.9.4 / DeepSeek Harness 0.1.5-rc.2 发布身份，保留此前宿主修复与用户数据。
+- [x] `MK-2402` 精确重基 OpenClaw 25 个编译目标，补回上游产物裁掉的有界 ACP 内存 ledger，适配 `.mjs`、新版 usage callback 和受管入站准入；真实 Gateway/ACP、取消/重启、7 Channels、registry 与无原生历史检查通过。
+- [x] `MK-2403` 适配 DeepSeek V3 append/replace 与用量去重、Persona、SessionHandle 和显式 Host 编译图；三份 patch 严格应用，Windows temp 限制原样保留；Host 编译、13 文件/70 项 overlay 与真实沙箱测试通过。独立生产部署闭包实际启动 2219 ms，工具读写、只读拒绝、权限和无原生历史检查通过。
+- [x] `MK-2404` 双内核 artifact revision 升到 14；源码/锁/补丁/overlay 摘要链、宿主依赖及五目标精确 native 闭包更新。macOS arm64 实际 native/license 审计通过；DSH CI 构建新 system addon＋Linux Landlock，包装回归前置；Node 24.20.0 与签名/存储闸门保留。
+- [x] `MK-2405` 2509 unit/contract passed、6 既有条件跳过；70 DSH tests、12 项聚焦 Electron 回归通过（真实已有 Agent DB 两代 Gateway、共享 SQLite 跨内核会话、Agents/Channels/Cron/Skills/包生命周期）；typecheck、lint（0 errors / 7 existing warnings）、comms replay/compare、Harness CI（19 tests）、task validate/dry-run 和 diff 检查通过。四语 README 与 [升级设计/证据](harness/reference/kernel-upgrade-2026-09-12.md) 已同步；未新增暂缓的安装状态 E2E。
+- [ ] `MK-2406` 审核并提交相关代码，推送 Tabll/ClawXXX main，启动两个内核五平台完整 staging 构建，记录同 SHA E2E 与构建链接。
+- [ ] `MK-2407` 远端构建、公证、单/双内核安装及受保护生产发布验收；仅在真实成功后勾选，不用本地测试代替。
+
 ## 每个实现 PR 的最低检查
 
 - [x] 对应 Harness task spec 已创建并通过 `pnpm harness validate --spec ...`。

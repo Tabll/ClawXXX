@@ -56,14 +56,14 @@ describe('OpenClaw managed recovery patch', () => {
   it('freezes the exact rebased patch and rejects malformed hunks', async () => {
     const workspace = await readFile(path.join(root, 'pnpm-workspace.yaml'), 'utf8');
     const lockfile = await readFile(path.join(root, 'pnpm-lock.yaml'), 'utf8');
-    const patch = await readFile(path.join(root, 'patches/openclaw@2026.9.2.patch'), 'utf8');
-    expect(workspace).toContain('openclaw@2026.9.2: patches/openclaw@2026.9.2.patch');
+    const patch = await readFile(path.join(root, 'patches/openclaw@2026.9.4.patch'), 'utf8');
+    expect(workspace).toContain('openclaw@2026.9.4: patches/openclaw@2026.9.4.patch');
     expect(lockfile).toContain('hash: ' + createHash('sha256').update(patch).digest('hex'));
     assertValidUnifiedDiffHunks(patch);
   });
 
   it('replaces native restart/replay with canonical per-Run hydration in managed mode only', async () => {
-    const bundle = await readFile(path.join(root, 'node_modules/openclaw/dist/server-zrB9dRww.js'), 'utf8');
+    const bundle = await readFile(path.join(root, 'node_modules/openclaw/dist/server-DWybsgYT.mjs'), 'utf8');
     expect(bundle).toContain('createInMemoryAcpEventLedger');
     expect(bundle).toContain('clawx.session.hydrate');
     expect(bundle).toContain('"sessions.messages.subscribe"');
@@ -78,8 +78,8 @@ describe('OpenClaw managed recovery patch', () => {
   });
 
   it('uses actual provider usage, never a session-store estimate or replay charge', async () => {
-    const runtime = await readFile(path.join(root, 'node_modules/openclaw/dist/builtin-openclaw-B_H1oNzF.js'), 'utf8');
-    const translator = await readFile(path.join(root, 'node_modules/openclaw/dist/server-zrB9dRww.js'), 'utf8');
+    const runtime = await readFile(path.join(root, 'node_modules/openclaw/dist/builtin-openclaw-B-H-7lKk.mjs'), 'utf8');
+    const translator = await readFile(path.join(root, 'node_modules/openclaw/dist/server-DWybsgYT.mjs'), 'utf8');
     expect(runtime).toContain('recordModelUsage(pending, message)');
     expect(runtime).toContain('source: "provider-response"');
     expect(runtime).toContain('hasNonzeroUsage(usage) || usage.cost?.totalOrigin === "provider-billed"');
@@ -91,7 +91,7 @@ describe('OpenClaw managed recovery patch', () => {
   });
 
   it('retains upstream trusted execution identity in real approval request construction', async () => {
-    const bundle = await readFile(path.join(root, 'node_modules/openclaw/dist/bash-tools.exec-approval-request-DYkIh7HP.js'), 'utf8');
+    const bundle = await readFile(path.join(root, 'node_modules/openclaw/dist/bash-tools.exec-approval-request-BaFlUhRI.mjs'), 'utf8');
     const start = bundle.indexOf('function buildExecApprovalRequestToolParams(params)');
     const end = bundle.indexOf('\nfunction parseDecision', start);
     expect(start).toBeGreaterThanOrEqual(0);
@@ -106,7 +106,7 @@ describe('OpenClaw managed recovery patch', () => {
   });
 
   it('keeps every patched executable syntactically valid and survives upstream lifecycle pruning', async () => {
-    const patch = await readFile(path.join(root, 'patches/openclaw@2026.9.2.patch'), 'utf8');
+    const patch = await readFile(path.join(root, 'patches/openclaw@2026.9.4.patch'), 'utf8');
     const files = [...patch.matchAll(/^diff --git a\/(.+) b\/.+$/gm)].map(match => match[1]);
     for (const file of files.filter(file => /\.(?:mjs|js)$/.test(file))) {
       await expect(execFileAsync(process.execPath, ['--check', path.join(root, 'node_modules/openclaw', file)]))

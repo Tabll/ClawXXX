@@ -89,6 +89,11 @@ input.on('line', line => {
     grandchildPid: grandchild?.pid,
   });
   else if (request.method === 'fixture.grandchild') respond(request, { pid: grandchild?.pid });
+  else if (request.method === 'fixture.node-environment') respond(request, {
+    node: process.versions.node, execPath: process.execPath,
+    electron: process.versions.electron ?? null,
+    leakedKeys: Object.keys(process.env).filter(key => /^(?:ELECTRON_|NODE_OPTIONS$|NODE_PATH$)/i.test(key)),
+  });
   else if (request.method === 'fixture.stderr') {
     process.stderr.write(`${String(request.params?.message ?? 'fixture diagnostic')}\n`);
     respond(request, { written: true });

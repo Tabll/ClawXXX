@@ -10,6 +10,10 @@
     "openData": "打开数据目录", "openLogs": "打开日志目录", "exportLogs": "导出日志",
     "activeVersion": "当前版本", "availableVersion": "可用版本",
     "generation": "运行代次", "memory": "内存",
+    "appRestartRequired": "需重启 ClawX",
+    "appRestartRequiredDescription": "此内核需要重建应用级绑定。请完整退出并重新打开 ClawX（开发模式下重新运行 pnpm dev），然后启动内核；仅点击内核的“重启”按钮不能完成此操作。",
+    "activationPending": "已下载，待激活",
+    "activationPendingDescription": "版本 {{version}} 已下载但尚未激活。请停止此内核，再点击“更新”以激活目录中的兼容版本；其他内核可继续运行。",
     "uninstallTitle": "卸载 {{name}}？",
     "uninstallMessage": "将删除运行时和缓存版本；共用的对话、定时任务、智能体、技能、渠道和用量数据会完整保留。"
   },

@@ -10,6 +10,10 @@
     "openData": "データを開く", "openLogs": "ログを開く", "exportLogs": "ログを書き出す",
     "activeVersion": "有効バージョン", "availableVersion": "利用可能バージョン",
     "generation": "世代", "memory": "メモリ",
+    "appRestartRequired": "ClawX の再起動が必要",
+    "appRestartRequiredDescription": "アプリ全体のランタイム接続を再構築する必要があります。ClawX を完全に終了して開き直し（開発時は pnpm dev を再実行）、カーネルを起動してください。カーネルの再起動ボタンだけでは反映されません。",
+    "activationPending": "ダウンロード済み・有効化待ち",
+    "activationPendingDescription": "バージョン {{version}} はダウンロード済みですが未有効です。このカーネルを停止してから「更新」を押し、カタログの互換バージョンを有効化してください。他のカーネルは実行を継続できます。",
     "uninstallTitle": "{{name}} をアンインストールしますか？",
     "uninstallMessage": "ランタイムとキャッシュ版を削除します。共有の会話、スケジュール、エージェント、スキル、チャンネル、使用量データは保持されます。"
   },

@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, readFileSync, realpathSync } from 'node:fs';
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import type { KernelInstallationRecord } from '@shared/kernels/package-manager';
 import { KernelPackageLayout } from '../package-manager/layout';
+import { buildKernelNodeEnvironment } from '../node-runtime';
 
 export type OpenClawRuntimeLocation = {
   readonly kernelId: 'openclaw';
@@ -117,7 +118,7 @@ export function createDevelopmentOpenClawRuntimeLocation(input: {
   packageDir: string;
   userDataRoot: string;
   artifactVersion: string;
-  nodeExecutable?: string;
+  nodeExecutable: string;
 }): OpenClawRuntimeLocation {
   const packageDir = resolve(input.packageDir);
   const entryPath = join(packageDir, 'openclaw.mjs');
@@ -128,7 +129,7 @@ export function createDevelopmentOpenClawRuntimeLocation(input: {
     installRoot: packageDir,
     packageDir,
     entryPath,
-    nodeExecutable: input.nodeExecutable ?? process.execPath,
+    nodeExecutable: input.nodeExecutable,
     ...runtimeDataRoots(input.userDataRoot),
     managed: true,
     source: 'development-dependency',
@@ -191,7 +192,7 @@ export function buildManagedOpenClawEnvironment(
   base: NodeJS.ProcessEnv = process.env,
 ): NodeJS.ProcessEnv {
   return {
-    ...base,
+    ...buildKernelNodeEnvironment(location.nodeExecutable, base),
     CLAWX_MANAGED_RUNTIME: '1',
     CLAWX_OPENCLAW_PACKAGE_DIR: resolveOpenClawPackageRealPath(location),
     CLAWX_CONVERSATION_STORE_PROTOCOL: 'clawx.conversation-store/v1',

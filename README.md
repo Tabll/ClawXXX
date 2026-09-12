@@ -158,9 +158,9 @@ ClawX uses a **Main-owned multi-kernel architecture with a unified Host API laye
 
 > ClawX 0.6 implements optional CI-built OpenClaw and DeepSeek Harness runtimes backed by one Main-owned SQLite/Blob authority. Public release remains fail-closed until the protected cross-platform signing, promotion and packaged-test evidence in the [implementation checklist](TODO.md) passes. See the [multi-kernel design](docs/zh-CN/multi-kernel-design.md), [runtime security/support](docs/en-US/runtime-security-support.md), and [data policy](docs/en-US/data-security-retention.md).
 
-The reviewed DSH source is now `0.1.3-alpha.1+clawx.13`, with v2 streaming/settlement compatibility and unchanged shared SQLite history. It is still an alpha; upstream reports a performance regression. Source changes do not update an installed runtime until a newly verified CI artifact is published. See the [upgrade contract](harness/reference/deepseek-harness-0.1.3-upgrade.md).
+The DSH source candidate is `0.1.5-rc.2+clawx.14` (a prerelease), adapted to V3 system messages, run-scoped persona and append-origin settlements. Model-context replacements cannot duplicate replies or usage. Shared SQLite remains authoritative; installed runtimes change only after verified CI artifacts are published. See the [current upgrade contract](harness/reference/kernel-upgrade-2026-09-12.md).
 
-OpenClaw source and development dependencies now use `2026.9.2+clawx.13`. The production bridge creates a fresh in-memory session per Run from canonical SQLite history, translates the new Agents/model/permission configuration, and repairs all seven bundled Channel plugins. Isolated real Gateway/ACP and packaged-payload checks cover tools, cancellation, crash recovery and rejected channel admission without native history writes. See the [upgrade design and evidence](harness/reference/openclaw-2026.9.2-upgrade.md).
+OpenClaw source and development dependencies now use `2026.9.4+clawx.14`, including matching Discord/WhatsApp packages. The rebased `.mjs` patches retain bounded in-memory ACP state, shared history, Main-owned configuration and fail-closed Channel admission. Node stays at 24.20.0. Local candidate evidence and pending platform gates are recorded in the [upgrade design](harness/reference/kernel-upgrade-2026-09-12.md).
 
 Both +clawx.13 kernels with Node 24.20.0 passed all 25 five-target staging jobs, all four macOS notarizations (Accepted), and same-source Electron E2E on all three platforms; see the [CI acceptance evidence](harness/reference/windows-runtime-ci-repair.md). Windows uses artifact signatures only, without Authenticode. Production catalog status, protected workflow recovery and live verification are tracked in the [publication evidence](harness/reference/kernel-automatic-release.md); real-account acceptance remains pending.
 
@@ -185,6 +185,16 @@ The fixed GitHub kernel resource page carries a Pre-release label only to exclud
 > For the process diagram, configuration coordination, ACP file activity semantics, and Gateway troubleshooting, see [docs/en-US/architecture.md](docs/en-US/architecture.md).
 
 ## Development
+
+`pnpm dev` prepares the pinned standalone kernel Node (24.20.0) on first use;
+Gateway/ACP/CLI/Doctor never run through Electron Helper. Installed kernels use
+their own verified Node. For a direct Electron launch, first run
+`pnpm run kernel:dev:prepare`. Local downloads additionally require authenticated
+production public roots; see [Node launch and local trust setup](harness/reference/electron-kernel-node-launch.md).
+
+Agent auth writes use the selected kernel's SQLite SDK; ClawX never initializes partial native schemas or resets their version markers. Back up and validate an isolated copy before repairing existing state; see [Agent schema ownership and repair](harness/reference/openclaw-agent-schema-ownership.md).
+
+Development and packaged apps both prefer installed kernel artifacts over development paths. Idle DeepSeek Harness can be started immediately after installation or repair. OpenClaw activation requires a full ClawX restart to rebuild ACP/Channel bindings; Settings explains this separately from downloaded updates waiting for activation (stop the kernel, then click Update). See [installed runtime activation](harness/reference/installed-kernel-activation.md).
 
 ### Prerequisites
 

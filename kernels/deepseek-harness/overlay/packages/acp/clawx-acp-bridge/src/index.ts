@@ -12,7 +12,8 @@ import type { Context } from '@deepseek-ai/cordis'
 import { installModelSelection, type Agent, type AgentHandle, type AssistantStreamFrame, type ModelSelectionRef } from '@deepseek-ai/dsh-agent'
 import type { ImageMediaType } from '@deepseek-ai/dsh-attachment'
 import { createUserMessage, type ContentBlock } from '@deepseek-ai/dsh-llm'
-import { SessionId, type Session, type SessionEvent } from '@deepseek-ai/dsh-session'
+import { isAppendSurfaceEvent, SessionId, type Session, type SessionEvent } from '@deepseek-ai/dsh-session'
+import { PERSONA_PREFIX_SECTION } from '@deepseek-ai/dsh-system-prompt'
 import { setApprovalPolicy, type ApprovalOutcome, type ApprovalRequest } from '@deepseek-ai/dsh-user-approval'
 import type {
   AskUserQuestionAnswer,
@@ -318,7 +319,7 @@ export class ClawXDshAcpBridge {
           if (presetId) await presets!.mount(agentCtx, presetId)
           if (input.agentPersona?.trim()) {
             agentCtx.systemPrompt.section({
-              name: 'deployment:persona',
+              name: PERSONA_PREFIX_SECTION,
               order: 0,
               text: input.agentPersona.trim(),
             })
@@ -515,7 +516,9 @@ export class ClawXDshAcpBridge {
       else if (event.data.reason.kind === 'error') lease.terminal = 'failed'
       else if (event.data.reason.kind === 'interrupted') lease.terminal = 'interrupted'
     }
-    if (event.type === 'assistant/message') {
+    // V3 compaction/replacement is model-only. Preserve the text the user
+    // actually received, and never publish replacement copies or system text.
+    if (event.type === 'assistant/message' && isAppendSurfaceEvent(event)) {
       lease.assistantText += event.data.message.content
         .filter(block => block.type === 'text').map(block => block.text).join('')
       for (const [index, block] of event.data.message.content.entries()) {

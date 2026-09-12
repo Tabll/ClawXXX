@@ -71,6 +71,13 @@ jobs:
           tests/contract/kernels/openclaw-acp-adapter.test.ts
           tests/contract/kernels/openclaw-driver.test.ts
           tests/unit/openclaw-probe-lifecycle.test.ts
+      - name: Verify upgraded kernel packaging contracts before fetching sources
+        run: >-
+          pnpm exec vitest run
+          tests/unit/kernel-runtime-build.test.ts
+          tests/unit/kernel-platform-security.test.ts
+          tests/unit/deepseek-sandbox-temp-parity-patch.test.ts
+          --maxWorkers=1
       - name: Fetch exact OpenClaw npm patch base
         if: matrix.kernel == 'openclaw'
         run: node scripts/kernel-runtime/download-npm-source.mjs --kernel openclaw --destination temp/kernel-source
@@ -112,10 +119,11 @@ jobs:
       - name: Install the Linux native sandbox compiler
         if: matrix.kernel == 'deepseek-harness' && matrix.target.platform == 'linux'
         run: sudo apt-get update && sudo apt-get install --yes musl-tools
-      - name: Build the native Landlock sandbox from the frozen upstream source
-        if: matrix.kernel == 'deepseek-harness' && matrix.target.platform == 'linux'
+      - name: Build native system locks and Linux Landlock from frozen upstream source
+        if: matrix.kernel == 'deepseek-harness' && matrix.target.platform != 'win32'
         working-directory: temp/kernel-source
-        run: pnpm --dir native/landlock-run build:native
+        # Root build:native-system is host-addon-only and omits Landlock.
+        run: pnpm --dir native/system run build:native
       - name: Build and test DeepSeek Harness overlay workspace
         if: matrix.kernel == 'deepseek-harness'
         working-directory: temp/kernel-source

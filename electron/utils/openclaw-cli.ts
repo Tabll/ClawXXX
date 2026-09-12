@@ -73,16 +73,8 @@ export type OpenClawEmbeddedForkSpec = {
 
 export function getOpenClawCliSpawnSpec(): OpenClawCliSpawnSpec {
   const location = requireOpenClawRuntimeLocation();
-  const wrapper = getOpenClawCliTargetPath();
-  if (existsSync(wrapper) && isManagedWrapper(wrapper)) {
-    if (process.platform === 'win32') {
-      return {
-        command: process.env.ComSpec || 'cmd.exe',
-        args: ['/d', '/s', '/c', `"${wrapper}"`],
-      };
-    }
-    return { command: wrapper, args: [], shell: false };
-  }
+  // Host-owned commands must use the activated runtime, even when a shell
+  // convenience wrapper left by an earlier activation is still present.
   return {
     command: location.nodeExecutable,
     args: [location.entryPath],
@@ -110,6 +102,8 @@ export function getOpenClawEmbeddedForkSpec(args: string[] = []): OpenClawEmbedd
 function posixWrapper(nodeExecutable: string, entryPath: string, stateRoot: string, cacheRoot: string): string {
   return `#!/bin/sh
 # ${CLI_MARKER}. Regenerated after kernel activation.
+unset ELECTRON_RUN_AS_NODE ELECTRON_NO_ASAR ELECTRON_OVERRIDE_DIST_PATH NODE_OPTIONS NODE_PATH
+export PATH=${quotePosix(dirname(nodeExecutable))}:"$PATH"
 export CLAWX_MANAGED_RUNTIME=1
 export CLAWX_CONVERSATION_STORE_PROTOCOL=clawx.conversation-store/v1
 export OPENCLAW_STATE_DIR=${quotePosix(stateRoot)}
@@ -127,6 +121,12 @@ function windowsWrapper(nodeExecutable: string, entryPath: string, stateRoot: st
   return `@echo off
 rem ${CLI_MARKER}. Regenerated after kernel activation.
 setlocal
+set "ELECTRON_RUN_AS_NODE="
+set "ELECTRON_NO_ASAR="
+set "ELECTRON_OVERRIDE_DIST_PATH="
+set "NODE_OPTIONS="
+set "NODE_PATH="
+set "PATH=${dirname(nodeExecutable)};%PATH%"
 set "CLAWX_MANAGED_RUNTIME=1"
 set "CLAWX_CONVERSATION_STORE_PROTOCOL=clawx.conversation-store/v1"
 set "OPENCLAW_STATE_DIR=${stateRoot}"

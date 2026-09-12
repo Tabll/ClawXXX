@@ -8,11 +8,11 @@
     },
     {
       "path": "packages/acp/clawx-acp-bridge/package.json",
-      "sha256": "8ffda5c50bd9cb8f4af30c20c3800b5edddb2381875be6be8157023d7817403a"
+      "sha256": "6156689fff150b5276d4288ba50c04b17bc1e2700255feed2db520c2e9c76937"
     },
     {
       "path": "packages/acp/clawx-acp-bridge/src/index.ts",
-      "sha256": "9d70eff9d2f3d2924fcb8cb9cb85aed2a18d1b50b3bd10ecb11cbf641bb67345"
+      "sha256": "69808ae17d097c34181c4e63dcacecaca480ee2a5b3c6216bdf655d3869ae0e4"
     },
     {
       "path": "packages/acp/clawx-acp-bridge/src/invariant.ts",
@@ -20,11 +20,11 @@
     },
     {
       "path": "packages/acp/clawx-acp-bridge/tests/bridge.spec.ts",
-      "sha256": "7288ae7524d3ca589de4e1f3a903e8f467e9eee0a8226fef6273e5fca5335435"
+      "sha256": "c84e0b9d4db20b7e22a0476bdb596068e8a7795449feb88c99599bd13b358b3a"
     },
     {
       "path": "packages/acp/clawx-acp-bridge/tsconfig.json",
-      "sha256": "7639641c251c288296b90e08ab4e06686cebd9bb1db9edbf4e284b2e7f7c42c0"
+      "sha256": "31c98d58d7ce3dee00f3ab000028ea866cb3048bc68ee5598702a615ec9b15d9"
     },
     {
       "path": "packages/acp/clawx-rich-events/README.md",
@@ -32,11 +32,11 @@
     },
     {
       "path": "packages/acp/clawx-rich-events/package.json",
-      "sha256": "9c6a4a86b0eab45da5fca0844a9c0cd9302a5d5e0bd0dab9c903bdd480a8cb6a"
+      "sha256": "a48d7b53ddf3620497d8073078425102bed7f1409c442aaf8ab710f039a3a6ae"
     },
     {
       "path": "packages/acp/clawx-rich-events/src/index.ts",
-      "sha256": "5cd6d17c1fca050e6199cd614973dfb4889fbf55475e6308c500d1aee9805855"
+      "sha256": "e2b547a9544c6125048d47488d4bf9062c74428634982b24316f7bd056c4b27e"
     },
     {
       "path": "packages/acp/clawx-rich-events/src/invariant.ts",
@@ -44,7 +44,7 @@
     },
     {
       "path": "packages/acp/clawx-rich-events/tests/rich-events.spec.ts",
-      "sha256": "09d82c5f27e496d312decf3ff03711c78242930d48db631dd55dbf5dd2731525"
+      "sha256": "98244aa6daf882e5b0e5e498f0acaeade9bdf4c585a8d32d65d0d949ab1d9f44"
     },
     {
       "path": "packages/acp/clawx-rich-events/tsconfig.json",
@@ -56,7 +56,7 @@
     },
     {
       "path": "packages/agents/clawx-dsh-agent-catalog/package.json",
-      "sha256": "1333cead58a85b3019bd28bd9c2401aa60f5e46b0e6ae17f7e56077330f3f41c"
+      "sha256": "2a3038b0d18f81b01e55a6fa45c271846897a7844c6f053508bdab6112da6588"
     },
     {
       "path": "packages/agents/clawx-dsh-agent-catalog/src/index.ts",
@@ -80,7 +80,7 @@
     },
     {
       "path": "packages/control/clawx-control-bridge/package.json",
-      "sha256": "d71e61f88d4ff90247379f14ee747b5f74e5d7fd23fd88f216f04648e0d3152b"
+      "sha256": "827000532ef5ac892c9733ce5bcfdbf4e1991cdda63ebb8ae18d00d4f858b2db"
     },
     {
       "path": "packages/control/clawx-control-bridge/src/bin.ts",
@@ -108,7 +108,7 @@
     },
     {
       "path": "packages/credentials/clawx-dsh-credential-provider/package.json",
-      "sha256": "7c6c256fcf0dc8611e6a60e8ecba6b7a70cbd98654f23d60557523293d914669"
+      "sha256": "82cf2cc25c7c9cdbe35544279c98062e3794ab3795c3e7fff4dcf6c056e3dec4"
     },
     {
       "path": "packages/credentials/clawx-dsh-credential-provider/src/index.ts",
@@ -132,11 +132,11 @@
     },
     {
       "path": "packages/runtime/clawx-runtime-host/README.md",
-      "sha256": "887261297a940026d3f9f3d725575b7371d7266f77ffdb99324692c29b75e5ac"
+      "sha256": "87bee83464afd743672b7f93c161d322ae5eac8d2ae1d41417f605b82558e12d"
     },
     {
       "path": "packages/runtime/clawx-runtime-host/package.json",
-      "sha256": "94aefc89e54d1a963b4b16868403bafbfc882ecf4ab53a961eebfd5cabf08579"
+      "sha256": "a5053874f1b28e29e45b70c7e46ed13d06a0a693483e79c6bd1373134be6275c"
     },
     {
       "path": "packages/runtime/clawx-runtime-host/src/bin.ts",
@@ -144,7 +144,7 @@
     },
     {
       "path": "packages/runtime/clawx-runtime-host/src/composition.ts",
-      "sha256": "39e5ad8b1d7de869ae2a06afd4244c7b8d3bc7be079f65ff4a28f11e4d5b8f5d"
+      "sha256": "afb9dac91b1cbfb901bbe7d2d18b63da647e09c0e16d4afc561d50cdf4f90da5"
     },
     {
       "path": "packages/runtime/clawx-runtime-host/src/home-lock.ts",
@@ -188,15 +188,15 @@
     },
     {
       "path": "packages/session/session-persistence-clawx/README.md",
-      "sha256": "996e9ac70aeeccbe9aa279a80d65b2217b0d8660a5be5374c5928d57b7eb7514"
+      "sha256": "1fa1a7d5a8348cac2f14bf6acb08f6dfcb8b4d900561d61913591aa32362c803"
     },
     {
       "path": "packages/session/session-persistence-clawx/package.json",
-      "sha256": "a3994985a8dbd4c6c0b8ef7fc8519c574d36bee7e723f0f4b8e48f6b43dbb87b"
+      "sha256": "b21f2a2c2a843b5cd65e621a3240b5090f7e470ed39804b433b67c83b30abf6a"
     },
     {
       "path": "packages/session/session-persistence-clawx/src/index.ts",
-      "sha256": "bc18b629f1dbd331de11fb818abc75c1a2adcc46590a9efae6e5d79d31ae6ce7"
+      "sha256": "bba09ee63965d5537038f39f3784f4ffac99987856a4c42b08d12d6ea8246f96"
     },
     {
       "path": "packages/session/session-persistence-clawx/src/invariant.ts",
@@ -208,7 +208,7 @@
     },
     {
       "path": "packages/session/session-persistence-clawx/tests/handles.spec.ts",
-      "sha256": "a532094743ee140bb889b1bfd817ff5e2895c35ea5522acedc46fc90fcda7681"
+      "sha256": "164d622a0bbe1a6751a5621a636775c1f32d526bd7c618f01c09887f49768927"
     },
     {
       "path": "packages/session/session-persistence-clawx/tests/memory-client.ts",
@@ -216,7 +216,7 @@
     },
     {
       "path": "packages/session/session-persistence-clawx/tests/resume.spec.ts",
-      "sha256": "8d856a8ef74957f6843cd757fef222d112060c6dceb205804068ce6cbd5b9765"
+      "sha256": "c2ba065181fbbb455e938a19154008e88fa782d894db95c47da4097545f79e06"
     },
     {
       "path": "packages/session/session-persistence-clawx/tsconfig.json",
@@ -228,7 +228,7 @@
     },
     {
       "path": "packages/skills/clawx-dsh-skill-catalog/package.json",
-      "sha256": "17fd6eeb7ffe0a8fc4ec16a018916878709a9044e9bad87cdff9b91493665bef"
+      "sha256": "afd276b666055cbe9e3ce8e4d3cf7fb42418475858beb58604e62957ca12c119"
     },
     {
       "path": "packages/skills/clawx-dsh-skill-catalog/src/index.ts",

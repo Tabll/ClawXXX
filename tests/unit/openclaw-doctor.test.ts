@@ -40,6 +40,8 @@ vi.mock('electron', () => ({
   },
 }));
 
+vi.mock('node:child_process', () => ({ spawn: mockFork, default: { spawn: mockFork } }));
+
 vi.mock('@electron/utils/paths', () => ({
   getOpenClawDir: () => '/tmp/openclaw',
   getOpenClawEntryPath: () => '/tmp/openclaw/openclaw-entry.js',
@@ -64,12 +66,17 @@ class MockUtilityChild extends EventEmitter {
 }
 
 describe('openclaw doctor output handling', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.resetAllMocks();
     vi.resetModules();
 
     mockExistsSync.mockReturnValue(true);
     mockGetUvMirrorEnv.mockResolvedValue({});
+    const { configureOpenClawRuntimeLocation, createDevelopmentOpenClawRuntimeLocation } = await import('@electron/kernels/openclaw/runtime-location');
+    configureOpenClawRuntimeLocation(createDevelopmentOpenClawRuntimeLocation({
+      packageDir: '/tmp/openclaw', userDataRoot: '/tmp/clawx-doctor-test',
+      artifactVersion: 'test', nodeExecutable: '/tmp/kernel-node/bin/node',
+    }));
   });
 
   it('collects normal output under the buffer limit', async () => {
@@ -172,6 +179,11 @@ describe('openclaw doctor output handling', () => {
     const result = await resultPromise;
     expect(result.success).toBe(true);
     expect(result.command).toBe('openclaw doctor');
-    expect(mockFork.mock.calls[0][1]).toEqual(['doctor']);
+    expect(mockFork.mock.calls[0][0]).toBe('/tmp/kernel-node/bin/node');
+    expect(mockFork.mock.calls[0][1]).toEqual(['/tmp/openclaw/openclaw-entry.js', 'doctor']);
+    expect(mockFork.mock.calls[0][2]).toEqual(expect.objectContaining({
+      shell: false, windowsHide: true,
+      env: expect.objectContaining({ CLAWX_MANAGED_RUNTIME: '1' }),
+    }));
   });
 });

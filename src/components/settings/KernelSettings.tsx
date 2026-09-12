@@ -65,6 +65,10 @@ export function KernelSettings() {
       <div className="space-y-4">
         {(catalog?.entries ?? []).map(entry => {
           const runtime = runtimes[entry.kernelId] ?? entry.runtime;
+          const needsRestart = runtime.restartRequired === true;
+          const activationPending = Boolean(entry.installation.desiredVersion
+            && entry.installation.desiredVersion !== entry.installation.activeVersion);
+          const busy = Boolean(pending[entry.kernelId]);
           return (
             <article key={entry.kernelId} data-testid={`settings-kernel-${entry.kernelId}`} className="rounded-2xl border border-black/10 bg-surface-modal p-5 dark:border-white/10">
               <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
@@ -72,6 +76,8 @@ export function KernelSettings() {
                   <div className="flex flex-wrap items-center gap-2">
                     <h3 className="text-lg font-semibold">{entry.displayName}</h3>
                     <Badge variant="outline">{t(`common:kernels.states.${runtime.state}`)}</Badge>
+                    {needsRestart && <Badge variant="secondary">{t('kernels.appRestartRequired')}</Badge>}
+                    {activationPending && <Badge variant="secondary">{t('kernels.activationPending')}</Badge>}
                     {entry.updateAvailable && <Badge variant="secondary">{t('kernels.updateAvailable')}</Badge>}
                   </div>
                   <dl className="mt-3 grid gap-x-5 gap-y-1 text-xs text-muted-foreground sm:grid-cols-2">
@@ -80,6 +86,16 @@ export function KernelSettings() {
                     <div className="flex justify-between gap-2"><dt>{t('kernels.generation')}</dt><dd>{runtime.generation}</dd></div>
                     <div className="flex justify-between gap-2"><dt>{t('kernels.memory')}</dt><dd>{formatBytes(runtime.rssBytes)}</dd></div>
                   </dl>
+                  {needsRestart && (
+                    <p role="status" className="mt-3 text-xs text-yellow-700 dark:text-yellow-400">
+                      {t('kernels.appRestartRequiredDescription')}
+                    </p>
+                  )}
+                  {activationPending && (
+                    <p role="status" className="mt-3 text-xs text-yellow-700 dark:text-yellow-400">
+                      {t('kernels.activationPendingDescription', { version: entry.installation.desiredVersion })}
+                    </p>
+                  )}
                   {progress[entry.kernelId] && pending[entry.kernelId] && (
                     <KernelProgress progress={progress[entry.kernelId]!} />
                   )}
@@ -106,10 +122,10 @@ export function KernelSettings() {
                         {runtime.state === 'ready' || runtime.state === 'starting' ? (
                           <ActionButton testId={`settings-kernel-stop-${entry.kernelId}`} icon={Square} label={t('kernels.stop')} pending={pending[entry.kernelId] === 'stop'} onClick={() => void stop(entry.kernelId)} />
                         ) : (
-                          <ActionButton testId={`settings-kernel-start-${entry.kernelId}`} icon={Play} label={t('kernels.start')} pending={pending[entry.kernelId] === 'start'} onClick={() => void start(entry.kernelId)} />
+                          <ActionButton testId={`settings-kernel-start-${entry.kernelId}`} icon={Play} label={t('kernels.start')} pending={pending[entry.kernelId] === 'start'} disabled={busy || needsRestart || !entry.installation.activeVersion} onClick={() => void start(entry.kernelId)} />
                         )}
-                        <ActionButton testId={`settings-kernel-restart-${entry.kernelId}`} icon={RefreshCw} label={t('kernels.restart')} pending={pending[entry.kernelId] === 'restart'} disabled={runtime.state !== 'ready'} onClick={() => void restart(entry.kernelId)} />
-                        {entry.updateAvailable && <ActionButton testId={`settings-kernel-update-${entry.kernelId}`} icon={Download} label={t('kernels.update')} pending={pending[entry.kernelId] === 'update'} onClick={() => void update(entry.kernelId)} />}
+                        <ActionButton testId={`settings-kernel-restart-${entry.kernelId}`} icon={RefreshCw} label={t('kernels.restart')} pending={pending[entry.kernelId] === 'restart'} disabled={runtime.state !== 'ready' || busy || needsRestart} onClick={() => void restart(entry.kernelId)} />
+                        {(entry.updateAvailable || activationPending) && <ActionButton testId={`settings-kernel-update-${entry.kernelId}`} icon={Download} label={t('kernels.update')} pending={pending[entry.kernelId] === 'update'} disabled={busy || !entry.installAllowed} onClick={() => void update(entry.kernelId)} />}
                       </>
                     )}
                   </div>

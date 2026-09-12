@@ -5,8 +5,8 @@ This file records the redistribution review for optional ClawX kernel runtime ar
 ## OpenClaw
 
 - Project: `openclaw/openclaw`
-- Frozen release: `2026.7.1-2`
-- Upstream commit: `0790d9f593ad30c940ed93b5872a8cf6d6f3cf8c`
+- Frozen release: `2026.9.4`
+- Upstream commit: `3a9d69db306cd7f081e06254cb89c4bcc14a7107`
 - License: MIT
 - Distribution model: a separately downloadable, immutable runtime artifact produced by ClawX CI.
 - Modifications: reviewed ClawX patch series declared in `kernels/openclaw/source.json`; modified artifacts must identify the upstream version and ClawX patch provenance.
@@ -15,8 +15,8 @@ This file records the redistribution review for optional ClawX kernel runtime ar
 ## DeepSeek Harness
 
 - Project: `deepseek-ai/deepseek-harness`
-- Frozen release: `0.1.3-alpha.1` (`dsh-v0.1.3-alpha.1`)
-- Upstream commit: `d347e703908d0406b7a7ef80e3a0e594d86b2215`
+- Frozen release: `0.1.5-rc.2` (`dsh-v0.1.5-rc.2`, prerelease)
+- Upstream commit: `fb2c4b9e698e30edb738bca4cf0618587db7d203`
 - License: MIT
 - Distribution model: a separately downloadable, immutable runtime artifact produced by ClawX CI.
 - Modifications: ClawX persistence/ACP/control bridge packages and any patch series are declared in `kernels/deepseek-harness/source.json` and the artifact provenance.
@@ -25,7 +25,7 @@ This file records the redistribution review for optional ClawX kernel runtime ar
 ## Node.js runtime
 
 - Project: Node.js
-- Frozen runtime: `24.15.0` (module ABI 137)
+- Frozen runtime: `24.20.0` (module ABI 137)
 - Source: official per-platform archives recorded in `kernels/node-runtime.json`
 - License: MIT plus the third-party notices included in the official Node.js distribution.
 - Distribution model: every kernel artifact contains its own minimal, SHA-256-verified runtime; it is not shared through the host app or another kernel installation.

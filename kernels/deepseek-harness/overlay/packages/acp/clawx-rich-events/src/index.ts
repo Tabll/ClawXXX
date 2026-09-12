@@ -1,11 +1,11 @@
 /**
  * Lossless rich presentation projection for ClawX's DeepSeek Harness bridge.
  *
- * Live assistant frames drive incrementality; v2 Session settlements supply
+ * Live assistant frames drive incrementality; V3 Session settlements supply
  * tools and provider usage. This companion owns no history and writes no files.
  */
 import type { Context } from '@deepseek-ai/cordis'
-import type { SessionEvent, SessionId, Session } from '@deepseek-ai/dsh-session'
+import { isAppendSurfaceEvent, type SessionEvent, type SessionId, type Session } from '@deepseek-ai/dsh-session'
 import type { AssistantStreamFrame } from '@deepseek-ai/dsh-agent'
 import type { TokenUsage } from '@deepseek-ai/dsh-llm'
 import type {} from '@deepseek-ai/dsh-tool-todo'
@@ -105,6 +105,10 @@ export function projectAssistantStreamFrame(frame: AssistantStreamFrame): Sessio
 
 /** Map one DSH durable event to zero or more strict ACP session updates. */
 export function projectSessionEvent(event: SessionEvent, contextWindow = 0): SessionUpdate[] {
+  // V3 replacement copies rewrite model context, not the human transcript or
+  // provider billing. Their new sequence numbers must not cause duplicate
+  // usage/tool settlements. Attempts remain billable even without a surface.
+  if ((event.type === 'assistant/message' || event.type === 'tool/result') && !isAppendSurfaceEvent(event)) return []
   switch (event.type) {
     case 'tool/call':
       return [{

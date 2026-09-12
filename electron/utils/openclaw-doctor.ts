@@ -1,9 +1,11 @@
-import { app, utilityProcess } from 'electron';
+import { app } from 'electron';
+import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { getOpenClawDir, getOpenClawEntryPath } from './paths';
 import { logger } from './logger';
 import { getUvMirrorEnv } from './uv-env';
+import { buildManagedOpenClawEnvironment, requireOpenClawRuntimeLocation } from '../kernels/openclaw/runtime-location';
 
 const OPENCLAW_DOCTOR_TIMEOUT_MS = 60_000;
 const MAX_DOCTOR_OUTPUT_BYTES = 10 * 1024 * 1024;
@@ -102,15 +104,17 @@ async function runDoctorCommandWithArgs(
   );
 
   return await new Promise<OpenClawDoctorResult>((resolve) => {
-    const child = utilityProcess.fork(entryScript, args, {
+    const child = spawn(requireOpenClawRuntimeLocation().nodeExecutable, [entryScript, ...args], {
       cwd: openclawDir,
       stdio: 'pipe',
-      env: {
+      env: buildManagedOpenClawEnvironment(undefined, {
         ...process.env,
         ...uvEnv,
         PATH: finalPath,
         OPENCLAW_NO_RESPAWN: '1',
-      } as NodeJS.ProcessEnv,
+      }),
+      windowsHide: true,
+      shell: false,
     });
 
     let stdout = '';

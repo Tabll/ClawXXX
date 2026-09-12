@@ -3,9 +3,9 @@ import { Context } from '@deepseek-ai/cordis'
 import { type GenerateOptions, LlmAdapter, type LlmResolvedModelInfo, type StreamChunk } from '@deepseek-ai/dsh-llm'
 import AgentLoop from '@deepseek-ai/dsh-agent-loop'
 import { mountAgentLoopTestDependencies } from '@deepseek-ai/dsh-agent-loop-testkit'
-import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import ApprovalService from '@deepseek-ai/dsh-user-approval'
 import UserQuestionService from '@deepseek-ai/dsh-user-questions'
+import { SessionSeq } from '@deepseek-ai/dsh-session'
 import { ClawXDshAcpBridge, type ClawXDshKernelEvent } from '../src/index.ts'
 
 class ScriptedAdapter extends LlmAdapter {
@@ -56,10 +56,9 @@ describe('ClawX DeepSeek Harness bridge', () => {
 
   async function setup(scripts: Array<StreamChunk[] | 'hang'>) {
     ctx = new Context()
-    await mountAgentLoopTestDependencies(ctx, { systemPrompt: { persona: '' } })
+    await mountAgentLoopTestDependencies(ctx, { systemPrompt: { personaPrefix: '', personaSuffix: '' } })
     await ctx.plugin(ApprovalService, { policy: 'ask' })
     await ctx.plugin(UserQuestionService)
-    await ctx.plugin(SessionProjectionRegistry)
     await ctx.plugin(AgentLoop, { agents: [] })
     const adapter = new ScriptedAdapter(scripts)
     ctx.llm.registerAdapter(['mock'], adapter)
@@ -70,8 +69,7 @@ describe('ClawX DeepSeek Harness bridge', () => {
 
   it('hydrates canonical roles, emits rich ordered events, checkpoints, and disposes its agent', async () => {
     ctx = new Context()
-    await mountAgentLoopTestDependencies(ctx, { systemPrompt: { persona: '' } })
-    await ctx.plugin(SessionProjectionRegistry)
+    await mountAgentLoopTestDependencies(ctx, { systemPrompt: { personaPrefix: '', personaSuffix: '' } })
     await ctx.plugin(AgentLoop, { agents: [] })
     ctx.llm.registerAdapter(['mock'], new ScriptedAdapter([response('done')]))
     const events: ClawXDshKernelEvent[] = []
@@ -188,6 +186,32 @@ describe('ClawX DeepSeek Harness bridge', () => {
     await bridge.close()
   })
 
+  it('keeps V3 model-only replacements out of canonical text, images, and billing', async () => {
+    const { bridge, events } = await setup([response('visible answer')])
+    let copied = false
+    ctx!.on('session/event', (session, event) => {
+      if (copied || event.type !== 'assistant/message') return
+      copied = true
+      ctx!.emit('session/event', session, {
+        ...event, seq: SessionSeq(event.seq + 10_000),
+        surfaceOp: { op: 'replace', startSeq: event.seq, endSeq: event.seq },
+        data: { ...event.data, message: { ...event.data.message, content: [{ type: 'text', text: 'model-only summary' }] } },
+      })
+    })
+    await bridge.prompt({
+      identity: { conversationId: 'conversation', turnId: 'turn', runId: 'v3-replacement' },
+      context: [], agentId: 'default', agentPersona: 'private system persona',
+      workspaceUri: process.cwd(), providerId: 'mock', modelId: 'mock',
+    })
+    expect(copied).toBe(true)
+    expect(events.filter(event => event.event.kind === 'assistant.final').map(event => event.event.payload))
+      .toEqual([{ text: 'visible answer' }])
+    expect(events.filter(event => event.event.kind === 'usage')).toHaveLength(1)
+    expect(JSON.stringify(events)).not.toContain('model-only summary')
+    expect(JSON.stringify(events)).not.toContain('private system persona')
+    await bridge.close()
+  })
+
   it('keeps an interrupted visible prefix on cancel, without synthesizing missing usage', async () => {
     const { bridge, events } = await setup(['hang'])
     const identity = { conversationId: 'conversation', turnId: 'turn', runId: 'partial-cancel' }
@@ -263,7 +287,9 @@ describe('ClawX DeepSeek Harness bridge', () => {
       modelId: 'mock',
     })
     expect(adapter.requests).toHaveLength(1)
-    expect(adapter.requests[0]?.system).toContain('Always cite primary sources.')
+    expect(adapter.requests[0]).not.toHaveProperty('system')
+    expect(JSON.stringify(adapter.requests[0]?.messages.filter(message => message.role === 'system')))
+      .toContain('Always cite primary sources.')
     expect(ctx!.agents.roots()).toEqual([])
     await bridge.close()
   })
@@ -292,7 +318,8 @@ describe('ClawX DeepSeek Harness bridge', () => {
       modelId: 'mock',
     })
     expect(mounted).toEqual(['research'])
-    expect(adapter.requests[0]?.system).toContain('Use the native research tool composition.')
+    expect(JSON.stringify(adapter.requests[0]?.messages.filter(message => message.role === 'system')))
+      .toContain('Use the native research tool composition.')
     expect(ctx!.agents.roots()).toEqual([])
     await bridge.close()
   })

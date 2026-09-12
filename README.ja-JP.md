@@ -159,9 +159,9 @@ ClawXは **Main-owned multi-kernel + unified Host API architecture**を採用し
 
 > ClawX 0.6はoptional CI-built OpenClaw/DSHと単一Main-owned SQLite/Blob authorityを実装しています。Protected cross-platform signing、promotion、packaged-test evidenceが不足する場合、public releaseはfail closedです。[設計](docs/zh-CN/multi-kernel-design.md)、[TODO](TODO.md)、[security/support](docs/ja-JP/runtime-security-support.md)、[data policy](docs/ja-JP/data-security-retention.md)を参照してください。
 
-DSH の現在のソースは `0.1.3-alpha.1+clawx.13` に対応し、v2 ストリームと確定イベントを共有 SQLite に接続します。まだ alpha であり、上流は性能低下を報告しています。インストール済み runtime の更新には新しい CI artifact の検証・公開が必要です。[互換性の詳細](harness/reference/deepseek-harness-0.1.3-upgrade.md)。
+DSH の候補ソースは `0.1.5-rc.2+clawx.14`（プレリリース）です。V3 の system message、Run ごとの persona、append 起点の確定イベントに対応し、モデル文脈の置換による応答・使用量の二重計上を防ぎます。共有 SQLite が唯一の保存先であり、インストール済み runtime の更新には CI artifact の検証・公開が必要です。[今回の互換性設計](harness/reference/kernel-upgrade-2026-09-12.md)。
 
-OpenClaw のソースと開発依存関係は `2026.9.2+clawx.13` に更新済みです。本番 bridge は共有 SQLite 履歴から Run ごとのメモリ session を作成し、新しい Agents・モデル・権限設定と 7 種の Channel plugin に対応します。隔離した実 Gateway/ACP と packaged payload でツール、キャンセル、クラッシュ復旧、入場拒否、native 履歴の非永続化を検証しました。[設計と検証結果](harness/reference/openclaw-2026.9.2-upgrade.md)。
+OpenClaw のソースと開発依存関係は `2026.9.4+clawx.14` です。Discord/WhatsApp も同期し、`.mjs` パッチは容量制限付きメモリ ACP、共有履歴、Main 管理の設定、fail-closed な Channel 受付を維持します。Node は 24.20.0 のままです。候補のローカル検証と未完了のプラットフォーム検証は[今回の設計記録](harness/reference/kernel-upgrade-2026-09-12.md)を参照してください。
 
 両方の +clawx.13 カーネルは Node 24.20.0 を使用し、5 ターゲットの staging 全 25 ジョブ、macOS 公証 4 件（Accepted）、同一ソースの 3 プラットフォーム Electron E2E に合格しました。[CI 検証記録](harness/reference/windows-runtime-ci-repair.md)を参照してください。Windows は artifact 署名のみで、Authenticode は使用しません。本番 catalog の状態、保護された公開の復旧と実配信検証は[公開記録](harness/reference/kernel-automatic-release.md)で追跡し、実アカウント検証は未完了です。
 
@@ -186,6 +186,12 @@ catalog 置換後は回数を制限した伝播確認で正確な署名済み版
 > プロセス図、設定の調整、ACPファイルアクティビティのセマンティクス、Gatewayのトラブルシューティングについては [docs/ja-JP/architecture.md](docs/ja-JP/architecture.md) を参照してください。
 
 ## 開発
+
+`pnpm dev` は初回に固定された独立カーネル Node（24.20.0）を準備します。Gateway・ACP・CLI・Doctor は Electron Helper を使わず、インストール済みカーネルは検証済みパッケージ内の Node を使用します。Electron を直接起動する前に `pnpm run kernel:dev:prepare` を実行してください。ローカルでのダウンロードには独立に検証した本番公開鍵も必要です。[起動・公開鍵の設定](harness/reference/electron-kernel-node-launch.md)を参照してください。
+
+Agent 認証の書き込みは選択したカーネルの SQLite SDK を使用し、ClawX は不完全なネイティブ schema の作成やバージョンの上書きを行いません。既存データの修復はバックアップと隔離コピーでの検証後に実施します。[所有権と修復](harness/reference/openclaw-agent-schema-ownership.md)を参照してください。
+
+開発時も配布アプリも、開発用ディレクトリよりインストール済みカーネルを優先します。停止中の DeepSeek Harness はインストール・修復後すぐに起動できます。OpenClaw の有効化後は ACP/Channels 接続の再構築に ClawX 全体の再起動が必要です。設定では「アプリの再起動」と「ダウンロード済み・有効化待ち」（カーネル停止後に更新）を区別します。[選択と有効化](harness/reference/installed-kernel-activation.md)を参照してください。
 
 ### 前提条件
 
