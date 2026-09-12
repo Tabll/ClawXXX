@@ -76,6 +76,7 @@ jobs:
           pnpm exec vitest run
           tests/unit/kernel-runtime-build.test.ts
           tests/unit/kernel-platform-security.test.ts
+          tests/unit/openclaw-bundle-cleanup.test.ts
           tests/unit/deepseek-sandbox-temp-parity-patch.test.ts
           --maxWorkers=1
       - name: Fetch exact OpenClaw npm patch base
@@ -176,6 +177,13 @@ jobs:
           --report temp/reports/licenses.json
       - name: Download and verify independent Node 24 runtime
         run: node scripts/kernel-runtime/download-node-runtime.mjs --platform ${{ matrix.target.platform }} --arch ${{ matrix.target.arch }} --destination temp/node-runtime
+      - name: Exercise the cleaned OpenClaw Koffi native closure
+        timeout-minutes: 1
+        if: matrix.kernel == 'openclaw'
+        shell: bash
+        run: |
+          if [ "${{ matrix.target.platform }}" = "win32" ]; then node_bin=temp/node-runtime/node.exe; else node_bin=temp/node-runtime/bin/node; fi
+          "$node_bin" scripts/kernel-runtime/probe-openclaw-koffi.mjs --package-dir build/openclaw --report temp/reports/openclaw-koffi.json
       - name: Exercise the real OpenClaw Gateway, ACP, storage fence and all Channel modules before sealing
         timeout-minutes: 15
         if: matrix.kernel == 'openclaw'

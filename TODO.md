@@ -585,6 +585,7 @@
 - [ ] `MK-2407` 远端构建、公证、单/双内核安装及受保护生产发布验收；仅在真实成功后勾选，不用本地测试代替。
 - [x] `MK-2408` #22 前置检查发现 Windows Mach-O fixture 的 POSIX-only 路径断言，已改为平台原生完整路径比较与 finally 清理；保留所有签名/native 门禁，须新 SHA 完整构建验证，未声称 Windows 已通过。
 - [x] `MK-2409` 修复真实 Node Electron fixture 丢失 Linux XAUTHORITY 的问题；最小环境 allowlist 继续排除用户数据根和凭据，加入三个跨平台环境单测。53 focused / 2512 全量 unit-contract、真实 Electron 两代 Gateway（10.6 s）、typecheck/lint/comms/task 检查通过；保留 X 认证，Windows/Linux 实机结果待新 SHA CI。
+- [x] `MK-2410` 修复 #23 OpenClaw Windows 缺少 Koffi loader：正式清理与测试共用实现，保留完整 runtime src；新增 9 项真实包清理/加载/缺文件/外部回退/门禁回归，五目标签名前及制品解压后执行原生 FFI 探针。59 focused / 2521 全量测试通过；隔离重打包后的 Node 24.20.0 Koffi、registry、真实 Gateway/ACP/7 Channels、存储 fence、native 和 626 包许可证审计通过。已记录 #23 的 9/10 build、同 SHA E2E 全通过及未发布事实；`MK-2407` 继续待新 SHA 远端验收。
 
 ## 每个实现 PR 的最低检查
 

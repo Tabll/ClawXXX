@@ -149,6 +149,19 @@ try {
 async function smokeOpenClawManagedEntrypoint({ nodePath, extracted, descriptor, managedDataRoot }) {
   const chatPath = inside(extracted, descriptor.entrypoints.chat);
   if (!existsSync(chatPath)) throw new Error('OpenClaw managed chat entrypoint is missing');
+  const koffi = spawn(nodePath, [
+    resolve('scripts/kernel-runtime/probe-openclaw-koffi.mjs'),
+    '--package-dir', join(extracted, 'runtime', 'kernel'),
+    ...(args.has('--evidence-dir') ? ['--report', resolve(args.get('--evidence-dir'), 'openclaw-sealed-koffi.json')] : []),
+  ], { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
+  const koffiResult = await collectOpenClawProbe(koffi, { timeoutMs: 15_000, stdoutLimit: 16384, stderrLimit: 16384 });
+  if (koffiResult.failure || koffiResult.exitCode !== 0 || koffiResult.signal !== null) {
+    throw new Error(`Sealed OpenClaw Koffi closure failed (code=${koffiResult.exitCode}, signal=${koffiResult.signal}, reason=${koffiResult.failure ?? 'exit'}): ${koffiResult.stderr}`);
+  }
+  const koffiEvidence = JSON.parse(koffiResult.stdout);
+  if (!koffiEvidence.ok || !koffiEvidence.payloadOnly || koffiEvidence.nativePidCalls !== 2) {
+    throw new Error('Sealed OpenClaw Koffi native evidence is invalid');
+  }
   const stateDir = join(managedDataRoot, 'config', 'openclaw');
   const cacheDir = join(managedDataRoot, 'cache', 'openclaw');
   const tempDir = join(cacheDir, 'tmp');
@@ -209,7 +222,7 @@ async function smokeOpenClawManagedEntrypoint({ nodePath, extracted, descriptor,
   if (!evidence.ok || evidence.version !== expectedVersion || evidence.nativeDurableHistory !== false) {
     throw new Error('Sealed OpenClaw real runtime evidence is invalid');
   }
-  return { managed: true, version: expectedVersion, realRuntime: evidence };
+  return { managed: true, version: expectedVersion, koffi: koffiEvidence, realRuntime: evidence };
 }
 
 async function smokeDeepSeekHarnessHost({ nodePath, extracted, descriptor, managedDataRoot }) {

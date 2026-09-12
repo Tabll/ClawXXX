@@ -53,6 +53,18 @@ Frozen inputs must retain LF bytes on Windows; raw upstream and prepared lockfil
 
 DSH node-addon-system combines Landlock and POSIX flock: use the full native/system build, not the root host-addon-only shortcut. Audit exact macOS/Linux binaries, retain static Landlock but prune non-target and musl flock packages, and keep the Windows Koffi path. OpenClaw's compiled .mjs patch targets and bounded ACP memory ledger must exist in the actual payload; successful Gateway health alone does not prove ACP readiness. A diagnostic failure before the first provider request must preserve the original error.
 
+Runtime cleanup must follow the pinned package's actual import graph, not assume
+that a directory named `src` contains only build inputs. Koffi 3.x executes
+`src/koffi/index.cjs` and the nested `src/static.cjs` at runtime. Share the actual
+production cleanup with regression fixtures made from the frozen package, then
+apply native target pruning and load both CJS and ESM with real FFI calls in a
+fresh standalone Node. Reject developer/ancestor package and addon fallbacks.
+Run this closure probe on all five OpenClaw targets before signing and again on
+the extracted artifact; a platform-specific Gateway path may never import it.
+Missing loader/addon negative tests and existing Gateway/ACP/Channel and complete
+native allowlist checks remain mandatory. See
+`harness/reference/kernel-upgrade-2026-09-12.md`.
+
 Native allowlists must use the integrity-pinned package's actual installed
 layout, not an inferred shared layout across operating systems. For esbuild,
 Windows has `@esbuild/win32-x64/esbuild.exe` at the package root; macOS/Linux use

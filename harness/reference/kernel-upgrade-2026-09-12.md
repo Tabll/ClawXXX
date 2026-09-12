@@ -64,6 +64,18 @@ DSH 是 release candidate，不是稳定版。OpenClaw 同步冻结 Discord/What
 - 同 SHA Linux E2E 的真实 Node fixture 仅传 DISPLAY、漏传 xvfb-run 的 XAUTHORITY，隔离 HOME 后无法认证 X server（147 passed，唯一失败为该真实启动测试）。将 OS 环境 allowlist 提取为纯函数，保留 DISPLAY＋XAUTHORITY，新增 Linux 认证路径、Windows 原生变量和空环境回归，同时验证不继承用户 home、provider secrets 或 Node/Electron 注入参数。不禁用 X 认证，不跳过真实 Gateway 回归。
 - 上述两项环境修复后：53 focused 与 2512 全量宿主测试通过；本机真实 Electron 已有 DB 两代 Gateway 重跑通过（10.6 s），typecheck/lint/comms 与 task validate/dry-run 通过。Windows/Linux 真实结果必须由修复后新 SHA 的 CI 给出。
 
+## #23：Windows Koffi 运行时闭包修复
+
+- [`afa726dc` 的 #23 构建](https://github.com/Tabll/ClawXXX/actions/runs/34683254264) 已结束：9/10 build job 通过，仅 OpenClaw Windows 在真实 Gateway 启动时失败；4 个 macOS 构建均完成签名及 Accepted 公证。依赖全矩阵的单/双内核 clean-machine 验收被跳过，不能宣称本轮制品已完成验收。
+- [同 SHA 三平台 Electron E2E #42](https://github.com/Tabll/ClawXXX/actions/runs/34683159764) 全部通过，证明此前 Windows 路径断言与 Linux XAUTHORITY 修复已获远端验证。[推广 #15](https://github.com/Tabll/ClawXXX/actions/runs/34684509999) 的只读准入结果为 `eligible:false`，publish job 被跳过；workflow 的绿色不代表新包已上传生产 COS。
+- [Windows 失败 job](https://github.com/Tabll/ClawXXX/actions/runs/34683254264/job/103525637777) 的原始异常为 `Cannot find module './src/koffi/index.cjs'`，Node 24.20.0 / exit 1。旧 bundler 把 `node_modules/koffi/src` 当作源码垃圾整目录删除；冻结的 Koffi 3.1.6 根入口却依赖 `src/koffi/index.cjs`，后者还依赖 `src/koffi/src/static.cjs`。SQLite 外层附带的 cache/disk 建议不是本次缺模块的根因。
+- 将现有清理函数无副作用提取到 `scripts/openclaw-bundle-cleanup.mjs`，正式 bundler 与测试调用同一实现。只撤销 Koffi `src` 的整目录删除，完整保留上游运行时树；其 vendor/doc、其他既有垃圾清理和精确目标原生裁剪保持不变，不引入源码构建或任意 native allowlist。
+- 新回归复制当前锁定的真实 Koffi 和本机 native 包，经过正式清理及平台裁剪后，通过新的独立 Node 探针加载 CJS/ESM、各调用一次系统进程 ID 函数。缺 CJS/ESM/嵌套 loader、缺 native、开发者 JS/native ancestor 回退必须失败；测试只改自己的临时目录。
+- 五目标 OpenClaw CI 在独立 Node 下载后、公证签名前执行同一探针；真实签名制品解压后的 smoke 再执行并记录证据。原有完整 Gateway/ACP/7 Channels、规范存储、单/双内核安装和生产审批不减少，Windows 仍是 artifact-signature-only。
+- 本次只是修复尚未发布的 `+clawx.14` 候选打包代码，冻结源码/补丁/Node 及制品版本不变；不覆盖已经发布的 immutable bytes。重新提交后必须 dispatch 新 SHA 的 all 矩阵，不能重跑 #23 旧代码来代替。
+- 已复核 README 英/中/日/俄：现有候选版本、用户操作和升级文档入口仍准确。本次无 UI、用户流程或 API 变化，详细构建修复与验收状态记在本文，不新增用户此前暂缓的安装状态 E2E。
+- 本轮本地结果：新增 9 项回归，59 项 focused 与全量 274 文件 / 2521 项通过，2 文件 / 6 项既有条件跳过；typecheck、lint（0 errors / 7 existing warnings）、来源摘要、comms replay/compare、Harness CI 19 项、task validate/dry-run 通过。新生成的隔离完整包位于被忽略的 `temp/kernel-koffi-fix-20260912.2hd679/`：Node 24.20.0 的 Koffi CJS/ESM/两次 native PID 调用、registry、完整 Gateway/ACP/工具/取消/两代重启/7 Channels/入站拒绝/无原生历史均通过；精确 native 审计及 626 包许可证审计通过。Gateway 首次在沙箱中被 loopback `listen EPERM` 拦截，获准在沙箱外以同一隔离数据重跑成功；未改动现有用户数据。这些 macOS arm64 本地结果仍不是 Windows、签名制品或远端完整矩阵已通过的证据。
+
 ## 主要剩余风险
 
 DSH 仍为 RC；真实 Provider、长上下文、消息平台账号及非本机架构须继续验收。两个内核的上游 schema/插件启动路径都可能产生跨平台特有故障，macOS 本地通过不能替代 Windows/Linux 或 Apple 公证。继续保留严格签名、版本化包名、catalog-last 推广和发布成功后的安全旧包清理，不降低权限或平台闸门。
