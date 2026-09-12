@@ -53,6 +53,14 @@ DSH 是 release candidate，不是稳定版。OpenClaw 同步冻结 Discord/What
 
 本地候选验证不是五平台签名制品验收。此前 `+clawx.13` 的 CI / 公证 / COS 成功记录只证明旧包；不会复用为 `+clawx.14` 的证据。提交推送后必须显式 dispatch `kernel-runtime-build.yml` 的 all 矩阵，push 本身不会触发此 workflow。生产推广仍须同 SHA 三平台 E2E、完整单/双内核制品验收及原有正常环境审批；Windows 暂不启用 Authenticode。此任务不手动改写线上 catalog，也不删除旧 COS 对象。
 
+## 首次远端构建记录
+
+- 代码提交：[`298c4ae152c1e2b816d05b8834738dcab346dbfc`](https://github.com/Tabll/ClawXXX/commit/298c4ae152c1e2b816d05b8834738dcab346dbfc)，已推送至 `Tabll/ClawXXX/main`。
+- [Build signed kernel runtimes #22](https://github.com/Tabll/ClawXXX/actions/runs/34682771896)：2026-09-12 16:14（UTC+8）显式 dispatch；`kernel=all`，两内核 × 五平台；COS staging prefix 与 `artifact-signature-only` 策略保持原值。
+- [同 SHA Electron E2E](https://github.com/Tabll/ClawXXX/actions/runs/34682752346)：由上述 push 自动触发，覆盖 Linux/macOS/Windows。
+- 16:16 使用正常 Review deployments → Approve and deploy 批准 `kernel-staging`；10 个 build job 随后开始执行，没有使用 Start all waiting jobs 旁路。
+- 本记录创建时两条 workflow 仍在运行，公证、完整单/双内核安装、同 SHA E2E 以及受保护生产推广尚未验收。后续仅补充此记录的文档提交不改变 #22 绑定的代码 SHA，不重复启动整套内核矩阵。
+
 ## 主要剩余风险
 
 DSH 仍为 RC；真实 Provider、长上下文、消息平台账号及非本机架构须继续验收。两个内核的上游 schema/插件启动路径都可能产生跨平台特有故障，macOS 本地通过不能替代 Windows/Linux 或 Apple 公证。继续保留严格签名、版本化包名、catalog-last 推广和发布成功后的安全旧包清理，不降低权限或平台闸门。

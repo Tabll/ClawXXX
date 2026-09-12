@@ -581,7 +581,7 @@
 - [x] `MK-2403` 适配 DeepSeek V3 append/replace 与用量去重、Persona、SessionHandle 和显式 Host 编译图；三份 patch 严格应用，Windows temp 限制原样保留；Host 编译、13 文件/70 项 overlay 与真实沙箱测试通过。独立生产部署闭包实际启动 2219 ms，工具读写、只读拒绝、权限和无原生历史检查通过。
 - [x] `MK-2404` 双内核 artifact revision 升到 14；源码/锁/补丁/overlay 摘要链、宿主依赖及五目标精确 native 闭包更新。macOS arm64 实际 native/license 审计通过；DSH CI 构建新 system addon＋Linux Landlock，包装回归前置；Node 24.20.0 与签名/存储闸门保留。
 - [x] `MK-2405` 2509 unit/contract passed、6 既有条件跳过；70 DSH tests、12 项聚焦 Electron 回归通过（真实已有 Agent DB 两代 Gateway、共享 SQLite 跨内核会话、Agents/Channels/Cron/Skills/包生命周期）；typecheck、lint（0 errors / 7 existing warnings）、comms replay/compare、Harness CI（19 tests）、task validate/dry-run 和 diff 检查通过。四语 README 与 [升级设计/证据](harness/reference/kernel-upgrade-2026-09-12.md) 已同步；未新增暂缓的安装状态 E2E。
-- [ ] `MK-2406` 审核并提交相关代码，推送 Tabll/ClawXXX main，启动两个内核五平台完整 staging 构建，记录同 SHA E2E 与构建链接。
+- [x] `MK-2406` 已提交并推送 `298c4ae152c1e2b816d05b8834738dcab346dbfc` 至 Tabll/ClawXXX main；显式启动 [完整 staging 构建 #22](https://github.com/Tabll/ClawXXX/actions/runs/34682771896)，同 SHA [三平台 Electron E2E](https://github.com/Tabll/ClawXXX/actions/runs/34682752346) 已自动启动。2026-09-12 16:16（UTC+8）正常批准 kernel-staging，10 个 build job 开始执行；未旁路门禁或提前批准生产。该勾选只代表提交与触发完成，不代表远端验收通过。
 - [ ] `MK-2407` 远端构建、公证、单/双内核安装及受保护生产发布验收；仅在真实成功后勾选，不用本地测试代替。
 
 ## 每个实现 PR 的最低检查
