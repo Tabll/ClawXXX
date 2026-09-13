@@ -10,13 +10,22 @@ import { CLAWX_DATA_SCHEMA_VERSION } from '@electron/data/schema';
 import { asConversationId } from '@shared/conversations/contracts';
 import { asAgentId, asCronJobId } from '@shared/domains/identity';
 import { createCanonicalSqliteFixture } from '../fixtures/kernels/canonical-sqlite-fixture';
-import { awaitArtifactOperations } from '../fixtures/kernels/artifact-test-support.mjs';
+import { assertArtifactBytesEqual, awaitArtifactOperations, createArtifactTestTrace } from '../fixtures/kernels/artifact-test-support.mjs';
 
 const fixtures: Awaited<ReturnType<typeof createCanonicalSqliteFixture>>[] = [];
 const services: ClawXDataService[] = [];
 const roots: string[] = [];
 let prepared: Awaited<ReturnType<typeof fixture>>;
 const policies: unknown[] = [];
+const traces: ReturnType<typeof createArtifactTestTrace>[] = [];
+let fixtureNumber = 0;
+
+function traceScenario(name: string) {
+  const prefix = process.env.CLAWX_SQLITE_FIXTURE_REPORT;
+  const trace = createArtifactTestTrace(prefix ? `${prefix}-${name}.json` : undefined);
+  traces.push(trace);
+  return trace;
+}
 
 beforeEach(async () => {
   policies.length = 0;
@@ -30,19 +39,26 @@ beforeEach(async () => {
     });
     return result;
   });
-  prepared = await fixture();
+  const prefix = process.env.CLAWX_SQLITE_FIXTURE_REPORT;
+  prepared = await fixture(prefix ? `${prefix}-${++fixtureNumber}-schema.json` : undefined);
 }, 5_000);
 
-afterEach(async () => {
+afterEach(async ({ task }) => {
+  let ok = false;
   try {
+    for (const trace of traces) trace.phase('cleanup-start');
     await awaitArtifactOperations(services.splice(0).map(service => service.close()));
     for (const fixture of fixtures.splice(0)) fixture.dispose();
     for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true, maxRetries: 3 });
-  } finally { vi.restoreAllMocks(); }
+    ok = task.result?.state !== 'fail';
+  } finally {
+    for (const trace of traces.splice(0)) trace.stop(ok);
+    vi.restoreAllMocks();
+  }
 });
 
-async function fixture() {
-  const seed = await createCanonicalSqliteFixture();
+async function fixture(evidencePath?: string) {
+  const seed = await createCanonicalSqliteFixture(evidencePath);
   fixtures.push(seed);
   const root = mkdtempSync(join(tmpdir(), 'clawx-schema-copy-'));
   roots.push(root);
@@ -51,19 +67,27 @@ async function fixture() {
 
 describe('suite-local canonical SQLite fixtures', () => {
   it('creates the real schema and fsynced independent copies with WAL/FULL and isolated durable Conversation/Cron state', async () => {
+    const trace = traceScenario('isolation');
     const { seed, root } = prepared;
     const flush = vi.spyOn(fs, 'fsyncSync');
     const sourceBytes = readFileSync(seed.databasePath);
     const aPath = join(root, 'a', 'clawx.sqlite');
     const bPath = join(root, 'b', 'clawx.sqlite');
+    trace.phase('copies-start');
     seed.copyTo(aPath);
     seed.copyTo(bPath);
+    trace.phase('copies-fsynced');
     expect(flush).toHaveBeenCalledTimes(2);
-    expect(readFileSync(aPath)).toEqual(sourceBytes);
-    expect(readFileSync(bPath)).toEqual(sourceBytes);
+    trace.phase('compare-a-start');
+    assertArtifactBytesEqual(readFileSync(aPath), sourceBytes);
+    trace.phase('compare-a-end');
+    trace.phase('compare-b-start');
+    assertArtifactBytesEqual(readFileSync(bPath), sourceBytes);
+    trace.phase('compare-b-end');
     expect(statSync(aPath).nlink).toBe(1);
     expect(statSync(bPath).nlink).toBe(1);
     expect(statSync(aPath, { bigint: true }).ino).not.toBe(statSync(bPath, { bigint: true }).ino);
+    trace.phase('sqlite-open');
     const a = new ClawXDataService(aPath);
     const b = new ClawXDataService(bPath);
     services.push(a, b);
@@ -81,8 +105,10 @@ describe('suite-local canonical SQLite fixtures', () => {
     });
     expect(await peer.getConversation(conversationId)).toBeUndefined();
     expect(await peer.listCronJobs()).toEqual([]);
+    trace.phase('isolated-writes-persisted');
     await a.close();
     services.splice(services.indexOf(a), 1);
+    trace.phase('sqlite-reopen');
     const reopened = new ClawXDataService(aPath);
     services.push(reopened);
     expect(await reopened.connect({ role: 'main' }).getConversation(conversationId)).toMatchObject({ title: 'only A' });
@@ -93,10 +119,14 @@ describe('suite-local canonical SQLite fixtures', () => {
     const readback = new DatabaseSync(aPath, { readOnly: true });
     try { expect(readback.prepare('PRAGMA user_version').get()).toMatchObject({ user_version: CLAWX_DATA_SCHEMA_VERSION }); }
     finally { readback.close(); }
-    expect(readFileSync(seed.databasePath)).toEqual(sourceBytes);
+    trace.phase('durable-readback');
+    trace.phase('compare-source-start');
+    assertArtifactBytesEqual(readFileSync(seed.databasePath), sourceBytes);
+    trace.phase('compare-source-end');
   });
 
   it('refuses existing destinations and sidecars without overwriting any bytes', () => {
+    traceScenario('existing-destination');
     const { seed, root } = prepared;
     const destination = join(root, 'existing.sqlite');
     writeFileSync(destination, 'owned sentinel');
@@ -110,6 +140,7 @@ describe('suite-local canonical SQLite fixtures', () => {
   });
 
   it('rejects unclosed, aliased or mutated source bytes before creating a destination', () => {
+    traceScenario('unsafe-source');
     const { seed, root } = prepared;
     const destination = join(root, 'copy.sqlite');
     const wal = `${seed.databasePath}-wal`;
@@ -126,6 +157,7 @@ describe('suite-local canonical SQLite fixtures', () => {
   });
 
   it('disposes only the private source and refuses later copies, leaving owned destination files intact', () => {
+    const trace = traceScenario('dispose');
     const { seed, root } = prepared;
     const destination = join(root, 'retained.sqlite');
     seed.copyTo(destination);
@@ -133,11 +165,14 @@ describe('suite-local canonical SQLite fixtures', () => {
     seed.dispose();
     seed.dispose();
     expect(existsSync(seed.databasePath)).toBe(false);
-    expect(readFileSync(destination)).toEqual(bytes);
+    trace.phase('compare-retained-start');
+    assertArtifactBytesEqual(readFileSync(destination), bytes);
+    trace.phase('compare-retained-end');
     expect(() => seed.copyTo(join(root, 'after-dispose.sqlite'))).toThrow('disposed');
   });
 
   it('propagates a failed fsync and closes its handle without touching the source', () => {
+    const trace = traceScenario('fsync-failure');
     const { seed, root } = prepared;
     const bytes = readFileSync(seed.databasePath);
     const close = vi.spyOn(fs, 'closeSync');
@@ -147,6 +182,8 @@ describe('suite-local canonical SQLite fixtures', () => {
     const fd = flush.mock.calls[0]![0];
     expect(close).toHaveBeenLastCalledWith(fd);
     expect(() => fs.fstatSync(fd)).toThrow(/EBADF/);
-    expect(readFileSync(seed.databasePath)).toEqual(bytes);
+    trace.phase('compare-source-start');
+    assertArtifactBytesEqual(readFileSync(seed.databasePath), bytes);
+    trace.phase('compare-source-end');
   });
 });

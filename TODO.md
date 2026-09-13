@@ -589,6 +589,8 @@
 - [x] `MK-2411` 修复 #24 Windows Cron 轮询时序及 macOS Intel 批量语法检查超时：两个内核分别验证精确 timeout、手动取消、延迟终态和 SQLite 重开；事件 watchdog 保留真实两秒，23 个脚本改为独立真实 Node 校验，CI 始终留存阶段日志。49 focused / 2550 全量通过；独立 Node 24.20.0 的 CI closure 34 项、canonical 150 项均在本机通过，typecheck/lint/source/comms/Harness/task 检查通过。未修改生产调度语义、冻结版本或超时/签名闸门；#24 仍为 8/10 build、同 SHA E2E 全通过、生产未发布，`MK-2407` 保持待远端验收，详见[证据](harness/reference/kernel-upgrade-2026-09-12.md)。
 - [x] `MK-2412` 修复 #25 两个 Windows canonical 组合用例的初始化与准入时序：真实空 schema 在独立 5 秒 setup 内创建并关闭，行为用例使用独占、fsync、hash 校验的独立 SQLite 副本，保持 WAL/FULL、外键、迁移专项及完整单用例恢复链；双内核同时 active 后再释放，按持久化事件验证准确投递与重开结果。新增 5 项 fixture 安全回归及阶段日志；62 focused / 2555 全量通过（6 既有条件跳过），独立 Node 24.20.0 本机 closure 34 / OpenClaw canonical 155 / DSH canonical 97 项通过，typecheck/lint/source/comms/Harness/task 检查通过。生产代码、原测试时限和内核版本不变；#25 仍为 8/10 build、同 SHA E2E 全通过、推广 publish 跳过。只勾选修复与本地验证，`MK-2407` 保持待远端验收，详见[证据](harness/reference/kernel-upgrade-2026-09-12.md)。
 
+- [x] `MK-2413` 修复 #26 两个 macOS Intel 任务中新 fixture 的大 Buffer 深比较超时：改用原生全字节比较，新增 8 项同长损坏/截断/追加/切片/错误输入回归，保留五个真实 SQLite 生命周期用例与全部 fsync/WAL/FULL/重开断言；copy/comparison/SQLite/cleanup 独立阶段日志 always-upload。独立 Node 24.20.0 本机同用例从 851 ms 降到 22 ms，SQLite 阶段均为 5 ms；75 focused / 2563 全量通过（6 既有条件跳过），macOS 默认 worker 的 OpenClaw canonical 155 / DSH canonical 97 项通过，typecheck/lint/source/comms/Harness 检查通过。#26 的 Windows 已全部通过、Intel 公证 Accepted、同 SHA E2E 三平台成功，但整体仍为 8/10 build，生产未发布；未修改生产代码、时限、worker 或冻结输入，`MK-2407` 保持待新 SHA 远端验收，详见[证据](harness/reference/kernel-upgrade-2026-09-12.md)。
+
 ## 每个实现 PR 的最低检查
 
 - [x] 对应 Harness task spec 已创建并通过 `pnpm harness validate --spec ...`。

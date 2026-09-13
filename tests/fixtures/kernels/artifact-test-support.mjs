@@ -1,6 +1,17 @@
+import { Buffer } from 'node:buffer';
 import { appendFileSync, writeFileSync } from 'node:fs';
 import { appendFile, chmod, lstat, realpath } from 'node:fs/promises';
 import { isAbsolute, relative, resolve, sep } from 'node:path';
+
+// Compare all bytes natively. Object-deep-equality enumerates every Buffer
+// property and can exhaust a test deadline without exercising runtime work.
+// Errors deliberately exclude potentially sensitive database/artifact bytes.
+export function assertArtifactBytesEqual(actual, expected) {
+  if (!Buffer.isBuffer(actual) || !Buffer.isBuffer(expected)) {
+    throw new TypeError('Artifact byte comparison requires two Buffers');
+  }
+  if (!actual.equals(expected)) throw new Error('Artifact byte content differs');
+}
 
 // Test-only: the caller owns the mkdtemp root, never a user's installed kernel.
 export async function withWritableArtifactFile(ownedRoot, relativePath, mutate) {

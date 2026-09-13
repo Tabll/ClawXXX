@@ -84,11 +84,14 @@ describe('kernel runtime build supply chain', () => {
     const step = workflow.replace(/\r\n/g, '\n').split('- name: Run canonical storage and runtime build contract suites')[1]!.split('- name: Record test and no-native-history evidence')[0]!;
     expect(step).toContain('tests/unit/kernel-contract-signal.test.ts');
     expect(step).toContain('tests/unit/canonical-sqlite-fixture.test.ts');
+    expect(step).toContain('CLAWX_SQLITE_FIXTURE_REPORT: temp/reports/sqlite-fixture');
     expect(step).toContain('tests/contract/domains/scheduler.test.ts');
     expect(step).toContain('CLAWX_SCHEDULER_CONTRACT_REPORT: temp/reports/scheduler-contract');
     expect(step).toContain('worker_args=()');
     expect(step).toContain('if [ "${{ matrix.target.platform }}" = "win32" ]; then\n            worker_args+=(--maxWorkers=1)\n          fi');
     expect(step).toContain('pnpm exec vitest run "${suites[@]}" "${worker_args[@]}"');
+    const earlyGate = workflow.replace(/\r\n/g, '\n').split('- name: Verify download, notarization, native payload, archive and clean UI build regressions')[1]!.split('- name: Verify upgraded kernel packaging contracts before fetching sources')[0]!;
+    expect(earlyGate).toContain('tests/unit/kernel-artifact-test-support.test.ts');
     expect(step).not.toMatch(/--(?:testTimeout|hookTimeout|retry|bail|maxConcurrency)|continue-on-error|--passWithNoTests/);
     expect(readFileSync(join(process.cwd(), 'vitest.config.ts'), 'utf8')).not.toMatch(/testTimeout|hookTimeout|retry:|fileParallelism|maxWorkers/);
   });

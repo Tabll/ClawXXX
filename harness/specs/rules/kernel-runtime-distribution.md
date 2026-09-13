@@ -133,6 +133,14 @@ existing deadline and all assertions. Dual-kernel dispatch tests must prove
 both admitted Runs active before releasing either, then observe durable
 completion and exact Channel delivery input, not early request arrays.
 
+Large binary fixture assertions must compare the complete Buffer byte ranges
+natively, not enumerate object properties through generic deep equality. Keep
+same-length beginning/middle/end corruption, truncation, extension and offset
+view regressions; neither length-only/prefix checks nor hash-only substitutes
+are sufficient. Reject non-Buffer inputs, omit byte contents from failures and
+retain separate copy/comparison/SQLite/cleanup phase evidence. This does not
+authorize weakening production digest verification or changing test deadlines.
+
 Scheduler deadline contracts may control timer APIs only, with event observers
 created first so their bounded wall-clock watchdogs and matching clear APIs
 remain real. Keep Date, router admission and FULL-sync SQLite writes real;

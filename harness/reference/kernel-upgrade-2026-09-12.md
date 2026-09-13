@@ -99,6 +99,16 @@ DSH 是 release candidate，不是稳定版。OpenClaw 同步冻结 Discord/What
 - CI canonical 组增加 fixture 自身回归；空 schema、dual-dispatch、现有 deadline/drain 及 OpenClaw 恢复链均保留独立阶段 journal，并由已有 always-upload 规则收集。未增加已有 test/global timeout 或重试、未跳过用例、未降低同步强度、未改内核源码/补丁/Node/版本或签名、安装、发布门禁。四语 README 的候选版本与行为说明仍准确，本轮无 UI/API/用户流程变化，细节更新在本文；`MK-2407` 仍待真实远端验收。
 - 本地 62 项聚焦、全量 275 文件 / 2555 项 passed、2 文件 / 6 项既有条件跳过；typecheck、lint（0 errors / 7 existing warnings）、source verify、comms replay/compare、Harness CI 19 项、task diff-aware validate/dry-run 和 diff 检查通过。独立 Node 24.20.0 执行 CI 原始选择器：早期 closure 34 项、OpenClaw canonical 155 项、DSH canonical 97 项全部通过；后两组采用 Windows CI 单 file worker 策略，但执行平台是 macOS arm64，不替代远端 Windows 验收。schema 与行为 journal 均以真实持久化后的 passed 结束，JSON 证据在被忽略的 `temp/kernel-storage-fixtures-20260913.g9PrHO/`。新构建须绑定重新推送的 SHA，不能重跑 #25 的旧代码。
 
+## #26：macOS Intel 的大 Buffer 断言开销（2026-09-13）
+
+- [`3f38b6f1` 的完整构建 #26](https://github.com/Tabll/ClawXXX/actions/runs/34744865743) 于 2026-09-13 15:39（UTC+8）失败结束：两个 Windows、两个 macOS arm64 和四个 Linux build 全部通过；[同 SHA E2E #45](https://github.com/Tabll/ClawXXX/actions/runs/34744809479) 三平台成功。旧 Windows SQLite 恢复/双内核调度失败已通过远端验证，不再是本轮失败点。clean-machine 单/双内核仍因完整矩阵失败而跳过；[推广 #22](https://github.com/Tabll/ClawXXX/actions/runs/34745792372) 的 publish job 跳过，候选尚未发布。
+- [OpenClaw Intel](https://github.com/Tabll/ClawXXX/actions/runs/34744865743/job/103690802238) canonical 为 154/155 passed，[DSH Intel](https://github.com/Tabll/ClawXXX/actions/runs/34744865743/job/103690802150) 为 96/97 passed。两者唯一失败都是新 fixture 的完整副本隔离用例触发 5000 ms，分别 7821/5442 ms；两者签名/公证在失败前均已 Accepted。原调度、恢复与全部其他契约成功；带一次全库 Buffer 深比较的 dispose/fsync-failure 用例为 1580–3030 ms，不比较大 Buffer 的安全用例仅 20–41 ms。
+- 锁定的 Vitest 4.1.1 `@vitest/expect` 深比较实现通过 JavaScript 遍历 Buffer 元素/对象键。对真实 fixture 加阶段日志后，以独立 Node 24.20.0、本机 macOS arm64、相同五用例选择器比较：修改前完整行为及清理 851 ms，其中三次文件 Buffer `toEqual` 为 273/259/295 ms（合计 827 ms）；两个 fsynced 副本 16 ms，SQLite 打开/写入/关闭/重开/校验 5 ms。修复后完整行为及清理 22 ms，复制 14 ms，SQLite 仍 5 ms；三次原生比较在 journal 的毫秒取整精度下均为 0 ms。证据确认本地断言算法是热点，不宣称在本机复现了 Intel runner 的精确 7.8 秒延迟，也不据此修改生产数据库策略。
+- 新测试辅助 `assertArtifactBytesEqual` 要求两个 Buffer，使用原生完整 byte-range 比较，失败仅返回固定错误而不输出内容；五处大文件深比较全部替换，文件读取、独占复制、fsync、完整字节相等、源文件未变、WAL/FULL、外键、Conversation/Cron 隔离及重开断言全部保留。没有用摘要相同、长度相同、采样或引用相等代替内容验证。
+- 8 项新回归覆盖独立 2 MiB Buffer、空 Buffer、首/中/尾单字节损坏、截断/追加、非零偏移切片及错误输入/错误内容脱敏；这些检查沿用已有签名前前置 suite。fixture 自身五用例保持原 5 秒时限和真实 setup，每个 schema 与 copy/comparison/SQLite/cleanup 阶段独立留存，CI 通过既有 always-upload 规则上传失败日志。既有 file-worker、重试、超时和签名/存储/发布门禁均未改变。
+- 本地 75 项聚焦、全量 275 文件 / 2563 项 passed、2 文件 / 6 项既有条件跳过；typecheck、lint（0 errors / 7 existing warnings）、source verify、comms replay/compare、Harness CI 19 项通过。独立 Node 24.20.0 以 macOS CI 原始默认 file-worker 策略执行 OpenClaw canonical 155 项、DSH canonical 97 项全部成功，平台仍是本机 arm64；远端 Intel 验收须新 SHA 完整构建，不能重跑 #26 的旧代码。前后 JSON 与阶段证据在被忽略的 `temp/kernel-byte-equality-20260913.Zfp65Z/`。
+- 仅测试、日志接线和文档变化，生产代码、内核/Node/patch/overlay 冻结身份与 `+clawx.14` 候选保持不变；不读写用户数据库、不修改已安装内核。已复核英/中/日/俄 README：候选版本、用户行为与证据链接仍准确，无需改操作说明；无 UI 变化，不新增此前暂缓的对应 E2E。`MK-2407` 保持未完成，等待完整远端验收和正常受保护发布。
+
 ## 主要剩余风险
 
 DSH 仍为 RC；真实 Provider、长上下文、消息平台账号及非本机架构须继续验收。两个内核的上游 schema/插件启动路径都可能产生跨平台特有故障，macOS 本地通过不能替代 Windows/Linux 或 Apple 公证。继续保留严格签名、版本化包名、catalog-last 推广和发布成功后的安全旧包清理，不降低权限或平台闸门。
