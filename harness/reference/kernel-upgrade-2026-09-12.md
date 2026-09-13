@@ -76,6 +76,17 @@ DSH 是 release candidate，不是稳定版。OpenClaw 同步冻结 Discord/What
 - 已复核 README 英/中/日/俄：现有候选版本、用户操作和升级文档入口仍准确。本次无 UI、用户流程或 API 变化，详细构建修复与验收状态记在本文，不新增用户此前暂缓的安装状态 E2E。
 - 本轮本地结果：新增 9 项回归，59 项 focused 与全量 274 文件 / 2521 项通过，2 文件 / 6 项既有条件跳过；typecheck、lint（0 errors / 7 existing warnings）、来源摘要、comms replay/compare、Harness CI 19 项、task validate/dry-run 通过。新生成的隔离完整包位于被忽略的 `temp/kernel-koffi-fix-20260912.2hd679/`：Node 24.20.0 的 Koffi CJS/ESM/两次 native PID 调用、registry、完整 Gateway/ACP/工具/取消/两代重启/7 Channels/入站拒绝/无原生历史均通过；精确 native 审计及 626 包许可证审计通过。Gateway 首次在沙箱中被 loopback `listen EPERM` 拦截，获准在沙箱外以同一隔离数据重跑成功；未改动现有用户数据。这些 macOS arm64 本地结果仍不是 Windows、签名制品或远端完整矩阵已通过的证据。
 
+## #24：Cron 同步与逐脚本语法校验修复（2026-09-13）
+
+- [`8e33ab0c` 的完整构建 #24](https://github.com/Tabll/ClawXXX/actions/runs/34691870061) 于 2026-09-12 20:03（UTC+8）结束：8/10 build job 通过，DSH 五目标全部成功，OpenClaw 仅 Windows 和 macOS Intel 失败。依赖完整矩阵的单/双内核 clean-machine 验收被跳过；[同 SHA E2E #43](https://github.com/Tabll/ClawXXX/actions/runs/34691820989) 三平台全部通过。[推广 #17](https://github.com/Tabll/ClawXXX/actions/runs/34692637917) 的只读准入为 `eligible:false, candidate:null`，publish 被跳过，不代表新候选已上传生产 COS。
+- [Windows job](https://github.com/Tabll/ClawXXX/actions/runs/34691870061/job/103548437424) 的 Koffi CJS/ESM/native PID、真实 registry/Gateway/ACP/7 Channels 和存储 fence 均已通过，证明上一轮 loader 修复有效。随后 canonical suite 143/144 项通过，失败项在两秒轮询后预期 `timed-out`、读到 `running`。原用例在 `prompts.push` 时就开始等，此时实际 Conversation 准入尚未结束；一秒业务 deadline、取消后的真实终态写入与同一段物理等待混在一起。日志不能证明取消丢失或生产调度器损坏，本机 macOS arm64 原测试也通过，不能声称复现了 Windows 性能故障。
+- Cron 测试改为先创建保留真实两秒 watchdog 的事件观察器，再仅控制 `setTimeout/clearTimeout`；Date、规范 SQLite/FULL fsync 和 Router 实际准入继续真实执行。OpenClaw/DSH 各自断言 999 ms 无取消、1000 ms 取消准确的 conversation/turn/run/kernel/generation，收到真实终态写入通知后再读回，并关闭/重开数据库复核 `RUN_TIMEOUT`。手动取消拆成独立双内核测试，保留 `RUN_CANCELLED` 和重开验证。
+- 新增双内核延迟终态 fixture：明确卡住 Router 的实际终态写入，推进业务时钟也不能提前把 Cron 写成终态；释放后必须真正写成 `timed-out`。这验证原轮询不能代替持久化完成，不靠放大 timeout 或降级为内存数据库。测试事件观察器捕获成对 timer API，新增回归证明 fake scheduler 时钟不会停掉真实 watchdog。清理释放自有 gate、等待全部工作完成，再关闭 SQLite 并删除准确的自有临时目录；任何清理失败仍使测试失败。
+- [macOS Intel job](https://github.com/Tabll/ClawXXX/actions/runs/34691870061/job/103548437503) 在一个包含 23 次顺序 Node 启动的测试中触发默认 5000 ms 上限（5011 ms），没有指出某个脚本 SyntaxError。现在从精确冻结补丁的实际目标清单生成 23 个独立 `node --check` 用例，名称携带实际文件；每个子进程有短于默认测试上限的 4000 ms kill deadline，保留 stdout/stderr、非空/去重与独立 postinstall inventory 断言。不提高默认 timeout、不跳过脚本。
+- canonical CI 新增每内核 deadline/terminal-drain 的脱敏阶段 journal，与既有 `temp/reports/*.json*` 一起始终留存；LF/CRLF 两种 workflow 语义测试覆盖此接线。既有早期 closure JSON、Windows 单 file worker、其他平台并发、内部双内核并发、完整 native/签名/公证/单/双安装门禁原样保留。
+- 本轮只有测试、日志接线及规则/证据变化，不改变生产调度逻辑、上游/Node/patch/overlay 冻结输入、`+clawx.14` 候选身份、已安装内核或用户数据库。已复核 README 英/中/日/俄：现有候选版本、用户行为和升级证据链接仍准确，无需修改用户操作说明；没有 UI 修改，也不新增此前暂缓的对应 E2E。远端完整验收仍由 `MK-2407` 跟踪。
+- 本地验证：49 项初始聚焦、最终全量 274 文件 / 2550 项 passed，2 文件 / 6 项既有条件跳过；typecheck、lint（0 errors / 7 existing warnings）、source verify、comms replay/compare、Harness CI 19 项、task diff-aware validate/dry-run、`git diff --check` 均通过。任务 front matter 按仓库解析器支持的块列表编写。独立 Node 24.20.0 原生执行与 CI 相同的三文件 closure 组 34 项和十九文件 canonical 组 150 项全部通过；后者采用 Windows CI 的单 file worker 策略，但执行平台仍是本机 macOS arm64，不能冒充 Windows 验收。四份 scheduler journal 均有真实持久化后 `passed` 结束记录，JSON 报告保存在被忽略的 `temp/kernel-ci-timing-20260913.qFp2EX/`。推送后须以新 SHA 显式启动 all 矩阵，不能重跑 #24 的旧代码。
+
 ## 主要剩余风险
 
 DSH 仍为 RC；真实 Provider、长上下文、消息平台账号及非本机架构须继续验收。两个内核的上游 schema/插件启动路径都可能产生跨平台特有故障，macOS 本地通过不能替代 Windows/Linux 或 Apple 公证。继续保留严格签名、版本化包名、catalog-last 推广和发布成功后的安全旧包清理，不降低权限或平台闸门。

@@ -5,6 +5,18 @@ import { createContractSignal } from '../fixtures/kernels/contract-signal';
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
 
 describe('contract event barriers', () => {
+  it('keeps its real watchdog when scheduler timers are controlled after observer creation', async () => {
+    const signal = createContractSignal('real watchdog', 20);
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      const result = signal.waitFor().catch(error => error);
+      expect(vi.getTimerCount()).toBe(0);
+      expect(await result).toEqual(new Error('real watchdog: no matching event within 20 ms'));
+    } finally {
+      signal.dispose();
+    }
+  });
+
   it('retains an already-completed event without scheduling a polling timer', async () => {
     vi.useFakeTimers();
     const signal = createContractSignal<number>('persisted');

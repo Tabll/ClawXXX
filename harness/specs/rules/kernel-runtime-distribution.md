@@ -118,6 +118,22 @@ be always-uploaded even if no platform artifact was produced; keep report paths
 distinct from the later canonical suite. Remove only test-owned temporary roots
 after closing their services, without deleting an active database on failure.
 
+Scheduler deadline contracts may control timer APIs only, with event observers
+created first so their bounded wall-clock watchdogs and matching clear APIs
+remain real. Keep Date, router admission and FULL-sync SQLite writes real;
+assert no cancellation just before the deadline and exact Run/generation
+cancellation at the deadline. Separate manual cancellation from timeout, cover
+both kernels and reopen storage for durable diagnostic readback. A deliberately
+held terminal write must prevent early Cron completion even after logical time
+advances. Retain per-case admission/terminal/reopen journals in CI on failure.
+
+Every JavaScript executable in the frozen OpenClaw patch must have an individually
+named real Node syntax-check case, derived from the patch's actual target list.
+Bound each child below the unchanged default test deadline; do not fit many
+sequential Node startups inside one test or omit paths to satisfy a slow host.
+Validate nonempty/unique targets and keep separate postinstall-inventory checks.
+This isolates host startup cost without weakening any actual syntax assertion.
+
 Semantic workflow source-text assertions must cover both LF and CRLF checkout
 representations on every host, normalizing EOLs only inside those assertions.
 Do not rely on a copied LF-only Windows fixture to cover Git checkout behavior,

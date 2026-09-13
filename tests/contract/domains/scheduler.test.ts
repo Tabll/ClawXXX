@@ -1,6 +1,6 @@
 // @vitest-environment node
 
-import { mkdtempSync } from 'node:fs';
+import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -16,11 +16,21 @@ import { asAgentId, asCronJobId } from '@shared/domains/identity';
 import type { CanonicalCronAdmission, CanonicalCronRun } from '@shared/domains/cron';
 import type { KernelId, KernelLifecycleState } from '@shared/kernels/contracts';
 import { createContractSignal } from '../../fixtures/kernels/contract-signal';
+import { awaitArtifactOperations, createArtifactTestTrace } from '../../fixtures/kernels/artifact-test-support.mjs';
 
 const services: ClawXDataService[] = [];
 const schedulers: ClawXScheduler[] = [];
 const routers: FakeRouter[] = [];
 const signals: Array<{ dispose(): void }> = [];
+const ownedRoots: string[] = [];
+const traces: ReturnType<typeof createArtifactTestTrace>[] = [];
+
+function traceScenario(name: string) {
+  const prefix = process.env.CLAWX_SCHEDULER_CONTRACT_REPORT;
+  const trace = createArtifactTestTrace(prefix ? `${prefix}-${name}.json` : undefined);
+  traces.push(trace);
+  return trace;
+}
 
 function signal<T>(label: string) {
   const observer = createContractSignal<T>(label);
@@ -28,12 +38,20 @@ function signal<T>(label: string) {
   return observer;
 }
 
-afterEach(async () => {
+afterEach(async ({ task }) => {
   vi.useRealTimers();
-  for (const router of routers.splice(0)) for (const kernelId of router.gates.keys()) router.release(kernelId);
-  await Promise.allSettled(schedulers.splice(0).map(scheduler => scheduler.stop()));
-  await Promise.all(services.splice(0).map(service => service.close()));
-  for (const observer of signals.splice(0)) observer.dispose();
+  let ok = false;
+  try {
+    for (const router of routers.splice(0)) for (const kernelId of router.gates.keys()) router.release(kernelId);
+    await awaitArtifactOperations(schedulers.splice(0).map(scheduler => scheduler.stop()));
+    await awaitArtifactOperations(services.splice(0).map(service => service.close()));
+    for (const root of ownedRoots.splice(0)) rmSync(root, { recursive: true, force: true, maxRetries: 3 });
+    ok = task.result?.state !== 'fail';
+  } finally {
+    for (const observer of signals.splice(0)) observer.dispose();
+    for (const trace of traces.splice(0)) trace.stop(ok);
+    vi.restoreAllMocks();
+  }
 });
 
 function remote(client: ClawXDataClient, runs?: ReturnType<typeof createContractSignal<CanonicalCronRun>>) {
@@ -49,7 +67,12 @@ function remote(client: ClawXDataClient, runs?: ReturnType<typeof createContract
   };
 }
 
-function fixture(path = join(mkdtempSync(join(tmpdir(), 'clawx-scheduler-')), 'clawx.sqlite')) {
+function fixture(path?: string) {
+  if (!path) {
+    const root = mkdtempSync(join(tmpdir(), 'clawx-scheduler-'));
+    ownedRoots.push(root);
+    path = join(root, 'clawx.sqlite');
+  }
   const service = new ClawXDataService(path);
   services.push(service);
   const main = service.connect({ role: 'main' });
@@ -85,6 +108,7 @@ class FakeRouter implements SchedulerConversationRouter {
   readonly active = new Map<string, ReturnType<SchedulerConversationRouter['activeRun']>>();
   readonly gates = new Map<KernelId, { promise: Promise<void>; resolve: () => void }>();
   beforePrompt?: (input: Parameters<SchedulerConversationRouter['prompt']>[0]) => Promise<void>;
+  beforeTerminal?: () => Promise<void>;
 
   constructor(
     private readonly service: ClawXDataService,
@@ -150,6 +174,7 @@ class FakeRouter implements SchedulerConversationRouter {
     this.started.publish(input);
     await this.gates.get(input.kernelId)?.promise;
     this.active.delete(input.conversationId);
+    await this.beforeTerminal?.();
     await kernel.commitTerminalRun({
       conversationId: input.conversationId,
       userTurnId: input.turnId,
@@ -190,20 +215,6 @@ async function waitFor(assertion: () => void | Promise<void>, timeoutMs = 2_000)
     } catch (error) {
       last = error;
       await new Promise(resolve => setTimeout(resolve, 5));
-    }
-  }
-  throw last;
-}
-
-async function waitForMicrotasks(assertion: () => void | Promise<void>, attempts = 200): Promise<void> {
-  let last: unknown;
-  for (let attempt = 0; attempt < attempts; attempt += 1) {
-    try {
-      await assertion();
-      return;
-    } catch (error) {
-      last = error;
-      await Promise.resolve();
     }
   }
   throw last;
@@ -348,38 +359,126 @@ describe('ClawXScheduler contract', () => {
     expect(router.prompts).toHaveLength(0);
   });
 
-  it('supports manual cancellation and writes timeout diagnostics', async () => {
-    const { service, main, data } = fixture();
+  it.each(['openclaw', 'deepseek-harness'] as const)('persists timeout at the exact deadline after real admission (%s)', async kernelId => {
+    const trace = traceScenario(`deadline-${kernelId}`);
+    trace.phase('sqlite-open');
+    const { path, service, main, data, runs } = fixture();
     const stored = job({
       id: asCronJobId('timeout'),
-      kernelId: 'openclaw',
+      kernelId,
       nextRunAt: '2026-08-24T13:00:00.000Z',
       timeoutMs: 1_000,
     });
     await main.putCronJob(stored);
     const router = new FakeRouter(service, main);
-    router.block('openclaw');
+    router.block(kernelId);
+    const cancel = vi.spyOn(router, 'cancel');
     const scheduler = new ClawXScheduler(data, router, undefined, {
       now: () => new Date('2026-08-24T12:00:00.000Z'),
       ownerId: 'timeouts',
     });
     schedulers.push(scheduler);
+    // Control timer APIs only. Date, SQLite, FULL fsync, router work and the
+    // already-created event observers' two-second wall-clock watchdogs stay real.
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     await scheduler.start();
     await scheduler.trigger(stored, '2026-08-24T12:00:00.500Z');
-    await waitForMicrotasks(() => expect(router.prompts).toHaveLength(1));
-    await waitFor(async () => {
-      const runs = await main.listCronRuns(stored.id);
-      expect(runs[0]?.status).toBe('timed-out');
-      expect(runs[0]?.diagnostic?.code).toBe('RUN_TIMEOUT');
-    }, 2_000);
+    const prompt = await router.started.waitFor();
+    const running = await runs.waitFor(run => run.status === 'running');
+    trace.phase('router-admitted');
+    await vi.advanceTimersByTimeAsync(999);
+    expect((await main.getCronRun(running.id))?.status).toBe('running');
+    expect(cancel).not.toHaveBeenCalled();
+    trace.phase('before-deadline');
+    await vi.advanceTimersByTimeAsync(1);
+    const terminal = await runs.waitFor(run => run.id === running.id && run.status === 'timed-out');
+    trace.phase('terminal-persisted');
+    expect(cancel).toHaveBeenCalledExactlyOnceWith({
+      conversationId: prompt.conversationId, turnId: prompt.turnId, runId: prompt.runId, kernelId, generation: 1,
+    });
+    expect(terminal.diagnostic).toMatchObject({ code: 'RUN_TIMEOUT', retryable: true });
+    expect(await main.getCronRun(running.id)).toMatchObject({
+      id: terminal.id, admissionId: running.admissionId, status: 'timed-out', diagnostic: { code: 'RUN_TIMEOUT' },
+    });
+    await scheduler.stop();
+    await service.close();
+    services.splice(services.indexOf(service), 1);
+    trace.phase('sqlite-reopen');
+    const reopened = fixture(path);
+    expect(await reopened.main.getCronRun(running.id)).toMatchObject({
+      status: 'timed-out', diagnostic: { code: 'RUN_TIMEOUT', retryable: true },
+    });
+    trace.phase('durable-readback');
+  });
 
-    router.block('openclaw');
-    await scheduler.trigger(stored, '2026-08-24T12:00:02.000Z');
-    await waitFor(async () => expect((await main.listCronRuns(stored.id))[0]?.status).toBe('running'));
-    const active = (await main.listCronRuns(stored.id))[0]!;
+  it.each(['openclaw', 'deepseek-harness'] as const)('persists manual cancellation of the exact admitted run (%s)', async kernelId => {
+    const { path, service, main, data, runs } = fixture();
+    const stored = job({ id: asCronJobId('manual-cancel'), kernelId, nextRunAt: '2026-08-24T13:00:00.000Z' });
+    await main.putCronJob(stored);
+    const router = new FakeRouter(service, main);
+    router.block(kernelId);
+    const cancel = vi.spyOn(router, 'cancel');
+    const scheduler = new ClawXScheduler(data, router, undefined, {
+      now: () => new Date('2026-08-24T12:00:00.000Z'), ownerId: 'manual-cancel',
+    });
+    schedulers.push(scheduler);
+    await scheduler.start();
+    await scheduler.trigger(stored, '2026-08-24T12:00:00.500Z');
+    const prompt = await router.started.waitFor();
+    const active = await runs.waitFor(run => run.status === 'running');
     await expect(scheduler.cancel(active.id)).resolves.toBe(true);
-    expect((await main.listCronRuns(stored.id)).some(run => run.id === active.id && run.status === 'cancelled'))
-      .toBe(true);
+    expect(cancel).toHaveBeenCalledExactlyOnceWith({
+      conversationId: prompt.conversationId, turnId: prompt.turnId, runId: prompt.runId, kernelId, generation: 1,
+    });
+    expect(await main.getCronRun(active.id)).toMatchObject({
+      status: 'cancelled', diagnostic: { code: 'RUN_CANCELLED' },
+    });
+    await scheduler.stop();
+    await service.close();
+    services.splice(services.indexOf(service), 1);
+    expect(await fixture(path).main.getCronRun(active.id)).toMatchObject({
+      status: 'cancelled', diagnostic: { code: 'RUN_CANCELLED' },
+    });
+  });
+
+  it.each(['openclaw', 'deepseek-harness'] as const)('drains delayed terminal persistence before recording a timeout (%s)', async kernelId => {
+    const trace = traceScenario(`terminal-drain-${kernelId}`);
+    const { service, main, data, runs } = fixture();
+    const stored = job({ id: asCronJobId('drain'), kernelId, nextRunAt: '2026-08-24T13:00:00.000Z', timeoutMs: 1_000 });
+    await main.putCronJob(stored);
+    const router = new FakeRouter(service, main);
+    router.block(kernelId);
+    const terminalEntered = signal<void>('terminal persistence entered');
+    let releaseTerminal!: () => void;
+    const terminalGate = new Promise<void>(resolve => { releaseTerminal = resolve; });
+    router.beforeTerminal = () => { terminalEntered.publish(); return terminalGate; };
+    const scheduler = new ClawXScheduler(data, router, undefined, {
+      now: () => new Date('2026-08-24T12:00:00.000Z'), ownerId: 'terminal-drain',
+    });
+    schedulers.push(scheduler);
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      await scheduler.start();
+      await scheduler.trigger(stored, '2026-08-24T12:00:00.500Z');
+      await router.started.waitFor();
+      const running = await runs.waitFor(run => run.status === 'running');
+      trace.phase('router-admitted');
+      await vi.advanceTimersByTimeAsync(1_000);
+      await terminalEntered.waitFor();
+      trace.phase('terminal-write-held');
+      // Model a slow terminal operation explicitly. Elapsed scheduler time is
+      // not proof that canonical terminal state or Cron state has committed.
+      await vi.advanceTimersByTimeAsync(2_000);
+      expect((await main.getCronRun(running.id))?.status).toBe('running');
+      releaseTerminal();
+      await runs.waitFor(run => run.id === running.id && run.status === 'timed-out');
+      expect(await main.getCronRun(running.id)).toMatchObject({
+        status: 'timed-out', diagnostic: { code: 'RUN_TIMEOUT' },
+      });
+      trace.phase('terminal-persisted');
+    } finally {
+      releaseTerminal();
+    }
   });
 
   it.each(['skip', 'replace'] as const)('enforces %s overlap without dispatching parallel turns for one job', async policy => {

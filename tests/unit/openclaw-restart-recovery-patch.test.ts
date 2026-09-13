@@ -1,6 +1,7 @@
 // @vitest-environment node
 import { createHash } from 'node:crypto';
 import { execFile } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { promisify } from 'node:util';
@@ -9,6 +10,10 @@ import { describe, expect, it } from 'vitest';
 
 const root = path.resolve(import.meta.dirname, '../..');
 const execFileAsync = promisify(execFile);
+const patchPath = path.join(root, 'patches/openclaw@2026.9.4.patch');
+const patchedExecutables = [...readFileSync(patchPath, 'utf8').matchAll(/^diff --git a\/(.+) b\/.+$/gm)]
+  .map(match => match[1])
+  .filter(file => /\.(?:mjs|js)$/.test(file));
 
 function assertValidUnifiedDiffHunks(patch: string): void {
   const lines = patch.split('\n');
@@ -60,6 +65,8 @@ describe('OpenClaw managed recovery patch', () => {
     expect(workspace).toContain('openclaw@2026.9.4: patches/openclaw@2026.9.4.patch');
     expect(lockfile).toContain('hash: ' + createHash('sha256').update(patch).digest('hex'));
     assertValidUnifiedDiffHunks(patch);
+    expect(patchedExecutables.length).toBeGreaterThan(0);
+    expect(new Set(patchedExecutables).size).toBe(patchedExecutables.length);
   });
 
   it('replaces native restart/replay with canonical per-Run hydration in managed mode only', async () => {
@@ -105,13 +112,15 @@ describe('OpenClaw managed recovery patch', () => {
       .toMatchObject({ id: 'approval', sessionKey: 'scoped', sessionId: 'native', runId: 'canonical-run', toolCallId: 'tool', timeoutMs: 60_000, twoPhase: true });
   });
 
-  it('keeps every patched executable syntactically valid and survives upstream lifecycle pruning', async () => {
-    const patch = await readFile(path.join(root, 'patches/openclaw@2026.9.4.patch'), 'utf8');
-    const files = [...patch.matchAll(/^diff --git a\/(.+) b\/.+$/gm)].map(match => match[1]);
-    for (const file of files.filter(file => /\.(?:mjs|js)$/.test(file))) {
-      await expect(execFileAsync(process.execPath, ['--check', path.join(root, 'node_modules/openclaw', file)]))
-        .resolves.toMatchObject({ stderr: '' });
-    }
+  // Keep the default five-second deadline per independent executable, not one
+  // deadline for 23 sequential Node startups. Every failure names its real file.
+  it.each(patchedExecutables)('syntax-checks the actual patched executable %s', async file => {
+    await expect(execFileAsync(process.execPath, ['--check', path.join(root, 'node_modules/openclaw', file)], {
+      timeout: 4_000, killSignal: 'SIGKILL', windowsHide: true, maxBuffer: 128 * 1024,
+    })).resolves.toMatchObject({ stdout: '', stderr: '' });
+  });
+
+  it('retains managed bridge files through upstream lifecycle pruning', async () => {
     const inventory = JSON.parse(await readFile(path.join(root, 'node_modules/openclaw/dist/postinstall-inventory.json'), 'utf8'));
     for (const file of ['dist/clawx-managed-storage.js', 'dist/plugin-sdk/clawx-legacy-core.js', 'dist/plugin-sdk/channel-runtime.js', 'dist/plugin-sdk/text-runtime.js']) {
       expect(inventory).toContain(file);

@@ -1,5 +1,9 @@
 /** Test-only event barrier. Observes real work; never polls or substitutes it. */
 export function createContractSignal<T>(label: string, timeoutMs = 2_000) {
+  // Preserve the observer's watchdog and matching cancellation API if a test
+  // subsequently controls scheduler timers. Storage/event waits stay real-time.
+  const startTimer = setTimeout;
+  const cancelTimer = clearTimeout;
   const seen: T[] = [];
   const waiting = new Set<{
     matches(value: T): boolean;
@@ -15,7 +19,7 @@ export function createContractSignal<T>(label: string, timeoutMs = 2_000) {
       for (const waiter of waiting) {
         if (!waiter.matches(value)) continue;
         waiting.delete(waiter);
-        clearTimeout(waiter.timer);
+        cancelTimer(waiter.timer);
         waiter.accept(value);
       }
     },
@@ -26,7 +30,7 @@ export function createContractSignal<T>(label: string, timeoutMs = 2_000) {
       return new Promise<T>((accept, reject) => {
         const waiter = {
           matches, accept, reject,
-          timer: setTimeout(() => {
+          timer: startTimer(() => {
             waiting.delete(waiter);
             reject(new Error(`${label}: no matching event within ${timeoutMs} ms`));
           }, timeoutMs),
@@ -37,7 +41,7 @@ export function createContractSignal<T>(label: string, timeoutMs = 2_000) {
     dispose(): void {
       disposed = true;
       for (const waiter of waiting) {
-        clearTimeout(waiter.timer);
+        cancelTimer(waiter.timer);
         waiter.reject(new Error(`${label}: observer disposed`));
       }
       waiting.clear();

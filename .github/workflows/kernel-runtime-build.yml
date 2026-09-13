@@ -270,6 +270,7 @@ jobs:
       - name: Run canonical storage and runtime build contract suites
         env:
           CLAWX_OPENCLAW_STORE_REPORT: temp/reports/openclaw-store-canonical.json
+          CLAWX_SCHEDULER_CONTRACT_REPORT: temp/reports/scheduler-contract
         shell: bash
         run: |
           suites=(

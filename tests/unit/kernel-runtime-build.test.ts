@@ -83,6 +83,8 @@ describe('kernel runtime build supply chain', () => {
     // Frozen source/patch byte checks elsewhere must remain byte-exact.
     const step = workflow.replace(/\r\n/g, '\n').split('- name: Run canonical storage and runtime build contract suites')[1]!.split('- name: Record test and no-native-history evidence')[0]!;
     expect(step).toContain('tests/unit/kernel-contract-signal.test.ts');
+    expect(step).toContain('tests/contract/domains/scheduler.test.ts');
+    expect(step).toContain('CLAWX_SCHEDULER_CONTRACT_REPORT: temp/reports/scheduler-contract');
     expect(step).toContain('worker_args=()');
     expect(step).toContain('if [ "${{ matrix.target.platform }}" = "win32" ]; then\n            worker_args+=(--maxWorkers=1)\n          fi');
     expect(step).toContain('pnpm exec vitest run "${suites[@]}" "${worker_args[@]}"');
