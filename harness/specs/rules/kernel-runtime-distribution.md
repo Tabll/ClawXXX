@@ -140,6 +140,11 @@ view regressions; neither length-only/prefix checks nor hash-only substitutes
 are sufficient. Reject non-Buffer inputs, omit byte contents from failures and
 retain separate copy/comparison/SQLite/cleanup phase evidence. This does not
 authorize weakening production digest verification or changing test deadlines.
+For distinct Buffer or collection identities, assert the boolean returned by
+Object.is: Vitest toBe/not.toBe can still run deep-equality diagnostics on raw
+objects before applying negation. Guard equal-buffer fixtures against generic
+JavaScript iterator inspection so this regression fails on fast hosts too;
+native full-byte equality and independent allocation must both remain checked.
 
 Scheduler deadline contracts may control timer APIs only, with event observers
 created first so their bounded wall-clock watchdogs and matching clear APIs

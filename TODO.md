@@ -591,6 +591,8 @@
 
 - [x] `MK-2413` 修复 #26 两个 macOS Intel 任务中新 fixture 的大 Buffer 深比较超时：改用原生全字节比较，新增 8 项同长损坏/截断/追加/切片/错误输入回归，保留五个真实 SQLite 生命周期用例与全部 fsync/WAL/FULL/重开断言；copy/comparison/SQLite/cleanup 独立阶段日志 always-upload。独立 Node 24.20.0 本机同用例从 851 ms 降到 22 ms，SQLite 阶段均为 5 ms；75 focused / 2563 全量通过（6 既有条件跳过），macOS 默认 worker 的 OpenClaw canonical 155 / DSH canonical 97 项通过，typecheck/lint/source/comms/Harness 检查通过。#26 的 Windows 已全部通过、Intel 公证 Accepted、同 SHA E2E 三平台成功，但整体仍为 8/10 build，生产未发布；未修改生产代码、时限、worker 或冻结输入，`MK-2407` 保持待新 SHA 远端验收，详见[证据](harness/reference/kernel-upgrade-2026-09-12.md)。
 
+- [x] `MK-2414` 修复 #27 九个任务共用的 Buffer 引用断言超时：以布尔 `Object.is` 避免 Vitest `.not.toBe` 隐式深比较，原 2 MiB 用例增加拒绝 JavaScript iterator 检查的确定性保护，旧写法 2.35 ms 即失败、修复后 1.26 ms 通过；另统一六处制品字节比较及解压缓存引用检查。93 focused / 原 CI preflight 198 / packaging 50 / 全量 2563 项通过（6 既有条件跳过），typecheck/lint/source/comms/Harness 通过；不改生产代码、冻结版本、workflow 或任何超时/发布保护。#27 最终 1/10 build、同 SHA E2E 全通过、publish 跳过，`MK-2407` 仍待新 SHA 远端验收，详见[证据](harness/reference/kernel-upgrade-2026-09-12.md)。
+
 ## 每个实现 PR 的最低检查
 
 - [x] 对应 Harness task spec 已创建并通过 `pnpm harness validate --spec ...`。

@@ -39,7 +39,7 @@ import {
 } from '@electron/kernels/package-manager';
 import { KernelPackageLayout } from '@electron/kernels/package-manager/layout';
 import { SafeKernelArtifactExtractor, verifyExtractedArtifact } from '@electron/kernels/package-manager/safe-extractor';
-import { injectArtifactCorruption } from '../../fixtures/kernels/artifact-test-support.mjs';
+import { assertArtifactBytesEqual, injectArtifactCorruption } from '../../fixtures/kernels/artifact-test-support.mjs';
 import type { KernelArtifactDescriptorV1, KernelCatalogEnvelopeV1, KernelTrustStoreV1 } from '@shared/kernels/catalog';
 import type { KernelHostCompatibility } from '@shared/kernels/package-manager';
 
@@ -206,7 +206,7 @@ describe('KernelPackageManager download transport', () => {
       });
       expect(sawRange).toBe(true);
       expect(progress).toContain(true);
-      expect(await readFile(downloaded)).toEqual(bytes);
+      assertArtifactBytesEqual(await readFile(downloaded), bytes);
     } finally {
       await rm(root, { recursive: true, force: true });
     }
@@ -278,7 +278,7 @@ describe('KernelPackageManager safe extraction', () => {
         new SafeKernelArtifactExtractor().extract(artifact.archivePath, destination, artifact.descriptor)));
       expect(results.map(result => result.status)).toEqual(['fulfilled', 'fulfilled']);
       expect(caches).toHaveLength(2);
-      expect(caches[0]).not.toBe(caches[1]);
+      expect(Object.is(caches[0], caches[1])).toBe(false);
       for (const cache of caches) expect(cache.size).toBe(256);
       for (const destination of destinations) {
         const report = await verifyExtractedArtifact(destination, artifact.descriptor);

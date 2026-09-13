@@ -11,6 +11,7 @@ import {
 } from '../../scripts/kernel-runtime/lib/storage-contract.mjs';
 import { applyStrictPatchSeries } from '../../scripts/kernel-runtime/lib/source-manifest.mjs';
 import { createStrictPatchFixture } from '../fixtures/kernels/strict-patch-fixture.mjs';
+import { assertArtifactBytesEqual } from '../fixtures/kernels/artifact-test-support.mjs';
 import { describe, expect, it, vi } from 'vitest';
 
 const officialNodeSha256 = 'b7bf7707070b950ba1ec5f1af3bb6de0f2b1962c5033973d94068ab021ef3014';
@@ -124,7 +125,7 @@ describe('kernel runtime build supply chain', () => {
         join(process.cwd(), 'tests/fixtures/kernels/artifact-fsync-probe.mjs'), path, String(failure),
       ], { encoding: 'utf8', timeout: 10_000, windowsHide: true }));
       expect(audit).toEqual({ flags: ['r+'], flushes: 1, closes: 1, error: failure ? 'EIO' : null });
-      expect(readFileSync(path)).toEqual(bytes);
+      assertArtifactBytesEqual(readFileSync(path), bytes);
       const missing = join(root, 'missing.tar.zst');
       expect(() => fsyncFile(missing)).toThrow(/ENOENT/);
       expect(existsSync(missing)).toBe(false);
@@ -210,8 +211,8 @@ describe('kernel runtime build supply chain', () => {
       const first = await assembleKernelArtifact({ ...common, outputDir: join(root, 'first') });
       const second = await assembleKernelArtifact({ ...common, outputDir: join(root, 'second') });
 
-      expect(readFileSync(first.archivePath)).toEqual(readFileSync(second.archivePath));
-      expect(readFileSync(first.descriptorPath)).toEqual(readFileSync(second.descriptorPath));
+      assertArtifactBytesEqual(readFileSync(first.archivePath), readFileSync(second.archivePath));
+      assertArtifactBytesEqual(readFileSync(first.descriptorPath), readFileSync(second.descriptorPath));
       expect(first.descriptor).toMatchObject({ artifactVersion: '2026.9.4+clawx.14', patchRevision: 14, platform, arch });
       expect(first.descriptor.storage).toMatchObject({ authority: 'clawx-data-service', nativeDurableHistory: false });
       expect(first.descriptor.supplyChain).toEqual(expect.objectContaining({

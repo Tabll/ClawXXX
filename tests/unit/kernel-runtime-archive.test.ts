@@ -7,6 +7,7 @@ import tar from 'tar';
 import { describe, expect, it } from 'vitest';
 import { buildFileManifest, createDeterministicTarZstd, verifyTarFileManifest } from '../../scripts/kernel-runtime/lib/artifact.mjs';
 import { streamBudget } from '../fixtures/kernels/archive-overhead.mjs';
+import { assertArtifactBytesEqual } from '../fixtures/kernels/artifact-test-support.mjs';
 
 const epoch = 1_788_638_407;
 const prefix = 'runtime/kernel/snapshots/';
@@ -74,7 +75,7 @@ describe('lossless deterministic runtime archives', () => {
         }
         archives.push(await createDeterministicTarZstd(payload, epoch));
       }
-      expect(archives[0]).toEqual(archives[1]);
+      assertArtifactBytesEqual(archives[0], archives[1]);
       const decoded = zstdDecompressSync(archives[0]);
       const entries = new Map<string, Buffer>();
       const headers: string[] = [];
@@ -96,7 +97,7 @@ describe('lossless deterministic runtime archives', () => {
       listing.end(decoded);
       await completed;
       expect([...entries.keys()].sort()).toEqual([...names].sort());
-      for (const name of names) expect(entries.get(name)).toEqual(readFileSync(join(root, 'copy-0', name)));
+      for (const name of names) assertArtifactBytesEqual(entries.get(name), readFileSync(join(root, 'copy-0', name)));
       expect(headers.length).toBeGreaterThan(0);
       expect(headers.join('')).not.toMatch(/(?:SCHILY\.|atime=|ctime=|uid=|gid=|uname=|gname=)/);
     } finally {

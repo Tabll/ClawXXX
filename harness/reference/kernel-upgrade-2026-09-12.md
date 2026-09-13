@@ -109,6 +109,15 @@ DSH 是 release candidate，不是稳定版。OpenClaw 同步冻结 Discord/What
 - 本地 75 项聚焦、全量 275 文件 / 2563 项 passed、2 文件 / 6 项既有条件跳过；typecheck、lint（0 errors / 7 existing warnings）、source verify、comms replay/compare、Harness CI 19 项通过。独立 Node 24.20.0 以 macOS CI 原始默认 file-worker 策略执行 OpenClaw canonical 155 项、DSH canonical 97 项全部成功，平台仍是本机 arm64；远端 Intel 验收须新 SHA 完整构建，不能重跑 #26 的旧代码。前后 JSON 与阶段证据在被忽略的 `temp/kernel-byte-equality-20260913.Zfp65Z/`。
 - 仅测试、日志接线和文档变化，生产代码、内核/Node/patch/overlay 冻结身份与 `+clawx.14` 候选保持不变；不读写用户数据库、不修改已安装内核。已复核英/中/日/俄 README：候选版本、用户行为与证据链接仍准确，无需改操作说明；无 UI 变化，不新增此前暂缓的对应 E2E。`MK-2407` 保持未完成，等待完整远端验收和正常受保护发布。
 
+## #27：引用断言隐式深比较回归（2026-09-13）
+
+- [`d6860c92` 的完整构建 #27](https://github.com/Tabll/ClawXXX/actions/runs/34754108891) 最终 1/10 build 成功：DSH macOS arm64 完成，其他九项全部在同一个新 equal-buffer 前置用例超时，每项其余 197 个检查通过。失败用例耗时 5083–16046 ms，超过原有 5000 ms；不是九个独立内核故障。单/双内核 clean-machine 跳过；[同 SHA E2E #46](https://github.com/Tabll/ClawXXX/actions/runs/34748765109) 三平台成功，[推广 #24](https://github.com/Tabll/ClawXXX/actions/runs/34754412927) 的 publish job 跳过，未发布本候选。
+- 上轮虽然替换了 SQLite 文件的深比较，新测试却仍写了 `expect(actual).not.toBe(expected)`。Vitest 4.1.1 的 `toBe` 在引用不同时先执行深比较以生成诊断，再处理 `.not`；两个相同内容的大 Buffer 进入 JavaScript iterable 比较。前一轮本地通过并不等于算法没有这个热点，这是新增测试的遗漏，不归因于上游、生产 SQLite 或签名环境。
+- 在原有 2 MiB 独立 Buffer 用例中为各自 `Symbol.iterator` 添加拒绝访问的 getter，避免仅靠时长识别退化。保留旧断言时，以独立 Node 24.20.0 在本机确定性失败（2.35 ms，`Buffer iterator inspection is forbidden`）；改为 `expect(Object.is(actual, expected)).toBe(false)` 后，同用例通过（1.26 ms，原始未加保护版本 2057 ms）。仍保留原生全字节比较、空 Buffer、首/中/尾损坏、截断/追加、offset 与错误输入检查，没有减小数据量或扩大时限。getter 仅作用于两个局部 fixture，不修改 Buffer 原型或测试框架。
+- 检查相关断言后，将 archive round-trip、deterministic build/fsync 和 Range 下载中的六处 Buffer 深比较统一为已有 `assertArtifactBytesEqual`；独立解压缓存的引用断言也改为布尔 `Object.is`。解压完整性、签名和 fsync 仍调用原真实实现，完整字节相等不能由长度、摘要或采样替代。
+- 本地验证：独立 Node 24.20.0 的 93 项 focused 通过；直接解析未修改 workflow 的原始选择器执行 198 项 preflight（目标用例 1.67 ms）和 50 项 packaging 全通过，原 worker 参数不变。全量 2563 项 passed / 6 项既有条件跳过；typecheck、lint（0 errors / 7 existing warnings）、source verify、comms replay/compare、Harness CI 19 项通过。前后、确定性 red、focused、CI 两组和全量 JSON 证据位于被忽略的 `temp/kernel-identity-fix-20260913.D88LqE/`；平台是本机 macOS arm64，不代替远端矩阵。
+- 本次只改测试和任务/规则/证据/TODO，不修改 workflow、生产代码、用户数据、已安装内核、冻结输入或 `+clawx.14` 版本。英/中/日/俄 README 的候选版本、用户操作与证据链接仍准确，无需改动，也不新增此前暂缓的对应 UI E2E。`MK-2407` 保持待新 SHA 的完整远端验收；重新推送后应 dispatch 新 SHA，不能重跑 #27 的旧代码。
+
 ## 主要剩余风险
 
 DSH 仍为 RC；真实 Provider、长上下文、消息平台账号及非本机架构须继续验收。两个内核的上游 schema/插件启动路径都可能产生跨平台特有故障，macOS 本地通过不能替代 Windows/Linux 或 Apple 公证。继续保留严格签名、版本化包名、catalog-last 推广和发布成功后的安全旧包清理，不降低权限或平台闸门。

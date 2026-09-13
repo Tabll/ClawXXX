@@ -9,7 +9,15 @@ describe('exact native artifact byte comparison', () => {
   it('accepts equal independently allocated large buffers and empty buffers', () => {
     const expected = Buffer.alloc(2 * 1024 * 1024, 0xa5);
     const actual = Buffer.from(expected);
-    expect(actual).not.toBe(expected);
+    // Fail immediately on generic iterable comparison, not only on slow CI.
+    // Native identity and byte equality do not access the JavaScript iterator.
+    for (const buffer of [actual, expected]) {
+      Object.defineProperty(buffer, Symbol.iterator, {
+        get() { throw new Error('Buffer iterator inspection is forbidden'); },
+      });
+    }
+    // Vitest not.toBe still computes deep-equality diagnostics for raw objects.
+    expect(Object.is(actual, expected)).toBe(false);
     expect(() => assertArtifactBytesEqual(actual, expected)).not.toThrow();
     expect(() => assertArtifactBytesEqual(Buffer.alloc(0), Buffer.alloc(0))).not.toThrow();
   });
