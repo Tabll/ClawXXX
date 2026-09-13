@@ -3,7 +3,7 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { ClawXDataService, type ClawXDataClient } from '@electron/data/clawx-data-service';
 import { createOpenClawGatewayControlPlane } from '@electron/kernels/openclaw/gateway-control-plane';
 import {
@@ -17,6 +17,7 @@ import type { CanonicalCronAdmission, CanonicalCronRun } from '@shared/domains/c
 import type { KernelId, KernelLifecycleState } from '@shared/kernels/contracts';
 import { createContractSignal } from '../../fixtures/kernels/contract-signal';
 import { awaitArtifactOperations, createArtifactTestTrace } from '../../fixtures/kernels/artifact-test-support.mjs';
+import { createCanonicalSqliteFixture } from '../../fixtures/kernels/canonical-sqlite-fixture';
 
 const services: ClawXDataService[] = [];
 const schedulers: ClawXScheduler[] = [];
@@ -24,6 +25,13 @@ const routers: FakeRouter[] = [];
 const signals: Array<{ dispose(): void }> = [];
 const ownedRoots: string[] = [];
 const traces: ReturnType<typeof createArtifactTestTrace>[] = [];
+let databaseFixture: Awaited<ReturnType<typeof createCanonicalSqliteFixture>>;
+
+beforeAll(async () => {
+  const prefix = process.env.CLAWX_SCHEDULER_CONTRACT_REPORT;
+  databaseFixture = await createCanonicalSqliteFixture(prefix ? `${prefix}-schema.json` : undefined);
+}, 5_000);
+afterAll(() => databaseFixture?.dispose());
 
 function traceScenario(name: string) {
   const prefix = process.env.CLAWX_SCHEDULER_CONTRACT_REPORT;
@@ -72,6 +80,7 @@ function fixture(path?: string) {
     const root = mkdtempSync(join(tmpdir(), 'clawx-scheduler-'));
     ownedRoots.push(root);
     path = join(root, 'clawx.sqlite');
+    databaseFixture.copyTo(path);
   }
   const service = new ClawXDataService(path);
   services.push(service);
@@ -264,8 +273,8 @@ describe('ClawXScheduler contract', () => {
     });
     expect(duplicate).toMatchObject({ inserted: false, admission, run });
 
-    services.splice(services.indexOf(service), 1);
     await service.close();
+    services.splice(services.indexOf(service), 1);
     const reopened = new ClawXDataService(path);
     services.push(reopened);
     const recovered = await reopened.connect({ role: 'main' }).getCronRun(run.id);
@@ -276,7 +285,9 @@ describe('ClawXScheduler contract', () => {
   });
 
   it('dispatches simultaneous OpenClaw and DSH jobs only after durable admission and uses shared conversation policies', async () => {
-    const { service, main, data } = fixture();
+    const trace = traceScenario('dual-dispatch');
+    trace.phase('sqlite-open');
+    const { path, service, main, data, runs } = fixture();
     const openclaw = job({ id: asCronJobId('openclaw-due'), kernelId: 'openclaw' });
     const dsh = job({
       id: asCronJobId('dsh-due'),
@@ -286,7 +297,10 @@ describe('ClawXScheduler contract', () => {
     });
     await main.putCronJob(openclaw);
     await main.putCronJob(dsh);
+    trace.phase('jobs-persisted');
     const router = new FakeRouter(service, main);
+    router.block('openclaw');
+    router.block('deepseek-harness');
     router.beforePrompt = async input => {
       const matching = input.kernelId === 'openclaw'
         ? (await main.listCronRuns(openclaw.id))[0]
@@ -305,17 +319,44 @@ describe('ClawXScheduler contract', () => {
     });
     schedulers.push(scheduler);
     await scheduler.start();
-    await waitFor(() => expect(router.prompts).toHaveLength(2));
-    await waitFor(async () => {
-      expect((await main.listCronRuns(openclaw.id))[0]?.status).toBe('completed');
-      expect((await main.listCronRuns(dsh.id))[0]?.status).toBe('completed');
+    const [ocPrompt, dshPrompt] = await Promise.all([
+      router.started.waitFor(input => input.kernelId === 'openclaw'),
+      router.started.waitFor(input => input.kernelId === 'deepseek-harness'),
+    ]);
+    trace.phase('both-runs-admitted');
+    expect(router.prompts).toHaveLength(2);
+    expect(ocPrompt.conversationId).toBe('cron:openclaw-due:reuse');
+    expect(dshPrompt.conversationId).toBe('cron:dsh-due:day:2026-08-24');
+    // Prove two canonically admitted active Runs, not merely queued requests.
+    expect(router.activeRun(ocPrompt.conversationId)?.runId).toBe(ocPrompt.runId);
+    expect(router.activeRun(dshPrompt.conversationId)?.runId).toBe(dshPrompt.runId);
+    const ocRunning = (await main.listCronRuns(openclaw.id))[0]!;
+    const dshRunning = (await main.listCronRuns(dsh.id))[0]!;
+    expect(ocRunning.status).toBe('running');
+    expect(dshRunning.status).toBe('running');
+    expect(deliveries).toEqual([]);
+    router.release('openclaw');
+    router.release('deepseek-harness');
+    await Promise.all([
+      runs.waitFor(run => run.id === ocRunning.id && run.status === 'completed'),
+      runs.waitFor(run => run.id === dshRunning.id && run.status === 'completed'),
+    ]);
+    trace.phase('both-terminals-persisted');
+    expect(deliveries).toEqual([{
+      jobId: dsh.id, admissionId: dshRunning.admissionId, scheduledFor: '2026-08-24T12:00:00.000Z',
+      delivery: dsh.delivery, conversationId: dshPrompt.conversationId,
+      runId: dshPrompt.runId, turnId: dshPrompt.turnId,
+    }]);
+    await scheduler.stop();
+    await service.close();
+    services.splice(services.indexOf(service), 1);
+    trace.phase('sqlite-reopen');
+    const reopened = fixture(path);
+    expect(await reopened.main.getCronRun(ocRunning.id)).toMatchObject({ status: 'completed', runId: ocPrompt.runId });
+    expect(await reopened.main.getCronRun(dshRunning.id)).toMatchObject({
+      status: 'completed', runId: dshPrompt.runId,
     });
-    expect(router.prompts.map(prompt => prompt.kernelId).sort()).toEqual(['deepseek-harness', 'openclaw']);
-    expect(router.prompts.find(prompt => prompt.kernelId === 'openclaw')?.conversationId)
-      .toBe('cron:openclaw-due:reuse');
-    expect(router.prompts.find(prompt => prompt.kernelId === 'deepseek-harness')?.conversationId)
-      .toBe('cron:dsh-due:day:2026-08-24');
-    expect(deliveries).toHaveLength(1);
+    trace.phase('durable-readback');
   });
 
   it('uses one SQLite leader lease and unique (jobId, scheduledFor) admission across schedulers', async () => {
@@ -554,8 +595,8 @@ describe('ClawXScheduler contract', () => {
       nextRunAt: '2026-08-24T11:58:00.000Z',
     });
     await initial.main.putCronJob(stored);
-    services.splice(services.indexOf(initial.service), 1);
     await initial.service.close();
+    services.splice(services.indexOf(initial.service), 1);
 
     const reopened = new ClawXDataService(initial.path);
     services.push(reopened);

@@ -11,7 +11,7 @@ import {
   type AssistantMessage,
   type Model,
 } from 'openclaw/plugin-sdk/llm';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { testAgentRouting } from '../../helpers/canonical-agent';
 import { ClawXDataService } from '@electron/data/clawx-data-service';
 import {
@@ -26,16 +26,24 @@ import {
   OpenClawConversationStore,
 } from '@electron/kernels/openclaw/conversation-store';
 import { asConversationId, asRunId, asTurnId } from '@shared/conversations/contracts';
-import { createArtifactTestTrace } from '../../fixtures/kernels/artifact-test-support.mjs';
+import { awaitArtifactOperations, createArtifactTestTrace } from '../../fixtures/kernels/artifact-test-support.mjs';
+import { createCanonicalSqliteFixture } from '../../fixtures/kernels/canonical-sqlite-fixture';
 
 const services: ClawXDataService[] = [];
 const ownedRoots: string[] = [];
 const traces: ReturnType<typeof createArtifactTestTrace>[] = [];
+let databaseFixture: Awaited<ReturnType<typeof createCanonicalSqliteFixture>>;
+
+beforeAll(async () => {
+  const report = process.env.CLAWX_OPENCLAW_STORE_REPORT;
+  databaseFixture = await createCanonicalSqliteFixture(report ? `${report}.schema.json` : undefined);
+}, 5_000);
+afterAll(() => databaseFixture?.dispose());
 
 afterEach(async ({ task }) => {
   let ok = false;
   try {
-    await Promise.all(services.splice(0).map((service) => service.close()));
+    await awaitArtifactOperations(services.splice(0).map((service) => service.close()));
     for (const root of ownedRoots.splice(0)) rmSync(root, { recursive: true, force: true });
     ok = task.result?.state !== 'fail';
   } finally {
@@ -162,6 +170,7 @@ describe('OpenClaw unified conversation store spike', () => {
     const conversationId = asConversationId('conversation-openclaw');
     const createdAt = '2026-08-23T10:00:00.000Z';
 
+    databaseFixture.copyTo(databasePath);
     let service = new ClawXDataService(databasePath);
     services.push(service);
     trace.phase('first-admission');
@@ -286,7 +295,9 @@ describe('OpenClaw unified conversation store spike', () => {
   it('exposes metadata, compaction, fork/reset, checkpoint and canonical memory search without native files', async () => {
     const root = mkdtempSync(join(tmpdir(), 'clawx-openclaw-package-'));
     ownedRoots.push(root);
-    const service = new ClawXDataService(join(root, 'state', 'clawx.sqlite'));
+    const databasePath = join(root, 'state', 'clawx.sqlite');
+    databaseFixture.copyTo(databasePath);
+    const service = new ClawXDataService(databasePath);
     services.push(service);
     const conversationId = asConversationId('conversation-package');
     const { main, kernel, runId, turnId } = admit(service, conversationId, 1);

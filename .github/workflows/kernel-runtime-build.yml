@@ -275,6 +275,7 @@ jobs:
         run: |
           suites=(
             tests/unit/kernel-contract-signal.test.ts
+            tests/unit/canonical-sqlite-fixture.test.ts
             tests/unit/kernel-runtime-build.test.ts
             tests/contract/data/blob-and-conversation-store.test.ts
             tests/contract/domains/channels-runtime.test.ts

@@ -87,6 +87,18 @@ DSH 是 release candidate，不是稳定版。OpenClaw 同步冻结 Discord/What
 - 本轮只有测试、日志接线及规则/证据变化，不改变生产调度逻辑、上游/Node/patch/overlay 冻结输入、`+clawx.14` 候选身份、已安装内核或用户数据库。已复核 README 英/中/日/俄：现有候选版本、用户行为和升级证据链接仍准确，无需修改用户操作说明；没有 UI 修改，也不新增此前暂缓的对应 E2E。远端完整验收仍由 `MK-2407` 跟踪。
 - 本地验证：49 项初始聚焦、最终全量 274 文件 / 2550 项 passed，2 文件 / 6 项既有条件跳过；typecheck、lint（0 errors / 7 existing warnings）、source verify、comms replay/compare、Harness CI 19 项、task diff-aware validate/dry-run、`git diff --check` 均通过。任务 front matter 按仓库解析器支持的块列表编写。独立 Node 24.20.0 原生执行与 CI 相同的三文件 closure 组 34 项和十九文件 canonical 组 150 项全部通过；后者采用 Windows CI 的单 file worker 策略，但执行平台仍是本机 macOS arm64，不能冒充 Windows 验收。四份 scheduler journal 均有真实持久化后 `passed` 结束记录，JSON 报告保存在被忽略的 `temp/kernel-ci-timing-20260913.qFp2EX/`。推送后须以新 SHA 显式启动 all 矩阵，不能重跑 #24 的旧代码。
 
+## #25：Windows 真实 SQLite fixture 初始化与并发准入（2026-09-13）
+
+- [`979e70f4` 的完整构建 #25](https://github.com/Tabll/ClawXXX/actions/runs/34740208842) 于 2026-09-13 13:56（UTC+8）失败结束：两个 Windows build 在 canonical suite 失败，其他八个 build 全部通过，包括 OpenClaw Intel。上一轮逐脚本语法检查及两个内核的精确 deadline、手动取消、延迟终态测试已在 Windows 通过；不能把这轮其他测试超时报成同一个失败。
+- [同 SHA E2E #44](https://github.com/Tabll/ClawXXX/actions/runs/34740178672) 三平台全部成功。单/双内核 clean-machine 仍被完整矩阵依赖阻止；[推广 #20](https://github.com/Tabll/ClawXXX/actions/runs/34741538430) 的 publish job 跳过，未发布新版生产包。
+- [OpenClaw Windows](https://github.com/Tabll/ClawXXX/actions/runs/34740208842/job/103678533407) 真实 Koffi、registry、Gateway/ACP/Channels 检查及早期相同 closure suite 通过；后续 canonical 149/150 项通过。唯一失败是完整 SQLite hydrate/compact/branch/close/reopen/restore 用例触发 5000 ms。journal 显示首次建库后到 first-admission 已 3490 ms、sqlite-close 4526 ms、全部恢复断言 5225 ms，测试最终 5291 ms；并非某个恢复断言得到错误数据。日志没有证明具体的宿主磁盘/防护软件原因，不据此改动生产存储。
+- [DSH Windows](https://github.com/Tabll/ClawXXX/actions/runs/34740208842/job/103678533539) 上游 Host/70 项 overlay 验证通过；canonical 91/92 项通过，失败的既有双内核同时调度用例总计 5580 ms，仍在轮询早期 `prompts` 数组并混合空库初始化、两次准入和投递。旧日志没有该用例内部阶段，不能断言具体哪次 I/O 超时。
+- 两个受影响套件现在各自通过真实 `ClawXDataService` 一次创建全新、无业务数据的 schema，并在至多 5 秒的独立 setup hook 内关闭；行为用例通过普通独占文件复制、显式 fsync 和 SHA-256 校验得到各自的磁盘库，随后仍走原生产 constructor、WAL/FULL、外键和恢复路径。每套件/每次进程都重新创建，不提交预制 DB、不读用户状态、不复制 WAL、不共享可写连接；迁移和 fresh-database 专项测试保持原样。
+- 新 fixture 回归验证 schema 版本、真实连接的 WAL/FULL/foreign_keys、不同文件身份、Conversation/Cron 副本隔离及重开持久化；现有目标、残留 journal、源硬链接/损坏、dispose 后复制必须拒绝。注入 fsync 失败时异常保留，验证对应 fd 已关闭，源字节未变。删除仅限已关闭的自有测试源/目标，不触碰用户数据。
+- 双内核调度用例为两个 Run 设置各自执行 gate，等待真实准入和 `running` 持久化，证明两者同时 active 后再一起释放；按准确 Cron run ID 等待终态写入，断言唯一投递的 job/admission/conversation/turn/run/target 身份，最后重开同一 SQLite 确认两次完成。OpenClaw 完整恢复链没有拆散到依赖顺序的多个测试，既有 compaction、branch、checkpoint、历史与无原生文件断言全部保留。
+- CI canonical 组增加 fixture 自身回归；空 schema、dual-dispatch、现有 deadline/drain 及 OpenClaw 恢复链均保留独立阶段 journal，并由已有 always-upload 规则收集。未增加已有 test/global timeout 或重试、未跳过用例、未降低同步强度、未改内核源码/补丁/Node/版本或签名、安装、发布门禁。四语 README 的候选版本与行为说明仍准确，本轮无 UI/API/用户流程变化，细节更新在本文；`MK-2407` 仍待真实远端验收。
+- 本地 62 项聚焦、全量 275 文件 / 2555 项 passed、2 文件 / 6 项既有条件跳过；typecheck、lint（0 errors / 7 existing warnings）、source verify、comms replay/compare、Harness CI 19 项、task diff-aware validate/dry-run 和 diff 检查通过。独立 Node 24.20.0 执行 CI 原始选择器：早期 closure 34 项、OpenClaw canonical 155 项、DSH canonical 97 项全部通过；后两组采用 Windows CI 单 file worker 策略，但执行平台是 macOS arm64，不替代远端 Windows 验收。schema 与行为 journal 均以真实持久化后的 passed 结束，JSON 证据在被忽略的 `temp/kernel-storage-fixtures-20260913.g9PrHO/`。新构建须绑定重新推送的 SHA，不能重跑 #25 的旧代码。
+
 ## 主要剩余风险
 
 DSH 仍为 RC；真实 Provider、长上下文、消息平台账号及非本机架构须继续验收。两个内核的上游 schema/插件启动路径都可能产生跨平台特有故障，macOS 本地通过不能替代 Windows/Linux 或 Apple 公证。继续保留严格签名、版本化包名、catalog-last 推广和发布成功后的安全旧包清理，不降低权限或平台闸门。

@@ -118,6 +118,21 @@ be always-uploaded even if no platform artifact was produced; keep report paths
 distinct from the later canonical suite. Remove only test-owned temporary roots
 after closing their services, without deleting an active database on failure.
 
+Behavior suites may create a suite-local pristine schema once through the real
+DataService in a separately bounded setup hook (at most five seconds), close it,
+then exclusively copy and fsync it into independent test-owned SQLite files.
+Each copy must be hash-checked and opened normally by the production service
+with WAL/FULL and foreign keys intact. Reject live sidecars, links, mutated
+sources, existing destinations and use after disposal; flush failures remain
+fatal and must close the matching handle. Do not cache business rows, share a
+writable database, reuse fixtures across suites/runs, or use this optimization
+in schema/migration/fresh-database tests. Keep those tests and real-process
+storage gates unchanged. Journal schema bootstrap separately from behavior;
+retain complete close/reopen/restore chains within one behavior test, its
+existing deadline and all assertions. Dual-kernel dispatch tests must prove
+both admitted Runs active before releasing either, then observe durable
+completion and exact Channel delivery input, not early request arrays.
+
 Scheduler deadline contracts may control timer APIs only, with event observers
 created first so their bounded wall-clock watchdogs and matching clear APIs
 remain real. Keep Date, router admission and FULL-sync SQLite writes real;
