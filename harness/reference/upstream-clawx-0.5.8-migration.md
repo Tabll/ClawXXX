@@ -17,7 +17,7 @@ range begins after `7f8e50ab`; a wholesale merge is not this implementation.
 | 2 | Model defaults/metadata, scoped Astra compatibility and Provider cleanup | Implemented and validated |
 | 3 | Main-owned speech-to-text and microphone permission recovery with secure credential input | Implemented and validated |
 | 4 | Canonical diagnostics export, generated media and plan/compaction presentation | Implemented and validated |
-| 5 | Channel validation, WeCom and official DingTalk/DWS migration | Feishu/WeCom implemented; official DingTalk/DWS held for the next integration batch |
+| 5 | Channel validation, WeCom and official DingTalk/DWS migration | Feishu/WeCom implemented; official DingTalk and per-account DWS authorization implemented in batch 5b |
 | 6 | Canonical subagent lineage/status and opt-in Computer Use; optional TokenDance | Not implemented; separate architecture/capability batches |
 
 Each batch records actual checks below. Upstream release-number-only changes,
@@ -217,11 +217,35 @@ this table does not claim completion of later batches.
 | 2026-09-14 | [5a735537](https://github.com/ValueCell-ai/ClawX/commit/5a735537) / [#1294](https://github.com/ValueCell-ai/ClawX/pull/1294) | fix: render generated images inline from MEDIA paths (#1294) | Batch 4b implemented with scoped import, inline preview and no transcript scans |
 | 2026-09-14 | [a0b2a804](https://github.com/ValueCell-ai/ClawX/commit/a0b2a804) / [#1296](https://github.com/ValueCell-ai/ClawX/pull/1296) | feat: gate voice input behind developer mode (#1296) | Batch 3 implemented; hidden by default and direct voice-tab navigation gated |
 | 2026-09-14 | [f7ff4b4d](https://github.com/ValueCell-ai/ClawX/commit/f7ff4b4d) / [#1297](https://github.com/ValueCell-ai/ClawX/pull/1297) | release  0.5.7 (#1297) | 上游发布号，不覆盖本地 0.6.0 |
-| 2026-09-15 | [170b9899](https://github.com/ValueCell-ai/ClawX/commit/170b9899) / [#1292](https://github.com/ValueCell-ai/ClawX/pull/1292) | feat: upgrade DingTalk to official connector 0.8.25 (#1292) | Not ported: reviewed 0.8.25 source/SDK imports; per-account DWS authorization and signed payload remain next batch |
+| 2026-09-15 | [170b9899](https://github.com/ValueCell-ai/ClawX/commit/170b9899) / [#1292](https://github.com/ValueCell-ai/ClawX/pull/1292) | feat: upgrade DingTalk to official connector 0.8.25 (#1292) | Batch 5b: official connector, stable IDs, isolated authorization and pinned runtime payload; signed release validation remains external |
 | 2026-09-15 | [9445f018](https://github.com/ValueCell-ai/ClawX/commit/9445f018) / [#1299](https://github.com/ValueCell-ai/ClawX/pull/1299) | chore(i18n): drop OpenClaw 3.31 note from QQ Bot channel description (#1299) | Batch 1 implemented |
 | 2026-09-15 | [16c543bb](https://github.com/ValueCell-ai/ClawX/commit/16c543bb) / [#1298](https://github.com/ValueCell-ai/ClawX/pull/1298) | fix: preserve window zoom after minimize (#1298) | Batch 1 implemented; Windows native test pending platform |
 | 2026-09-16 | [b67561a3](https://github.com/ValueCell-ai/ClawX/commit/b67561a3) / [#1301](https://github.com/ValueCell-ai/ClawX/pull/1301) | refactor: guide users to microphone permission settings and add missing audio-input declaration in macOS entitlements plist (#1301) | Batch 3 permission recovery and entitlement implemented; signed-package capture pending |
-| 2026-09-16 | [d5473067](https://github.com/ValueCell-ai/ClawX/commit/d5473067) / [#1302](https://github.com/ValueCell-ai/ClawX/pull/1302) | Fix dws install (#1302) | Not ported independently; DWS 1.0.30 provisioning must be a CI artifact operation |
+| 2026-09-16 | [d5473067](https://github.com/ValueCell-ai/ClawX/commit/d5473067) / [#1302](https://github.com/ValueCell-ai/ClawX/pull/1302) | Fix dws install (#1302) | Batch 5b: DWS 1.0.30 CI materialization with pinned archive digests; no end-user npm installation |
 | 2026-09-16 | [01b418ec](https://github.com/ValueCell-ai/ClawX/commit/01b418ec) / [#1300](https://github.com/ValueCell-ai/ClawX/pull/1300) | feat: refresh provider defaults and catalog-free runtime config (#1300) | Batches 1–2 implemented; JSONL excluded |
 | 2026-09-16 | [34ad624b](https://github.com/ValueCell-ai/ClawX/commit/34ad624b) / [#1303](https://github.com/ValueCell-ai/ClawX/pull/1303) | fix: migrate Astra reasoning effort from none to low (#1303) | Batch 2 implemented; other explicit efforts/protocols preserved |
 | 2026-09-18 | [24a24b77](https://github.com/ValueCell-ai/ClawX/commit/24a24b77) / [#1304](https://github.com/ValueCell-ai/ClawX/pull/1304) | release 0.5.8 (#1304) | 发布 0.5.8；仅作为本次审查基准 |
+
+## Continuation batch 5b — official DingTalk and DWS account authorization
+
+Official connector 0.8.25 replaces the community plugin; compatibility projects
+stable channel/default IDs, card type and group policy without rewriting canonical
+config. Full compiled plugin registration and multi-account resolution are tested.
+DWS 1.0.30 runs only from the selected runtime artifact, with a separate ephemeral
+HOME/config directory per operation and encrypted canonical auth bundles. Login
+expiry, process cancellation, stale UI nonces, credential replacement and owner
+generations are enforced in Main. No real DingTalk account was authenticated.
+
+Runtime CI materializes digest-pinned native archives, license and notice files
+for both kernels before validation/signing. OpenClaw revision 17 and DSH revision
+16 require rebuilding and publishing through the existing release gates; installed
+artifacts were not mutated. Agent tool invocation is tracked in the next batch.
+
+Verification: full unit/contract run passed 2,779 tests with 6 skips; two stale
+package/revision assertions were updated and their 7 focused tests then passed.
+The DWS native archive/source/build checks pass 50 tests, including all five
+supported target platforms. Electron account-isolation flow and its two required
+exclusive prerequisites pass (3 tests). Typecheck, build, lint (only the existing
+7 Fast Refresh warnings), task validate/dry-run, harness CI (19 tests), comms
+replay/compare and diff whitespace validation pass. No live account or signed
+cross-platform release is claimed.

@@ -240,6 +240,9 @@ export const hostApi = {
     ),
   },
   channels: {
+    dingtalkWorkspace: (accountId: string, operation: 'status' | 'start' | 'cancel' | 'reset', authorizationId?: string) => (
+      invokeHost('channels', 'dingtalkWorkspace', { accountId, operation, authorizationId })
+    ),
     accounts: (options?: ChannelAccountsPayload) => (
       invokeHost('channels', 'accounts', options)
     ),

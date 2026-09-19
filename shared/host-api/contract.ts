@@ -1328,6 +1328,7 @@ export type HostApiContract = {
     readFile: (payload: LogReadFilePayload) => LogContentResult;
   };
   channels: {
+    dingtalkWorkspace: (payload: { accountId: string; operation: 'status' | 'start' | 'cancel' | 'reset'; authorizationId?: string }) => import('../domains/dingtalk-workspace').DingTalkWorkspaceStatus;
     configured: () => ChannelConfiguredResult;
     accounts: (payload?: ChannelAccountsPayload) => ChannelAccountsResult;
     targets: (payload: ChannelTargetsPayload) => ChannelTargetsResult;

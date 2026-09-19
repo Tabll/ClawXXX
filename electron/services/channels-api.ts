@@ -93,6 +93,7 @@ import type { ChannelAdapterRegistry } from '../channels/channel-adapter-registr
 import type { CredentialStagingVault } from '../security/credential-staging-vault';
 import { OpenClawChannelAdapter } from '../channels/openclaw-channel-adapter';
 import { RelayChannelAdapter } from '../channels/relay-channel-adapter';
+import type { DingTalkWorkspaceService } from '../channels/dingtalk-workspace';
 
 const WECHAT_QR_TIMEOUT_MS = 8 * 60 * 1000;
 const activeQrLogins = new Map<string, string>();
@@ -101,6 +102,7 @@ async function listWhatsAppDirectoryGroupsFromConfig(_params: unknown): Promise<
 async function listWhatsAppDirectoryPeersFromConfig(_params: unknown): Promise<unknown[]> { return []; }
 
 type ChannelsApiContext = {
+  dingtalkWorkspace?: DingTalkWorkspaceService;
   gatewayManager: GatewayManager;
   mainWindow?: BrowserWindow;
   dataClient?: ChannelDataClient;
@@ -1293,6 +1295,24 @@ function emitCanonicalLoginEvent(ctx: ChannelsApiContext, channelType: string, e
 
 export function createChannelsApi(ctx: ChannelsApiContext): CompleteHostServiceRegistry['channels'] {
   return {
+    dingtalkWorkspace: async (payload) => {
+      if (!hasCanonicalChannels(ctx) || !ctx.dingtalkWorkspace) return { status: 'unavailable' };
+      const nativeAccountId = requireString(payload, 'accountId');
+      const account = await ctx.accountService.get('dingtalk', nativeAccountId);
+      if (!account) return { status: 'unavailable' };
+      const operation = requireString(payload, 'operation');
+      try {
+        if (operation === 'status') return await ctx.dingtalkWorkspace.status(account.id);
+        if (operation === 'start') return await ctx.dingtalkWorkspace.start(account.id);
+        if (operation === 'cancel') return await ctx.dingtalkWorkspace.cancel(account.id, optionalString(payload, 'authorizationId'));
+        if (operation === 'reset') return await ctx.dingtalkWorkspace.reset(account.id);
+      } catch {
+        // Projection/decryption failures can contain private paths or serialized
+        // credential fragments. Only a fixed code crosses the host boundary.
+        return { status: 'error', error: 'failed' };
+      }
+      throw new Error('Unsupported DingTalk workspace operation');
+    },
     configured: async () => {
       if (hasCanonicalChannels(ctx)) {
         const accounts = await ctx.accountService.list();
@@ -1461,6 +1481,7 @@ export function createChannelsApi(ctx: ChannelsApiContext): CompleteHostServiceR
             .map(field => field.key);
           if (missing.length > 0) throw new Error(`Missing required Channel configuration: ${missing.join(', ')}`);
         }
+        if (previous?.channelType === 'dingtalk') await ctx.dingtalkWorkspace?.cancel(previous.id);
         const consumed = materializeCanonicalConfig(ctx, channelType, config, 'consume');
         if (validatedDomain) consumed.domain = validatedDomain;
         const enabled = typeof consumed.enabled === 'boolean' ? consumed.enabled : previous?.enabled ?? true;
@@ -1548,6 +1569,7 @@ export function createChannelsApi(ctx: ChannelsApiContext): CompleteHostServiceR
           ? [await ctx.accountService.get(channelType, accountId)].filter(Boolean) as CanonicalChannelAccount[]
           : (await ctx.accountService.list()).filter(account => account.channelType === channelType);
         for (const account of accounts) {
+          if (account.channelType === 'dingtalk') await ctx.dingtalkWorkspace?.cancel(account.id);
           await ctx.ownerCoordinator.deactivate(account.id);
           for (const adapter of ctx.adapterRegistry.list()) {
             if (adapter instanceof OpenClawChannelAdapter) await adapter.remove(account).catch(() => undefined);

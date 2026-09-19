@@ -9,6 +9,6 @@ ignoredBuiltDependencies:
 patchedDependencies:
   tar@6.2.1: patches/tar@6.2.1.patch
   openclaw@2026.9.4: patches/openclaw@2026.9.4.patch
-  '@soimy/dingtalk@3.6.10': patches/@soimy__dingtalk@3.6.10.patch
+  '@dingtalk-real-ai/dingtalk-connector@0.8.25': patches/@dingtalk-real-ai__dingtalk-connector@0.8.25.patch
   '@larksuite/openclaw-lark@2026.7.16': patches/@larksuite__openclaw-lark@2026.7.16.patch
   '@wecom/wecom-openclaw-plugin@2026.8.17': patches/@wecom__wecom-openclaw-plugin@2026.8.17.patch

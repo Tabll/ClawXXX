@@ -9,7 +9,7 @@ for (let i = 2; i < process.argv.length; i += 2) args.set(process.argv[i], proce
 const packageDir = resolve(args.get('--package-dir') || 'node_modules/openclaw');
 const pluginRoot = resolve(args.get('--plugins-root') || 'node_modules');
 const requireSdk = createRequire(join(packageDir, 'package.json'));
-const packages = ['@openclaw/discord', '@openclaw/whatsapp', '@openclaw/qqbot', '@soimy/dingtalk', '@larksuite/openclaw-lark', '@wecom/wecom-openclaw-plugin', '@tencent-weixin/openclaw-weixin'];
+const packages = ['@openclaw/discord', '@openclaw/whatsapp', '@openclaw/qqbot', '@dingtalk-real-ai/dingtalk-connector', '@larksuite/openclaw-lark', '@wecom/wecom-openclaw-plugin', '@tencent-weixin/openclaw-weixin'];
 const results = [];
 for (const name of packages) {
   const root = join(pluginRoot, name);

@@ -9,7 +9,10 @@
         "disconnected": "未连接"
     },
     "gatewayWarning": "网关未运行。未启用网关时无法管理频道。",
-    "kernel": { "openclaw": "OpenClaw", "deepseek-harness": "DeepSeek Harness" },
+    "kernel": {
+        "openclaw": "OpenClaw",
+        "deepseek-harness": "DeepSeek Harness"
+    },
     "kernelHealth": {
         "title": "渠道所用内核当前不可用",
         "description": "账号和绑定已保留；启动或重启对应内核后即可恢复收发。",
@@ -301,5 +304,32 @@
         "feishuInvalidDomain": "API 域请选择飞书或 Lark。",
         "feishuRejected": "飞书 / Lark 拒绝了这些凭据，请检查 App ID 和 App Secret。",
         "feishuConnectionError": "无法验证凭据，请检查网络后重试。"
+    },
+    "workspace": {
+        "title": "钉钉工作空间",
+        "authorize": "授权工作空间",
+        "cancel": "取消授权",
+        "reset": "断开工作空间",
+        "openAuthorization": "打开授权页面",
+        "status": {
+            "unavailable": "请先安装更新后的内核并连接此账号。",
+            "needs_auth": "授权后可使用钉钉文档、日历和工作空间工具。",
+            "starting": "正在检查授权…",
+            "pending": "请在浏览器中完成授权。",
+            "authorized": "此账号已授权工作空间。",
+            "error": "工作空间授权未完成。"
+        },
+        "errors": {
+            "failed": "授权失败，请重试。",
+            "expired": "授权已过期，请重新开始。",
+            "start_timeout": "授权页面未能及时就绪，请重试。",
+            "denied": "授权已被拒绝。",
+            "invalid_client": "请检查此账号的 App ID 和 App Secret。",
+            "org_cli_disabled": "需要组织管理员开启钉钉 CLI 数据访问权限。",
+            "permission_denied": "此账号缺少所需权限。",
+            "network_error": "无法连接钉钉，请检查网络。",
+            "owner_changed": "账号或所选内核已变更，请重新授权。",
+            "busy": "另一个工作空间操作仍在运行。"
+        }
     }
 }

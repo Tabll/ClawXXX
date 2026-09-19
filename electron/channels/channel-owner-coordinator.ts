@@ -29,6 +29,7 @@ export class ChannelOwnerCoordinator {
       leaseDurationMs?: number;
       renewIntervalMs?: number;
       now?: () => Date;
+      onDeactivating?(accountId: string): Promise<unknown>;
     } = {},
   ) {
     this.instanceId = options.instanceId ?? randomUUID();
@@ -118,10 +119,13 @@ export class ChannelOwnerCoordinator {
 
   async deactivate(accountId: CanonicalChannelAccount['id']): Promise<void> {
     const owner = this.active.get(accountId);
+    if (owner) {
+      owner.admitting = false;
+      this.active.delete(accountId);
+      if (owner.renewTimer) clearInterval(owner.renewTimer);
+    }
+    await this.options.onDeactivating?.(accountId);
     if (!owner) return;
-    owner.admitting = false;
-    this.active.delete(accountId);
-    if (owner.renewTimer) clearInterval(owner.renewTimer);
     const adapter = this.adapters.get(owner.lease.kernelId);
     await adapter?.deactivate(accountId).catch(() => undefined);
     await this.data.call('releaseChannelOwnerLease', {

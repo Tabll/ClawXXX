@@ -1,3 +1,4 @@
+import { DingTalkWorkspaceAuthorization } from '@/components/channels/DingTalkWorkspaceAuthorization';
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { RefreshCw, Trash2, AlertCircle, Plus, RotateCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -679,6 +680,7 @@ export function Channels() {
                                 </Button>
                               </div>
                             </div>
+                            {group.channelType === 'dingtalk' && <DingTalkWorkspaceAuthorization accountId={account.accountId} kernelId={account.kernelId} />}
                             {account.delivery && (account.delivery.retrying > 0 || account.delivery.deadLetter > 0) && (
                               <div
                                 data-testid={`channel-delivery-${group.channelType}-${account.accountId}`}

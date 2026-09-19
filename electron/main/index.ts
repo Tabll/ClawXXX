@@ -1,3 +1,5 @@
+import { DingTalkWorkspaceService } from '../channels/dingtalk-workspace';
+import { resolveDwsExecutable } from '../channels/dingtalk-workspace-runtime';
 /**
  * Electron Main Process Entry
  * Manages window creation, system tray, and IPC handlers
@@ -226,6 +228,7 @@ let skillService: CanonicalSkillService | undefined;
 let skillProjectionReconciler: SkillProjectionReconciler | undefined;
 let skillPackageStore: CanonicalSkillPackageStore | undefined;
 let channelAccountService: CanonicalChannelAccountService | undefined;
+let dingtalkWorkspaceService: DingTalkWorkspaceService | undefined;
 let channelAdapterRegistry: ChannelAdapterRegistry | undefined;
 let channelOwnerCoordinator: ChannelOwnerCoordinator | undefined;
 let channelBindingService: ChannelBindingService | undefined;
@@ -530,7 +533,17 @@ async function initializeChannelRuntime(): Promise<void> {
       if (!admission) throw new Error('Channel Orchestrator is not ready');
       await admission.acceptInbound(envelope);
     },
+    { onDeactivating: accountId => dingtalkWorkspaceService?.cancel(accountId) ?? Promise.resolve() },
   );
+  dingtalkWorkspaceService = new DingTalkWorkspaceService({
+    accounts: channelAccountService,
+    owner: accountId => channelOwnerCoordinator?.activeLease(accountId as import('@shared/domains/channels').CanonicalChannelAccount['id']),
+    executable: async kernelId => resolveDwsExecutable({
+      location: kernelId === 'openclaw' ? openClawRuntimeLocation : deepSeekHarnessRuntimeLocation,
+      developmentRoot: app.isPackaged ? undefined : process.cwd(),
+    }),
+    projectionRoot: join(app.getPath('userData'), 'kernel-cache', 'dingtalk-workspace'),
+  });
   channelOrchestrator = new ChannelOrchestrator(
     mainDataClient,
     conversationRouter,
@@ -541,6 +554,8 @@ async function initializeChannelRuntime(): Promise<void> {
 }
 
 async function stopChannelRuntime(): Promise<void> {
+  await dingtalkWorkspaceService?.stop();
+  dingtalkWorkspaceService = undefined;
   channelOrchestrator?.stop();
   await channelOwnerCoordinator?.stop().catch(error => {
     logger.warn('Channel owner shutdown failed', error);
@@ -1026,6 +1041,7 @@ async function initialize(): Promise<void> {
     channelAdapterRegistry,
     clawXScheduler,
     kernelPackageController,
+    dingtalkWorkspaceService,
   );
 
   loadMainWindow(window);

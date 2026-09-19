@@ -9,7 +9,10 @@
         "disconnected": "Disconnected"
     },
     "gatewayWarning": "Gateway service is not running. Channels cannot connect.",
-    "kernel": { "openclaw": "OpenClaw", "deepseek-harness": "DeepSeek Harness" },
+    "kernel": {
+        "openclaw": "OpenClaw",
+        "deepseek-harness": "DeepSeek Harness"
+    },
     "kernelHealth": {
         "title": "A channel kernel is unavailable",
         "description": "Saved accounts and bindings are preserved. Start or restart the affected kernel to resume delivery.",
@@ -300,5 +303,32 @@
         "feishuInvalidDomain": "Select Feishu or Lark as the API domain.",
         "feishuRejected": "Feishu / Lark rejected these credentials. Check App ID and App Secret.",
         "feishuConnectionError": "Could not validate credentials. Check the connection and try again."
+    },
+    "workspace": {
+        "title": "DingTalk workspace",
+        "authorize": "Authorize workspace",
+        "cancel": "Cancel authorization",
+        "reset": "Disconnect workspace",
+        "openAuthorization": "Open authorization page",
+        "status": {
+            "unavailable": "Install the updated runtime and connect this account first.",
+            "needs_auth": "Authorize access to DingTalk documents, calendar and workspace tools.",
+            "starting": "Checking authorization…",
+            "pending": "Complete authorization in your browser.",
+            "authorized": "Workspace authorized for this account.",
+            "error": "Workspace authorization did not complete."
+        },
+        "errors": {
+            "failed": "Authorization failed. Try again.",
+            "expired": "Authorization expired. Start again.",
+            "start_timeout": "The authorization page did not become ready. Try again.",
+            "denied": "Authorization was declined.",
+            "invalid_client": "Check this account’s App ID and App Secret.",
+            "org_cli_disabled": "Your organization must enable DingTalk CLI data access.",
+            "permission_denied": "The account does not have the required permissions.",
+            "network_error": "Unable to reach DingTalk. Check the connection.",
+            "owner_changed": "The account or its selected kernel changed. Start again.",
+            "busy": "Another workspace operation is still running."
+        }
     }
 }

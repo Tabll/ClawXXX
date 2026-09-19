@@ -65,3 +65,12 @@ require a new secret when App ID changes, and return localized codes rather
 than provider response bodies. Failed validation does not consume staging handles
 or start an owner. Plugin fixes belong to newly versioned signed artifacts;
 WeCom's implicit account fallback is permitted only for exactly one account.
+
+DingTalk Workspace authorization is scoped to a canonical Channel account and its
+active kernel owner generation. Never set DWS credentials in process-global env,
+select an arbitrary first account, or write auth state under the user's home.
+Use disposable projections from encrypted Channel secrets; cancel on deletion,
+credential replacement, owner switch and shutdown. Cancellation from stale UI
+must match its authorization nonce. Only official HTTPS authorization URLs and
+fixed error codes cross the host boundary. Provision the pinned CLI archives in
+runtime CI with digests, platform validation and existing signing gates.

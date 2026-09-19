@@ -146,7 +146,7 @@ describe('frozen kernel sources', () => {
     for (const asset of runtime.assets) expect(asset.archiveRoot).toBe(asset.filename.replace(/(?:\.tar\.xz|\.zip)$/, ''));
     for (const kernel of ['openclaw', 'deepseek-harness']) {
       const manifest = readJson<SourceManifest>(`kernels/${kernel}/source.json`);
-      expect(manifest.patchRevision).toBe(kernel === 'openclaw' ? 16 : 15);
+      expect(manifest.patchRevision).toBe(kernel === 'openclaw' ? 17 : 16);
       expect(manifest.nodeRuntime.sha256).toBe(sha256('kernels/node-runtime.json'));
     }
   });

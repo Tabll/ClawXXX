@@ -9,7 +9,10 @@
         "disconnected": "未接続"
     },
     "gatewayWarning": "ゲートウェイサービスが実行されていないため、チャンネルに接続できません。",
-    "kernel": { "openclaw": "OpenClaw", "deepseek-harness": "DeepSeek Harness" },
+    "kernel": {
+        "openclaw": "OpenClaw",
+        "deepseek-harness": "DeepSeek Harness"
+    },
     "kernelHealth": {
         "title": "チャンネルのカーネルを利用できません",
         "description": "アカウントとバインドは保持されています。対象カーネルを起動または再起動すると配信が再開します。",
@@ -300,5 +303,32 @@
         "feishuInvalidDomain": "API ドメインは Feishu または Lark を選択してください。",
         "feishuRejected": "Feishu / Lark が認証情報を拒否しました。App ID と App Secret を確認してください。",
         "feishuConnectionError": "認証情報を検証できません。接続を確認して再試行してください。"
+    },
+    "workspace": {
+        "title": "DingTalk ワークスペース",
+        "authorize": "ワークスペースを認証",
+        "cancel": "認証をキャンセル",
+        "reset": "接続を解除",
+        "openAuthorization": "認証ページを開く",
+        "status": {
+            "unavailable": "更新済みランタイムをインストールし、このアカウントを接続してください。",
+            "needs_auth": "文書、カレンダー、ワークスペースツールへのアクセスを認証します。",
+            "starting": "認証を確認中…",
+            "pending": "ブラウザーで認証を完了してください。",
+            "authorized": "このアカウントは認証済みです。",
+            "error": "ワークスペースの認証が完了しませんでした。"
+        },
+        "errors": {
+            "failed": "認証に失敗しました。再試行してください。",
+            "expired": "認証の有効期限が切れました。",
+            "start_timeout": "認証ページを準備できませんでした。",
+            "denied": "認証が拒否されました。",
+            "invalid_client": "App ID と App Secret を確認してください。",
+            "org_cli_disabled": "組織で DingTalk CLI のデータアクセスを有効にする必要があります。",
+            "permission_denied": "必要な権限がありません。",
+            "network_error": "DingTalk に接続できません。",
+            "owner_changed": "アカウントまたはカーネルが変更されました。再認証してください。",
+            "busy": "別の操作が実行中です。"
+        }
     }
 }

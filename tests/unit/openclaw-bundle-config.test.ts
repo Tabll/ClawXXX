@@ -20,7 +20,8 @@ describe('openclaw bundle config', () => {
       '@openclaw/discord': '2026.9.4',
       '@openclaw/qqbot': '2026.7.1',
       '@openclaw/whatsapp': '2026.9.4',
-      '@soimy/dingtalk': '3.6.10',
+      '@dingtalk-real-ai/dingtalk-connector': '0.8.25',
+      'dingtalk-workspace-cli': '1.0.30',
       '@wecom/wecom-openclaw-plugin': '2026.8.17',
       '@larksuite/openclaw-lark': '2026.7.16',
     });

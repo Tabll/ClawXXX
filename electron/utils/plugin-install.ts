@@ -128,7 +128,7 @@ export function fixupPluginManifest(targetDir: string): void {
 // ── Plugin npm name mapping ──────────────────────────────────────────────────
 
 const PLUGIN_NPM_NAMES: Record<string, string> = {
-  dingtalk: '@soimy/dingtalk',
+  dingtalk: '@dingtalk-real-ai/dingtalk-connector',
   wecom: '@wecom/wecom-openclaw-plugin',
   'feishu-openclaw-plugin': '@larksuite/openclaw-lark',
   discord: '@openclaw/discord',
@@ -154,7 +154,7 @@ type TrustedOfficialExtensionPlugin = {
 };
 
 const TRUSTED_OFFICIAL_EXTENSION_PLUGINS: Record<string, TrustedOfficialExtensionPlugin> = {
-  dingtalk: { npmName: '@soimy/dingtalk' },
+  dingtalk: { npmName: '@dingtalk-real-ai/dingtalk-connector' },
   // WeCom intentionally runs under ClawX's legacy-compatible `wecom` id even
   // though the upstream package manifest still declares
   // `wecom-openclaw-plugin`. Keep it path-owned so startup migration does not

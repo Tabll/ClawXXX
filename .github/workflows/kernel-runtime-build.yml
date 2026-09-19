@@ -168,6 +168,8 @@ jobs:
           else
             echo "CLAWX_PAYLOAD=$GITHUB_WORKSPACE/temp/kernel-payload" >> "$GITHUB_ENV"
           fi
+      - name: Materialize fixed DWS tool in each signed kernel artifact
+        run: node scripts/kernel-runtime/materialize-dws.mjs --kernel ${{ matrix.kernel }} --payload "${{ env.CLAWX_PAYLOAD }}" --platform ${{ matrix.target.platform }} --arch ${{ matrix.target.arch }}
       - name: Prune non-target native payloads
         run: node scripts/kernel-runtime/prune-native-payload.mjs --payload "${{ env.CLAWX_PAYLOAD }}" --platform ${{ matrix.target.platform }} --arch ${{ matrix.target.arch }}
       - name: Audit exact runtime licenses and redistribution obligations

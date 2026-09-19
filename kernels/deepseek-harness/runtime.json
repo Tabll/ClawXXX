@@ -2,8 +2,8 @@
   "schemaVersion": 1,
   "kernelId": "deepseek-harness",
   "displayName": "DeepSeek Harness",
-  "artifactVersion": "0.1.5-rc.2+clawx.15",
-  "patchRevision": 15,
+  "artifactVersion": "0.1.5-rc.2+clawx.16",
+  "patchRevision": 16,
   "minHostVersion": "0.6.0",
   "maxHostVersion": "0.6.x",
   "capabilityContractVersion": 1,
@@ -43,7 +43,8 @@
       "runtime/kernel/node_modules/@koromix/koffi-darwin-arm64/darwin_arm64/koffi.node",
       "runtime/kernel/node_modules/node-addon-require-builtin-darwin-arm64/prebuilt/*.node",
       "runtime/kernel/node_modules/@img/sharp-darwin-arm64/lib/*.node",
-      "runtime/kernel/node_modules/@img/sharp-libvips-darwin-arm64/lib/*.dylib"
+      "runtime/kernel/node_modules/@img/sharp-libvips-darwin-arm64/lib/*.dylib",
+      "runtime/kernel/tools/dws/dws"
     ],
     "darwin-x64": [
       "runtime/kernel/node_modules/@deepseek-ai/node-addon-system-darwin-x64/bin/system.node",
@@ -51,7 +52,8 @@
       "runtime/kernel/node_modules/@koromix/koffi-darwin-x64/darwin_x64/koffi.node",
       "runtime/kernel/node_modules/node-addon-require-builtin-darwin-x64/prebuilt/*.node",
       "runtime/kernel/node_modules/@img/sharp-darwin-x64/lib/*.node",
-      "runtime/kernel/node_modules/@img/sharp-libvips-darwin-x64/lib/*.dylib"
+      "runtime/kernel/node_modules/@img/sharp-libvips-darwin-x64/lib/*.dylib",
+      "runtime/kernel/tools/dws/dws"
     ],
     "linux-arm64": [
       "runtime/kernel/node_modules/node-pty/prebuilds/linux-arm64/**",
@@ -60,7 +62,8 @@
       "runtime/kernel/node_modules/@img/sharp-linux-arm64/lib/*.node",
       "runtime/kernel/node_modules/@img/sharp-libvips-linux-arm64/lib/*.so*",
       "runtime/kernel/node_modules/@deepseek-ai/node-addon-system-linux-arm64/bin/landlock-run",
-      "runtime/kernel/node_modules/@deepseek-ai/node-addon-system-linux-arm64/bin/glibc/system.node"
+      "runtime/kernel/node_modules/@deepseek-ai/node-addon-system-linux-arm64/bin/glibc/system.node",
+      "runtime/kernel/tools/dws/dws"
     ],
     "linux-x64": [
       "runtime/kernel/node_modules/node-pty/prebuilds/linux-x64/**",
@@ -69,7 +72,8 @@
       "runtime/kernel/node_modules/@img/sharp-linux-x64/lib/*.node",
       "runtime/kernel/node_modules/@img/sharp-libvips-linux-x64/lib/*.so*",
       "runtime/kernel/node_modules/@deepseek-ai/node-addon-system-linux-x64/bin/landlock-run",
-      "runtime/kernel/node_modules/@deepseek-ai/node-addon-system-linux-x64/bin/glibc/system.node"
+      "runtime/kernel/node_modules/@deepseek-ai/node-addon-system-linux-x64/bin/glibc/system.node",
+      "runtime/kernel/tools/dws/dws"
     ],
     "win32-x64": [
       "runtime/kernel/node_modules/node-pty/prebuilds/win32-x64/**",
@@ -78,7 +82,8 @@
       "runtime/kernel/node_modules/@koromix/koffi-win32-x64/win32_x64/koffi.node",
       "runtime/kernel/node_modules/node-addon-require-builtin-win32-x64-msvc/prebuilt/*.node",
       "runtime/kernel/node_modules/@img/sharp-win32-x64/lib/*.node",
-      "runtime/kernel/node_modules/@img/sharp-win32-x64/lib/*.dll"
+      "runtime/kernel/node_modules/@img/sharp-win32-x64/lib/*.dll",
+      "runtime/kernel/tools/dws/dws.exe"
     ]
   },
   "budgets": {
@@ -87,5 +92,18 @@
     "fileCount": 100000,
     "coldReadyMs": 30000,
     "idleRssBytes": 536870912
+  },
+  "toolInputs": {
+    "dws": {
+      "version": "1.0.30",
+      "archives": {
+        "dws-darwin-amd64.tar.gz": "041c18b5649e579fc36249298ef4a5a8f64fe91106f5e2c6bc41937508dcc1de",
+        "dws-darwin-arm64.tar.gz": "42f30f04e0d51880117fc091429d94d51f57259a02a205213bf16db4a9312bc9",
+        "dws-linux-amd64.tar.gz": "d607f56efa9b9b8e99acd0775e9c98c44fc6a718bd71c549e05286766321c00e",
+        "dws-linux-arm64.tar.gz": "696c319c81cce431b8682e9945540744f3cc548f4790461adcf9cdb63ab9de4e",
+        "dws-windows-amd64.zip": "bbfff7d0efdeffec854d54f14f659949614b77f5779cab24ba18689248ddbdf2",
+        "dws-windows-arm64.zip": "78067a3a0307ef1be57a47ec0c64469c4148e44323ec94f526bd40b14719b354"
+      }
+    }
   }
 }

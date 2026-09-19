@@ -237,7 +237,7 @@ describe('plugin installer diagnostics', () => {
 
   it('refreshes a same-version dev mirror after patch identity changes and reuses it only after recording that identity', async () => {
     mockApp.isPackaged = false;
-    const source = '/mock/app/node_modules/@soimy/dingtalk';
+    const source = '/mock/app/node_modules/@dingtalk-real-ai/dingtalk-connector';
     const target = '/home/test/.clawx/kernel-config/openclaw/extensions/dingtalk';
     let marker = '{}';
     mockExistsSync.mockImplementation((input: string) => [
@@ -246,7 +246,7 @@ describe('plugin installer diagnostics', () => {
     ].includes(String(input)));
     mockReadFileSync.mockImplementation((input: string) => {
       if (String(input).endsWith('.clawx-mirror.json')) return marker;
-      if (String(input).endsWith('package.json')) return JSON.stringify({ name: '@soimy/dingtalk', version: '3.6.10' });
+      if (String(input).endsWith('package.json')) return JSON.stringify({ name: '@dingtalk-real-ai/dingtalk-connector', version: '0.8.25' });
       return '{}';
     });
     mockWriteFileSync.mockImplementation((input, value) => {

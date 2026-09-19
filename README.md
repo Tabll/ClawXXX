@@ -44,6 +44,8 @@ ClawX comes pre-configured with best-practice model providers and natively suppo
 
 <p align="center"><strong style="font-size:1.1em; text-decoration: underline;">For a full enterprise edition, dedicated service support, or tailored deployment guidance for your business scenario, contact us at <a href="mailto:public@valuecell.ai">public@valuecell.ai</a>.</strong></p>
 
+DingTalk uses the official connector while preserving existing account IDs and bindings. Authorize DingTalk Workspace separately on each account in Channels; credentials remain encrypted in ClawX and CLI processes receive disposable account projections. DWS is supplied by the selected runtime artifact (OpenClaw revision 17 / DeepSeek Harness revision 16); older artifacts display the capability as unavailable.
+
 ## Screenshots
 
 <table>
@@ -158,9 +160,9 @@ ClawX uses a **Main-owned multi-kernel architecture with a unified Host API laye
 
 > ClawX 0.6 implements optional CI-built OpenClaw and DeepSeek Harness runtimes backed by one Main-owned SQLite/Blob authority. Public release remains fail-closed until the protected cross-platform signing, promotion and packaged-test evidence in the [implementation checklist](TODO.md) passes. See the [multi-kernel design](docs/zh-CN/multi-kernel-design.md), [runtime security/support](docs/en-US/runtime-security-support.md), and [data policy](docs/en-US/data-security-retention.md).
 
-The DSH source candidate is `0.1.5-rc.2+clawx.15` (a prerelease), adapted to V3 system messages, run-scoped persona and append-origin settlements. Model-context replacements cannot duplicate replies or usage. Shared SQLite remains authoritative; installed runtimes change only after verified CI artifacts are published. See the [current upgrade contract](harness/reference/kernel-upgrade-2026-09-12.md).
+The DSH source candidate is `0.1.5-rc.2+clawx.16` (a prerelease), adapted to V3 system messages, run-scoped persona and append-origin settlements. Model-context replacements cannot duplicate replies or usage. Shared SQLite remains authoritative; installed runtimes change only after verified CI artifacts are published. See the [current upgrade contract](harness/reference/kernel-upgrade-2026-09-12.md).
 
-OpenClaw source and development dependencies now use `2026.9.4+clawx.16`, including matching Discord/WhatsApp packages. The rebased `.mjs` patches retain bounded in-memory ACP state, shared history, Main-owned configuration and fail-closed Channel admission. Node stays at 24.20.0. Local candidate evidence and pending platform gates are recorded in the [upgrade design](harness/reference/kernel-upgrade-2026-09-12.md).
+OpenClaw source and development dependencies now use `2026.9.4+clawx.17`, including matching Discord/WhatsApp packages. The rebased `.mjs` patches retain bounded in-memory ACP state, shared history, Main-owned configuration and fail-closed Channel admission. Node stays at 24.20.0. Local candidate evidence and pending platform gates are recorded in the [upgrade design](harness/reference/kernel-upgrade-2026-09-12.md).
 
 Both +clawx.13 kernels with Node 24.20.0 passed all 25 five-target staging jobs, all four macOS notarizations (Accepted), and same-source Electron E2E on all three platforms; see the [CI acceptance evidence](harness/reference/windows-runtime-ci-repair.md). Windows uses artifact signatures only, without Authenticode. Production catalog status, protected workflow recovery and live verification are tracked in the [publication evidence](harness/reference/kernel-automatic-release.md); real-account acceptance remains pending.
 

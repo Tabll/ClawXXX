@@ -1,3 +1,4 @@
+import type { DingTalkWorkspaceService } from '../channels/dingtalk-workspace';
 /**
  * IPC Handlers
  * Registers all IPC handlers for main-renderer communication
@@ -94,6 +95,7 @@ export function registerIpcHandlers(
   channelAdapterRegistry?: ChannelAdapterRegistry,
   scheduler?: ClawXScheduler,
   kernelPackages?: KernelPackageController,
+  dingtalkWorkspace?: DingTalkWorkspaceService,
 ): void {
   const credentialVault = new CredentialStagingVault();
   registerCredentialStagingIpc(mainWindow, credentialVault);
@@ -121,6 +123,7 @@ export function registerIpcHandlers(
     scheduler,
     credentialVault,
     kernelPackages,
+    dingtalkWorkspace,
   );
 
   // Gateway handlers
@@ -177,6 +180,7 @@ function registerTypedHostHandlers(
   scheduler?: ClawXScheduler,
   credentialVault?: CredentialStagingVault,
   kernelPackages?: KernelPackageController,
+  dingtalkWorkspace?: DingTalkWorkspaceService,
 ): void {
   const acpSessionAccessRegistry = openClawAcp?.access ?? new AcpSessionAccessRegistry();
   const stagedAttachments = new StagedAttachmentRegistry();
@@ -205,6 +209,7 @@ function registerTypedHostHandlers(
     gateway: createGatewayApi(gatewayManager),
     logs: createLogsApi(),
     channels: createChannelsApi({
+      dingtalkWorkspace,
       gatewayManager,
       mainWindow,
       dataClient,

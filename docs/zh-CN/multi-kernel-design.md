@@ -2,7 +2,7 @@
 
 > 2026-09-19 分发层修订：可选内核改为 GitHub Releases 单源，保留版本化包、签名目录、
 > 不可变发布日志及安全清理；统一 SQLite 和业务抽象不变。当前制品身份为 OpenClaw
-> `2026.9.4+clawx.16`、DSH `0.1.5-rc.2+clawx.15`，远端验收另行执行。
+> `2026.9.4+clawx.17`、DSH `0.1.5-rc.2+clawx.16`，远端验收另行执行。
 > 本文旧 COS/双镜像章节由 [GitHub 单源设计](../../harness/reference/github-only-kernel-distribution.md)
 > 替代；旧源只保留历史身份验证，不参与下载、发布或清理。
 

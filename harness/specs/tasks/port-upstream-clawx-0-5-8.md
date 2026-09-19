@@ -5,6 +5,7 @@ scenario: gateway-backend-communication
 taskType: runtime-bridge
 intent: Port the reviewed upstream fixes and features in independently validated batches while retaining the canonical multi-kernel storage, credential, lifecycle and artifact contracts.
 touchedAreas:
+  - .github/workflows/**
   - electron/**
   - shared/**
   - src/**
@@ -58,6 +59,10 @@ acceptance:
   - Existing canonical history, usage idempotency, credentials, per-kernel routing and active peers remain intact.
   - No native transcript scanning, second persistence authority, dependency downgrade or end-user package installation is introduced.
   - New UI flows have four-locale coverage and matching Electron E2E; native permission and signed-artifact claims require actual platform evidence.
+  - Official DingTalk preserves canonical account IDs, bindings and policy while DWS authorizations and subprocess credentials remain isolated by account and owner generation.
+  - Child-agent runs persist independent canonical lineage, content, usage and terminal status without treating a child as a history branch or reading native transcripts.
+  - Computer Use is an explicit revocable capability and TokenDance authorization remains Main-owned; both respect the selected kernel and existing credential authority.
+  - Packaging upgrades are checked with a local unsigned assembly and retain protected signing and immutable-runtime release gates.
 docs:
   required: true
 ---
@@ -72,3 +77,9 @@ Do not replay the upstream monolithic merge or old OpenClaw generated-dist
 patches. Port behavior against the current implementation and its real test
 contracts. User state and installed artifacts are not test fixtures. Record
 platform or external-account validation gaps without presenting them as passed.
+
+Continuation authorized on 2026-09-19: finish the remaining implementation batches,
+including the previously optional Computer Use and TokenDance integrations. Keep
+the existing seven commits and commit each validated continuation batch. Publishing
+signed artifacts and authenticating real third-party accounts are separate external
+operations; code and fixture validation must not claim those operations occurred.

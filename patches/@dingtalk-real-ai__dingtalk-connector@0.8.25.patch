@@ -1,0 +1,973 @@
+diff --git a/dist/accounts-CF4oK_HZ.mjs b/dist/accounts-CF4oK_HZ.mjs
+--- a/dist/accounts-CF4oK_HZ.mjs
++++ b/dist/accounts-CF4oK_HZ.mjs
+@@ -2,7 +2,7 @@
+ /**
+ * 默认账号 ID
+ */
+-const DEFAULT_ACCOUNT_ID = "__default__";
++const DEFAULT_ACCOUNT_ID = "default";
+ /**
+ * 规范化账号 ID
+ *
+@@ -84,7 +84,7 @@
+ * 解析默认群组策略
+ */
+ function resolveDefaultGroupPolicy(cfg) {
+-	return (cfg.channels?.["dingtalk-connector"])?.groupPolicy ?? "open";
++	return (cfg.channels?.["dingtalk"])?.groupPolicy ?? "open";
+ }
+ /**
+ * 解析允许列表提供者运行时群组策略
+@@ -129,7 +129,7 @@
+ * List all configured account IDs from the accounts field.
+ */
+ function listConfiguredAccountIds(cfg) {
+-	const accounts = (cfg.channels?.["dingtalk-connector"])?.accounts;
++	const accounts = (cfg.channels?.["dingtalk"])?.accounts;
+ 	if (!accounts || typeof accounts !== "object") return [];
+ 	return Object.keys(accounts).filter(Boolean);
+ }
+@@ -146,19 +146,19 @@
+ * Resolve the default account selection and its source.
+ */
+ function resolveDefaultDingtalkAccountSelection(cfg) {
+-	const preferredRaw = (cfg.channels?.["dingtalk-connector"])?.defaultAccount?.trim();
++	const preferredRaw = (cfg.channels?.["dingtalk"])?.defaultAccount?.trim();
+ 	const preferred = preferredRaw ? normalizeAccountId(preferredRaw) : void 0;
+ 	if (preferred) return {
+ 		accountId: preferred,
+ 		source: "explicit-default"
+ 	};
+ 	const ids = listDingtalkAccountIds(cfg);
+-	if (ids.includes("__default__")) return {
++	if (ids.includes("default")) return {
+ 		accountId: DEFAULT_ACCOUNT_ID,
+ 		source: "mapped-default"
+ 	};
+ 	return {
+-		accountId: ids[0] ?? "__default__",
++		accountId: ids[0] ?? "default",
+ 		source: "fallback"
+ 	};
+ }
+@@ -172,7 +172,7 @@
+ * Get the raw account-specific config.
+ */
+ function resolveAccountConfig(cfg, accountId) {
+-	const accounts = (cfg.channels?.["dingtalk-connector"])?.accounts;
++	const accounts = (cfg.channels?.["dingtalk"])?.accounts;
+ 	if (!accounts || typeof accounts !== "object") return;
+ 	return accounts[accountId];
+ }
+@@ -181,7 +181,7 @@
+ * Account-specific fields override top-level fields.
+ */
+ function mergeDingtalkAccountConfig(cfg, accountId) {
+-	const { accounts: _ignored, defaultAccount: _ignoredDefaultAccount, ...base } = cfg.channels?.["dingtalk-connector"] ?? {};
++	const { accounts: _ignored, defaultAccount: _ignoredDefaultAccount, ...base } = cfg.channels?.["dingtalk"] ?? {};
+ 	const account = resolveAccountConfig(cfg, accountId) ?? {};
+ 	return {
+ 		...base,
+@@ -228,9 +228,9 @@
+ function resolveDingtalkAccount(params) {
+ 	const hasExplicitAccountId = typeof params.accountId === "string" && params.accountId.trim() !== "";
+ 	const defaultSelection = hasExplicitAccountId ? null : resolveDefaultDingtalkAccountSelection(params.cfg);
+-	const accountId = hasExplicitAccountId ? normalizeAccountId(params.accountId ?? "") : defaultSelection?.accountId ?? "__default__";
++	const accountId = hasExplicitAccountId ? normalizeAccountId(params.accountId ?? "") : defaultSelection?.accountId ?? "default";
+ 	const selectionSource = hasExplicitAccountId ? "explicit" : defaultSelection?.source ?? "fallback";
+-	const baseEnabled = (params.cfg.channels?.["dingtalk-connector"])?.enabled !== false;
++	const baseEnabled = (params.cfg.channels?.["dingtalk"])?.enabled !== false;
+ 	const merged = mergeDingtalkAccountConfig(params.cfg, accountId);
+ 	const accountEnabled = merged.enabled !== false;
+ 	const enabled = baseEnabled && accountEnabled;
+diff --git a/dist/entry-bundled.mjs b/dist/entry-bundled.mjs
+--- a/dist/entry-bundled.mjs
++++ b/dist/entry-bundled.mjs
+@@ -10,7 +10,7 @@
+ *   "./bundled" → this file
+ */
+ var entry_bundled_default = defineBundledChannelEntry({
+-	id: "dingtalk-connector",
++	id: "dingtalk",
+ 	name: "DingTalk",
+ 	description: "DingTalk (钉钉) channel connector — Stream mode with AI Card streaming",
+ 	importMetaUrl: import.meta.url,
+diff --git a/dist/gateway-methods-DGDrXmmq.mjs b/dist/gateway-methods-DGDrXmmq.mjs
+--- a/dist/gateway-methods-DGDrXmmq.mjs
++++ b/dist/gateway-methods-DGDrXmmq.mjs
+@@ -655,7 +655,7 @@
+ 		const { loadConfig } = await import("openclaw/plugin-sdk/config-runtime");
+ 		const cfg = loadConfig();
+ 		try {
+-			const root = cfg.channels?.["dingtalk-connector"];
++			const root = cfg.channels?.["dingtalk"];
+ 			const accountsMap = root?.accounts || {};
+ 			const mentionTable = buildBotMentionTable(cfg);
+ 			const mentionByAccountId = new Map(mentionTable.map((e) => [e.accountId, e]));
+@@ -706,7 +706,7 @@
+ 		const { loadConfig } = await import("openclaw/plugin-sdk/config-runtime");
+ 		const cfg = loadConfig();
+ 		try {
+-			const accountsMap = (cfg.channels?.["dingtalk-connector"])?.accounts || {};
++			const accountsMap = (cfg.channels?.["dingtalk"])?.accounts || {};
+ 			const ids = Object.keys(accountsMap);
+ 			const missingChatbotUserId = [];
+ 			const missingCredentials = [];
+diff --git a/dist/index.mjs b/dist/index.mjs
+--- a/dist/index.mjs
++++ b/dist/index.mjs
+@@ -21,7 +21,7 @@
+ 		const g = globalThis;
+ 		const store = g[DUPLICATE_LOAD_SYMBOL] ?? /* @__PURE__ */ new Map();
+ 		g[DUPLICATE_LOAD_SYMBOL] = store;
+-		const pluginId = "dingtalk-connector";
++		const pluginId = "dingtalk";
+ 		const here = typeof import.meta !== "undefined" && import.meta?.url ? String(import.meta.url) : "<unknown>";
+ 		const paths = store.get(pluginId) ?? /* @__PURE__ */ new Set();
+ 		paths.add(here);
+diff --git a/dist/message-handler-BU5DyGGZ.mjs b/dist/message-handler-BU5DyGGZ.mjs
+--- a/dist/message-handler-BU5DyGGZ.mjs
++++ b/dist/message-handler-BU5DyGGZ.mjs
+@@ -1555,7 +1555,7 @@
+ 	let matchedAgentId = null;
+ 	if (cfg.bindings && cfg.bindings.length > 0) for (const binding of cfg.bindings) {
+ 		const match = binding.match;
+-		if (match.channel && match.channel !== "dingtalk-connector") continue;
++		if (match.channel && match.channel !== "dingtalk") continue;
+ 		if (match.accountId && match.accountId !== accountId) continue;
+ 		if (match.peer) {
+ 			if (match.peer.kind && match.peer.kind !== sessionContext.chatType) continue;
+@@ -1765,7 +1765,7 @@
+ 		log?.info?.(`🔍 构建 sessionKey 前的参数: agentId=${matchedAgentId}, channel=dingtalk-connector, accountId=${accountId}, chatType=${sessionContext.chatType}, sessionPeerId=${sessionContext.sessionPeerId}, dmScope=${dmScope}`);
+ 		const sessionKey = core.channel.routing.buildAgentSessionKey({
+ 			agentId: matchedAgentId,
+-			channel: "dingtalk-connector",
++			channel: "dingtalk",
+ 			accountId,
+ 			peer: {
+ 				kind: sessionContext.chatType,
+@@ -1790,12 +1790,12 @@
+ 			GroupSubject: isDirect ? void 0 : data.conversationTitle,
+ 			SenderName: senderName,
+ 			SenderId: senderId,
+-			Provider: "dingtalk-connector",
+-			Surface: "dingtalk-connector",
++			Provider: "dingtalk",
++			Surface: "dingtalk",
+ 			MessageSid: data.msgId,
+ 			Timestamp: Date.now(),
+ 			CommandAuthorized: true,
+-			OriginatingChannel: "dingtalk-connector",
++			OriginatingChannel: "dingtalk",
+ 			OriginatingTo: toField,
+ 			BotChatbotUserId: data.chatbotUserId,
+ 			BotChatbotCorpId: data.chatbotCorpId
+@@ -1936,7 +1936,7 @@
+ 	let matchedAgentId = null;
+ 	if (cfg.bindings && cfg.bindings.length > 0) for (const binding of cfg.bindings) {
+ 		const match = binding.match;
+-		if (match.channel && match.channel !== "dingtalk-connector") continue;
++		if (match.channel && match.channel !== "dingtalk") continue;
+ 		if (match.accountId && match.accountId !== accountId) continue;
+ 		if (match.peer) {
+ 			if (match.peer.kind && match.peer.kind !== queueSessionContext.chatType) continue;
+diff --git a/dist/messaging-cO1f9QRn.mjs b/dist/messaging-cO1f9QRn.mjs
+--- a/dist/messaging-cO1f9QRn.mjs
++++ b/dist/messaging-cO1f9QRn.mjs
+@@ -14,7 +14,7 @@
+ * - `bindings[]`：根据 `match.accountId` 反查 agentId
+ */
+ function buildBotMentionTable(cfg, options = {}) {
+-	const accountsMap = (cfg?.channels?.["dingtalk-connector"])?.accounts || {};
++	const accountsMap = (cfg?.channels?.["dingtalk"])?.accounts || {};
+ 	const byAccountId = /* @__PURE__ */ new Map();
+ 	for (const [accountId, acct] of Object.entries(accountsMap)) {
+ 		if (!acct) continue;
+@@ -30,7 +30,7 @@
+ 	if (Array.isArray(bindings)) for (const b of bindings) {
+ 		const match = b?.match;
+ 		if (!match) continue;
+-		if (match.channel && match.channel !== "dingtalk-connector") continue;
++		if (match.channel && match.channel !== "dingtalk") continue;
+ 		const accountId = match.accountId;
+ 		const agentId = b.agentId;
+ 		if (typeof accountId !== "string" || typeof agentId !== "string") continue;
+diff --git a/dist/runtime-DvcaQdQ3.mjs b/dist/runtime-DvcaQdQ3.mjs
+--- a/dist/runtime-DvcaQdQ3.mjs
++++ b/dist/runtime-DvcaQdQ3.mjs
+@@ -489,7 +489,7 @@
+ //#endregion
+ //#region src/onboarding.ts
+ const _env$1 = globalThis["process"].env;
+-const channel = "dingtalk-connector";
++const channel = "dingtalk";
+ const DINGTALK_MANUAL_SETUP_DOC = "docs/DINGTALK_MANUAL_SETUP.md";
+ async function restartOpenclawGateway(prompter) {
+ 	await prompter.note([
+@@ -507,13 +507,13 @@
+ 	return value.trim() || void 0;
+ }
+ function setDingtalkDmPolicy(cfg, dmPolicy) {
+-	const allowFrom = dmPolicy === "open" ? addWildcardAllowFrom(cfg.channels?.["dingtalk-connector"]?.allowFrom)?.map((entry) => String(entry)) : void 0;
++	const allowFrom = dmPolicy === "open" ? addWildcardAllowFrom(cfg.channels?.["dingtalk"]?.allowFrom)?.map((entry) => String(entry)) : void 0;
+ 	return {
+ 		...cfg,
+ 		channels: {
+ 			...cfg.channels,
+-			"dingtalk-connector": {
+-				...cfg.channels?.["dingtalk-connector"],
++			"dingtalk": {
++				...cfg.channels?.["dingtalk"],
+ 				dmPolicy,
+ 				...allowFrom ? { allowFrom } : {}
+ 			}
+@@ -525,8 +525,8 @@
+ 		...cfg,
+ 		channels: {
+ 			...cfg.channels,
+-			"dingtalk-connector": {
+-				...cfg.channels?.["dingtalk-connector"],
++			"dingtalk": {
++				...cfg.channels?.["dingtalk"],
+ 				allowFrom
+ 			}
+ 		}
+@@ -536,7 +536,7 @@
+ 	return raw.split(/[\n,;]+/g).map((entry) => entry.trim()).filter(Boolean);
+ }
+ async function promptDingtalkAllowFrom(params) {
+-	const existing = params.cfg.channels?.["dingtalk-connector"]?.allowFrom ?? [];
++	const existing = params.cfg.channels?.["dingtalk"]?.allowFrom ?? [];
+ 	await params.prompter.note([
+ 		"Allowlist DingTalk DMs by user ID.",
+ 		"You can find user ID in DingTalk admin console or via API.",
+@@ -568,7 +568,7 @@
+ 		"4) Enable required permissions: im:message, im:chat",
+ 		"5) Publish the app or add it to a test group",
+ 		"Tip: you can also set DINGTALK_CLIENT_ID / DINGTALK_CLIENT_SECRET env vars.",
+-		`Docs: ${formatDocsLink("/channels/dingtalk-connector", "dingtalk-connector")}`
++		`Docs: ${formatDocsLink("/channels/dingtalk-connector", "dingtalk")}`
+ 	].join("\n"), "DingTalk credentials");
+ }
+ async function promptDingtalkClientId(params) {
+@@ -630,8 +630,8 @@
+ 		...cfg,
+ 		channels: {
+ 			...cfg.channels,
+-			"dingtalk-connector": {
+-				...cfg.channels?.["dingtalk-connector"],
++			"dingtalk": {
++				...cfg.channels?.["dingtalk"],
+ 				enabled: true,
+ 				groupPolicy
+ 			}
+@@ -643,8 +643,8 @@
+ 		...cfg,
+ 		channels: {
+ 			...cfg.channels,
+-			"dingtalk-connector": {
+-				...cfg.channels?.["dingtalk-connector"],
++			"dingtalk": {
++				...cfg.channels?.["dingtalk"],
+ 				groupAllowFrom
+ 			}
+ 		}
+@@ -675,7 +675,7 @@
+ 		};
+ 	},
+ 	configure: async ({ cfg, prompter }) => {
+-		const dingtalkCfg = cfg.channels?.["dingtalk-connector"];
++		const dingtalkCfg = cfg.channels?.["dingtalk"];
+ 		const resolved = resolveDingtalkCredentials(dingtalkCfg, { allowUnresolvedSecretRef: true });
+ 		const hasConfigSecret = hasConfiguredSecretInput(dingtalkCfg?.clientSecret);
+ 		const hasConfigCreds = Boolean(typeof dingtalkCfg?.clientId === "string" && dingtalkCfg.clientId.trim() && hasConfigSecret);
+@@ -692,8 +692,8 @@
+ 			...next,
+ 			channels: {
+ 				...next.channels,
+-				"dingtalk-connector": {
+-					...next.channels?.["dingtalk-connector"],
++				"dingtalk": {
++					...next.channels?.["dingtalk"],
+ 					enabled: true
+ 				}
+ 			}
+@@ -779,8 +779,8 @@
+ 				...next,
+ 				channels: {
+ 					...next.channels,
+-					"dingtalk-connector": {
+-						...next.channels?.["dingtalk-connector"],
++					"dingtalk": {
++						...next.channels?.["dingtalk"],
+ 						enabled: true,
+ 						clientId,
+ 						clientSecret
+@@ -814,11 +814,11 @@
+ 					label: "Disabled - don't respond in groups"
+ 				}
+ 			],
+-			initialValue: (next.channels?.["dingtalk-connector"])?.groupPolicy ?? "open"
++			initialValue: (next.channels?.["dingtalk"])?.groupPolicy ?? "open"
+ 		});
+ 		if (groupPolicy) next = setDingtalkGroupPolicy(next, groupPolicy);
+ 		if (groupPolicy === "allowlist") {
+-			const existing = (next.channels?.["dingtalk-connector"])?.groupAllowFrom ?? [];
++			const existing = (next.channels?.["dingtalk"])?.groupAllowFrom ?? [];
+ 			const entry = await prompter.text({
+ 				message: "Group chat allowlist (conversation IDs)",
+ 				placeholder: "cidxxxx, cidyyyy",
+@@ -839,7 +839,7 @@
+ 		channel,
+ 		policyKey: "channels.dingtalk-connector.dmPolicy",
+ 		allowFromKey: "channels.dingtalk-connector.allowFrom",
+-		getCurrent: (cfg) => (cfg.channels?.["dingtalk-connector"])?.dmPolicy ?? "open",
++		getCurrent: (cfg) => (cfg.channels?.["dingtalk"])?.dmPolicy ?? "open",
+ 		setPolicy: (cfg, policy) => setDingtalkDmPolicy(cfg, policy),
+ 		promptAllowFrom: promptDingtalkAllowFrom
+ 	},
+@@ -847,8 +847,8 @@
+ 		...cfg,
+ 		channels: {
+ 			...cfg.channels,
+-			"dingtalk-connector": {
+-				...cfg.channels?.["dingtalk-connector"],
++			"dingtalk": {
++				...cfg.channels?.["dingtalk"],
+ 				enabled: false
+ 			}
+ 		}
+@@ -908,7 +908,7 @@
+ async function monitorDingtalkProvider(opts = {}) {
+ 	const cfg = opts.config;
+ 	if (!cfg) throw new Error("Config is required for DingTalk monitor");
+-	const log = createLogger(cfg.channels?.["dingtalk-connector"]?.debug ?? false);
++	const log = createLogger(cfg.channels?.["dingtalk"]?.debug ?? false);
+ 	const [accountsModule, monitorAccountModule, monitorSingleModule] = await Promise.all([
+ 		import("./accounts-BSIiLyZa.mjs"),
+ 		import("./message-handler-BU5DyGGZ.mjs"),
+@@ -955,7 +955,7 @@
+ //#endregion
+ //#region src/channel.ts
+ /** Channel identifier used across the plugin. Single source of truth. */
+-const CHANNEL_ID = "dingtalk-connector";
++const CHANNEL_ID = "dingtalk";
+ /**
+ * Indirect reference to avoid security scanner false positive.
+ * The scanner flags env access + network-send in the same file as
+@@ -1017,7 +1017,7 @@
+ 				cfg,
+ 				accountId
+ 			});
+-			if (accountId === "__default__") return {
++			if (accountId === "default") return {
+ 				...cfg,
+ 				channels: {
+ 					...cfg.channels,
+@@ -1046,7 +1046,7 @@
+ 			};
+ 		},
+ 		deleteAccount: ({ cfg, accountId }) => {
+-			if (accountId === "__default__") {
++			if (accountId === "default") {
+ 				const next = { ...cfg };
+ 				const nextChannels = { ...cfg.channels };
+ 				delete nextChannels[CHANNEL_ID];
+@@ -1097,7 +1097,7 @@
+ 	setup: {
+ 		resolveAccountId: () => DEFAULT_ACCOUNT_ID,
+ 		applyAccountConfig: ({ cfg, accountId }) => {
+-			if (!accountId || accountId === "__default__") return {
++			if (!accountId || accountId === "default") return {
+ 				...cfg,
+ 				channels: {
+ 					...cfg.channels,
+@@ -1319,7 +1319,7 @@
+ 				clientId: String(account.clientId),
+ 				clientSecret: String(account.clientSecret)
+ 			});
+-			_env.env.DWS_CLIENT_ID = String(account.clientId);
++
+ 		}
+ 		ctx.setStatus({
+ 			accountId: ctx.accountId,
+@@ -1347,6 +1347,8 @@
+ 		} catch (err) {
+ 			ctx.log?.error(`[dingtalk-connector][${ctx.accountId}] startAccount error: ${err?.message ?? err}\n${err?.stack ?? ""}`);
+ 			throw err;
++		} finally {
++			dwsCredentialsByAccount.delete(ctx.accountId);
+ 		}
+ 	} }
+ };
+diff --git a/dist/session-7QpNCXBn.mjs b/dist/session-7QpNCXBn.mjs
+--- a/dist/session-7QpNCXBn.mjs
++++ b/dist/session-7QpNCXBn.mjs
+@@ -54,7 +54,7 @@
+ 	const isDirect = conversationType === "1";
+ 	const peerId = isDirect ? senderId : conversationId || senderId;
+ 	if (sharedMemoryAcrossConversations === true) return {
+-		channel: "dingtalk-connector",
++		channel: "dingtalk",
+ 		accountId,
+ 		chatType: isDirect ? "direct" : "group",
+ 		peerId,
+@@ -64,7 +64,7 @@
+ 		groupSubject: isDirect ? void 0 : groupSubject
+ 	};
+ 	if (separateSessionByConversation === false) return {
+-		channel: "dingtalk-connector",
++		channel: "dingtalk",
+ 		accountId,
+ 		chatType: isDirect ? "direct" : "group",
+ 		peerId,
+@@ -74,7 +74,7 @@
+ 		groupSubject: isDirect ? void 0 : groupSubject
+ 	};
+ 	if (isDirect) return {
+-		channel: "dingtalk-connector",
++		channel: "dingtalk",
+ 		accountId,
+ 		chatType: "direct",
+ 		peerId,
+@@ -82,7 +82,7 @@
+ 		senderName
+ 	};
+ 	if (groupSessionScope === "group_sender") return {
+-		channel: "dingtalk-connector",
++		channel: "dingtalk",
+ 		accountId,
+ 		chatType: "group",
+ 		peerId,
+@@ -92,7 +92,7 @@
+ 		groupSubject
+ 	};
+ 	return {
+-		channel: "dingtalk-connector",
++		channel: "dingtalk",
+ 		accountId,
+ 		chatType: "group",
+ 		peerId,
+diff --git a/index.ts b/index.ts
+--- a/index.ts
++++ b/index.ts
+@@ -45,7 +45,7 @@
+     const store: Map<string, Set<string>> = g[DUPLICATE_LOAD_SYMBOL] ?? new Map();
+     g[DUPLICATE_LOAD_SYMBOL] = store;
+ 
+-    const pluginId = "dingtalk-connector";
++    const pluginId = "dingtalk";
+     // import.meta.url 在 ESM 下指向当前 index.mjs 路径，正好是我们要比较的维度
+     const here = typeof import.meta !== "undefined" && import.meta?.url ? String(import.meta.url) : "<unknown>";
+     const paths = store.get(pluginId) ?? new Set<string>();
+diff --git a/openclaw.plugin.json b/openclaw.plugin.json
+--- a/openclaw.plugin.json
++++ b/openclaw.plugin.json
+@@ -1,12 +1,12 @@
+ {
+-  "id": "dingtalk-connector",
++  "id": "dingtalk",
+   "name": "DingTalk Channel",
+   "version": "0.8.25",
+   "description": "Official OpenClaw DingTalk channel plugin | 钉钉官方 OpenClaw 插件",
+   "author": "DingTalk Real Team",
+   "main": "index.ts",
+   "channels": [
+-    "dingtalk-connector"
++    "dingtalk"
+   ],
+   "skills": [
+     "./skills"
+@@ -17,7 +17,7 @@
+     "properties": {}
+   },
+   "channelConfigs": {
+-    "dingtalk-connector": {
++    "dingtalk": {
+       "label": "DingTalk",
+       "description": "钉钉企业内部机器人，使用 Stream 模式，无需公网 IP，支持 AI Card 流式响应。",
+       "schema": {
+diff --git a/package.json b/package.json
+--- a/package.json
++++ b/package.json
+@@ -20,7 +20,7 @@
+   "main": "./dist/index.mjs",
+   "types": "./dist/index.d.mts",
+   "bin": {
+-    "dingtalk-connector": "./bin/dingtalk-connector.js"
++    "dingtalk": "./bin/dingtalk-connector.js"
+   },
+   "files": [
+     "bin/",
+@@ -108,17 +108,17 @@
+   },
+   "openclaw": {
+     "channels": [
+-      "dingtalk-connector"
++      "dingtalk"
+     ],
+     "extensions": [
+       "./dist/index.mjs"
+     ],
+     "channel": {
+-      "id": "dingtalk-connector",
++      "id": "dingtalk",
+       "label": "DingTalk",
+       "selectionLabel": "DingTalk (钉钉)",
+       "docsPath": "/channels/dingtalk-connector",
+-      "docsLabel": "dingtalk-connector",
++      "docsLabel": "dingtalk",
+       "blurb": "钉钉企业内部机器人，使用 Stream 模式，无需公网 IP，支持 AI Card 流式响应。",
+       "aliases": [
+         "dd",
+diff --git a/src/channel.ts b/src/channel.ts
+--- a/src/channel.ts
++++ b/src/channel.ts
+@@ -32,7 +32,7 @@
+ import type { ResolvedDingtalkAccount, DingtalkConfig } from "./types/index.ts";
+ 
+ /** Channel identifier used across the plugin. Single source of truth. */
+-export const CHANNEL_ID = "dingtalk-connector" as const;
++export const CHANNEL_ID = "dingtalk" as const;
+ 
+ /**
+  * Indirect reference to avoid security scanner false positive.
+@@ -61,12 +61,13 @@
+  *   backward compatibility with single-account setups.
+  */
+ export function getDwsSpawnEnv(accountId?: string): Record<string, string> {
++  if (!accountId && dwsCredentialsByAccount.size !== 1) throw new Error("Explicit DingTalk account is required");
+   const creds = accountId
+     ? dwsCredentialsByAccount.get(accountId)
+     : dwsCredentialsByAccount.values().next().value;
+ 
+   return {
+-    ..._env.env as Record<string, string>,
++    ...Object.fromEntries(Object.entries(_env.env).filter(([key]) => !key.startsWith("DWS_"))) as Record<string, string>,
+     DINGTALK_AGENT: "DING_DWS_CLAW",
+     ...(creds?.clientId && { DWS_CLIENT_ID: creds.clientId }),
+     ...(creds?.clientSecret && { DWS_CLIENT_SECRET: creds.clientSecret }),
+@@ -496,7 +497,7 @@
+         // into dws CLI commands for correct bot identity isolation.
+         // Note: in multi-bot setups the last-started bot's clientId wins,
+         // but the skill prompt instructs the AI to always read & pass it.
+-        _env.env.DWS_CLIENT_ID = String(account.clientId);
++
+       }
+ 
+       ctx.setStatus({ accountId: ctx.accountId, port: null });
+@@ -528,6 +529,8 @@
+         // 打印真实错误到 stderr，绕过框架 log 系统（框架的 runtime.log 可能未初始化）
+         ctx.log?.error(`[dingtalk-connector][${ctx.accountId}] startAccount error: ${err?.message ?? err}\n${err?.stack ?? ''}`);
+         throw err;
++      } finally {
++        dwsCredentialsByAccount.delete(ctx.accountId);
+       }
+     },
+   },
+diff --git a/src/config/accounts.ts b/src/config/accounts.ts
+--- a/src/config/accounts.ts
++++ b/src/config/accounts.ts
+@@ -11,7 +11,7 @@
+  * List all configured account IDs from the accounts field.
+  */
+ function listConfiguredAccountIds(cfg: ClawdbotConfig): string[] {
+-  const accounts = (cfg.channels?.["dingtalk-connector"] as DingtalkConfig)?.accounts;
++  const accounts = (cfg.channels?.["dingtalk"] as DingtalkConfig)?.accounts;
+   if (!accounts || typeof accounts !== "object") {
+     return [];
+   }
+@@ -38,7 +38,7 @@
+   accountId: string;
+   source: DingtalkDefaultAccountSelectionSource;
+ } {
+-  const preferredRaw = (cfg.channels?.["dingtalk-connector"] as DingtalkConfig | undefined)?.defaultAccount?.trim();
++  const preferredRaw = (cfg.channels?.["dingtalk"] as DingtalkConfig | undefined)?.defaultAccount?.trim();
+   const preferred = preferredRaw ? normalizeAccountId(preferredRaw) : undefined;
+   if (preferred) {
+     return {
+@@ -73,7 +73,7 @@
+   cfg: ClawdbotConfig,
+   accountId: string,
+ ): DingtalkAccountConfig | undefined {
+-  const accounts = (cfg.channels?.["dingtalk-connector"] as DingtalkConfig)?.accounts;
++  const accounts = (cfg.channels?.["dingtalk"] as DingtalkConfig)?.accounts;
+   if (!accounts || typeof accounts !== "object") {
+     return undefined;
+   }
+@@ -85,7 +85,7 @@
+  * Account-specific fields override top-level fields.
+  */
+ function mergeDingtalkAccountConfig(cfg: ClawdbotConfig, accountId: string): DingtalkConfig {
+-  const dingtalkCfg = cfg.channels?.["dingtalk-connector"] as DingtalkConfig | undefined;
++  const dingtalkCfg = cfg.channels?.["dingtalk"] as DingtalkConfig | undefined;
+ 
+   // Extract base config (exclude accounts field to avoid recursion)
+   const { accounts: _ignored, defaultAccount: _ignoredDefaultAccount, ...base } = dingtalkCfg ?? {};
+@@ -192,7 +192,7 @@
+   const selectionSource = hasExplicitAccountId
+     ? "explicit"
+     : (defaultSelection?.source ?? "fallback");
+-  const dingtalkCfg = params.cfg.channels?.["dingtalk-connector"] as DingtalkConfig | undefined;
++  const dingtalkCfg = params.cfg.channels?.["dingtalk"] as DingtalkConfig | undefined;
+ 
+   // Base enabled state (top-level)
+   const baseEnabled = dingtalkCfg?.enabled !== false;
+diff --git a/src/core/message-handler.ts b/src/core/message-handler.ts
+--- a/src/core/message-handler.ts
++++ b/src/core/message-handler.ts
+@@ -1143,7 +1143,7 @@
+   if (cfg.bindings && cfg.bindings.length > 0) {
+     for (const binding of cfg.bindings) {
+       const match = binding.match;
+-      if (match.channel && match.channel !== "dingtalk-connector") continue;
++      if (match.channel && match.channel !== "dingtalk") continue;
+       if (match.accountId && match.accountId !== accountId) continue;
+       if (match.peer) {
+         if (match.peer.kind && match.peer.kind !== sessionContext.chatType) continue;
+@@ -1422,7 +1422,7 @@
+     log?.info?.(`🔍 构建 sessionKey 前的参数: agentId=${matchedAgentId}, channel=dingtalk-connector, accountId=${accountId}, chatType=${sessionContext.chatType}, sessionPeerId=${sessionContext.sessionPeerId}, dmScope=${dmScope}`);
+     const sessionKey = core.channel.routing.buildAgentSessionKey({
+       agentId: matchedAgentId,
+-      channel: 'dingtalk-connector',  // ✅ 使用 'dingtalk-connector' 而不是 'dingtalk'
++      channel: 'dingtalk',  // ✅ 使用 'dingtalk' 而不是 'dingtalk'
+       accountId: accountId,
+       peer: {
+         kind: sessionContext.chatType,       // ✅ 使用 sessionContext.chatType
+@@ -1452,12 +1452,12 @@
+       GroupSubject: isDirect ? undefined : data.conversationTitle,
+       SenderName: senderName,
+       SenderId: senderId,
+-      Provider: "dingtalk-connector" as const,
+-      Surface: "dingtalk-connector" as const,
++      Provider: "dingtalk" as const,
++      Surface: "dingtalk" as const,
+       MessageSid: data.msgId,
+       Timestamp: Date.now(),
+       CommandAuthorized: true,
+-      OriginatingChannel: "dingtalk-connector" as const,
++      OriginatingChannel: "dingtalk" as const,
+       OriginatingTo: toField,  // ✅ 修复：应该使用 toField，而不是 accountId
+       // 当前机器人的加密身份（用于多机器人协作时让上层 Agent 引用 / 互相 @）
+       BotChatbotUserId: data.chatbotUserId,
+@@ -1684,7 +1684,7 @@
+   if (cfg.bindings && cfg.bindings.length > 0) {
+     for (const binding of cfg.bindings) {
+       const match = binding.match;
+-      if (match.channel && match.channel !== "dingtalk-connector") continue;
++      if (match.channel && match.channel !== "dingtalk") continue;
+       if (match.accountId && match.accountId !== accountId) continue;
+       if (match.peer) {
+         if (match.peer.kind && match.peer.kind !== queueSessionContext.chatType) continue;
+diff --git a/src/core/provider.ts b/src/core/provider.ts
+--- a/src/core/provider.ts
++++ b/src/core/provider.ts
+@@ -47,7 +47,7 @@
+     throw new Error("Config is required for DingTalk monitor");
+   }
+ 
+-  const log = createLogger(cfg.channels?.["dingtalk-connector"]?.debug ?? false);
++  const log = createLogger(cfg.channels?.["dingtalk"]?.debug ?? false);
+ 
+   // 并行导入所有模块（无循环依赖，可以并行）
+   const [accountsModule, monitorAccountModule, monitorSingleModule] = await Promise.all([
+diff --git a/src/gateway-methods.ts b/src/gateway-methods.ts
+--- a/src/gateway-methods.ts
++++ b/src/gateway-methods.ts
+@@ -594,7 +594,7 @@
+     const { loadConfig } = await import('openclaw/plugin-sdk/config-runtime');
+     const cfg = loadConfig();
+     try {
+-      const root = (cfg.channels as any)?.['dingtalk-connector'] as any;
++      const root = (cfg.channels as any)?.['dingtalk'] as any;
+       const accountsMap = root?.accounts || {};
+ 
+       // 通过 mention table 聚合 agentIds / aliases，给 Agent prompt 一次性的全貌
+@@ -653,7 +653,7 @@
+     const { loadConfig } = await import('openclaw/plugin-sdk/config-runtime');
+     const cfg = loadConfig();
+     try {
+-      const root = (cfg.channels as any)?.['dingtalk-connector'] as any;
++      const root = (cfg.channels as any)?.['dingtalk'] as any;
+       const accountsMap = root?.accounts || {};
+       const ids = Object.keys(accountsMap);
+ 
+diff --git a/src/onboarding.ts b/src/onboarding.ts
+--- a/src/onboarding.ts
++++ b/src/onboarding.ts
+@@ -32,7 +32,7 @@
+ const _processEnv = (globalThis as Record<string, unknown>)["proc" + "ess"] as NodeJS.Process;
+ const _env = _processEnv.env;
+ 
+-const channel = "dingtalk-connector" as const;
++const channel = "dingtalk" as const;
+ const DINGTALK_MANUAL_SETUP_DOC = "docs/DINGTALK_MANUAL_SETUP.md";
+ 
+ async function restartOpenclawGateway(prompter: WizardPrompter): Promise<void> {
+@@ -63,14 +63,14 @@
+ function setDingtalkDmPolicy(cfg: OpenClawConfig, dmPolicy: DmPolicy): OpenClawConfig {
+   const allowFrom =
+     dmPolicy === "open"
+-      ? addWildcardAllowFrom(cfg.channels?.["dingtalk-connector"]?.allowFrom)?.map((entry) => String(entry))
++      ? addWildcardAllowFrom(cfg.channels?.["dingtalk"]?.allowFrom)?.map((entry) => String(entry))
+       : undefined;
+   return {
+     ...cfg,
+     channels: {
+       ...cfg.channels,
+-      "dingtalk-connector": {
+-        ...cfg.channels?.["dingtalk-connector"],
++      "dingtalk": {
++        ...cfg.channels?.["dingtalk"],
+         dmPolicy,
+         ...(allowFrom ? { allowFrom } : {}),
+       },
+@@ -83,8 +83,8 @@
+     ...cfg,
+     channels: {
+       ...cfg.channels,
+-      "dingtalk-connector": {
+-        ...cfg.channels?.["dingtalk-connector"],
++      "dingtalk": {
++        ...cfg.channels?.["dingtalk"],
+         allowFrom,
+       },
+     },
+@@ -102,7 +102,7 @@
+   cfg: OpenClawConfig;
+   prompter: WizardPrompter;
+ }): Promise<OpenClawConfig> {
+-  const existing = params.cfg.channels?.["dingtalk-connector"]?.allowFrom ?? [];
++  const existing = params.cfg.channels?.["dingtalk"]?.allowFrom ?? [];
+   await params.prompter.note(
+     [
+       "Allowlist DingTalk DMs by user ID.",
+@@ -146,7 +146,7 @@
+       "4) Enable required permissions: im:message, im:chat",
+       "5) Publish the app or add it to a test group",
+       "Tip: you can also set DINGTALK_CLIENT_ID / DINGTALK_CLIENT_SECRET env vars.",
+-      `Docs: ${formatDocsLink("/channels/dingtalk-connector", "dingtalk-connector")}`,
++      `Docs: ${formatDocsLink("/channels/dingtalk-connector", "dingtalk")}`,
+     ].join("\n"),
+     "DingTalk credentials",
+   );
+@@ -260,8 +260,8 @@
+     ...cfg,
+     channels: {
+       ...cfg.channels,
+-      "dingtalk-connector": {
+-        ...cfg.channels?.["dingtalk-connector"],
++      "dingtalk": {
++        ...cfg.channels?.["dingtalk"],
+         enabled: true,
+         groupPolicy,
+       },
+@@ -274,8 +274,8 @@
+     ...cfg,
+     channels: {
+       ...cfg.channels,
+-      "dingtalk-connector": {
+-        ...cfg.channels?.["dingtalk-connector"],
++      "dingtalk": {
++        ...cfg.channels?.["dingtalk"],
+         groupAllowFrom,
+       },
+     },
+@@ -287,7 +287,7 @@
+   channel,
+   policyKey: "channels.dingtalk-connector.dmPolicy",
+   allowFromKey: "channels.dingtalk-connector.allowFrom",
+-  getCurrent: (cfg) => (cfg.channels?.["dingtalk-connector"] as DingtalkConfig | undefined)?.dmPolicy ?? "open",
++  getCurrent: (cfg) => (cfg.channels?.["dingtalk"] as DingtalkConfig | undefined)?.dmPolicy ?? "open",
+   setPolicy: (cfg, policy) => setDingtalkDmPolicy(cfg, policy),
+   promptAllowFrom: promptDingtalkAllowFrom,
+ };
+@@ -333,7 +333,7 @@
+   },
+ 
+   configure: async ({ cfg, prompter }) => {
+-    const dingtalkCfg = cfg.channels?.["dingtalk-connector"] as DingtalkConfig | undefined;
++    const dingtalkCfg = cfg.channels?.["dingtalk"] as DingtalkConfig | undefined;
+     const resolved = resolveDingtalkCredentials(dingtalkCfg, {
+       allowUnresolvedSecretRef: true,
+     });
+@@ -366,7 +366,7 @@
+           ...next,
+           channels: {
+             ...next.channels,
+-            "dingtalk-connector": { ...next.channels?.["dingtalk-connector"], enabled: true },
++            "dingtalk": { ...next.channels?.["dingtalk"], enabled: true },
+           },
+         };
+         // Environment variables will be used, skip manual input
+@@ -476,8 +476,8 @@
+         ...next,
+         channels: {
+           ...next.channels,
+-          "dingtalk-connector": {
+-            ...next.channels?.["dingtalk-connector"],
++          "dingtalk": {
++            ...next.channels?.["dingtalk"],
+             enabled: true,
+             clientId,
+             clientSecret,
+@@ -515,7 +515,7 @@
+         { value: "open", label: "Open - respond in all groups (requires mention)" },
+         { value: "disabled", label: "Disabled - don't respond in groups" },
+       ],
+-      initialValue: (next.channels?.["dingtalk-connector"] as DingtalkConfig | undefined)?.groupPolicy ?? "open",
++      initialValue: (next.channels?.["dingtalk"] as DingtalkConfig | undefined)?.groupPolicy ?? "open",
+     });
+     if (groupPolicy) {
+       next = setDingtalkGroupPolicy(next, groupPolicy as "open" | "allowlist" | "disabled");
+@@ -523,7 +523,7 @@
+ 
+     // Group allowlist if needed
+     if (groupPolicy === "allowlist") {
+-      const existing = (next.channels?.["dingtalk-connector"] as DingtalkConfig | undefined)?.groupAllowFrom ?? [];
++      const existing = (next.channels?.["dingtalk"] as DingtalkConfig | undefined)?.groupAllowFrom ?? [];
+       const entry = await prompter.text({
+         message: "Group chat allowlist (conversation IDs)",
+         placeholder: "cidxxxx, cidyyyy",
+@@ -546,7 +546,7 @@
+     ...cfg,
+     channels: {
+       ...cfg.channels,
+-      "dingtalk-connector": { ...cfg.channels?.["dingtalk-connector"], enabled: false },
++      "dingtalk": { ...cfg.channels?.["dingtalk"], enabled: false },
+     },
+   }),
+ };
+diff --git a/src/sdk/helpers.ts b/src/sdk/helpers.ts
+--- a/src/sdk/helpers.ts
++++ b/src/sdk/helpers.ts
+@@ -13,7 +13,7 @@
+ /**
+  * 默认账号 ID
+  */
+-export const DEFAULT_ACCOUNT_ID = "__default__" as const;
++export const DEFAULT_ACCOUNT_ID = "default" as const;
+ 
+ /**
+  * 规范化账号 ID
+@@ -184,7 +184,7 @@
+ export function resolveDefaultGroupPolicy(cfg: {
+   channels?: { [key: string]: unknown };
+ }): "open" | "allowlist" | "disabled" {
+-  const dingtalkCfg = cfg.channels?.["dingtalk-connector"] as {
++  const dingtalkCfg = cfg.channels?.["dingtalk"] as {
+     groupPolicy?: "open" | "allowlist" | "disabled";
+   } | undefined;
+   return dingtalkCfg?.groupPolicy ?? "open";
+diff --git a/src/sdk/types.ts b/src/sdk/types.ts
+--- a/src/sdk/types.ts
++++ b/src/sdk/types.ts
+@@ -141,7 +141,7 @@
+  */
+ export interface ChannelsConfig {
+   [key: string]: unknown;
+-  "dingtalk-connector"?: DingtalkConfig;
++  "dingtalk"?: DingtalkConfig;
+ }
+ 
+ /**
+diff --git a/src/services/messaging/mentions.ts b/src/services/messaging/mentions.ts
+--- a/src/services/messaging/mentions.ts
++++ b/src/services/messaging/mentions.ts
+@@ -53,7 +53,7 @@
+   cfg: any,
+   options: BuildMentionTableOptions = {},
+ ): BotMentionEntry[] {
+-  const root = cfg?.channels?.["dingtalk-connector"] as DingtalkConfig | undefined;
++  const root = cfg?.channels?.["dingtalk"] as DingtalkConfig | undefined;
+   const accountsMap = (root?.accounts as Record<string, DingtalkAccountConfig | undefined>) || {};
+ 
+   const byAccountId = new Map<string, BotMentionEntry>();
+@@ -73,7 +73,7 @@
+     for (const b of bindings) {
+       const match = b?.match;
+       if (!match) continue;
+-      if (match.channel && match.channel !== "dingtalk-connector") continue;
++      if (match.channel && match.channel !== "dingtalk") continue;
+       const accountId = match.accountId;
+       const agentId = b.agentId;
+       if (typeof accountId !== "string" || typeof agentId !== "string") continue;
+diff --git a/src/utils/session.ts b/src/utils/session.ts
+--- a/src/utils/session.ts
++++ b/src/utils/session.ts
+@@ -7,7 +7,7 @@
+ 
+ /** OpenClaw 标准会话上下文 */
+ export interface SessionContext {
+-  channel: 'dingtalk-connector';
++  channel: 'dingtalk';
+   accountId: string;
+   chatType: 'direct' | 'group';
+   /**
+@@ -68,7 +68,7 @@
+   // sessionPeerId 被设为 accountId 以合并记忆，peerId 仍保留真实 peer，供路由匹配使用
+   if (sharedMemoryAcrossConversations === true) {
+     return {
+-      channel: 'dingtalk-connector',
++      channel: 'dingtalk',
+       accountId,
+       chatType: isDirect ? 'direct' : 'group',
+       peerId,
+@@ -82,7 +82,7 @@
+   // separateSessionByConversation=false 时，不区分单聊/群聊，按用户维度维护 session
+   if (separateSessionByConversation === false) {
+     return {
+-      channel: 'dingtalk-connector',
++      channel: 'dingtalk',
+       accountId,
+       chatType: isDirect ? 'direct' : 'group',
+       peerId,
+@@ -97,7 +97,7 @@
+   if (isDirect) {
+     // 单聊：sessionPeerId 为发送者 ID，由 OpenClaw Gateway 根据 dmScope 配置处理
+     return {
+-      channel: 'dingtalk-connector',
++      channel: 'dingtalk',
+       accountId,
+       chatType: 'direct',
+       peerId,
+@@ -110,7 +110,7 @@
+   if (groupSessionScope === 'group_sender') {
+     // 群内每个用户独立会话
+     return {
+-      channel: 'dingtalk-connector',
++      channel: 'dingtalk',
+       accountId,
+       chatType: 'group',
+       peerId,
+@@ -123,7 +123,7 @@
+ 
+   // 默认：整个群共享一个会话
+   return {
+-    channel: 'dingtalk-connector',
++    channel: 'dingtalk',
+     accountId,
+     chatType: 'group',
+     peerId,
+diff --git a/src/utils/utils-legacy.ts b/src/utils/utils-legacy.ts
+--- a/src/utils/utils-legacy.ts
++++ b/src/utils/utils-legacy.ts
+@@ -11,7 +11,7 @@
+ // ============ 常量 ============
+ 
+ /** 默认账号 ID，用于标记单账号模式（无 accounts 配置）时的内部标识 */
+-export const DEFAULT_ACCOUNT_ID = '__default__';
++export const DEFAULT_ACCOUNT_ID = 'default';
+ 
+ /** 新会话触发命令 */
+ export const NEW_SESSION_COMMANDS = ['/new', '/reset', '/clear', '新会话', '重新开始', '清空对话'];
+@@ -297,7 +297,7 @@
+  * 获取钉钉配置
+  */
+ export function getDingtalkConfig(cfg: any): DingtalkConfig {
+-  return (cfg?.channels as any)?.['dingtalk-connector'] || {};
++  return (cfg?.channels as any)?.['dingtalk'] || {};
+ }
+ 
+ /**

@@ -20,7 +20,7 @@
     },
     {
       "path": "clawx-control-bridge.mjs",
-      "sha256": "33abbe808d319982c0305975d74c929f7db48a8af9fbc61e1b57fe4bae7a363c"
+      "sha256": "9e0afc345ff87648dc4ff5a6958cf42dd277cff83902bc51d123a1556e8e8b44"
     },
     {
       "path": "clawx-openclaw.mjs",

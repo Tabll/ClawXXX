@@ -2,8 +2,8 @@
   "schemaVersion": 1,
   "kernelId": "openclaw",
   "displayName": "OpenClaw",
-  "artifactVersion": "2026.9.4+clawx.16",
-  "patchRevision": 16,
+  "artifactVersion": "2026.9.4+clawx.17",
+  "patchRevision": 17,
   "minHostVersion": "0.6.0",
   "maxHostVersion": "0.6.x",
   "capabilityContractVersion": 1,
@@ -58,9 +58,9 @@
       "runtime/kernel/node_modules/sqlite-vec-darwin-arm64/**",
       "runtime/kernel/node_modules/fsevents/fsevents.node",
       "runtime/kernel/node_modules/@earendil-works/pi-tui/native/darwin/prebuilds/darwin-arm64/**",
-      "runtime/kernel/clawx-plugins/dingtalk/node_modules/@napi-rs/canvas-darwin-arm64/**",
       "runtime/kernel/clawx-plugins/wecom/node_modules/@wecom/cli-darwin-arm64/**",
-      "runtime/kernel/clawx-plugins/discord/node_modules/@snazzah/davey-darwin-arm64/davey.darwin-arm64.node"
+      "runtime/kernel/clawx-plugins/discord/node_modules/@snazzah/davey-darwin-arm64/davey.darwin-arm64.node",
+      "runtime/kernel/tools/dws/dws"
     ],
     "darwin-x64": [
       "runtime/kernel/node_modules/@img/sharp-darwin-x64/**",
@@ -84,9 +84,9 @@
       "runtime/kernel/node_modules/sqlite-vec-darwin-x64/**",
       "runtime/kernel/node_modules/fsevents/fsevents.node",
       "runtime/kernel/node_modules/@earendil-works/pi-tui/native/darwin/prebuilds/darwin-x64/**",
-      "runtime/kernel/clawx-plugins/dingtalk/node_modules/@napi-rs/canvas-darwin-x64/**",
       "runtime/kernel/clawx-plugins/wecom/node_modules/@wecom/cli-darwin-x64/**",
-      "runtime/kernel/clawx-plugins/discord/node_modules/@snazzah/davey-darwin-x64/davey.darwin-x64.node"
+      "runtime/kernel/clawx-plugins/discord/node_modules/@snazzah/davey-darwin-x64/davey.darwin-x64.node",
+      "runtime/kernel/tools/dws/dws"
     ],
     "linux-arm64": [
       "runtime/kernel/node_modules/@img/sharp-linux-arm64/**",
@@ -108,9 +108,9 @@
       "runtime/kernel/node_modules/bare-url/prebuilds/linux-arm64/**",
       "runtime/kernel/node_modules/quickjs-wasi/extensions/*/*.so",
       "runtime/kernel/node_modules/sqlite-vec-linux-arm64/**",
-      "runtime/kernel/clawx-plugins/dingtalk/node_modules/@napi-rs/canvas-linux-arm64-gnu/**",
       "runtime/kernel/clawx-plugins/wecom/node_modules/@wecom/cli-linux-arm64/**",
-      "runtime/kernel/clawx-plugins/discord/node_modules/@snazzah/davey-linux-arm64-gnu/davey.linux-arm64-gnu.node"
+      "runtime/kernel/clawx-plugins/discord/node_modules/@snazzah/davey-linux-arm64-gnu/davey.linux-arm64-gnu.node",
+      "runtime/kernel/tools/dws/dws"
     ],
     "linux-x64": [
       "runtime/kernel/node_modules/@img/sharp-linux-x64/**",
@@ -132,9 +132,9 @@
       "runtime/kernel/node_modules/bare-url/prebuilds/linux-x64/**",
       "runtime/kernel/node_modules/quickjs-wasi/extensions/*/*.so",
       "runtime/kernel/node_modules/sqlite-vec-linux-x64/**",
-      "runtime/kernel/clawx-plugins/dingtalk/node_modules/@napi-rs/canvas-linux-x64-gnu/**",
       "runtime/kernel/clawx-plugins/wecom/node_modules/@wecom/cli-linux-x64/**",
-      "runtime/kernel/clawx-plugins/discord/node_modules/@snazzah/davey-linux-x64-gnu/davey.linux-x64-gnu.node"
+      "runtime/kernel/clawx-plugins/discord/node_modules/@snazzah/davey-linux-x64-gnu/davey.linux-x64-gnu.node",
+      "runtime/kernel/tools/dws/dws"
     ],
     "win32-x64": [
       "runtime/kernel/node_modules/@img/sharp-win32-x64/**",
@@ -156,9 +156,9 @@
       "runtime/kernel/node_modules/quickjs-wasi/extensions/*/*.so",
       "runtime/kernel/node_modules/sqlite-vec-windows-x64/**",
       "runtime/kernel/node_modules/@earendil-works/pi-tui/native/win32/prebuilds/win32-x64/**",
-      "runtime/kernel/clawx-plugins/dingtalk/node_modules/@napi-rs/canvas-win32-x64-msvc/**",
       "runtime/kernel/clawx-plugins/wecom/node_modules/@wecom/cli-win32-x64/**",
-      "runtime/kernel/clawx-plugins/discord/node_modules/@snazzah/davey-win32-x64-msvc/davey.win32-x64-msvc.node"
+      "runtime/kernel/clawx-plugins/discord/node_modules/@snazzah/davey-win32-x64-msvc/davey.win32-x64-msvc.node",
+      "runtime/kernel/tools/dws/dws.exe"
     ]
   },
   "budgets": {
@@ -167,5 +167,18 @@
     "fileCount": 100000,
     "coldReadyMs": 30000,
     "idleRssBytes": 536870912
+  },
+  "toolInputs": {
+    "dws": {
+      "version": "1.0.30",
+      "archives": {
+        "dws-darwin-amd64.tar.gz": "041c18b5649e579fc36249298ef4a5a8f64fe91106f5e2c6bc41937508dcc1de",
+        "dws-darwin-arm64.tar.gz": "42f30f04e0d51880117fc091429d94d51f57259a02a205213bf16db4a9312bc9",
+        "dws-linux-amd64.tar.gz": "d607f56efa9b9b8e99acd0775e9c98c44fc6a718bd71c549e05286766321c00e",
+        "dws-linux-arm64.tar.gz": "696c319c81cce431b8682e9945540744f3cc548f4790461adcf9cdb63ab9de4e",
+        "dws-windows-amd64.zip": "bbfff7d0efdeffec854d54f14f659949614b77f5779cab24ba18689248ddbdf2",
+        "dws-windows-arm64.zip": "78067a3a0307ef1be57a47ec0c64469c4148e44323ec94f526bd40b14719b354"
+      }
+    }
   }
 }

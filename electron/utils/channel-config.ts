@@ -13,6 +13,7 @@ import { mutateOpenClawConfig, readOpenClawConfigSnapshot } from '../gateway/con
 import { getOpenClawConfigDir, getOpenClawResolvedDir, resolveOpenClawConfigPath } from './paths';
 import * as logger from './logger';
 import { proxyAwareFetch } from './proxy-fetch';
+import { projectOfficialDingTalkConfig } from './dingtalk-plugin-compat';
 import {
     OPENCLAW_WECHAT_CHANNEL_TYPE,
     isWechatChannelType,
@@ -30,7 +31,7 @@ const DEFAULT_ACCOUNT_ID = 'default';
 // map, but strip `defaultAccount` before persisting to avoid plugin
 // schema validation errors.  ClawX falls back to DEFAULT_ACCOUNT_ID
 // when `defaultAccount` is absent.
-const CHANNELS_OMIT_DEFAULT_ACCOUNT_KEY = new Set(['dingtalk']);
+const CHANNELS_OMIT_DEFAULT_ACCOUNT_KEY = new Set<string>();
 
 // Channels whose schema accepts a top-level default account and account map,
 // but whose account payload contains nested strict-schema objects that ClawX
@@ -542,6 +543,7 @@ async function ensurePluginAllowlist(currentConfig: OpenClawConfig, channelType:
                 currentConfig.plugins.allow = [...allow, 'dingtalk'];
             }
         }
+        ensurePluginRegistration(currentConfig, 'dingtalk');
     }
 
     if (channelType === 'wecom') {
@@ -688,17 +690,7 @@ function transformChannelConfig(
         };
     }
 
-    if (channelType === 'dingtalk') {
-        // The per-account schema uses additionalProperties:false and does
-        // NOT include these legacy/obsolete fields.  Strip them before
-        // writing to accounts.<id> to avoid schema validation errors.
-        //   robotCode  – never existed in the plugin schema; clientId IS the robot code
-        //   corpId     – top-level only, legacy compat, runtime ignores it
-        //   agentId    – top-level only, legacy compat, runtime ignores it
-        delete transformedConfig.robotCode;
-        delete transformedConfig.corpId;
-        delete transformedConfig.agentId;
-    }
+    if (channelType === 'dingtalk') transformedConfig = projectOfficialDingTalkConfig(transformedConfig);
 
     return transformedConfig;
 }

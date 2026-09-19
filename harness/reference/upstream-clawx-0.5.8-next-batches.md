@@ -41,10 +41,11 @@ Next implementation must:
 - Test DWS authorization expiry/cancel/retry, account deletion, owner switches,
   restart recovery and immutable packaging before exposing the new UI.
 
-DWS's npm package is approximately 27 MB. The audit download was stopped after
-five minutes; a separate 45-second diagnostic download received only about 1 MB.
-No DWS executable was run, installed, authenticated or added to the repository.
-This download issue is separate from the architecture work above.
+Implemented in continuation batch 5b: downloaded and pinned DWS 1.0.30,
+verified all supported native payloads, scoped account login/status/cancel/reset,
+and replaced the connector. The native CLI was run for help only. No real
+authorization or signed runtime publication occurred. Runtime agent tool access
+remains the following integration step.
 
 ## Canonical subagent conversations
 
@@ -66,7 +67,7 @@ Before adding the upstream child-session UI:
 - Project status/timing/history from canonical data and exercise nested children,
   simultaneous kernels, late/stale events, deletion and idempotent usage.
 
-## Optional Computer Use and TokenDance
+## Computer Use and TokenDance (continuation authorized)
 
 Computer Use is a separate opt-in capability batch. OpenClaw 2026.9.4 already
 ships the `cua-computer` extension and driver payload entries. Upstream ClawX
