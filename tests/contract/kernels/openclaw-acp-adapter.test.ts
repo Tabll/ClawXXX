@@ -93,6 +93,21 @@ function runtime() {
 }
 
 describe('OpenClaw ACP execution adapter', () => {
+  it('uses independent ACP clients so a waiting parent cannot block its same-kernel child', async () => {
+    let release!: () => void;
+    const parent = fixture({ sendPrompt: vi.fn(() => new Promise(resolve => { release = () => resolve({ success: true }); })) });
+    const child = fixture(); const idle = fixture();
+    const clients = [parent.acp, child.acp];
+    const adapter = new OpenClawAcpChatAdapter(idle.acp, undefined, undefined, () => clients.shift()!);
+    await adapter.initialize({ host: createFakeHost(), runtime: runtime(), generation: 1 });
+    const parentResult = adapter.execute(request('parent'));
+    await vi.waitFor(() => expect(parent.acp.sendPrompt).toHaveBeenCalledOnce());
+    await adapter.execute(request('child'));
+    expect(child.acp.closeManagedSession).toHaveBeenCalledOnce();
+    expect(parent.acp.closeManagedSession).not.toHaveBeenCalled();
+    release(); await parentResult; await adapter.stop();
+    expect(parent.acp.shutdown).toHaveBeenCalledOnce(); expect(child.acp.shutdown).toHaveBeenCalledOnce();
+  });
   it('imports only current live output before closing its transient session', async () => {
     const location = runtime();
     const workspace = join(location.installRoot, 'workspace');

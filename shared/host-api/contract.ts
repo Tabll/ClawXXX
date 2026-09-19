@@ -1254,6 +1254,11 @@ export type AsrTranscribePayload = { wav: Uint8Array };
 export type AsrTranscribeResult = { text: string };
 
 export type HostApiContract = {
+  computerUse: {
+    status: () => import('../kernels/computer-use').ComputerUseStatus;
+    select: (payload: { kernelId: KernelId | null }) => import('../kernels/computer-use').ComputerUseStatus;
+    requestPermissions: () => import('../kernels/computer-use').ComputerUseStatus;
+  };
   app: {
     openClawDoctor: (payload: OpenClawDoctorPayload) => Omit<OpenClawDoctorResult, 'mode'>;
     relaunch: () => void;
@@ -1451,6 +1456,7 @@ export type HostApiContract = {
     turnTimings: (payload: SessionTurnTimingsPayload) => SessionTurnTimingsResult;
   };
   conversations: {
+    children: (payload: ConversationIdPayload) => import('../conversations/contracts').ChildRunSummary[];
     list: (payload?: ConversationListPayload) => ConversationListResult;
     search: (payload: ConversationSearchPayload) => ConversationSearchResult;
     get: (payload: ConversationIdPayload) => ConversationGetResult;

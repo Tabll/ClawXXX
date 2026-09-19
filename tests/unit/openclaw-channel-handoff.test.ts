@@ -13,7 +13,7 @@ describe('canonical Channel admission handoff', () => {
     vi.stubEnv('CLAWX_CHANNEL_HANDOFF_TOKEN', 'test-only');
     const { default: plugin } = await import('../../kernels/openclaw/overlay/clawx-channel-handoff/index.mjs');
     const hooks: Record<string, (event: object, context: object) => Promise<unknown>> = {};
-    plugin.register({ on: (name: string, hook: typeof hooks[string]) => { hooks[name] = hook; }, registerGatewayMethod: vi.fn(), logger: { error: vi.fn(), warn: vi.fn() } });
+    plugin.register({ on: (name: string, hook: typeof hooks[string]) => { hooks[name] = hook; }, registerTool: vi.fn(), registerGatewayMethod: vi.fn(), logger: { error: vi.fn(), warn: vi.fn() } });
     return hooks;
   }
 

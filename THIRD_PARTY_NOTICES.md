@@ -61,3 +61,22 @@ Packages with missing or ambiguous metadata are accepted only by an exact name/v
 ## Review decision
 
 Both upstream projects use the MIT License, which permits use, modification, and redistribution provided the copyright and license notices are preserved. Their dependency closures can impose additional obligations listed above. ClawX CI must fail an artifact build when license metadata is missing, a dependency has an unreviewed license, a source/patch hash differs, or the license report/SBOM/provenance is absent. This engineering review is not a substitute for organization-specific legal review before public distribution.
+
+## Host-owned CUA and UniFFI components
+
+Computer Use payloads include CUA Driver and SDK `0.25.0` from the immutable
+`cua-driver-rs-v0.25.0` release of https://github.com/trycua/cua. The driver and
+JavaScript SDK declare MIT; native SDK packages additionally declare MPL-2.0
+for their Node runtime. The fixed `@ubjs/core`, `@ubjs/node` and native adapter
+closure is `0.31.0-3` under MPL-2.0. Preserve both license texts, constituent
+copyright metadata and the original `node-runtime-NOTICE.md`.
+
+Each CUA payload carries `LICENSE`, `MPL-2.0.txt` and `NOTICE`, including the
+matching CUA source tag and the UniFFI source repository. The runtime license
+audit retains `cua-native-mpl-source` and `ubjs-mpl-source` obligations. Exact
+corresponding source/build materials remain required by the existing protected
+promotion process; a local unsigned build does not fulfill that release gate.
+
+On Windows, ClawX changes only the reviewed executable PE subsystem from console
+to GUI before platform signing. The deterministic transformation is recorded in
+`scripts/kernel-runtime/materialize-cua.mjs` in the corresponding ClawX source.

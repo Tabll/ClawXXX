@@ -35,6 +35,8 @@ const updates = [];
 const handoffs = [];
 const permissions = [];
 const startups = [];
+const hostToolToken = createHash('sha256').update(randomUUID()).digest('base64url');
+const hostToolRequests = [];
 const probeBudgets = openClawProbeBudgets();
 let rejectHandoff = false;
 let logs = '';
@@ -52,6 +54,15 @@ try {
   await writeFile(join(workspace, 'clawx-tool-probe.cjs'), 'process.stdout.write("CLAWX_TOOL_OK\\n");\n', { mode: 0o600 });
   provider = createServer(async (req, res) => {
     try {
+      if (req.url === '/v1/run/tool') {
+        assert.equal(req.headers.authorization, `Bearer ${hostToolToken}`);
+        let body = ''; for await (const chunk of req) body += chunk;
+        const input = JSON.parse(body);
+        assert.deepEqual(input, { tool: 'clawx_agent', args: { action: 'list' } });
+        hostToolRequests.push(input);
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ result: [{ status: 'HOST_TOOL_OK' }] })); return;
+      }
       if (req.url === '/clawx-channel') {
         assert.equal(req.headers.authorization, 'Bearer clawx-isolated-channel-token');
         let body = '';
@@ -69,16 +80,23 @@ try {
       for await (const chunk of req) body += chunk;
       const request = JSON.parse(body);
       providerRequests.push(request);
-      assert.ok(providerRequests.length <= 6 + PROBE_PROCESS_POLL_LIMIT, 'Loopback probe exceeded its finite provider-request budget');
+      assert.ok(providerRequests.length <= 7 + PROBE_PROCESS_POLL_LIMIT, 'Loopback probe exceeded its finite provider-request budget');
+      assert.ok(!body.includes(hostToolToken), 'Private Main capability leaked to provider');
       if (JSON.stringify(request.messages).includes('DELAY_USER_MARKER')) {
         res.writeHead(200, { 'content-type': 'text/event-stream' });
         res.flushHeaders();
         return; // cancellation/disconnect closes this owned loopback stream
       }
       const id = `clawx-provider-${providerRequests.length}`;
-      const nextTool = JSON.stringify(request.messages).includes('TOOL_USER_MARKER')
+      let nextTool = JSON.stringify(request.messages).includes('TOOL_USER_MARKER')
         ? nextOpenClawProbeToolCall(request.messages, toolCommand)
         : undefined;
+      if (request.messages.some(item => item.role === 'user' && JSON.stringify(item.content).includes('CURRENT_USER_MARKER'))
+        && !request.messages.some(item => item.role === 'user' && JSON.stringify(item.content).includes('RESTART_USER_MARKER'))
+        && !request.messages.some(item => item.role === 'tool' && JSON.stringify(item.content).includes('HOST_TOOL_OK'))) {
+        assert.ok(request.tools.some(tool => tool.function?.name === 'clawx_agent'), 'Managed host tool missing from real model inventory');
+        nextTool = { id: 'host-tool-probe', type: 'function', function: { name: 'clawx_agent', arguments: JSON.stringify({ args: { action: 'list' } }) } };
+      }
       if (nextTool?.function.name === 'process') processPolls += 1;
       const message = nextTool
         ? { role: 'assistant', content: null, tool_calls: [nextTool] }
@@ -214,7 +232,7 @@ try {
     { id: 'prior-user', turnId: 'u1', role: 'user', position: 0, type: 'text', visibility: 'portable', text: 'CANONICAL_USER_MARKER' },
     { id: 'prior-assistant', turnId: 'a1', role: 'assistant', position: 0, type: 'text', visibility: 'portable', text: 'CANONICAL_ASSISTANT_MARKER' },
   ];
-  const session = await request('session/new', { cwd: workspace, mcpServers: [], _meta: { sessionKey: key, prefixCwd: false, clawx: { protocol: 'clawx.openclaw-session/v1', ...identity, agentId: 'main', history, model: 'clawx-probe/clawx-probe', permissionMode: 'read-only' } } });
+  const session = await request('session/new', { cwd: workspace, mcpServers: [], _meta: { sessionKey: key, prefixCwd: false, clawx: { protocol: 'clawx.openclaw-session/v1', ...identity, agentId: 'main', history, model: 'clawx-probe/clawx-probe', permissionMode: 'read-only', hostTools: { url: `http://127.0.0.1:${provider.address().port}/v1/run/tool`, token: hostToolToken } } } });
   phase('canonical-prompt');
   const prompt = await request('session/prompt', { sessionId: session.sessionId, prompt: [{ type: 'text', text: 'CURRENT_USER_MARKER' }], _meta: { messageId: identity.runId, prefixCwd: false } });
   assert.equal(prompt.stopReason, 'end_turn');
@@ -296,8 +314,9 @@ try {
   rejected.stdout.resume();
   assert.notEqual((await once(rejected, 'close'))[0], 0, 'Rejected canonical admission must fail, not run a native fallback');
   assert.equal(handoffs.length, 1);
-  assert.equal(providerRequests.length, 6 + processPolls, 'A native Channel/automatic-title model run bypassed canonical admission');
-  assert.equal(completedProviderResponses, 4 + processPolls, 'Only the owned bounded process polls may add completed model responses');
+  assert.equal(hostToolRequests.length, 1, 'The real runtime must execute exactly one Main-owned host tool');
+  assert.equal(providerRequests.length, 7 + processPolls, 'A native Channel/automatic-title model run bypassed canonical admission');
+  assert.equal(completedProviderResponses, 5 + processPolls, 'Only the owned bounded process polls may add completed model responses');
   await stopChildren();
   phase('storage-scan');
   const databases = [];
@@ -334,6 +353,7 @@ try {
   const report = { ok: true, version, realGateway: true, realAcp: true, provider: 'loopback-test-only', providerCalls: providerRequests.length, rolesPreserved: true, toolApproval: true, cancel: true, crashRehydrate: true, nativeDurableHistory: false, channelHandoffs: handoffs.length, rejectedChannelFailsClosed: true, channelLoad: channelLoad?.results.map(({ channel, sendCapable }) => ({ channel, sendCapable })), usage: usage.map(item => item.update._meta.clawx), databases };
   report.startups = startups;
   report.processPolls = processPolls;
+  report.hostToolRequests = hostToolRequests.length;
   if (args.has('--report')) {
     const reportPath = resolve(args.get('--report'));
     await mkdir(join(reportPath, '..'), { recursive: true });

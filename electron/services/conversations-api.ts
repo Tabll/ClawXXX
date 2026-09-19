@@ -1,3 +1,4 @@
+import type { ConversationRouter } from '../conversations/conversation-router';
 import { randomUUID } from 'node:crypto';
 import { asConversationId } from '@shared/conversations/contracts';
 import type { CompleteHostServiceRegistry } from '../main/ipc/host-contract';
@@ -17,9 +18,11 @@ function idOf(payload: { id: string }) {
 /** Canonical renderer boundary. No action in this service contacts a runtime. */
 export function createConversationsApi(
   dataClient?: RemoteDataServiceClient,
+  router?: ConversationRouter,
 ): CompleteHostServiceRegistry['conversations'] {
   const data = () => requireDataClient(dataClient);
   return {
+    children: payload => data().call('listChildRuns', idOf(payload)),
     list: payload => data().call('listConversations', {
       limit: payload?.limit,
       cursor: payload?.cursor,
@@ -60,6 +63,7 @@ export function createConversationsApi(
       return { success: true };
     },
     delete: async payload => {
+      await router?.cancelConversationTree(idOf(payload));
       await data().call(
         'deleteConversation',
         idOf(payload),

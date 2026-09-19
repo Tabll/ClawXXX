@@ -86,6 +86,8 @@ export function projectOpenClawConfigForRuntime(input: Config, keyedRoster: bool
     }
     const plugins = record(config.plugins) ?? {};
     const pluginEntries = record(plugins.entries) ?? {};
+    // Desktop authority belongs to Main's revocable, per-kernel host tool.
+    pluginEntries['cua-computer'] = { ...record(pluginEntries['cua-computer']), enabled: false };
     const memory = record(pluginEntries['memory-core']) ?? {};
     const memoryConfig = record(memory.config) ?? {};
     memoryConfig.dreaming = { ...record(memoryConfig.dreaming), enabled: false };

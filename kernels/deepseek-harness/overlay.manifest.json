@@ -12,7 +12,7 @@
     },
     {
       "path": "packages/acp/clawx-acp-bridge/src/index.ts",
-      "sha256": "69808ae17d097c34181c4e63dcacecaca480ee2a5b3c6216bdf655d3869ae0e4"
+      "sha256": "b18dd98cbe5a982f1ba2308b117cf843998134809d64d5d1e6e5b3003ceb4025"
     },
     {
       "path": "packages/acp/clawx-acp-bridge/src/invariant.ts",
@@ -20,7 +20,7 @@
     },
     {
       "path": "packages/acp/clawx-acp-bridge/tests/bridge.spec.ts",
-      "sha256": "c84e0b9d4db20b7e22a0476bdb596068e8a7795449feb88c99599bd13b358b3a"
+      "sha256": "31174fb66c62bd80315b951b0c6d16b65f1f17913e586fb7d492136d79e27815"
     },
     {
       "path": "packages/acp/clawx-acp-bridge/tsconfig.json",
@@ -155,8 +155,12 @@
       "sha256": "27589efbffa9fd491784b8dc657ab0ca36ec6c0146bf994666d3de9609418334"
     },
     {
+      "path": "packages/runtime/clawx-runtime-host/src/host-tools.ts",
+      "sha256": "f257fa82a3a62e26b7ad99a0b40e7ad8484ee7f7f7491bf4a5e421e70cfd80a4"
+    },
+    {
       "path": "packages/runtime/clawx-runtime-host/src/index.ts",
-      "sha256": "f0a2aa549a21796f87d4ee45e6803ffbe7eac6e2ebec0c57e9c8fdc9523424a8"
+      "sha256": "c1d16433a5378c36f703819bb4248e00f51d9d10c494266ee91802d0da060b1d"
     },
     {
       "path": "packages/runtime/clawx-runtime-host/src/invariant.ts",

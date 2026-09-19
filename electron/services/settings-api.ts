@@ -36,6 +36,7 @@ const PROXY_SETTING_KEYS = new Set<keyof AppSettings>([
 ]);
 
 async function validateSettingKey(key: unknown): Promise<boolean> {
+  if (key === 'computerUseKernel') return false; // Revocation must go through its owner.
   if (typeof key !== 'string' || key.length === 0) return false;
   const settings = await getAllSettings();
   return Object.prototype.hasOwnProperty.call(settings, key);
@@ -106,7 +107,7 @@ async function runSettingsSideEffects(
   }
 }
 
-export function createSettingsApi(gatewayManager: GatewayManager): CompleteHostServiceRegistry['settings'] {
+export function createSettingsApi(gatewayManager: GatewayManager, onReset?: () => Promise<void>): CompleteHostServiceRegistry['settings'] {
   return {
     getAll: () => getAllSettings(),
     get: async (payload) => {
@@ -130,6 +131,7 @@ export function createSettingsApi(gatewayManager: GatewayManager): CompleteHostS
       return { success: true };
     },
     reset: async () => {
+      await onReset?.();
       await resetSettings();
       await handleProxySettingsChange(gatewayManager);
       await syncLaunchAtStartupSettingFromStore();

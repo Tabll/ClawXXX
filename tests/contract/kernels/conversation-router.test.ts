@@ -32,7 +32,7 @@ function remote(client: ClawXDataClient) {
   };
 }
 
-async function fixture() {
+async function fixture(extra: Partial<import('@electron/conversations/conversation-router').ConversationRouterOptions> = {}) {
   const root = mkdtempSync(join(tmpdir(), 'clawx-router-'));
   const service = new ClawXDataService(join(root, 'clawx.sqlite'));
   const main = service.connect({ role: 'main' });
@@ -45,6 +45,7 @@ async function fixture() {
   await Promise.all([supervisors.start('openclaw'), supervisors.start('deepseek-harness')]);
   let id = 0;
   const router = new ConversationRouter({
+    ...extra,
     supervisors,
     mainData: remote(main),
     connectKernelData: async (kernelId, generation) => remote(service.connect({ role: 'kernel', kernelId, generation })),
@@ -61,6 +62,121 @@ async function fixture() {
 }
 
 describe('ConversationRouter', () => {
+  it.each(['openclaw', 'deepseek-harness'] as const)('admits independent %s children through Run-scoped tools', async kernelId => {
+    const { main, drivers, router } = await fixture({ enableHostTools: true });
+    const driver = drivers.get(kernelId)!; const original = driver.execute.bind(driver);
+    let parentGrant: NonNullable<import('@shared/kernels/contracts').KernelRunRequest['hostTools']> | undefined;
+    vi.spyOn(driver, 'execute').mockImplementation(async input => {
+      if (input.conversationId === 'parent-tools') {
+        parentGrant = input.hostTools!;
+        const invoke = async (args: unknown) => {
+          const response = await fetch(parentGrant!.url, { method: 'POST', headers: { Authorization: `Bearer ${parentGrant!.token}` }, body: JSON.stringify({ tool: 'clawx_agent', args }) });
+          expect(response.ok).toBe(true); return (await response.json()).result;
+        };
+        const child = await invoke({ action: 'spawn', prompt: 'independent child', kernelId: 'forged-other-kernel', permissionMode: 'default' });
+        const result = await invoke({ action: 'wait', runId: child.runId, timeoutMs: 1000 });
+        expect(result).toMatchObject({ status: 'completed', kernelId, conversationId: child.conversationId });
+        const history = await main.exportConversation(asConversationId(child.conversationId));
+        expect(history.conversation.parentConversationId).toBeUndefined();
+        expect(history.turns[0].blocks[0].text).toBe('independent child');
+        expect(JSON.stringify(history)).not.toContain(parentGrant!.token);
+        expect(driver.requests.find(run => run.runId === child.runId)?.permissionMode).toBe('deny');
+      }
+      return original(input);
+    });
+    await router.prompt({ conversationId: asConversationId('parent-tools'), kernelId, agentId: 'main', workspaceUri: 'file:///workspace', message: 'parent private prompt', permissionMode: 'deny' });
+    const rows = await main.listChildRuns(asConversationId('parent-tools'));
+    expect(rows).toHaveLength(1); expect(rows[0].status).toBe('completed');
+    expect((await fetch(parentGrant!.url, { method: 'POST', headers: { Authorization: `Bearer ${parentGrant!.token}` }, body: '{}' })).status).toBe(403);
+  });
+
+  it('interleaves Main permission events with native sequence numbers and rejects unapproved tool execution', async () => {
+    const invokeHostTool = vi.fn(async () => 'approved-output');
+    const { main, drivers, router } = await fixture({ enableHostTools: true, invokeHostTool });
+    const driver = drivers.get('openclaw')!; const original = driver.execute.bind(driver);
+    router.on('event', event => {
+      if (event.event.kind === 'permission.request') void router.resolvePermission({ ...event, requestId: event.event.payload.requestId, decision: 'allow-once' });
+    });
+    vi.spyOn(driver, 'execute').mockImplementation(async input => {
+      const grant = input.hostTools!;
+      const response = await fetch(grant.url, { method: 'POST', headers: { Authorization: `Bearer ${grant.token}` }, body: JSON.stringify({ tool: 'clawx_dingtalk', args: { action: 'execute', accountId: 'one', args: ['schema'] } }) });
+      expect(response.ok).toBe(true);
+      return original(input);
+    });
+    await router.prompt({ conversationId: asConversationId('permission-tools'), kernelId: 'openclaw', agentId: 'main', workspaceUri: 'file:///workspace', message: 'authorize' });
+    const history = await main.exportConversation(asConversationId('permission-tools'));
+    expect(history.runs[0].events.map(event => event.eventSeq)).toEqual([1, 2, 3]);
+    expect(history.runs[0].events.map(event => event.kind)).toEqual(['permission.request', 'permission.resolved', 'assistant.delta']);
+    expect(invokeHostTool).toHaveBeenCalledOnce();
+  });
+
+  it.each(['openclaw', 'deepseek-harness'] as const)('cancels %s children that outlive a deleted parent without deleting their independent history', async kernelId => {
+    const { main, drivers, router } = await fixture({ enableHostTools: true });
+    const driver = drivers.get(kernelId)!; const original = driver.execute.bind(driver);
+    let release!: () => void; const gate = new Promise<void>(resolve => { release = resolve; });
+    let childGrant: NonNullable<import('@shared/kernels/contracts').KernelRunRequest['hostTools']> | undefined;
+    vi.spyOn(driver, 'execute').mockImplementation(async input => {
+      if (input.conversationId === 'outliving-parent') {
+        const grant = input.hostTools!;
+        const response = await fetch(grant.url, { method: 'POST', headers: { Authorization: `Bearer ${grant.token}` }, body: JSON.stringify({ tool: 'clawx_agent', args: { action: 'spawn', prompt: 'child owns this history' } }) });
+        expect(response.ok).toBe(true);
+      } else { childGrant = input.hostTools!; await gate; }
+      return original(input);
+    });
+    try {
+      const parent = asConversationId('outliving-parent');
+      await router.prompt({ conversationId: parent, kernelId, agentId: 'main', workspaceUri: 'file:///workspace', message: 'delegate' });
+      await vi.waitFor(() => expect(childGrant).toBeDefined());
+      const [child] = await main.listChildRuns(parent);
+      expect(child.status).toBe('running');
+      expect((await main.exportConversation(parent)).runs[0].status).toBe('completed');
+      await router.cancelConversationTree(parent);
+      expect((await main.exportConversation(child.conversationId)).runs[0].status).toBe('cancelled');
+      await main.deleteConversation(parent, new Date().toISOString(), true);
+      expect((await main.exportConversation(child.conversationId)).turns[0].blocks[0].text).toBe('child owns this history');
+      expect((await fetch(childGrant!.url, { method: 'POST', headers: { Authorization: `Bearer ${childGrant!.token}` }, body: '{}' })).status).toBe(403);
+    } finally { release(); }
+  });
+
+  it('denies desktop execution in a denied Run and stores approved screenshots as canonical Blobs', async () => {
+    const invokeHostTool = vi.fn(async () => ({ content: [{ type: 'image', mimeType: 'image/png', data: Buffer.from('screenshot').toString('base64') }], isError: false }));
+    const { main, drivers, router } = await fixture({ enableHostTools: true, invokeHostTool });
+    const driver = drivers.get('openclaw')!; const original = driver.execute.bind(driver);
+    router.on('event', event => {
+      if (event.event.kind === 'permission.request') void router.resolvePermission({ ...event, requestId: event.event.payload.requestId, decision: 'allow-once' });
+    });
+    vi.spyOn(driver, 'execute').mockImplementation(async input => {
+      const grant = input.hostTools!;
+      const response = await fetch(grant.url, { method: 'POST', headers: { Authorization: `Bearer ${grant.token}` }, body: JSON.stringify({ tool: 'clawx_computer', args: { action: 'call', name: 'get_desktop_state' } }) });
+      expect(response.ok).toBe(input.permissionMode !== 'deny');
+      return original(input);
+    });
+    const base = { kernelId: 'openclaw', agentId: 'main', workspaceUri: 'file:///workspace', message: 'view desktop' };
+    await router.prompt({ ...base, conversationId: asConversationId('desktop-denied'), permissionMode: 'deny' });
+    expect(invokeHostTool).not.toHaveBeenCalled();
+    const conversationId = asConversationId('desktop-approved');
+    await router.prompt({ ...base, conversationId, permissionMode: 'ask' });
+    expect(invokeHostTool).toHaveBeenCalledOnce();
+    const image = (await main.exportConversation(conversationId)).turns.flatMap(turn => turn.blocks).find(block => block.type === 'image');
+    expect(image).toMatchObject({ visibility: 'portable', mimeType: 'image/png', blobHash: expect.any(String) });
+    expect(Buffer.from((await main.readConversationBlob({ conversationId, blobHash: image!.blobHash! })).data).toString()).toBe('screenshot');
+  });
+
+  it.each(['reject_once', 'unknown-option'])('does not interpret the selected ACP %s option as permission to execute a Main tool', async optionId => {
+    const invokeHostTool = vi.fn(async () => 'must not execute');
+    const { drivers, router } = await fixture({ enableHostTools: true, invokeHostTool });
+    router.on('event', event => {
+      if (event.event.kind === 'permission.request') void router.resolvePermission({ ...event, requestId: event.event.payload.requestId, decision: 'allow-once', optionId });
+    });
+    const driver = drivers.get('openclaw')!; const original = driver.execute.bind(driver);
+    vi.spyOn(driver, 'execute').mockImplementation(async input => {
+      const grant = input.hostTools!;
+      const response = await fetch(grant.url, { method: 'POST', headers: { Authorization: `Bearer ${grant.token}` }, body: JSON.stringify({ tool: 'clawx_computer', args: { action: 'call', name: 'click' } }) });
+      expect(response.status).toBe(400); return original(input);
+    });
+    await router.prompt({ kernelId: 'openclaw', agentId: 'main', workspaceUri: 'file:///workspace', message: 'decline desktop action', permissionMode: 'ask' });
+    expect(invokeHostTool).not.toHaveBeenCalled();
+  });
   it.each(['openclaw', 'deepseek-harness'] as const)('commits %s generated attachments before publishing Blob references', async kernelId => {
     const { main, drivers, router } = await fixture();
     const driver = drivers.get(kernelId)!;

@@ -31,6 +31,8 @@ function requireSuccess(result: { success: boolean; error?: string }, operation:
 
 /** Compatibility execution adapter; ConversationRouter replaces UI session/load in M7. */
 export class OpenClawAcpChatAdapter implements OpenClawChatAdapter {
+  private stopping = false;
+  private readonly workers = new Map<string, OpenClawAcpChatAdapter>();
   private readonly sessionsByRun = new Map<string, string>();
   private readonly runsBySession = new Map<string, KernelRunIdentity>();
   private readonly eventSeqByRun = new Map<string, number>();
@@ -62,6 +64,7 @@ export class OpenClawAcpChatAdapter implements OpenClawChatAdapter {
     private readonly acp: AcpChatService,
     private readonly afterOperation?: () => Promise<void>,
     private readonly runtimeEvents?: Pick<GatewayManager, 'on' | 'off'>,
+    private readonly createAcp?: () => AcpChatService,
   ) {}
 
   async initialize(input: {
@@ -69,6 +72,7 @@ export class OpenClawAcpChatAdapter implements OpenClawChatAdapter {
     generation: number;
     runtime: OpenClawRuntimeLocation;
   }): Promise<void> {
+    this.stopping = false;
     this.host = input.host;
     this.generation = input.generation;
     this.runtime = input.runtime;
@@ -81,6 +85,17 @@ export class OpenClawAcpChatAdapter implements OpenClawChatAdapter {
   }
 
   async execute(input: KernelRunRequest): Promise<KernelRunAcceptance> {
+    if (this.createAcp) {
+      if (!this.host || !this.runtime || !this.generation) throw new Error('OpenClaw adapter is not initialized');
+      if (this.workers.has(input.runId) || this.workers.size >= 16) throw new Error('OpenClaw concurrent run limit reached');
+      const worker = new OpenClawAcpChatAdapter(this.createAcp(), this.afterOperation, this.runtimeEvents);
+      this.workers.set(input.runId, worker);
+      try {
+        await worker.initialize({ host: this.host, runtime: this.runtime, generation: this.generation });
+        if (this.stopping || this.cancelledBeforePrompt.has(input.runId)) return this.acceptance(input);
+        return await worker.execute(input);
+      } finally { await worker.stop(); this.workers.delete(input.runId); this.cancelledBeforePrompt.delete(input.runId); }
+    }
     this.pendingRuns.add(input.runId);
     const predecessor = this.executionTail;
     let release!: () => void;
@@ -159,6 +174,10 @@ export class OpenClawAcpChatAdapter implements OpenClawChatAdapter {
   }
 
   async cancel(input: KernelRunIdentity): Promise<{ acknowledged: boolean }> {
+    if (this.createAcp) {
+      this.cancelledBeforePrompt.add(input.runId);
+      return await this.workers.get(input.runId)?.cancel(input) ?? { acknowledged: false };
+    }
     if (
       (this.pendingRuns.has(input.runId) || this.activeRunId === input.runId)
       && !this.sessionsByRun.has(input.runId)
@@ -181,6 +200,11 @@ export class OpenClawAcpChatAdapter implements OpenClawChatAdapter {
   }
 
   async resolvePermission(input: KernelPermissionResolution): Promise<void> {
+    if (this.createAcp) {
+      const worker = this.workers.get(input.runId);
+      if (!worker) throw new Error('OpenClaw permission run is no longer active');
+      return worker.resolvePermission(input);
+    }
     const key = this.sessionsByRun.get(input.runId);
     if (!key) throw new Error('OpenClaw permission run is no longer active');
     const result = await this.acp.respondPermission({
@@ -198,6 +222,11 @@ export class OpenClawAcpChatAdapter implements OpenClawChatAdapter {
   }
 
   async updateRunConfiguration(input: KernelRunConfiguration): Promise<void> {
+    if (this.createAcp) {
+      const worker = this.workers.get(input.runId);
+      if (!worker) throw new Error('OpenClaw configuration run is no longer active');
+      return worker.updateRunConfiguration(input);
+    }
     const key = this.sessionsByRun.get(input.runId);
     if (!key) throw new Error('OpenClaw configuration run is no longer active');
     const values: Array<[string, string]> = [];
@@ -211,6 +240,9 @@ export class OpenClawAcpChatAdapter implements OpenClawChatAdapter {
   }
 
   async stop(): Promise<void> {
+    this.stopping = true;
+    await Promise.allSettled([...this.workers.values()].map(worker => worker.stop()));
+    this.workers.clear();
     this.unsubscribeUpdates?.();
     this.unsubscribePermissions?.();
     this.unsubscribeUpdates = undefined;

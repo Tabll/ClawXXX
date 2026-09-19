@@ -145,6 +145,7 @@ export type KernelRunIdentity = {
 };
 
 export type KernelRunRequest = KernelRunIdentity & {
+  hostTools?: import('./host-tools').HostToolGrant;
   context: CanonicalContentBlock[];
   agentId: string;
   workspaceUri: string;

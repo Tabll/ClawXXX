@@ -224,6 +224,11 @@ export const hostApi = {
     ),
     reset: () => invokeHost('settings', 'reset'),
   },
+  computerUse: {
+    status: () => invokeHost('computerUse', 'status'),
+    select: (kernelId: KernelId | null) => invokeHost('computerUse', 'select', { kernelId }),
+    requestPermissions: () => invokeHost('computerUse', 'requestPermissions'),
+  },
   openClawDreams: {
     status: () => invokeHost('openClawDreams', 'status'),
     diary: () => invokeHost('openClawDreams', 'diary'),
@@ -444,6 +449,7 @@ export const hostApi = {
     clearSettings: () => invokeHost('embeddings', 'clearSettings'),
   },
   conversations: {
+    children: (id: ConversationId) => invokeHost('conversations', 'children', { id }),
     list: (input?: ConversationQueryFilters & { limit?: number; cursor?: string }) => (
       invokeHost('conversations', 'list', input)
     ),

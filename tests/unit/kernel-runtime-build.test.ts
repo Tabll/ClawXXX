@@ -213,7 +213,7 @@ describe('kernel runtime build supply chain', () => {
 
       assertArtifactBytesEqual(readFileSync(first.archivePath), readFileSync(second.archivePath));
       assertArtifactBytesEqual(readFileSync(first.descriptorPath), readFileSync(second.descriptorPath));
-      expect(first.descriptor).toMatchObject({ artifactVersion: '2026.9.4+clawx.17', patchRevision: 17, platform, arch });
+      expect(first.descriptor).toMatchObject({ artifactVersion: '2026.9.4+clawx.18', patchRevision: 18, platform, arch });
       expect(first.descriptor.storage).toMatchObject({ authority: 'clawx-data-service', nativeDurableHistory: false });
       expect(first.descriptor.supplyChain).toEqual(expect.objectContaining({
         sourceSha256: expect.stringMatching(/^[a-f0-9]{64}$/),
@@ -228,7 +228,7 @@ describe('kernel runtime build supply chain', () => {
       writeFileSync(`${esbuildExecutable}.unreviewed`, Buffer.from('4d5a0000', 'hex'));
       const rejected = join(root, 'rejected');
       await expect(assembleKernelArtifact({ ...common, outputDir: rejected })).rejects.toThrow(/not in the audited native allowlist/);
-      expect(existsSync(join(rejected, `openclaw-2026.9.4+clawx.17-${platform}-${arch}.tar.zst`))).toBe(false);
+      expect(existsSync(join(rejected, `openclaw-2026.9.4+clawx.18-${platform}-${arch}.tar.zst`))).toBe(false);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
@@ -368,8 +368,9 @@ describe('kernel runtime build supply chain', () => {
     expect(probe).toContain('rawInput?.command === toolCommand');
     expect(probe).toContain('Approved tool must actually execute the fixed script');
     expect(probe).toContain('nextOpenClawProbeToolCall(request.messages, toolCommand)');
-    expect(probe).toContain('6 + processPolls');
-    expect(probe).toContain('4 + processPolls');
+    expect(probe).toContain('7 + processPolls');
+    expect(probe).toContain('5 + processPolls');
+    expect(probe).toContain('hostToolRequests.length, 1');
     expect(probe).toContain('report.startups = startups');
     for (const name of ['inspect', 'ingress', 'rejected']) {
       expect(probe).toContain(`once(${name}, 'close')`);

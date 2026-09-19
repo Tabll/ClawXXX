@@ -1,4 +1,4 @@
-export const CLAWX_DATA_SCHEMA_VERSION = 13;
+export const CLAWX_DATA_SCHEMA_VERSION = 14;
 
 export const INITIAL_SCHEMA_SQL = `
 PRAGMA foreign_keys = ON;
@@ -82,6 +82,13 @@ CREATE TABLE IF NOT EXISTS runs (
 CREATE UNIQUE INDEX IF NOT EXISTS one_active_run_per_conversation
   ON runs(conversation_id)
   WHERE status IN ('admitted', 'running', 'cancelling');
+
+CREATE TABLE IF NOT EXISTS run_lineage (
+  child_run_id TEXT PRIMARY KEY REFERENCES runs(id) ON DELETE CASCADE,
+  parent_run_id TEXT REFERENCES runs(id) ON DELETE SET NULL,
+  depth INTEGER NOT NULL CHECK (depth BETWEEN 1 AND 3)
+);
+CREATE INDEX IF NOT EXISTS run_lineage_parent ON run_lineage(parent_run_id);
 
 CREATE TABLE IF NOT EXISTS run_events (
   run_id TEXT NOT NULL REFERENCES runs(id) ON DELETE CASCADE,

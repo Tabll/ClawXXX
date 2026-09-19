@@ -32,6 +32,7 @@ const MAX_TOTAL_ATTACHMENT_BYTES = 100 * 1024 * 1024;
 
 export type ChannelConversationRouter = {
   prompt(input: {
+    channelAccountId?: string;
     conversationId: ConversationId;
     turnId: TurnId;
     runId: RunId;
@@ -273,6 +274,7 @@ export class ChannelOrchestrator {
     });
     try {
       const acceptance = await this.router.prompt({
+        channelAccountId: message.accountId,
         conversationId: message.conversationId,
         turnId,
         runId,

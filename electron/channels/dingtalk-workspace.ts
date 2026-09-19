@@ -88,7 +88,7 @@ export class DingTalkWorkspaceService {
 
   /** Main's run-owned tool bridge calls this; there is no Renderer execute route. */
   async execute(accountId: string, kernelId: KernelId, args: string[], signal?: AbortSignal): Promise<string> {
-    if (!Array.isArray(args) || args.length === 0 || args.length > 128
+    if (!Array.isArray(args) || args.length === 0 || args.length > 128 || ['auth', 'config', 'plugin', 'skill', 'completion', 'cache', 'doctor', 'recovery'].includes(args[0])
       || args.some(arg => typeof arg !== 'string' || arg.length > 16_384 || arg.includes('\0'))
       || args.some(arg => /^(?:auth|--(?:client-id|client-secret|token|config(?:-dir)?|mock|debug|verbose))(?:=|$)/.test(arg))) {
       throw new Error('DWS command must use the selected canonical account');

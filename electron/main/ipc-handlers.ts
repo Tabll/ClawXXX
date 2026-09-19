@@ -31,6 +31,8 @@ import { createUvApi } from '../services/uv-api';
 import { createGatewayApi } from '../services/gateway-api';
 import { createLogsApi } from '../services/logs-api';
 import { createSettingsApi } from '../services/settings-api';
+import { createComputerUseApi } from '../services/computer-use-api';
+import type { ComputerUseService } from '../services/computer-use';
 import { createChannelsApi } from '../services/channels-api';
 import { createAgentsApi } from '../services/agents-api';
 import { createChatApi } from '../services/chat-api';
@@ -96,6 +98,7 @@ export function registerIpcHandlers(
   scheduler?: ClawXScheduler,
   kernelPackages?: KernelPackageController,
   dingtalkWorkspace?: DingTalkWorkspaceService,
+  computerUse?: ComputerUseService,
 ): void {
   const credentialVault = new CredentialStagingVault();
   registerCredentialStagingIpc(mainWindow, credentialVault);
@@ -124,6 +127,7 @@ export function registerIpcHandlers(
     credentialVault,
     kernelPackages,
     dingtalkWorkspace,
+    computerUse,
   );
 
   // Gateway handlers
@@ -181,6 +185,7 @@ function registerTypedHostHandlers(
   credentialVault?: CredentialStagingVault,
   kernelPackages?: KernelPackageController,
   dingtalkWorkspace?: DingTalkWorkspaceService,
+  computerUse?: ComputerUseService,
 ): void {
   const acpSessionAccessRegistry = openClawAcp?.access ?? new AcpSessionAccessRegistry();
   const stagedAttachments = new StagedAttachmentRegistry();
@@ -205,7 +210,8 @@ function registerTypedHostHandlers(
     window: createWindowApi(mainWindow),
     updates: createUpdatesApi(appUpdater),
     uv: createUvApi(),
-    settings: createSettingsApi(gatewayManager),
+    settings: createSettingsApi(gatewayManager, () => computerUse?.select(null).then(() => undefined) ?? Promise.resolve()),
+    computerUse: createComputerUseApi(computerUse),
     gateway: createGatewayApi(gatewayManager),
     logs: createLogsApi(),
     channels: createChannelsApi({
@@ -255,7 +261,7 @@ function registerTypedHostHandlers(
       }),
     },
     sessions: createSessionsApi({ dataClient }),
-    conversations: createConversationsApi(dataClient),
+    conversations: createConversationsApi(dataClient, conversationRouter),
     chat: createChatApi({
       gatewayManager,
       mainWindow,

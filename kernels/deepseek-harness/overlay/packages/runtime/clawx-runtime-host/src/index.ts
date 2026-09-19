@@ -1,3 +1,4 @@
+import { registerHostTools } from './host-tools.js'
 import { spawn } from 'node:child_process'
 import { mkdir, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -537,6 +538,7 @@ export async function createProductionRuntime(input: {
       })
     }
     const acp = new ClawXDshAcpBridge(ctx, { emit, diagnostic: input.diagnostic })
+    registerHostTools(ctx, acp)
     const credentials = ctx.credentials as ClawXDshCredentialProvider
     const agentCatalog = new ClawXDshAgentCatalog()
     const skillCatalog = new ClawXDshSkillCatalog(ctx)

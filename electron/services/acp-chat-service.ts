@@ -183,6 +183,11 @@ export class AcpChatService {
     return () => this.sessionUpdateObservers.delete(observer);
   }
 
+  /** Each concurrent canonical Run owns its ACP process and workspace grant. */
+  createIsolated(): AcpChatService {
+    return new AcpChatService(this.mainWindow, new AcpSessionAccessRegistry(), undefined, this.gateway);
+  }
+
   observePermissionRequests(observer: AcpPermissionRequestObserver): () => void {
     this.permissionRequestObservers.add(observer);
     return () => this.permissionRequestObservers.delete(observer);

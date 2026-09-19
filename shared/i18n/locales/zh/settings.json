@@ -550,6 +550,24 @@
     "missingKey": "TokenDance 授权失败，请重试。",
     "callbackUnavailable": "TokenDance 授权失败，请重试。",
     "cancelled": "TokenDance 授权失败，请重试。"
+  },
+  "computerUse": {
+    "title": "电脑操作",
+    "description": "允许一个内核查看并操作桌面。每次操作都需要在对应会话中批准。关闭后会停止驱动并撤销访问。支持 macOS 13 及以上和 Windows x64。",
+    "kernel": "桌面访问权限",
+    "disabled": "关闭",
+    "openclaw": "OpenClaw",
+    "deepseek": "DeepSeek Harness",
+    "permissions": "授予系统权限",
+    "error": "无法更新电脑操作设置，请重试。",
+    "states": {
+      "disabled": "桌面访问已关闭。",
+      "unsupported": "当前平台不支持电脑操作。",
+      "permissions": "需要辅助功能和屏幕录制权限。",
+      "unavailable": "请安装包含电脑操作组件的最新内核并启动所选内核。",
+      "ready": "已就绪。首次工具请求时启动驱动。",
+      "running": "桌面驱动正在运行。",
+      "failed": "桌面驱动因错误停止。可重试或关闭访问。"
+    }
   }
-
 }

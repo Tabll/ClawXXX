@@ -7,6 +7,8 @@ import ApprovalService from '@deepseek-ai/dsh-user-approval'
 import UserQuestionService from '@deepseek-ai/dsh-user-questions'
 import { SessionSeq } from '@deepseek-ai/dsh-session'
 import { ClawXDshAcpBridge, type ClawXDshKernelEvent } from '../src/index.ts'
+import { ToolCallId } from '@deepseek-ai/dsh-llm'
+import { registerHostTools } from '../../../runtime/clawx-runtime-host/src/host-tools.ts'
 
 class ScriptedAdapter extends LlmAdapter {
   readonly requests: GenerateOptions[] = []
@@ -66,6 +68,36 @@ describe('ClawX DeepSeek Harness bridge', () => {
     const bridge = new ClawXDshAcpBridge(ctx, { emit: event => { events.push(event) } })
     return { adapter, bridge, events }
   }
+
+  it('executes host tools inside the real AgentLoop without persisting or presenting the private grant', async () => {
+    const callId = ToolCallId('host-tool-call')
+    const call = { type: 'tool-call' as const, id: callId, name: 'clawx_agent', arguments: JSON.stringify({ args: { action: 'list' } }) }
+    const { bridge, adapter, events } = await setup([[
+      { type: 'block-start', index: 0, blockType: 'tool-call' },
+      { type: 'tool-call-delta', index: 0, id: callId, name: call.name, argumentsDelta: call.arguments },
+      { type: 'block-end', index: 0, block: call },
+      { type: 'finish', reason: { kind: 'tool-calls' } },
+    ], response('host tool done')])
+    registerHostTools(ctx!, bridge)
+    const token = 'a'.repeat(43)
+    const fetchTool = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ result: [{ runId: 'canonical-child' }] }), { status: 200 }))
+    try {
+      const result = await bridge.prompt({
+        identity: { conversationId: 'host-conversation', turnId: 'turn', runId: 'host-run' },
+        context: [{ id: 'u', type: 'text', visibility: 'portable', text: 'list my child runs' }],
+        agentId: 'default', workspaceUri: process.cwd(), providerId: 'mock', modelId: 'mock',
+        hostTools: { url: 'http://127.0.0.1:32123/v1/run/tool', token },
+      })
+      expect(fetchTool).toHaveBeenCalledTimes(1)
+      expect(fetchTool.mock.calls[0]![1]?.headers).toMatchObject({ Authorization: `Bearer ${token}` })
+      expect(JSON.parse(fetchTool.mock.calls[0]![1]!.body as string)).toEqual({ tool: 'clawx_agent', args: { action: 'list' } })
+      expect(JSON.stringify(adapter.requests.at(-1))).toContain('canonical-child')
+      expect(JSON.stringify(adapter.requests)).not.toContain(token)
+      expect(JSON.stringify(result.checkpoint)).not.toContain(token)
+      expect(JSON.stringify(events)).not.toContain(token)
+      expect(bridge.hostToolGrant(result.nativeSessionId)).toBeUndefined()
+    } finally { fetchTool.mockRestore(); await bridge.close() }
+  })
 
   it('hydrates canonical roles, emits rich ordered events, checkpoints, and disposes its agent', async () => {
     ctx = new Context()

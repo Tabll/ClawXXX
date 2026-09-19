@@ -56,6 +56,7 @@ export type AttachmentPayload = {
 }
 
 export type ClawXDshPromptInput = {
+  hostTools?: { url: string; token: string }
   identity: ClawXRunIdentity
   context: CanonicalContextBlock[]
   agentId: string
@@ -260,6 +261,11 @@ export class ClawXDshAcpBridge {
     }))
     this.disposers.push(ctx.on('approval/request', (request: ApprovalRequest) => this.onApproval(request)))
     this.disposers.push(ctx.on('user-questions/request', request => this.onQuestions(request)))
+  }
+
+  hostToolGrant(sessionId: string): { url: string; token: string } | undefined {
+    const grant = this.leasesBySession.get(sessionId)?.input.hostTools
+    return grant ? { ...grant } : undefined
   }
 
   activeRunIds(): string[] {

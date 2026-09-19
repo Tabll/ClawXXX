@@ -1,5 +1,9 @@
 {
   "id": "clawx-channel-handoff",
+  "categories": ["tools"],
+  "contracts": {
+    "tools": ["clawx_agent", "clawx_dingtalk", "clawx_computer"]
+  },
   "activation": {
     "onStartup": true
   },

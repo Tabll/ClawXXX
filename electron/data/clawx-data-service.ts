@@ -1,3 +1,4 @@
+import type { ChildRunSummary } from '@shared/conversations/contracts';
 import { randomUUID } from 'node:crypto';
 import { dirname, join } from 'node:path';
 import type {
@@ -150,6 +151,11 @@ export class ClawXDataService {
     const client = this.client(token);
     if (client.role !== 'main') return Promise.reject(new Error('Only Main can export conversations'));
     return this.enqueue(() => this.store.exportConversation(id));
+  }
+
+  listChildRuns(token: string, id: ConversationId): Promise<ChildRunSummary[]> {
+    if (this.client(token).role !== 'main') return Promise.reject(new Error('Only Main can list child runs'));
+    return this.enqueue(() => this.store.listChildRuns(id));
   }
 
   admitRun(token: string, input: AdmitRunInput): Promise<void> {
@@ -923,6 +929,10 @@ export class ClawXDataClient {
 
   exportConversation(id: ConversationId): Promise<ConversationExport> {
     return this.service.exportConversation(this.token, id);
+  }
+
+  listChildRuns(id: ConversationId): Promise<ChildRunSummary[]> {
+    return this.service.listChildRuns(this.token, id);
   }
 
   admitRun(input: AdmitRunInput): Promise<void> {

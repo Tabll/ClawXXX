@@ -2,7 +2,7 @@
 
 > 2026-09-19 分发层修订：可选内核改为 GitHub Releases 单源，保留版本化包、签名目录、
 > 不可变发布日志及安全清理；统一 SQLite 和业务抽象不变。当前制品身份为 OpenClaw
-> `2026.9.4+clawx.17`、DSH `0.1.5-rc.2+clawx.16`，远端验收另行执行。
+> `2026.9.4+clawx.18`、DSH `0.1.5-rc.2+clawx.17`，远端验收另行执行。
 > 本文旧 COS/双镜像章节由 [GitHub 单源设计](../../harness/reference/github-only-kernel-distribution.md)
 > 替代；旧源只保留历史身份验证，不参与下载、发布或清理。
 
@@ -1285,3 +1285,12 @@ Conversation 支持 `reuse`/默认 `new-per-run`/按 schedule timezone 的
 - 不导入现有 DSH SessionPersistence、Schedule 或外部 DSH home。
 - 不为旧 session key 提供静默 fallback；统一 Conversation UI 从 cutover 后的新 SQLite 数据开始。
 - 旧文件保持原样且不主动删除，避免设计任务扩大为破坏性清理。未来如需导入，应作为独立、显式、可回滚的离线工具设计，不能重新引入运行时双读/双写。
+
+## 上游 0.5.8 迁移补充
+
+子代理使用 SQLite `run_lineage` 记录父 Run，独立保存消息、附件和用量；不复用历史分支字段。
+OpenClaw 为并发 Run 分配独立 ACP worker，DSH 沿用原生 AgentLoop。两者的钉钉、子代理和电脑操作工具
+都使用主进程签发的短期 Run capability，不将令牌交给模型、Renderer 或持久化 checkpoint。
+电脑操作默认关闭，只允许一个内核使用主进程管理的 CUA 0.25.0，操作逐次授权，截图归入统一 Blob。
+原生工具随固定内核制品发布，基础安装包不包含内核或桌面驱动。详见
+[迁移合同与验收边界](../../harness/reference/upstream-clawx-0.5.8-next-batches.md)。

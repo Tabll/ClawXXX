@@ -44,9 +44,13 @@ ClawXにはベストプラクティスに基づくモデルプロバイダーが
 
 <p align="center"><strong style="font-size:1.1em; text-decoration: underline;">完全なエンタープライズ版、専用サービスサポート、またはビジネスシナリオに合わせた導入支援が必要な場合は、<a href="mailto:public@valuecell.ai">public@valuecell.ai</a> までお問い合わせください。</strong></p>
 
-DingTalk は既存のアカウント ID と紐付けを維持して公式コネクターを使用します。チャンネル画面でアカウントごとに Workspace を認証してください。認証情報は ClawX が暗号化して保存し、CLI には一時的なアカウント投影だけを渡します。DWS は選択したランタイムの配布物（OpenClaw リビジョン 17 / DeepSeek Harness リビジョン 16）に含まれ、旧配布物では利用不可と表示されます。
+DingTalk は既存のアカウント ID と紐付けを維持して公式コネクターを使用します。チャンネル画面でアカウントごとに Workspace を認証してください。認証情報は ClawX が暗号化して保存し、CLI には一時的なアカウント投影だけを渡します。DWS は選択したランタイムの配布物（OpenClaw リビジョン 18 / DeepSeek Harness リビジョン 17）に含まれ、旧配布物では利用不可と表示されます。
 
 中国語のプロバイダー一覧で TokenDance のブラウザー認証と安全な API キー入力を利用できます。コールバック、キー交換、取消は Main が処理します。OpenAI 互換モデルは OpenClaw で実行され、未対応のカーネルは明示的に未対応と表示されます。
+
+子エージェントは親と同じカーネルで独立した会話として実行され、Agent、ワークスペース、モデル、権限を継承します。親会話で出力を展開するか、子会話を開いて承認に応答できます。Run ごとに子は最大 8 件、入れ子は 3 段階です。親を削除すると実行中の子孫を取り消し、子の独立した履歴は保持します。
+
+コンピューター操作は初期状態で無効です。設定で 1 つのカーネルを選び、システム権限を付与します。Main が CUA 0.25.0 ドライバーを管理し、各操作を会話内で承認します。無効化や権限の取消でドライバーを停止し、画像は共通 Blob に保存します。新しいランタイムを含む macOS 13 以降と Windows x64 に対応し、開発環境では `pnpm run cua:prepare` で固定コンポーネントを準備できます。画像の理解には画像入力対応モデルが必要です。TokenDance は OpenClaw のみ対応します。
 
 ## スクリーンショット
 
@@ -163,9 +167,9 @@ ClawXは **Main-owned multi-kernel + unified Host API architecture**を採用し
 
 > ClawX 0.6はoptional CI-built OpenClaw/DSHと単一Main-owned SQLite/Blob authorityを実装しています。Protected cross-platform signing、promotion、packaged-test evidenceが不足する場合、public releaseはfail closedです。[設計](docs/zh-CN/multi-kernel-design.md)、[TODO](TODO.md)、[security/support](docs/ja-JP/runtime-security-support.md)、[data policy](docs/ja-JP/data-security-retention.md)を参照してください。
 
-DSH の候補ソースは `0.1.5-rc.2+clawx.16`（プレリリース）です。V3 の system message、Run ごとの persona、append 起点の確定イベントに対応し、モデル文脈の置換による応答・使用量の二重計上を防ぎます。共有 SQLite が唯一の保存先であり、インストール済み runtime の更新には CI artifact の検証・公開が必要です。[今回の互換性設計](harness/reference/kernel-upgrade-2026-09-12.md)。
+DSH の候補ソースは `0.1.5-rc.2+clawx.17`（プレリリース）です。V3 の system message、Run ごとの persona、append 起点の確定イベントに対応し、モデル文脈の置換による応答・使用量の二重計上を防ぎます。共有 SQLite が唯一の保存先であり、インストール済み runtime の更新には CI artifact の検証・公開が必要です。[今回の互換性設計](harness/reference/kernel-upgrade-2026-09-12.md)。
 
-OpenClaw のソースと開発依存関係は `2026.9.4+clawx.17` です。Discord/WhatsApp も同期し、`.mjs` パッチは容量制限付きメモリ ACP、共有履歴、Main 管理の設定、fail-closed な Channel 受付を維持します。Node は 24.20.0 のままです。候補のローカル検証と未完了のプラットフォーム検証は[今回の設計記録](harness/reference/kernel-upgrade-2026-09-12.md)を参照してください。
+OpenClaw のソースと開発依存関係は `2026.9.4+clawx.18` です。Discord/WhatsApp も同期し、`.mjs` パッチは容量制限付きメモリ ACP、共有履歴、Main 管理の設定、fail-closed な Channel 受付を維持します。Node は 24.20.0 のままです。候補のローカル検証と未完了のプラットフォーム検証は[今回の設計記録](harness/reference/kernel-upgrade-2026-09-12.md)を参照してください。
 
 両方の +clawx.13 カーネルは Node 24.20.0 を使用し、5 ターゲットの staging 全 25 ジョブ、macOS 公証 4 件（Accepted）、同一ソースの 3 プラットフォーム Electron E2E に合格しました。[CI 検証記録](harness/reference/windows-runtime-ci-repair.md)を参照してください。Windows は artifact 署名のみで、Authenticode は使用しません。本番 catalog の状態、保護された公開の復旧と実配信検証は[公開記録](harness/reference/kernel-automatic-release.md)で追跡し、実アカウント検証は未完了です。
 

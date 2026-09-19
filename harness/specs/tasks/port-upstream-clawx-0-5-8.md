@@ -23,6 +23,7 @@ touchedAreas:
   - entitlements*.plist
   - README*.md
   - TODO.md
+  - THIRD_PARTY_NOTICES.md
 expectedUserBehavior:
   - OpenClaw and DeepSeek Harness continue to share one Conversation, Provider, Agent, Channel, Cron, Skill and Usage authority.
   - Provider saves project usable protocols and model capabilities independently to each selected kernel and surface partial failures.

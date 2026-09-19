@@ -44,9 +44,13 @@ ClawX 预置了最佳实践的模型供应商配置，原生支持 Windows 平�
 
 <p align="center"><strong style="font-size:1.1em; text-decoration: underline;">如需完整的企业版、专属服务支持或面向您业务场景的定制化落地辅导，请联系 <a href="mailto:public@valuecell.ai">public@valuecell.ai</a>。</strong></p>
 
-钉钉已切换官方连接器，并保留现有账号 ID 和绑定。在渠道页面分别授权每个账号的钉钉工作台；凭据由 ClawX 加密保存，CLI 进程只使用一次性账号投影。DWS 由所选内核制品提供（OpenClaw 修订 17 / DeepSeek Harness 修订 16），旧制品会显示能力不可用。
+钉钉已切换官方连接器，并保留现有账号 ID 和绑定。在渠道页面分别授权每个账号的钉钉工作台；凭据由 ClawX 加密保存，CLI 进程只使用一次性账号投影。DWS 由所选内核制品提供（OpenClaw 修订 18 / DeepSeek Harness 修订 17），旧制品会显示能力不可用。
 
 中文提供商列表已支持 TokenDance 浏览器登录和安全 API Key 输入。回调、密钥兑换和取消均由主进程处理，凭据进入统一存储。其 OpenAI 兼容模型由 OpenClaw 执行，不支持的内核会保留明确的不可用状态。
+
+子代理会在父会话的内核上创建独立的统一会话，并继承 Agent、工作区、模型和权限。可在父会话展开实时结果，或打开子会话处理授权请求。每个 Run 最多创建 8 个子代理，最多嵌套 3 层；删除父会话会取消活跃后代，并保留子会话的独立历史。
+
+电脑操作默认关闭。在设置中选择一个内核并授予系统权限后即可使用。主进程管理 CUA 0.25.0 驱动，每次桌面操作需在会话中批准；关闭功能或撤销权限会停止驱动，截图进入统一 Blob 存储。包含新组件的内核制品支持 macOS 13 及以上和 Windows x64；开发环境可运行 `pnpm run cua:prepare` 准备固定组件。理解截图需要所选模型支持图片输入。TokenDance 仍仅由 OpenClaw 执行。
 
 ## 截图预览
 
@@ -164,9 +168,9 @@ ClawX 采用 **Main-owned 多内核 + Host API 统一接入架构**：React Rend
 
 > ClawX 0.6 已实现可选 CI 预制 OpenClaw 与 DeepSeek Harness，并以 Main 独占 SQLite/Blob 为统一数据权威；公开发布仍会在受保护的跨平台签名、晋级与 packaged-test 证据不足时 fail closed。参见[多内核设计](docs/zh-CN/multi-kernel-design.md)、[实施清单](TODO.md)、[运行时安全/支持](docs/zh-CN/runtime-security-support.md)和[数据策略](docs/zh-CN/data-security-retention.md)。
 
-DSH 源码候选版本为 `0.1.5-rc.2+clawx.16`（预发布版），已适配 V3 系统消息、按 Run 隔离的 persona 和追加来源的结算事件；模型上下文替换不能重复生成回复或计费。统一 SQLite 仍是唯一数据源，已安装内核须等新版 CI 制品验证并发布后才可更新。详见[本次升级兼容性说明](harness/reference/kernel-upgrade-2026-09-12.md)。
+DSH 源码候选版本为 `0.1.5-rc.2+clawx.17`（预发布版），已适配 V3 系统消息、按 Run 隔离的 persona 和追加来源的结算事件；模型上下文替换不能重复生成回复或计费。统一 SQLite 仍是唯一数据源，已安装内核须等新版 CI 制品验证并发布后才可更新。详见[本次升级兼容性说明](harness/reference/kernel-upgrade-2026-09-12.md)。
 
-OpenClaw 源码和开发依赖已切换为 `2026.9.4+clawx.17`，Discord/WhatsApp 同步更新。重基后的 `.mjs` 补丁保留有界内存 ACP 状态、统一历史、Main 管理的配置和严格的渠道准入；Node 继续固定为 24.20.0。本地候选验证与尚待完成的平台验收见[升级设计与证据](harness/reference/kernel-upgrade-2026-09-12.md)。
+OpenClaw 源码和开发依赖已切换为 `2026.9.4+clawx.18`，Discord/WhatsApp 同步更新。重基后的 `.mjs` 补丁保留有界内存 ACP 状态、统一历史、Main 管理的配置和严格的渠道准入；Node 继续固定为 24.20.0。本地候选验证与尚待完成的平台验收见[升级设计与证据](harness/reference/kernel-upgrade-2026-09-12.md)。
 
 两个 +clawx.13 内核使用 Node 24.20.0，已通过五目标 staging 全部 25 项任务、四份 macOS 公证（Accepted）及同源码三平台 Electron E2E，详见 [CI 验收证据](harness/reference/windows-runtime-ci-repair.md)。Windows 仅使用制品签名，不启用 Authenticode。生产目录状态、受保护发布恢复及真实线上验证见[发布验收记录](harness/reference/kernel-automatic-release.md)；真实账号验收仍待完成。
 

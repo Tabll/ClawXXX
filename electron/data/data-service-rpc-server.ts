@@ -11,7 +11,7 @@ import {
 const CLIENT_METHODS = new Set([
   'createConversation', 'branchConversation', 'getConversation', 'listConversations', 'searchConversations',
   'renameConversation', 'pinConversation', 'deleteConversation', 'exportConversation',
-  'admitRun', 'markRunStarted', 'appendEvents', 'commitTerminalRun', 'compileContext',
+  'listChildRuns', 'admitRun', 'markRunStarted', 'appendEvents', 'commitTerminalRun', 'compileContext',
   'appendUsage', 'listUsage', 'putBlob', 'addBlobRef', 'createAttachmentGrant',
   'putCronJob', 'getCronJob', 'listCronJobs', 'deleteCronJob',
   'admitCron', 'admitCronExecution', 'putCronRun', 'getCronRun', 'listCronRuns',

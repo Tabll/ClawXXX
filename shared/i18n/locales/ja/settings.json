@@ -550,6 +550,24 @@
     "missingKey": "TokenDance の認証に失敗しました。再試行してください。",
     "callbackUnavailable": "TokenDance の認証に失敗しました。再試行してください。",
     "cancelled": "TokenDance の認証に失敗しました。再試行してください。"
+  },
+  "computerUse": {
+    "title": "コンピューター操作",
+    "description": "1 つのカーネルにデスクトップの表示と操作を許可します。各操作は会話内で承認が必要です。無効にするとドライバーを停止しアクセスを取り消します。macOS 13 以降と Windows x64 に対応しています。",
+    "kernel": "デスクトップアクセス",
+    "disabled": "無効",
+    "openclaw": "OpenClaw",
+    "deepseek": "DeepSeek Harness",
+    "permissions": "システム権限を付与",
+    "error": "設定を更新できませんでした。再試行してください。",
+    "states": {
+      "disabled": "デスクトップアクセスは無効です。",
+      "unsupported": "このプラットフォームでは利用できません。",
+      "permissions": "アクセシビリティと画面収録の権限が必要です。",
+      "unavailable": "最新の操作コンポーネントを含むカーネルをインストールし、起動してください。",
+      "ready": "準備完了。最初のツール要求でドライバーを起動します。",
+      "running": "デスクトップドライバーが動作中です。",
+      "failed": "エラーでドライバーが停止しました。再試行するか無効にしてください。"
+    }
   }
-
 }

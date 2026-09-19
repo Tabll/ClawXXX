@@ -63,7 +63,7 @@
         "Provide the exact MPL-covered native runtime source and modifications with the corresponding runtime release; retain separate release counsel approval."
       ],
       "source": "https://github.com/trycua/cua",
-      "evidence": "The frozen @trycua/cua-driver-darwin-arm64@0.22.0 declares MIT AND MPL-2.0 for the native SDK and Node runtime."
+      "evidence": "Frozen CUA native SDK packages, including @trycua/cua-driver-darwin-arm64@0.25.0, declare MIT AND MPL-2.0 and ship node-runtime-NOTICE.md. Keep the matching release-tag source and deterministic native-runtime build transformations available."
     },
     {
       "id": "ubjs-mpl-source",

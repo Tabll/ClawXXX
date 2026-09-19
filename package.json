@@ -102,7 +102,8 @@
         "version:prerelease-alpha": "pnpm version prerelease --preid=alpha",
         "version:prerelease-beta": "pnpm version prerelease --preid=beta",
         "release:validate": "node scripts/assert-tag-matches-package.mjs",
-        "postversion": "node scripts/post-version-push.mjs"
+        "postversion": "node scripts/post-version-push.mjs",
+        "cua:prepare": "node scripts/kernel-runtime/materialize-cua.mjs --if-missing true"
     },
     "dependencies": {
         "@agentclientprotocol/sdk": "1.4.0",
@@ -156,6 +157,7 @@
         "@tencent-weixin/openclaw-weixin": "2.4.8",
         "@testing-library/jest-dom": "^6.9.1",
         "@testing-library/react": "^16.3.2",
+        "@trycua/cua-driver": "0.25.0",
         "@types/diff": "^8.0.0",
         "@types/node": "^25.3.0",
         "@types/react": "^19.2.14",
@@ -177,7 +179,7 @@
         "discord-api-types": "^0.38.47",
         "docx-preview": "^0.4.0",
         "electron": "43.4.0",
-        "electron-builder": "^26.8.1",
+        "electron-builder": "26.16.0",
         "eslint": "^10.0.0",
         "eslint-plugin-react-hooks": "^7.0.1",
         "eslint-plugin-react-refresh": "^0.5.0",

@@ -2,8 +2,8 @@
   "schemaVersion": 1,
   "kernelId": "openclaw",
   "displayName": "OpenClaw",
-  "artifactVersion": "2026.9.4+clawx.17",
-  "patchRevision": 17,
+  "artifactVersion": "2026.9.4+clawx.18",
+  "patchRevision": 18,
   "minHostVersion": "0.6.0",
   "maxHostVersion": "0.6.x",
   "capabilityContractVersion": 1,
@@ -60,7 +60,10 @@
       "runtime/kernel/node_modules/@earendil-works/pi-tui/native/darwin/prebuilds/darwin-arm64/**",
       "runtime/kernel/clawx-plugins/wecom/node_modules/@wecom/cli-darwin-arm64/**",
       "runtime/kernel/clawx-plugins/discord/node_modules/@snazzah/davey-darwin-arm64/davey.darwin-arm64.node",
-      "runtime/kernel/tools/dws/dws"
+      "runtime/kernel/tools/dws/dws",
+      "runtime/kernel/tools/cua/cua-driver",
+      "runtime/kernel/tools/cua/node_modules/@trycua/cua-driver-darwin-arm64/**",
+      "runtime/kernel/tools/cua/node_modules/@ubjs/node-darwin-arm64/**"
     ],
     "darwin-x64": [
       "runtime/kernel/node_modules/@img/sharp-darwin-x64/**",
@@ -86,7 +89,10 @@
       "runtime/kernel/node_modules/@earendil-works/pi-tui/native/darwin/prebuilds/darwin-x64/**",
       "runtime/kernel/clawx-plugins/wecom/node_modules/@wecom/cli-darwin-x64/**",
       "runtime/kernel/clawx-plugins/discord/node_modules/@snazzah/davey-darwin-x64/davey.darwin-x64.node",
-      "runtime/kernel/tools/dws/dws"
+      "runtime/kernel/tools/dws/dws",
+      "runtime/kernel/tools/cua/cua-driver",
+      "runtime/kernel/tools/cua/node_modules/@trycua/cua-driver-darwin-x64/**",
+      "runtime/kernel/tools/cua/node_modules/@ubjs/node-darwin-x64/**"
     ],
     "linux-arm64": [
       "runtime/kernel/node_modules/@img/sharp-linux-arm64/**",
@@ -158,7 +164,10 @@
       "runtime/kernel/node_modules/@earendil-works/pi-tui/native/win32/prebuilds/win32-x64/**",
       "runtime/kernel/clawx-plugins/wecom/node_modules/@wecom/cli-win32-x64/**",
       "runtime/kernel/clawx-plugins/discord/node_modules/@snazzah/davey-win32-x64-msvc/davey.win32-x64-msvc.node",
-      "runtime/kernel/tools/dws/dws.exe"
+      "runtime/kernel/tools/dws/dws.exe",
+      "runtime/kernel/tools/cua/cua-driver.exe",
+      "runtime/kernel/tools/cua/node_modules/@trycua/cua-driver-win32-x64-msvc/**",
+      "runtime/kernel/tools/cua/node_modules/@ubjs/node-win32-x64-msvc/**"
     ]
   },
   "budgets": {
@@ -179,6 +188,17 @@
         "dws-windows-amd64.zip": "bbfff7d0efdeffec854d54f14f659949614b77f5779cab24ba18689248ddbdf2",
         "dws-windows-arm64.zip": "78067a3a0307ef1be57a47ec0c64469c4148e44323ec94f526bd40b14719b354"
       }
+    },
+    "cua": {
+      "version": "0.25.0",
+      "sdk": "@trycua/cua-driver@0.25.0",
+      "hostLockfileSha256": "80496e610989a61fd8999e2b62fe50cf192e51bea516ce670ed64bfeb816de51",
+      "licenseSha256": "c0779290c1d4783169aa3dbfb55feb505e563ef8a004bbf55298ceffcfbda8d9",
+      "archives": {
+        "cua-driver-rs-0.25.0-darwin-universal-binary.tar.gz": "29984f5363c12d9901588e814a3a519b8015a1255d7a59d658fbf2d3e51f8983",
+        "cua-driver-rs-0.25.0-windows-x86_64-binary.zip": "314f5df05933810499deaa61022c714341aff64f8e45157a589df6a4b1724fa4"
+      },
+      "mplLicenseSha256": "3f3d9e0024b1921b067d6f7f88deb4a60cbe7a78e76c64e3f1d7fc3b779b9d04"
     }
   }
 }

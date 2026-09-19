@@ -226,3 +226,11 @@ kernels or create runtime-owned history. Cover denied-permission recovery,
 cancellation across navigation, unavailable service configuration, and a real
 Main request against an isolated local fixture. See the upstream migration
 reference for signed-package and native microphone validation gaps.
+
+Canonical subagents and desktop capabilities follow
+`harness/reference/upstream-clawx-0.5.8-next-batches.md` and
+`upstream-multi-kernel-porting`. Exercise parent/child same-kernel concurrency,
+restart/deletion, denied host tools, capability revocation and Blob-backed desktop
+images. Keep the CUA daemon and DWS credentials Main-owned, bind each invocation
+to its Run generation, and verify both real runtime tool consumers. New UI paths
+include parent child previews and the opt-in Computer Use settings selector.

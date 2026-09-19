@@ -81,3 +81,29 @@ reads. Never send the exchanged key through Renderer events or logs. Persist via
 canonical Provider/SecretStore, reconcile existing kernel projections, and retain
 unsupported-kernel state. Cancelled persistence rolls back before replacement or
 account deletion. A stale success event cannot complete a newer Provider dialog.
+
+Independent child Runs use `run_lineage`, never the conversation branch field.
+Inherit the admitted Agent/model/workspace/permission snapshot; cap depth at three
+and fan-out at eight. Parent deletion cancels active descendants, including those
+that outlive a completed parent, while independent history remains canonical.
+Native OpenClaw execution needs a separate ACP worker per Run to avoid parent/child
+deadlock. Main and native events share one canonical sequence without changing
+raw event fingerprints or usage identities.
+
+Main host tools use a Run-scoped loopback capability, private execution metadata,
+revocation, bounded UTF-8 requests and redacted errors. Never persist credentials
+or capability tokens in checkpoints, prompts or Renderer state. Verify tools in
+the actual upstream registry: OpenClaw 2026.9.4 requires `contracts.tools` in the
+plugin manifest; DSH tools must execute through its real AgentLoop/ToolRuntime.
+
+Computer Use is off by default and has one selected kernel. Main owns the fixed
+CUA host/SDK, native sessions and daemon shutdown. Revoke on disable, kernel
+switch/generation change, OS permission loss and app exit; reject late startup or
+action completions. Every desktop action passes canonical permission admission.
+Disable OpenClaw's parallel native CUA extension. Keep native session/policy
+lifecycle and direct file-path clipboard/screenshot parameters out of model
+control; store images in canonical Blobs. Provision CUA only in audited signed
+runtime artifacts, with fixed archive/SDK/license hashes and native allowlists.
+
+See `harness/reference/upstream-clawx-0.5.8-next-batches.md` for the implemented
+continuation contracts and external validation boundaries.

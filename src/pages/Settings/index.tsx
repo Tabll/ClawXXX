@@ -1,4 +1,5 @@
 import { IssueReportExport } from '@/components/settings/IssueReportExport';
+import { ComputerUseSettings } from '@/components/settings/ComputerUseSettings';
 /**
  * Settings Page
  * Application configuration
@@ -498,6 +499,8 @@ export function Settings() {
           <Separator className="bg-black/5 dark:bg-white/5" />
 
           <KernelSettings />
+
+          <ComputerUseSettings />
 
           <IssueReportExport />
 

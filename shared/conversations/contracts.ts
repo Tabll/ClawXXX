@@ -76,7 +76,21 @@ export type RunRoutingSnapshot = {
   contextCompilerVersion: string;
 };
 
+export type ChildRunSummary = {
+  parentRunId: RunId;
+  runId: RunId;
+  conversationId: ConversationId;
+  kernelId: KernelId;
+  agentId: string;
+  title?: string;
+  status: string;
+  createdAt: string;
+  completedAt?: string;
+};
+
 export type AdmitRunInput = {
+  /** Autonomous child lineage; never causes context/history inheritance. */
+  parentRunId?: RunId;
   conversationId: ConversationId;
   turnId: TurnId;
   parentTurnId?: TurnId;

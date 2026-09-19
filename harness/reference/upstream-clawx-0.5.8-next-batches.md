@@ -1,91 +1,103 @@
-# Remaining upstream 0.5.8 batches
+# ClawX 0.5.8 continuation contracts
 
-This is an implementation continuation record, not a claim that these features
-are supported. The validated first wave is recorded in
-`upstream-clawx-0.5.8-migration.md`. All work continues to use
-`gateway-backend-communication` and `multi-kernel-runtime`.
+The continuation authorized on 2026-09-19 is implemented against immutable
+upstream `24a24b7797349266b25807a188593a90b67e91f5`. The 47-commit disposition
+ledger and first-wave evidence are in `upstream-clawx-0.5.8-migration.md`.
+Task: `port-upstream-clawx-0-5-8`; scenarios: `gateway-backend-communication`
+and `multi-kernel-runtime`; rule: `upstream-multi-kernel-porting`.
 
 ## Official DingTalk and DWS
 
-Frozen upstream inputs: `@dingtalk-real-ai/dingtalk-connector@0.8.25` and
-`dingtalk-workspace-cli@1.0.30` (upstream PRs 1292 and 1302).
-The official connector source was downloaded to an isolated review directory;
-the existing static SDK import audit reports no missing imported SDK exports
-against OpenClaw 2026.9.4. This does not prove a working live connector.
+Commit `d11991c9` pins `@dingtalk-real-ai/dingtalk-connector@0.8.25` and
+`dingtalk-workspace-cli@1.0.30`. Canonical `dingtalk` / `default` identities,
+account bindings and existing group policy survive strict-schema projection.
+No process-global DWS client ID or arbitrary first-account fallback remains.
+The CLI receives disposable per-operation HOME/config projections from encrypted
+canonical Channel secrets. Authorizations are bound to account, credential
+fingerprint and owner generation; stale UI cancellation requires its own nonce.
+Delete, replacement, owner switch and shutdown cancel the owned process group.
 
-The connector changes channel ID to `dingtalk-connector` and default account ID
-to `__default__`. Migration must retain canonical `dingtalk` / `default`, existing
-bindings, group policies and single-owner leases. Project old config into the new
-schema without deleting the canonical original. Verify the complete compiled
-entrypoint graph and before_dispatch handoff, then test rollback with two accounts
-owned by different kernels. Keep the Relay connector independent.
+`clawx_dingtalk` in both runtimes reaches Main's Run-scoped broker. List returns
+only enabled accounts on the Run's kernel; an inbound Channel Run additionally
+restricts it to that Channel account. Execute requires an explicit account and
+canonical permission admission. Native auth/config/plugin commands and identity
+flags are rejected. Channel Runs retain their existing deny policy; do not silently
+weaken it to make a business tool call succeed. Payloads come from signed kernel
+artifacts; old artifacts fail unavailable without falling back to host/global CLI.
 
-The upstream DWS host code copies binaries into the user's OpenClaw tools folder,
-uses one global authorization process/cache, and runs with the user's home.
-These contracts cannot be copied into this host. The official connector's
-`src/channel.ts` also writes `DWS_CLIENT_ID` into the shared process environment;
-its `getDwsSpawnEnv` falls back to the first account. Neither is an acceptable
-multi-account authority.
+## Canonical child conversations
 
-Next implementation must:
+`clawx_agent` admits independent Conversation/Turn/Run records and stores ancestry
+in SQLite `run_lineage` (schema 14). `parentConversationId` keeps its existing
+history-branch meaning. Children inherit the admitted Agent, workspace, Provider,
+model, permission mode and Channel account. Model arguments cannot widen those
+fields. Maximum depth is three and fan-out is eight per Run; rejected admission
+removes an empty temporary conversation. Each child has ordinary canonical events,
+attachments, terminal state and idempotent usage. Runtime checkpoints do not contain
+Main capabilities.
 
-- Provision fixed-version DWS binaries in CI, validate native payloads and sign
-  a new immutable artifact. Do not install npm packages on the user's computer.
-- Resolve every authorization/status/cancel request through its canonical
-  Channel account and owner; isolate concurrent logins and process cleanup.
-- Use `DWS_CONFIG_DIR` (documented in the connector's global-reference.md) for
-  disposable per-account projections. Keep durable credentials in the existing
-  encrypted Channel secret store, including refresh and deletion semantics.
-- Inject credentials only into the account-owned subprocess. Multiple accounts
-  without explicit context must fail rather than choose the first or last.
-- Test DWS authorization expiry/cancel/retry, account deletion, owner switches,
-  restart recovery and immutable packaging before exposing the new UI.
+A parent may complete before its children. Cancelling an active parent or deleting
+its conversation cancels active descendants; independent child history remains.
+Restart recovery interrupts unfinished Runs using the existing data authority and
+retains lineage. Deleting the parent nulls only its lineage link. The UI reads
+canonical children and exports, streams previews, restores timing/status, and opens
+a child for permission decisions. Switching parent conversations remounts preview
+state so asynchronous results cannot cross owners.
 
-Implemented in continuation batch 5b: downloaded and pinned DWS 1.0.30,
-verified all supported native payloads, scoped account login/status/cancel/reset,
-and replaced the connector. The native CLI was run for help only. No real
-authorization or signed runtime publication occurred. Runtime agent tool access
-remains the following integration step.
+OpenClaw uses an independent ACP worker/access registry per admitted Run, avoiding
+serialized parent/child deadlock. Native session spawn/send/history/list tools are
+blocked in managed sessions. DSH host tools execute through the real ToolRuntime
+and AgentLoop, with private grants bound to the active bridge session.
 
-## Canonical subagent conversations
+## Computer Use
 
-Upstream PRs 1274/1280 derive parent/child membership from ACP SessionInfo
-`parentSessionId` / `spawnedBy` and native `agent:*:subagent:*` session IDs.
-The local `ConversationSummary.parentConversationId` currently means a history
-branch, and must not be repurposed to make an autonomous child inherit an
-unrelated transcript. `ConversationStoreProtocolClient` does not currently
-admit child Runs; OpenClaw's adapter also owns a serialized execution slot.
+`clawx_computer` exposes a reviewed desktop action catalogue through the same
+Main-owned broker. Settings defaults to off and selects at most one kernel. CUA
+0.25.0 is available on macOS 13+ (x64/arm64) and Windows x64. Linux is explicitly
+unavailable for this driver release. Development can run `pnpm run cua:prepare`;
+end-user installations receive the driver and native SDK inside signed immutable
+runtime artifacts. Exact archive, root lockfile and license hashes bind the build;
+native architecture and path allowlists are checked before signing. Windows PE
+subsystem adaptation prevents the upstream console window without changing other
+executable fields. SDK and daemon files never enter the base installer.
 
-Before adding the upstream child-session UI:
+Main alone owns native sessions, policy and daemon lifecycle. The model receives
+neither socket path nor capability token. Each desktop action requires canonical
+permission approval; denied Runs cannot execute it. Disable/switch, kernel
+generation change, missing payload, permission revocation and app exit stop the
+owned host and reject stale work. Failed stops cannot restore an opt-in on restart.
+The driver starts lazily, uses the application bundle identity, and disables its
+telemetry. OpenClaw's separate `cua-computer` extension is disabled in managed
+configuration. No model path may write screenshots or read clipboard image/file
+paths outside canonical storage; clipboard text remains available.
 
-- Specify independent child Conversation/Run admission, parent-run identity,
-  kernel/generation ownership and cancellation semantics in Main.
-- Capture child output, attachments, usage and terminal events into the canonical
-  ledger; test children that outlive their parent and parent/child restart.
-- Resolve same-kernel scheduling without deadlocking a parent waiting for a
-  child. Do not restore a native-history reader to work around this.
-- Project status/timing/history from canonical data and exercise nested children,
-  simultaneous kernels, late/stale events, deletion and idempotent usage.
+Screenshots are bounded canonical Blobs and model image content, including DSH's
+normal attachment projection. Interpreting screenshots requires an image-capable
+selected model. No native screenshot/history directory becomes a second authority.
+OS permission prompts are reachable only through the explicit Settings action.
 
-## Computer Use and TokenDance (continuation authorized)
+## TokenDance
 
-Computer Use is a separate opt-in capability batch. OpenClaw 2026.9.4 already
-ships the `cua-computer` extension and driver payload entries. Upstream ClawX
-introduces a host-managed cua-driver 0.25.0 daemon and bundled skill. Reconcile
-these implementations first; avoid two daemons or allowing one kernel to inherit
-another kernel's desktop permissions. Verify permission denial/revocation,
-process ownership, kill-on-disable and signed native binaries on each platform.
+Commit `bc8d24c3` ports the Chinese picker, upstream endpoints/model/header defaults,
+secure API-key input and cancellable browser authorization. Main binds a one-use
+loopback callback to random state and S256 PKCE. Abort/deadline covers the full
+exchange and body read; stale completions and rolled-back persistence cannot
+recreate a deleted or replaced account. Credentials use canonical Provider and
+SecretStore authority. OpenClaw runs TokenDance's OpenAI-compatible models; DSH's
+existing DeepSeek-only provider capability stays explicitly unsupported.
 
-TokenDance is an optional Provider integration. Its browser callback/code
-exchange must stay in Main, save through the canonical credential broker and
-project the account/models to both kernels. Cover callback state/expiry/cancel,
-redacted failures and credentials never entering React state.
+## Release tooling and evidence boundary
 
-## Release tooling
+`electron-builder` is pinned to 26.16.0. A local unsigned macOS arm64 app was
+assembled with signing, notarization and publication disabled. The afterPack
+isolation gate passed and inspection of all 4,624 ASAR entries found no OpenClaw,
+DSH, CUA or DWS optional runtime packages. Protected release workflows and the
+GitHub-only signed runtime distribution gates remain authoritative.
 
-Upstream PR 1284 upgrades electron-builder 26.8.1 to 26.16.0. The current host
-toolchain remains unchanged. Do this in a separate packaging batch with an actual
-unsigned assembly check followed by protected signed/notarized release checks;
-retain existing GitHub-only runtime distribution and release gates. The ASR
-audio-input entitlement was added in the first wave, but signed-package native
-microphone capture and OS keychain behavior remain unverified.
+Code verification includes real OpenClaw Gateway/ACP host-tool execution with a
+loopback model, real DSH AgentLoop tool execution and full DSH host compilation,
+canonical SQLite and broker contracts, four-locale Electron UI, CUA native SDK
+import/architecture/digest checks and an unsigned app assembly. Real desktop
+permission grants/actions, real third-party OAuth/Channel accounts, Windows
+lifecycle, cross-platform signing/notarization and remote artifact publication
+remain external acceptance; none is represented as locally passed.

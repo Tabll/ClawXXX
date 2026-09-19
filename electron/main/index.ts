@@ -1,10 +1,14 @@
+import { I18N_RESOURCES } from '@shared/i18n/resources';
 import { DingTalkWorkspaceService } from '../channels/dingtalk-workspace';
 import { resolveDwsExecutable } from '../channels/dingtalk-workspace-runtime';
+import { ComputerUseService } from '../services/computer-use';
+import { createComputerNativeHost, requestComputerPermissions, resolveComputerRuntime } from '../kernels/computer-use-runtime';
+import { release as osRelease } from 'node:os';
 /**
  * Electron Main Process Entry
  * Manages window creation, system tray, and IPC handlers
  */
-import { app, BrowserWindow, nativeImage, session, shell, type Session } from 'electron';
+import { app, BrowserWindow, nativeImage, session, shell, systemPreferences, type Session } from 'electron';
 import { join } from 'path';
 import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
@@ -34,7 +38,7 @@ import {
 import { autoInstallCliIfNeeded, generateCompletionCache, installCompletionToProfile } from '../utils/openclaw-cli';
 import { isQuitting, setQuitting } from './app-state';
 import { getMacTrafficLightPosition, syncMacTrafficLightPosition } from './traffic-light-layout';
-import { getSetting } from '../utils/store';
+import { getSetting, setSetting } from '../utils/store';
 import { applyProxySettings } from './proxy';
 import { syncLaunchAtStartupSettingFromStore } from './launch-at-startup';
 import { WebBrowserGuestRegistry, installWebBrowserGuestPolicy } from './web-browser-policy';
@@ -230,6 +234,7 @@ let skillProjectionReconciler: SkillProjectionReconciler | undefined;
 let skillPackageStore: CanonicalSkillPackageStore | undefined;
 let channelAccountService: CanonicalChannelAccountService | undefined;
 let dingtalkWorkspaceService: DingTalkWorkspaceService | undefined;
+let computerUseService: ComputerUseService | undefined;
 let channelAdapterRegistry: ChannelAdapterRegistry | undefined;
 let channelOwnerCoordinator: ChannelOwnerCoordinator | undefined;
 let channelBindingService: ChannelBindingService | undefined;
@@ -327,6 +332,7 @@ async function registerManagedOpenClawRuntime(window: BrowserWindow): Promise<vo
       service,
       async () => { await assertNoForbiddenOpenClawHistory(openClawRuntimeLocation!); },
       gatewayManager,
+      () => service.createIsolated(),
     );
     const driver = new OpenClawKernelDriver({
       generation,
@@ -851,7 +857,46 @@ async function initialize(): Promise<void> {
   configureCanonicalProviderStore(mainDataClient);
   await ensureProviderStoreMigrated();
   await migrateLegacyProviderSecrets();
+  computerUseService = new ComputerUseService({
+    supported: (process.platform === 'darwin' && Number(osRelease().split('.')[0]) >= 22)
+      || (process.platform === 'win32' && process.arch === 'x64'),
+    selected: await getSetting('computerUseKernel'),
+    permissions: () => process.platform === 'darwin' ? {
+      accessibility: systemPreferences.isTrustedAccessibilityClient(false),
+      screenRecording: systemPreferences.getMediaAccessStatus('screen') === 'granted',
+    } : { accessibility: true, screenRecording: true },
+    generation: kernelId => {
+      const snapshot = kernelSupervisorRegistry.status(kernelId);
+      return snapshot.state === 'ready' ? snapshot.generation : undefined;
+    },
+    resolve: kernelId => resolveComputerRuntime({
+      location: kernelId === 'openclaw' ? openClawRuntimeLocation : deepSeekHarnessRuntimeLocation,
+      developmentRoot: app.isPackaged ? undefined : process.cwd(),
+    }),
+    createHost: createComputerNativeHost,
+    save: kernelId => setSetting('computerUseKernel', kernelId),
+    requestPermissions: runtime => process.platform === 'darwin' ? requestComputerPermissions(runtime) : Promise.resolve(),
+  });
   conversationRouter = new ConversationRouter({
+    enableHostTools: true,
+    permissionLabels: async () => {
+      const language = await getSetting('language');
+      return I18N_RESOURCES[language === 'zh' || language === 'ja' || language === 'ru' ? language : 'en'].chat.hostTools;
+    },
+    invokeHostTool: async (run, request, signal) => {
+      if (request.tool === 'clawx_computer') {
+        if (!computerUseService) throw new Error('Computer Use unavailable');
+        return computerUseService.execute(run, request.args, signal);
+      }
+      if (request.tool !== 'clawx_dingtalk' || !channelAccountService || !channelOwnerCoordinator || !dingtalkWorkspaceService) throw new Error('Host capability unavailable');
+      const accounts = (await channelAccountService.list()).filter(account => account.channelType === 'dingtalk' && account.enabled
+        && channelOwnerCoordinator!.activeLease(account.id)?.kernelId === run.kernelId
+        && (!run.channelAccountId || run.channelAccountId === account.id));
+      if (request.args.action === 'list') return accounts.map(account => ({ accountId: account.id, name: account.displayName ?? account.nativeAccountId }));
+      if (request.args.action !== 'execute' || typeof request.args.accountId !== 'string'
+        || !accounts.some(account => account.id === request.args.accountId) || !Array.isArray(request.args.args)) throw new Error('DWS account is outside run scope');
+      return dingtalkWorkspaceService.execute(request.args.accountId, run.kernelId, request.args.args as string[], signal);
+    },
     supervisors: kernelSupervisorRegistry,
     mainData: mainDataClient,
     connectKernelData: async (kernelId, generation) => {
@@ -875,6 +920,7 @@ async function initialize(): Promise<void> {
     });
   });
   conversationRouter.on('terminal', (event) => {
+    void computerUseService?.endRun(event.runId).catch(() => undefined);
     sendMainWindowEvent(HOST_EVENT_CHANNELS.conversations.catalogChanged, {
       conversationId: event.conversationId,
       kernelId: event.kernelId,
@@ -1043,6 +1089,7 @@ async function initialize(): Promise<void> {
     clawXScheduler,
     kernelPackageController,
     dingtalkWorkspaceService,
+    computerUseService,
   );
 
   loadMainWindow(window);
@@ -1297,6 +1344,7 @@ if (gotTheLock) {
     void extensionRegistry.teardownAll();
 
     const stopPromise = (async () => {
+      await computerUseService?.close().catch(error => logger.warn('Computer Use shutdown failed', error));
       await clawXScheduler?.stop().catch((err) => {
         logger.warn('ClawXScheduler shutdown error during quit:', err);
       });

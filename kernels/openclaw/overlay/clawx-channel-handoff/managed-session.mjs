@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { join, isAbsolute } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { rememberHostTools, registerHostTools } from './host-tools.mjs';
 
 const PROTOCOL = 'clawx.openclaw-session/v1';
 const MAX_HISTORY_BYTES = 8 * 1024 * 1024;
@@ -57,6 +58,7 @@ export function validateManagedSession(params) {
 
 export function registerManagedSessionBridge(api) {
   if (process.env.CLAWX_MANAGED_RUNTIME !== '1') return;
+  registerHostTools(api);
   api.registerGatewayMethod('clawx.session.hydrate', async ({ params, respond }) => {
     try {
       const meta = validateManagedSession(params);
@@ -74,6 +76,7 @@ export function registerManagedSessionBridge(api) {
       if (manager.getEntries().length !== 0) throw new Error('Managed history can only hydrate a fresh session once');
       manager.appendCustomEntry(PROTOCOL, { runId: meta.runId, generation: meta.generation });
       for (const message of messages) manager.appendMessage(message);
+      rememberHostTools(params.sessionKey, meta.hostTools);
       respond(true, { ok: true, protocol: PROTOCOL, messages: messages.length });
     } catch (error) {
       respond(false, undefined, { code: 'INVALID_REQUEST', message: error instanceof Error ? error.message : String(error) });

@@ -31,6 +31,7 @@ import { hostApi } from '@/lib/host-api';
 import { getSessionDisplayTitle } from '@shared/chat/session-title';
 import { ChatInput, type ChatWorkspaceOption, type FileAttachment } from './ChatInput';
 import { ChatToolbar } from './ChatToolbar';
+import { ChildConversations } from './ChildConversations';
 import { AcpTimeline } from './AcpTimeline';
 import { AcpErrorBanner } from './AcpErrorBanner';
 import type { KernelId } from '@shared/kernels/contracts';
@@ -570,6 +571,7 @@ export function Chat() {
                       )}
                     </div>
                   )}
+                  {currentSessionKey && <ChildConversations key={currentSessionKey} conversationId={currentSessionKey} />}
                   {visibleAcpError && <AcpErrorBanner message={visibleAcpError} onDismiss={clearAcpError} />}
                   {acpLoading ? (
                     <div className="flex min-h-[40vh] items-center justify-center" data-testid="acp-chat-loading">

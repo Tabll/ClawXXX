@@ -18,7 +18,8 @@ range begins after `7f8e50ab`; a wholesale merge is not this implementation.
 | 3 | Main-owned speech-to-text and microphone permission recovery with secure credential input | Implemented and validated |
 | 4 | Canonical diagnostics export, generated media and plan/compaction presentation | Implemented and validated |
 | 5 | Channel validation, WeCom and official DingTalk/DWS migration | Feishu/WeCom implemented; official DingTalk and per-account DWS authorization implemented in batch 5b |
-| 6 | Canonical subagent lineage/status and opt-in Computer Use; optional TokenDance | Not implemented; separate architecture/capability batches |
+| 6 | Canonical child Runs, Main-owned Computer Use, TokenDance | Implemented with runtime and UI validation |
+| 7 | electron-builder 26.16.0 and immutable native-tool distribution | Implemented; local unsigned assembly validated |
 
 Each batch records actual checks below. Upstream release-number-only changes,
 removed experimental Realtime Talk, obsolete request-timeout injection and
@@ -160,11 +161,12 @@ Final review batch (2026-09-19):
   fixture initially normalized LF only; it now uses the shared title helper,
   and the corrected targeted Electron test passes.
 
-## Remaining integration boundaries
+## Integration and external acceptance boundaries
 
-This is a validated first implementation wave, not a complete migration of every
-upstream feature. The remaining work is documented in
-`harness/reference/upstream-clawx-0.5.8-next-batches.md`.
+The authorized continuation is implemented. Contracts and external acceptance
+boundaries are documented in `harness/reference/upstream-clawx-0.5.8-next-batches.md`.
+Obsolete upstream patches and explicitly retired experiments remain intentional
+exclusions; no destructive monolithic merge is required to finish the migration.
 
 No native-account, microphone, signed package, Windows lifecycle or remote release
 validation has been claimed.
@@ -173,8 +175,8 @@ validation has been claimed.
 ## Commit disposition ledger
 
 The following records the disposition of all 47 reviewed commits. Items without
-an explicit implemented status remain planned or intentionally excluded as stated;
-this table does not claim completion of later batches.
+an explicit implemented status are intentionally retained, superseded or excluded
+as stated; implementation status does not imply a signed production release.
 
 | 日期 | 提交 / PR | 更新 | 评估 |
 |---|---|---|---|
@@ -197,13 +199,13 @@ this table does not claim completion of later batches.
 | 2026-08-28 | [eb4a0a86](https://github.com/ValueCell-ai/ClawX/commit/eb4a0a86) / [#1268](https://github.com/ValueCell-ai/ClawX/pull/1268) |  fix(compaction): default reserve to 50k without explicit context (#1268) | Excluded unconditional legacy 50k reserve override; current runtime policy retained |
 | 2026-08-28 | [86989408](https://github.com/ValueCell-ai/ClawX/commit/86989408) / [#1269](https://github.com/ValueCell-ai/ClawX/pull/1269) | feat(settings): add Ollama provider documentation link (#1269) | Batch 1 implemented |
 | 2026-08-28 | [2ab8610a](https://github.com/ValueCell-ai/ClawX/commit/2ab8610a) / [#1270](https://github.com/ValueCell-ai/ClawX/pull/1270) | fix(providers): stop injecting custom request timeouts (#1270) | 本地已无该超时注入函数，通常无需移植 |
-| 2026-08-31 | [dc10a59d](https://github.com/ValueCell-ai/ClawX/commit/dc10a59d) / [#1272](https://github.com/ValueCell-ai/ClawX/pull/1272) | fix: last chunk loss, compaction failures and subagent delivery; add todo and compaction UI; experimental realtime talk (#1272) | Plan/compaction UI ported in batch 4a; Realtime Talk excluded; old runtime/subagent patches held separately |
+| 2026-08-31 | [dc10a59d](https://github.com/ValueCell-ai/ClawX/commit/dc10a59d) / [#1272](https://github.com/ValueCell-ai/ClawX/pull/1272) | fix: last chunk loss, compaction failures and subagent delivery; add todo and compaction UI; experimental realtime talk (#1272) | Plan/compaction UI and canonical children implemented; retired Realtime Talk and obsolete older-runtime patches excluded |
 | 2026-08-31 | [45b096d3](https://github.com/ValueCell-ai/ClawX/commit/45b096d3) / [#1273](https://github.com/ValueCell-ai/ClawX/pull/1273) | fix(chat): use placeholder title for new Windows sessions (#1273) | Canonical new-session path already passes prefixCwd:false; current title contract retained |
-| 2026-09-01 | [e4536525](https://github.com/ValueCell-ai/ClawX/commit/e4536525) / [#1274](https://github.com/ValueCell-ai/ClawX/pull/1274) | feat: show subagent sessions in its parent (#1274) | Not ported: requires canonical child-Run admission and lineage, not native session catalog reads |
+| 2026-09-01 | [e4536525](https://github.com/ValueCell-ai/ClawX/commit/e4536525) / [#1274](https://github.com/ValueCell-ai/ClawX/pull/1274) | feat: show subagent sessions in its parent (#1274) | Implemented independent canonical child Runs and lineage, parent preview/open flows; no native session catalogue reads |
 | 2026-09-01 | [d0abd62e](https://github.com/ValueCell-ai/ClawX/commit/d0abd62e) / [#1277](https://github.com/ValueCell-ai/ClawX/pull/1277) | chore: remove unavailable Realtime Talk voice input feature. (#1277) | 历史 Realtime Talk 已撤回，不应重新引入 |
-| 2026-09-03 | [e1b8b0c2](https://github.com/ValueCell-ai/ClawX/commit/e1b8b0c2) / [#1280](https://github.com/ValueCell-ai/ClawX/pull/1280) | refactor: subagent session's live streaming, timing and status (#1280) | Not ported: child streaming/lifecycle must join canonical lineage and usage ownership first |
+| 2026-09-03 | [e1b8b0c2](https://github.com/ValueCell-ai/ClawX/commit/e1b8b0c2) / [#1280](https://github.com/ValueCell-ai/ClawX/pull/1280) | refactor: subagent session's live streaming, timing and status (#1280) | Implemented canonical child live previews, timing/status, restart recovery, same-kernel parallel ACP and parent deletion cancellation |
 | 2026-09-03 | [5cf4d111](https://github.com/ValueCell-ai/ClawX/commit/5cf4d111) / [#1281](https://github.com/ValueCell-ai/ClawX/pull/1281) | release 0.5.6 (#1281) | 上游发布号，不覆盖本地 0.6.0 |
-| 2026-09-07 | [d510c221](https://github.com/ValueCell-ai/ClawX/commit/d510c221) / [#1284](https://github.com/ValueCell-ai/ClawX/pull/1284) | fix: stabilize macOS release signing (#1284) | Not ported in this wave: electron-builder remains 26.8.1; 26.16.0 needs dedicated signed-package validation |
+| 2026-09-07 | [d510c221](https://github.com/ValueCell-ai/ClawX/commit/d510c221) / [#1284](https://github.com/ValueCell-ai/ClawX/pull/1284) | fix: stabilize macOS release signing (#1284) | Pinned electron-builder 26.16.0; unsigned macOS arm64 assembly and base-payload isolation validated; protected signing/notarization remain release gates |
 | 2026-09-07 | [1015e0d8](https://github.com/ValueCell-ai/ClawX/commit/1015e0d8) / [#1286](https://github.com/ValueCell-ai/ClawX/pull/1286) |  fix: support Astra custom providers and clean up deleted provider state (#1286) | Batch 2 implemented with final scoped low behavior and projection cleanup |
 | 2026-09-07 | [a1db9fce](https://github.com/ValueCell-ai/ClawX/commit/a1db9fce) / [#1287](https://github.com/ValueCell-ai/ClawX/pull/1287) | chore: bump bundled channel plugins compatible with OpenClaw 2026.7.1-2 (#1287) | Current newer runtime/plugin pins retained; WeCom patch implemented, official DingTalk migration separate |
 | 2026-09-07 | [f5bb8c02](https://github.com/ValueCell-ai/ClawX/commit/f5bb8c02) / [#1288](https://github.com/ValueCell-ai/ClawX/pull/1288) | fix: activate plugin channels after save and reject invalid Feishu credentials (#1288) | Batch 5a validation implemented in both adapters; existing canonical owner activation retained |
@@ -211,7 +213,7 @@ this table does not claim completion of later batches.
 | 2026-09-09 | [cc9fb719](https://github.com/ValueCell-ai/ClawX/commit/cc9fb719) / [#1289](https://github.com/ValueCell-ai/ClawX/pull/1289) | feat: support token dance (#1289) | Continuation batch 6a implemented: Main-owned PKCE and canonical credentials, supported-kernel projections, Chinese picker |
 | 2026-09-10 | [1f2f50b3](https://github.com/ValueCell-ai/ClawX/commit/1f2f50b3) / [#1282](https://github.com/ValueCell-ai/ClawX/pull/1282) | feat: support speech-to-text (ASR) input and add model icons; fix ACP process management and refactor UI (#1282) | Batch 3 ASR implemented; appearance and ACP lifecycle reviewed separately |
 | 2026-09-10 | [f40e5dab](https://github.com/ValueCell-ai/ClawX/commit/f40e5dab) / [#1290](https://github.com/ValueCell-ai/ClawX/pull/1290) | fix: allow issue report export without conversations (#1290) | Batch 4a implemented and Electron-tested |
-| 2026-09-11 | [607f33e0](https://github.com/ValueCell-ai/ClawX/commit/607f33e0) / [#1283](https://github.com/ValueCell-ai/ClawX/pull/1283) | feat: supports Computer Use feature experimentally (#1283) | Separate opt-in batch; current OpenClaw 2026.9.4 already includes cua-computer, so no parallel legacy daemon was added |
+| 2026-09-11 | [607f33e0](https://github.com/ValueCell-ai/ClawX/commit/607f33e0) / [#1283](https://github.com/ValueCell-ai/ClawX/pull/1283) | feat: supports Computer Use feature experimentally (#1283) | Implemented opt-in Main-owned CUA 0.25.0 for one selected kernel, scoped approvals/revocation and signed-artifact inputs; native OpenClaw CUA disabled |
 | 2026-09-11 | [e8ff1184](https://github.com/ValueCell-ai/ClawX/commit/e8ff1184) / [#1291](https://github.com/ValueCell-ai/ClawX/pull/1291) | fix: support WeCom calendar queries in single-account desktop sessions (#1291) | Batch 5a patch pinned in the lockfile; OpenClaw artifact revision 16 |
 | 2026-09-11 | [33a1a1a7](https://github.com/ValueCell-ai/ClawX/commit/33a1a1a7) / [#1293](https://github.com/ValueCell-ai/ClawX/pull/1293) |  fix: recover OpenClaw-generated file (#1293) | Batch 4b implemented from live delivery evidence into canonical Blobs |
 | 2026-09-14 | [5a735537](https://github.com/ValueCell-ai/ClawX/commit/5a735537) / [#1294](https://github.com/ValueCell-ai/ClawX/pull/1294) | fix: render generated images inline from MEDIA paths (#1294) | Batch 4b implemented with scoped import, inline preview and no transcript scans |
@@ -264,3 +266,45 @@ Six protocol/persistence tests cover real local loopback callbacks, replay,
 method/state validation, cancellation, stalled exchange bodies and rollback;
 161 focused Provider/unit tests pass. Electron Chinese-picker/start/cancel/stale
 success regression passes. No real TokenDance credentials or browser login used.
+
+## Continuation batches 6b–7 — child Runs, host tools and packaging
+
+- SQLite schema 14 separates child-run lineage from history branches. Both kernels
+  inherit immutable routing/permissions; child output, images and usage remain in
+  canonical authority. Parent completion, cancellation, deletion, depth limits and
+  restart recovery have contract coverage. OpenClaw uses a separate ACP worker per
+  Run; the UI restores and streams canonical child previews.
+- The Main broker uses random per-Run capabilities, bounded UTF-8 bodies, request
+  admission limits, cancellation and fixed errors. DWS and Computer Use run behind
+  canonical permission events; native and Main event sequencing remains ordered.
+- CUA 0.25.0 has fixed SDK/archive/license inputs, native allowlists, isolated SDK
+  resolution, default-off per-kernel selection, OS permission gating, revocation,
+  lazy daemon startup and canonical image storage. The native SDK imported from
+  the prepared arm64 payload; archive digest, license and native architecture
+  checks passed without starting desktop control.
+- The real OpenClaw Gateway/ACP probe initially exposed a missing 2026.9.4
+  `contracts.tools` plugin declaration. After fixing the manifest, it executed the
+  host tool once, kept the capability out of provider input, and passed cancellation,
+  crash/rehydration, guarded native tool approval and no-native-history checks.
+- Real DSH host compilation passed, followed by 24 bridge/runtime tests including
+  a tool call through its actual AgentLoop and capability removal after completion.
+- Electron tests passed for canonical child streaming/reload/navigation and the
+  Computer Use selector, explicit permission action, switching, disabling, reload
+  and unsupported-platform state. The initial Computer Use fixture intercepted IPC
+  before app initialization; waiting for its window fixed the fixture race.
+- electron-builder 26.16.0 produced a local unsigned macOS arm64 app with the base
+  payload isolation gate passing. ASAR inspection found zero optional kernel/tool
+  packages. No signing, notarization, real desktop operation or publication ran.
+
+Final verification (2026-09-19): 298 unit/contract files passed, 2 skipped;
+2,812 tests passed and 6 skipped. Final focused checks also cover generation
+inheritance, selected ACP rejection, unavailable Computer Use payloads, and failed
+preference writes. Six Electron checks passed (four feature flows plus two
+exclusive prerequisites). Typecheck, Vite build, lint (0 errors, 7 existing Fast
+Refresh warnings), frozen offline lock verification, task validation/dry-run,
+harness CI (19 tests), comms replay/compare and whitespace checks passed.
+
+The native tool license audit covers seven prepared packages and preserves both
+CUA/UniFFI MPL obligations. Full MIT and MPL texts and upstream native-runtime
+notices are retained. Actual account, OS permission, Windows and protected-release
+acceptance remains as stated above.

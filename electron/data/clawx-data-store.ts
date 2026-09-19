@@ -4,6 +4,7 @@ import { chmodSync, existsSync, mkdirSync } from 'node:fs';
 import { backup, DatabaseSync } from 'node:sqlite';
 import type {
   AdmitRunInput,
+  ChildRunSummary,
   BranchConversationInput,
   CanonicalContentBlock,
   CommitTerminalRunInput,
@@ -900,6 +901,24 @@ export class ClawXDataStore {
     return { schema: 'clawx.conversation-export/v1', conversation, turns, runs, usage };
   }
 
+  listChildRuns(parentConversationId: ConversationId): ChildRunSummary[] {
+    return (this.db.prepare(`
+      SELECT l.parent_run_id AS parentRunId, r.id AS runId, r.conversation_id AS conversationId,
+        r.kernel_id AS kernelId, r.agent_id AS agentId, r.status, r.created_at AS createdAt,
+        r.completed_at AS completedAt, c.title
+      FROM run_lineage l JOIN runs p ON p.id = l.parent_run_id
+      JOIN runs r ON r.id = l.child_run_id JOIN conversations c ON c.id = r.conversation_id
+      WHERE p.conversation_id = ? AND c.deleted_at IS NULL
+      ORDER BY r.created_at, r.id LIMIT 100
+    `).all(parentConversationId) as Array<Record<string, SqlValue>>).map(row => ({
+      parentRunId: asRunId(String(row.parentRunId)), runId: asRunId(String(row.runId)),
+      conversationId: asConversationId(String(row.conversationId)), kernelId: String(row.kernelId),
+      agentId: String(row.agentId), status: String(row.status), createdAt: String(row.createdAt),
+      ...(row.title ? { title: String(row.title) } : {}),
+      ...(row.completedAt ? { completedAt: String(row.completedAt) } : {}),
+    }));
+  }
+
   admitRun(input: AdmitRunInput): void {
     assertPositiveGeneration(input.routing.generation);
     assertAgentRunSnapshot(input.routing);
@@ -945,6 +964,16 @@ export class ClawXDataStore {
         input.routing.contextCompilerVersion,
         input.createdAt,
       );
+      if (input.parentRunId) {
+        const parent = this.db.prepare(`SELECT r.conversation_id, r.status, COALESCE(l.depth, 0) AS depth
+          FROM runs r JOIN conversations c ON c.id = r.conversation_id
+          LEFT JOIN run_lineage l ON l.child_run_id = r.id WHERE r.id = ? AND c.deleted_at IS NULL`).get(input.parentRunId) as
+          { conversation_id: string; status: string; depth: number } | undefined;
+        if (!parent || !['admitted', 'running'].includes(parent.status) || parent.conversation_id === input.conversationId
+          || parent.depth >= 3 || nextPosition !== 0) throw new Error('Invalid child run admission');
+        this.db.prepare('INSERT INTO run_lineage(child_run_id, parent_run_id, depth) VALUES (?, ?, ?)')
+          .run(input.runId, input.parentRunId, parent.depth + 1);
+      }
       const blockById = new Map(input.userBlocks.map(block => [block.id, block]));
       for (const grant of input.attachmentGrants ?? []) {
         const block = blockById.get(grant.blockId);

@@ -3,16 +3,20 @@
   "root": "kernels/openclaw/overlay",
   "files": [
     {
+      "path": "clawx-channel-handoff/host-tools.mjs",
+      "sha256": "acee35e73eed59b76e5c89030da9f392e28c122be3e8d98603b85fc671366dbe"
+    },
+    {
       "path": "clawx-channel-handoff/index.mjs",
       "sha256": "3a2ce8648a767ffbd2d5cf05deaf55161352d290e5baabaab5374ca08f94b97c"
     },
     {
       "path": "clawx-channel-handoff/managed-session.mjs",
-      "sha256": "726e97980123fc62ce0bcacb598fb2d5b2bd8caca096a1b83eda9877cd2ff36d"
+      "sha256": "1d8508a016f2f941c5cba08784939c44f1ef76d1546de183cf9ca25ac60251c0"
     },
     {
       "path": "clawx-channel-handoff/openclaw.plugin.json",
-      "sha256": "abbdb70408e0c65de06a1c7e3cdd307965a33a5d3d05afaf9f3512fac5a63721"
+      "sha256": "bde9ba3f56ebdad0e48b093c8ca9089d0d1a4a74a49dabb914c7eec25865519d"
     },
     {
       "path": "clawx-channel-handoff/package.json",
@@ -20,7 +24,7 @@
     },
     {
       "path": "clawx-control-bridge.mjs",
-      "sha256": "9e0afc345ff87648dc4ff5a6958cf42dd277cff83902bc51d123a1556e8e8b44"
+      "sha256": "1964fee5bc2fd3c08b26ef045b673016b35e64f32b1a7cd7ee500d5bf98a7df1"
     },
     {
       "path": "clawx-openclaw.mjs",

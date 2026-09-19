@@ -26,6 +26,7 @@ export type AcpChatLoadPayload = AcpSessionKeyPayload & {
   /** Main-owned, one-run context. Never populated from renderer/session history. */
   managedSession?: {
     protocol: 'clawx.openclaw-session/v1';
+    hostTools?: import('../kernels/host-tools').HostToolGrant;
     conversationId: string;
     runId: string;
     turnId: string;

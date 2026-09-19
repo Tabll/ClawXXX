@@ -55,6 +55,7 @@ export function compileManagedOpenClawSession(input: KernelRunRequest): {
   return {
     managedSession: {
       protocol: 'clawx.openclaw-session/v1',
+      ...(input.hostTools ? { hostTools: input.hostTools } : {}),
       conversationId: input.conversationId,
       runId: input.runId,
       turnId: input.turnId,

@@ -1,3 +1,6 @@
+import { HostToolBroker } from '../kernels/host-tool-broker';
+import type { HostToolRequest } from '@shared/kernels/host-tools';
+import type { ChildRunSummary, ConversationExport } from '@shared/conversations/contracts';
 import { randomUUID } from 'node:crypto';
 import { EventEmitter } from 'node:events';
 import type {
@@ -23,6 +26,8 @@ export type ConversationRouterDataClient = {
 };
 
 export type ConversationPromptInput = {
+  parentRunId?: RunId;
+  channelAccountId?: string;
   conversationId?: ConversationId;
   turnId?: TurnId;
   runId?: RunId;
@@ -65,6 +70,12 @@ const KERNEL_PROMPT_TIMEOUT_MS = 24 * 60 * 60 * 1_000;
 export type ConversationRouteIdentity = Omit<ConversationPromptAcceptance, 'acceptedAt'>;
 
 type RunState = ConversationPromptAcceptance & {
+  input: ConversationPromptInput;
+  agentSnapshot: AgentRunSnapshot;
+  canonicalEventSeq: number;
+  runtimeEventSeq: number;
+  revokeTools?: () => void;
+  hostPermissions: Map<string, (allowed: boolean) => void>;
   providerId?: string;
   modelId?: string;
   kernelClient: ConversationRouterDataClient;
@@ -78,11 +89,16 @@ type RunState = ConversationPromptAcceptance & {
   assistantResourceKeys: Set<string>;
   usage?: CommitTerminalRunInput['usage'];
   terminal?: CommitTerminalRunInput['outcome'];
+  cancelRequested?: boolean;
   completed: boolean;
   committing?: Promise<void>;
 };
 
 export type ConversationRouterOptions = {
+  enableHostTools?: boolean;
+  invokeHostTool?(input: ConversationPromptInput & ConversationRouteIdentity, request: HostToolRequest, signal: AbortSignal): Promise<unknown>;
+  permissionLabels?(): Promise<{ allow: string; reject: string }>;
+
   supervisors: KernelSupervisorRegistry;
   mainData: ConversationRouterDataClient;
   connectKernelData(kernelId: KernelId, generation: number): Promise<ConversationRouterDataClient>;
@@ -132,6 +148,10 @@ function outcomeOf(payload: unknown): CommitTerminalRunInput['outcome'] {
  */
 export class ConversationRouter extends EventEmitter {
   private readonly runs = new Map<RunId, RunState>();
+  private readonly toolBroker = new HostToolBroker();
+  private readonly children = new Map<RunId, Set<RunId>>();
+  private readonly childCompletions = new Map<RunId, Promise<unknown>>();
+  private closing = false;
   private readonly activeByConversation = new Map<ConversationId, RunId>();
   private readonly usageAdapters: UsageAdapterRegistry;
   private readonly onKernelEvent = (event: KernelStdioEvent) => this.acceptKernelEvent(event);
@@ -143,13 +163,14 @@ export class ConversationRouter extends EventEmitter {
   }
 
   async prompt(input: ConversationPromptInput): Promise<ConversationPromptAcceptance> {
+    if (this.closing) throw new Error('Conversation router is closing');
     const snapshot = this.options.supervisors.status(input.kernelId);
     if (snapshot.state !== 'ready') throw new Error(`Kernel ${input.kernelId} is not ready`);
     if (input.generation !== undefined && input.generation !== snapshot.generation) {
       throw new Error(`Kernel generation is stale: expected ${snapshot.generation}, received ${input.generation}`);
     }
     const createdAt = this.now();
-    const resolvedAgent = await this.options.resolveAgentSnapshot?.({
+    const resolvedAgent = (input.parentRunId ? this.runs.get(input.parentRunId)?.agentSnapshot : undefined) ?? await this.options.resolveAgentSnapshot?.({
       kernelId: input.kernelId,
       agentId: input.agentId,
       ...(input.providerId ? { providerId: input.providerId } : {}),
@@ -234,7 +255,9 @@ export class ConversationRouter extends EventEmitter {
       attachments.push({ blockId, blobHash: stored.hash, accessGrantId });
     }
     if (blocks.length === 0) throw new Error('Prompt requires at least one canonical content block');
+    if (input.parentRunId && (this.runs.get(input.parentRunId)?.cancelRequested || this.runs.get(input.parentRunId)?.completed)) throw new Error('Parent run ended before child admission');
     await this.options.mainData.call('admitRun', {
+      ...(input.parentRunId ? { parentRunId: input.parentRunId } : {}),
       conversationId,
       turnId,
       runId,
@@ -263,6 +286,9 @@ export class ConversationRouter extends EventEmitter {
 
     const kernelClient = await this.options.connectKernelData(input.kernelId, snapshot.generation);
     const state: RunState = {
+      agentSnapshot,
+      input: { ...input, agentId: agentSnapshot.agentId, workspaceUri, providerId, modelId },
+      canonicalEventSeq: 0, runtimeEventSeq: 0, hostPermissions: new Map(),
       conversationId,
       turnId,
       runId,
@@ -329,10 +355,17 @@ export class ConversationRouter extends EventEmitter {
           ...(typeof fileName === 'string' ? { name: fileName } : {}),
         };
       }));
+      if (input.parentRunId && (this.runs.get(input.parentRunId)?.cancelRequested || this.runs.get(input.parentRunId)?.completed)) {
+        await this.commitTerminal(state, 'cancelled'); return this.acceptance(state);
+      }
+      const tools = this.options.enableHostTools ? await this.toolBroker.issue((request, signal) => this.invokeTool(state, request, signal)) : undefined;
+      state.revokeTools = tools?.revoke;
+      if (state.cancelRequested || state.completed) { tools?.revoke(); return this.acceptance(state); }
       const promptResult = await this.options.supervisors.request<KernelPromptResult>(
         input.kernelId,
         'session.prompt',
         {
+          ...(tools ? { hostTools: tools.grant } : {}),
           context: context.blocks,
           agentId: agentSnapshot.agentId,
           agentVersion: agentSnapshot.canonicalVersion,
@@ -417,6 +450,12 @@ export class ConversationRouter extends EventEmitter {
 
   async cancel(input: ConversationRouteIdentity): Promise<{ acknowledged: boolean }> {
     const state = this.requireState(input);
+    state.cancelRequested = true;
+    state.revokeTools?.();
+    for (const resolve of state.hostPermissions.values()) resolve(false);
+    await Promise.allSettled([...(this.children.get(state.runId) ?? [])].map(id => {
+      const child = this.runs.get(id); return child && !child.completed ? this.cancel(child) : undefined;
+    }));
     const result = await this.options.supervisors.request<{ acknowledged?: boolean; cancelled?: boolean }>(
       state.kernelId,
       'session.cancel',
@@ -440,6 +479,10 @@ export class ConversationRouter extends EventEmitter {
       { providerId: input.providerId, modelId: input.modelId, permissionMode: input.permissionMode },
       { conversationId: state.conversationId, turnId: state.turnId, runId: state.runId },
     );
+    if (input.permissionMode) {
+      state.input.permissionMode = input.permissionMode;
+      if (input.permissionMode === 'deny') for (const resolve of state.hostPermissions.values()) resolve(false);
+    }
   }
 
   async resolvePermission(input: ConversationRouteIdentity & {
@@ -449,6 +492,13 @@ export class ConversationRouter extends EventEmitter {
     answer?: string;
   }): Promise<void> {
     const state = this.requireState(input);
+    const hostPermission = state.hostPermissions.get(input.requestId);
+    if (hostPermission) {
+      // ACP returns both Allow and Reject as a selected option. The legacy
+      // facade's decision alone is therefore insufficient for Main tools.
+      hostPermission(input.decision === 'allow-once' && (input.optionId === undefined || input.optionId === 'allow_once'));
+      return;
+    }
     await this.options.supervisors.request(
       state.kernelId,
       'session.permission.resolve',
@@ -462,6 +512,16 @@ export class ConversationRouter extends EventEmitter {
     );
   }
 
+  async cancelConversationTree(conversationId: ConversationId): Promise<void> {
+    const visit = async (state: RunState): Promise<void> => {
+      if (!state.completed) { await this.cancel(state); return; }
+      for (const id of this.children.get(state.runId) ?? []) {
+        const child = this.runs.get(id); if (child) await visit(child);
+      }
+    };
+    for (const state of this.runs.values()) if (state.conversationId === conversationId) await visit(state);
+  }
+
   activeRun(conversationId: ConversationId): ConversationPromptAcceptance | undefined {
     const runId = this.activeByConversation.get(conversationId);
     const state = runId ? this.runs.get(runId) : undefined;
@@ -473,6 +533,9 @@ export class ConversationRouter extends EventEmitter {
   }
 
   async close(): Promise<void> {
+    this.closing = true;
+    await this.toolBroker.close();
+    for (const state of this.runs.values()) for (const resolve of state.hostPermissions.values()) resolve(false);
     this.options.supervisors.off('event', this.onKernelEvent);
     await Promise.allSettled([...this.runs.values()].map(async state => {
       await state.eventTail.catch(() => undefined);
@@ -514,6 +577,7 @@ export class ConversationRouter extends EventEmitter {
     const pendingSeq = new Map<number, string>();
     const pendingNative = new Map<string, { eventSeq: number; fingerprint: string }>();
     const envelopes: KernelEventEnvelopeV1[] = [];
+    let runtimeSeq = state.runtimeEventSeq;
     for (const event of [...events].sort((left, right) => left.eventSeq - right.eventSeq)) {
       const rawPayload = event.event.payload;
       const payloadEventId = rawPayload && typeof rawPayload === 'object'
@@ -548,6 +612,8 @@ export class ConversationRouter extends EventEmitter {
           continue;
         }
       }
+      if (event.eventSeq !== runtimeSeq + 1) throw new Error('Runtime event sequence gap');
+      runtimeSeq = event.eventSeq;
       pendingSeq.set(event.eventSeq, fingerprint);
       if (nativeEventId) pendingNative.set(nativeEventId, { eventSeq: event.eventSeq, fingerprint });
       envelopes.push({
@@ -557,7 +623,7 @@ export class ConversationRouter extends EventEmitter {
         runId: state.runId,
         kernelId: state.kernelId,
         generation: state.generation,
-        eventSeq: event.eventSeq,
+        eventSeq: state.canonicalEventSeq + envelopes.length + 1,
         emittedAt: this.now(),
         ...(nativeEventId ? { nativeEventId } : {}),
         event: { kind: event.event.kind as KernelEventEnvelopeV1['event']['kind'], payload },
@@ -565,16 +631,11 @@ export class ConversationRouter extends EventEmitter {
     }
     if (envelopes.length === 0) return;
     await state.kernelClient.call('appendEvents', envelopes);
+    state.runtimeEventSeq = runtimeSeq;
+    state.canonicalEventSeq += envelopes.length;
+    for (const [seq, fingerprint] of pendingSeq) state.seenEventSeq.set(seq, fingerprint);
+    for (const [id, value] of pendingNative) state.seenNativeIds.set(id, value);
     for (const envelope of envelopes) {
-      const fingerprint = JSON.stringify([
-        envelope.event.kind,
-        envelope.event.payload ?? null,
-        envelope.nativeEventId ?? null,
-      ]);
-      state.seenEventSeq.set(envelope.eventSeq, fingerprint);
-      if (envelope.nativeEventId) {
-        state.seenNativeIds.set(envelope.nativeEventId, { eventSeq: envelope.eventSeq, fingerprint });
-      }
       this.reduceEvent(state, envelope);
       this.emit('event', envelope);
     }
@@ -726,6 +787,8 @@ export class ConversationRouter extends EventEmitter {
         ...(state.usage ? { usage: state.usage } : {}),
         completedAt,
       });
+      state.revokeTools?.();
+      for (const resolve of state.hostPermissions.values()) resolve(false);
       state.completed = true;
       this.activeByConversation.delete(state.conversationId);
       await Promise.resolve(state.kernelClient.disconnect?.()).catch(() => undefined);
@@ -739,6 +802,8 @@ export class ConversationRouter extends EventEmitter {
   }
 
   private async abandonState(state: RunState): Promise<void> {
+    state.revokeTools?.();
+    for (const resolve of state.hostPermissions.values()) resolve(false);
     state.completed = true;
     if (this.activeByConversation.get(state.conversationId) === state.runId) {
       this.activeByConversation.delete(state.conversationId);
@@ -756,6 +821,125 @@ export class ConversationRouter extends EventEmitter {
       || state.generation !== input.generation
     ) throw new Error('Run identity is stale or unknown');
     return state;
+  }
+
+  private async hostEvent(state: RunState, kind: KernelEventEnvelopeV1['event']['kind'], payload: unknown): Promise<void> {
+    const operation = state.eventTail.then(async () => {
+      if (state.completed) return;
+      const envelope: KernelEventEnvelopeV1 = {
+        protocol: KERNEL_CONTRACT_PROTOCOL, ...this.acceptance(state),
+        eventSeq: state.canonicalEventSeq + 1, emittedAt: this.now(), event: { kind, payload },
+      };
+      await state.kernelClient.call('appendEvents', [envelope]);
+      state.canonicalEventSeq++;
+      this.reduceEvent(state, envelope); this.emit('event', envelope);
+    });
+    state.eventTail = operation;
+    await operation;
+  }
+
+  private async approveTool(state: RunState, request: HostToolRequest, signal: AbortSignal): Promise<void> {
+    const permissionDenied = () => state.input.permissionMode === 'deny';
+    if (permissionDenied()) throw new Error('Host tool permission denied');
+    const requestId = `host-tool:${this.id()}`;
+    let resolve!: (allowed: boolean) => void;
+    const decision = new Promise<boolean>(done => { resolve = done; });
+    const abort = () => resolve(false);
+    const timer = setTimeout(abort, 5 * 60_000); timer.unref?.();
+    signal.addEventListener('abort', abort, { once: true });
+    state.hostPermissions.set(requestId, resolve);
+    try {
+      const labels = await this.options.permissionLabels?.() ?? { allow: 'Allow once', reject: 'Reject' };
+      await this.hostEvent(state, 'permission.request', { requestId,
+        toolCall: { toolCallId: requestId, title: request.tool, kind: 'execute', rawInput: request.args, status: 'pending' },
+        options: [{ optionId: 'allow_once', kind: 'allow_once', name: labels.allow }, { optionId: 'reject_once', kind: 'reject_once', name: labels.reject }],
+      });
+      if (signal.aborted) resolve(false);
+      const allowed = await decision;
+      await this.hostEvent(state, 'permission.resolved', { requestId, decision: allowed ? 'allow-once' : 'reject-once' });
+      if (!allowed || signal.aborted || permissionDenied()) throw new Error('Host tool permission denied');
+    } finally { clearTimeout(timer); signal.removeEventListener('abort', abort); state.hostPermissions.delete(requestId); }
+  }
+
+  private async invokeTool(state: RunState, request: HostToolRequest, signal: AbortSignal): Promise<unknown> {
+    if (state.completed || this.closing || this.options.supervisors.status(state.kernelId).generation !== state.generation) throw new Error('Stale run');
+    if (request.tool === 'clawx_agent') return this.invokeChildTool(state, request.args, signal);
+    if (request.args.action !== 'list') await this.approveTool(state, request, signal);
+    signal.throwIfAborted();
+    if (!this.options.invokeHostTool) throw new Error('Host tool unavailable');
+    const result = await this.options.invokeHostTool({ ...state.input, ...this.acceptance(state) }, request, signal);
+    signal.throwIfAborted();
+    if (request.tool === 'clawx_computer' && result && typeof result === 'object' && 'content' in result) {
+      const content = (result as import('@shared/kernels/computer-use').ComputerToolResult).content;
+      for (const part of content) {
+        if (part.type !== 'image') continue;
+        const stored = await this.options.mainData.call<{ hash: string }>('putBlob', {
+          data: Buffer.from(part.data, 'base64'), mimeType: part.mimeType, createdAt: this.now(),
+        });
+        signal.throwIfAborted();
+        if (state.completed) throw new Error('Run completed');
+        if (!state.assistantBlocks.some(block => block.blobHash === stored.hash)) state.assistantBlocks.push({
+          id: this.id(), type: 'image', visibility: 'portable', mimeType: part.mimeType, blobHash: stored.hash,
+        });
+      }
+    }
+    return result;
+  }
+
+  private async invokeChildTool(state: RunState, args: Record<string, unknown>, signal: AbortSignal): Promise<unknown> {
+    const children = this.children.get(state.runId) ?? new Set<RunId>();
+    if (args.action === 'spawn') {
+      if (children.size >= 8 || typeof args.prompt !== 'string' || !args.prompt.trim() || args.prompt.length > 64_000) throw new Error('Invalid child request');
+      const conversationId = asConversationId(this.id()); const runId = asRunId(this.id()); const turnId = asTurnId(this.id());
+      // Children inherit the admitted Agent, workspace, Provider, permissions and
+      // channel account. Model-authored arguments cannot widen any of them.
+      const input: ConversationPromptInput = { ...state.input, generation: state.generation, conversationId, runId, turnId,
+        parentRunId: state.runId, message: args.prompt, blocks: undefined, attachments: undefined, attachmentInputs: undefined };
+      children.add(runId); this.children.set(state.runId, children);
+      const completion = this.prompt(input).catch(async error => {
+        // A rejected admission must not leave an empty phantom conversation.
+        const exported = await this.options.mainData.call<ConversationExport>('exportConversation', conversationId).catch(() => undefined);
+        if (exported && exported.runs.length === 0 && exported.turns.length === 0) {
+          await this.options.mainData.call('deleteConversation', conversationId, this.now(), true);
+        }
+        throw error;
+      });
+      this.childCompletions.set(runId, completion);
+      void completion.finally(() => this.childCompletions.delete(runId)).catch(() => undefined);
+      // Resolve only after admission so the returned ID has durable lineage.
+      while (!this.runs.has(runId)) {
+        signal.throwIfAborted();
+        const settled = await Promise.race([completion.then(() => true), new Promise<false>(resolve => setTimeout(() => resolve(false), 5))]);
+        if (settled) break;
+      }
+      return { runId, conversationId };
+    }
+    const rows = await this.options.mainData.call<ChildRunSummary[]>('listChildRuns', state.conversationId);
+    const owned = rows.filter(row => row.parentRunId === state.runId);
+    if (args.action === 'list') return owned;
+    const row = owned.find(row => row.runId === args.runId);
+    if (!row) throw new Error('Child does not belong to this run');
+    if (args.action === 'cancel') {
+      const child = this.runs.get(row.runId); if (child && !child.completed) await this.cancel(child);
+    } else if (args.action === 'wait') {
+      const timeout = Math.min(60_000, Math.max(1, typeof args.timeoutMs === 'number' ? args.timeoutMs : 30_000));
+      const completion = this.childCompletions.get(row.runId);
+      if (completion) {
+        await new Promise<void>((resolve, reject) => {
+          const abort = () => { cleanup(); reject(new Error('Child wait cancelled')); };
+          const timer = setTimeout(() => { cleanup(); resolve(); }, timeout);
+          const cleanup = () => { clearTimeout(timer); signal.removeEventListener('abort', abort); };
+          signal.addEventListener('abort', abort, { once: true });
+          void completion.finally(() => { cleanup(); resolve(); }).catch(() => undefined);
+          if (signal.aborted) abort();
+        });
+      }
+    } else if (args.action !== 'status') throw new Error('Invalid child action');
+    const current = (await this.options.mainData.call<ChildRunSummary[]>('listChildRuns', state.conversationId)).find(item => item.runId === row.runId);
+    const content = await this.options.mainData.call<ConversationExport>('exportConversation', row.conversationId);
+    const output = content.turns.filter(turn => turn.role === 'assistant').flatMap(turn => turn.blocks)
+      .filter(block => block.visibility === 'portable' && !block.revoked && block.type === 'text').map(block => block.text ?? '').join('\n').slice(-64_000);
+    return { ...current, output };
   }
 
   private acceptance(state: RunState): ConversationPromptAcceptance {

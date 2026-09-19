@@ -550,6 +550,24 @@
     "missingKey": "TokenDance authorization failed. Please try again.",
     "callbackUnavailable": "TokenDance authorization failed. Please try again.",
     "cancelled": "TokenDance authorization failed. Please try again."
+  },
+  "computerUse": {
+    "title": "Computer Use",
+    "description": "Allow one kernel to view and control your desktop. Each action requires approval in its conversation. Disabling stops the driver and revokes access. Available on macOS 13+ and Windows x64.",
+    "kernel": "Desktop access",
+    "disabled": "Disabled",
+    "openclaw": "OpenClaw",
+    "deepseek": "DeepSeek Harness",
+    "permissions": "Grant system permissions",
+    "error": "Computer Use could not be updated. Please retry.",
+    "states": {
+      "disabled": "Desktop access is disabled.",
+      "unsupported": "Computer Use is unavailable on this platform.",
+      "permissions": "Accessibility and screen recording permissions are required.",
+      "unavailable": "Start the selected kernel with the current Computer Use runtime installed.",
+      "ready": "Ready. The driver starts on the first tool request.",
+      "running": "Desktop driver is running.",
+      "failed": "The desktop driver stopped after an error. Retry or disable access."
+    }
   }
-
 }

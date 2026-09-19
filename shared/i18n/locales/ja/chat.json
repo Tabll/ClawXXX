@@ -336,5 +336,23 @@
         "title": "質問目次",
         "fallback": "質問 {{number}}",
         "moreHint": "さらに {{count}} 件の質問は表示されていません"
+    },
+    "children": {
+        "title": "子エージェント",
+        "open": "会話を開く",
+        "hint": "ClawX の履歴から子エージェントの出力を表示します。権限要求には子会話を開いて応答してください。",
+        "status": {
+            "admitted": "待機中",
+            "running": "実行中",
+            "completed": "完了",
+            "cancelled": "キャンセル済み",
+            "failed": "失敗",
+            "interrupted": "中断"
+        }
+    },
+    "hostTools": {
+        "allow": "今回のみ許可",
+        "reject": "拒否"
     }
+
 }

@@ -336,5 +336,23 @@
         "title": "问题目录",
         "fallback": "问题 {{number}}",
         "moreHint": "还有 {{count}} 个问题未显示"
+    },
+    "children": {
+        "title": "子代理",
+        "open": "打开会话",
+        "hint": "这里显示统一历史中的子代理实时输出。请打开子会话处理权限请求。",
+        "status": {
+            "admitted": "排队中",
+            "running": "运行中",
+            "completed": "已完成",
+            "cancelled": "已取消",
+            "failed": "失败",
+            "interrupted": "已中断"
+        }
+    },
+    "hostTools": {
+        "allow": "允许一次",
+        "reject": "拒绝"
     }
+
 }

@@ -336,5 +336,23 @@
         "title": "Question directory",
         "fallback": "Question {{number}}",
         "moreHint": "{{count}} more questions not shown"
+    },
+    "children": {
+        "title": "Child agents",
+        "open": "Open conversation",
+        "hint": "Live child output comes from ClawX history. Open the child conversation to respond to permissions.",
+        "status": {
+            "admitted": "Queued",
+            "running": "Running",
+            "completed": "Completed",
+            "cancelled": "Cancelled",
+            "failed": "Failed",
+            "interrupted": "Interrupted"
+        }
+    },
+    "hostTools": {
+        "allow": "Allow once",
+        "reject": "Reject"
     }
+
 }
