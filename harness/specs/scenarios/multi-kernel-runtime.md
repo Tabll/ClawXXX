@@ -77,11 +77,15 @@ startup with existing native SQLite state, in addition to standalone CI probes.
 grandchild environments and independently authenticated local public roots.
 
 Automatic distribution is governed by `harness/reference/kernel-automatic-release.md`.
+Its active transport and migration policy is superseded by
+`harness/reference/github-only-kernel-distribution.md`: only GitHub Releases is
+enabled. Test missing sole pointers, authenticated journal recovery and explicit
+exact-digest supersession of legacy pending records without overwriting history.
 Join complete trusted same-source runtime/E2E evidence before protected publication;
 verify immutable bytes before overwriting only signed catalog pointers. Latest-only
 catalogs retire old packages without revoking them. Cleanup must use exact signed
-retirement records, maximum historical catalog expiry plus download grace, both
-live mirrors and all-target strict Range validators. Include bootstrap, partial
+retirement records, maximum historical catalog expiry plus download grace, all configured
+live sources and all-target strict Range validators. Include bootstrap, partial
 publication, stale events, expiry renewal and interrupted deletion failure tests.
 Post-write visibility checks retry only within a bounded probe budget and must
 reach the exact new signed catalog, then pass strict final readback. Cover
@@ -175,7 +179,7 @@ regressions precede expensive builds, and full real-artifact acceptance is
 still required; see `harness/reference/windows-runtime-ci-repair.md`.
 
 The 2026-09-12 source upgrade now pins OpenClaw 2026.9.4 and DSH 0.1.5-rc.2,
-both +clawx.14. Exercise V3 append-versus-replacement semantics, system persona,
+originally both +clawx.14; the GitHub-only transport migration uses +clawx.15. Exercise V3 append-versus-replacement semantics, system persona,
 stable billing, explicit Host build references, full native/system packaging,
 bounded ACP memory state and strict Channel admission. Reuse neither old
 artifact acceptance nor a healthy Gateway as proof of a new ACP launch.

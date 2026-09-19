@@ -51,7 +51,7 @@ export class KernelCatalogClient {
       try {
         const headers = new Headers({ Accept: 'application/json' });
         if (state?.etag && state.sourceUrl === url) headers.set('If-None-Match', state.etag);
-        const response = await this.fetcher(url, {
+        const response = await this.fetchCatalog(url, {
           method: 'GET',
           headers,
           redirect: 'follow',
@@ -102,6 +102,24 @@ export class KernelCatalogClient {
       return this.cachedResult(state, input.channel, failures.join('; '));
     }
     throw new KernelPackageError('catalog-unavailable', `Kernel catalog is unavailable: ${failures.join('; ')}`);
+  }
+
+  private async fetchCatalog(url: string, init: RequestInit): Promise<Response> {
+    // Release assets are replaced by delete + upload. Retry only transient HTTP
+    // states, before parsing/verifying; signatures and rollback failures are not
+    // hidden by retries. The existing verified cache remains the offline fallback.
+    for (let attempt = 0; ; attempt += 1) {
+      const response = await this.fetcher(url, init);
+      if (attempt >= 2 || ![404, 429, 502, 503, 504].includes(response.status)) return response;
+      await response.body?.cancel();
+      await new Promise<void>((resolveDelay, reject) => {
+        const signal = init.signal;
+        const onAbort = () => { clearTimeout(timer); reject(signal?.reason ?? new Error('Catalog request aborted')); };
+        const timer = setTimeout(() => { signal?.removeEventListener('abort', onAbort); resolveDelay(); }, 300 * (attempt + 1));
+        if (signal?.aborted) onAbort();
+        else signal?.addEventListener('abort', onAbort, { once: true });
+      });
+    }
   }
 
   private cachedResult(

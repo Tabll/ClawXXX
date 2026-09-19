@@ -11,7 +11,7 @@ on:
       artifact-base-url:
         description: Immutable staging object prefix
         required: true
-        default: https://aq-pub-1252262977.cos.ap-shanghai.tencentcos.cn/clawxxx/kernels
+        default: https://github.com/Tabll/ClawXXX/releases/download/kernel-runtimes
       windows-signing:
         description: Windows PE code signing (artifact descriptors are always signed)
         type: choice
@@ -58,6 +58,7 @@ jobs:
         run: >-
           pnpm exec vitest run
           tests/unit/kernel-runtime-downloads.test.ts
+          tests/unit/kernel-github-distribution.test.ts
           tests/unit/kernel-source-manifests.test.ts
           tests/unit/kernel-notarization.test.ts
           tests/unit/openclaw-native-allowlist.test.ts

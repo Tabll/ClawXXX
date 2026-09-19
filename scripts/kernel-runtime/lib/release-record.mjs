@@ -65,7 +65,9 @@ export function verifyReleaseRecord(record, { policy, trustStore, distribution, 
     throw new Error('Release record has no accepted source provenance');
   }
   assertSourceDescriptors(record.catalog.artifacts, record.source.sources ?? {});
-  for (const d of record.catalog.artifacts) { assetNames(d); assertDescriptorDistributionUrl(d, distribution); }
+  const historicalDistribution = { ...distribution,
+    mirrorBaseUrls: [...distribution.mirrorBaseUrls, ...policy.historicalArtifactBaseUrls] };
+  for (const d of record.catalog.artifacts) { assetNames(d); assertDescriptorDistributionUrl(d, historicalDistribution); }
   if (!Array.isArray(record.retirements) || record.retirements.length > 1000) throw new Error('Invalid bounded retirement inventory');
   const active = new Set(record.catalog.artifacts.map(artifactIdentity));
   if (!record.activeCatalogExpiry || Object.keys(record.activeCatalogExpiry).length !== active.size
@@ -82,7 +84,7 @@ export function verifyReleaseRecord(record, { policy, trustStore, distribution, 
     pending.add(item.identity);
     verifyArtifactDescriptor(item.descriptor, trustStore, new Date(item.descriptor.publishedAt));
     assetNames(item.descriptor);
-    assertDescriptorDistributionUrl(item.descriptor, distribution);
+    assertDescriptorDistributionUrl(item.descriptor, historicalDistribution);
     const expiry = Date.parse(item.lastCatalogExpiresAt);
     const retired = Date.parse(item.retiredAt);
     const deletion = Date.parse(item.deleteAfter);

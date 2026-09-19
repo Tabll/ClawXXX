@@ -1,5 +1,19 @@
 # ClawX Multi-Kernel Implementation TODO
 
+## GitHub Releases 单源分发（2026-09-19）
+
+设计：[GitHub 单源分发与迁移](harness/reference/github-only-kernel-distribution.md)。仅内核包，宿主安装包 COS 流程不变。
+
+- [x] `MK-2101` 客户端采用 GitHub-only 下载源，旧签名中的 COS URL 不再成为隐式回退。
+- [x] `MK-2102` 构建默认 GitHub 地址，两个制品升级 `+clawx.15` 并更新冻结哈希。
+- [x] `MK-2103` 发布/维护移除 COS 操作与凭据依赖，保留审批、验签、全目标 Range 和安全清理。
+- [x] `MK-2104` 单目录缺失时从签名日志恢复；提供精确摘要绑定的受保护手动 supersession，不覆盖历史记录。
+- [x] `MK-2105` 本地验证：Node 24.20.0 全量 2580 passed / 6 skipped；GitHub 单源 16 项专项测试、真实 Electron 双内核下载/续传通过；typecheck、lint（0 errors / 7 既有 warnings）、源码哈希、comms、Harness 与 diff 检查通过。真实生产 journal 1/2 已从 GitHub 只读验签，未执行线上写入。
+- [ ] `MK-2106` 提交/推送后，完成 `.15` 全平台构建、公证、同源码 E2E 与受保护 GitHub 发布；核对并处理旧待审批任务。
+- [ ] `MK-2107` 新签名目录线上验收、全目标 GitHub 下载验证、安全清理，以及宿主分发配置上线。
+
+下方双源发布记录为历史证据，不表示 GitHub-only 已上线，也不授权删除 COS 历史对象。
+
 > 对应设计：[docs/zh-CN/multi-kernel-design.md](docs/zh-CN/multi-kernel-design.md)
 >
 > 最新状态（2026-09-09）：自动发布实现 `1dc4ebea` 与目录传播验收修复 `5574a907` 已提交/推送。首次发布通过正常生产审批后，由[生产 #4](https://github.com/Tabll/ClawXXX/actions/runs/34296346239) 成功完成序号 1 的幂等验收。双内核 +clawx.13 的 10 个目标包、descriptor/checksum、签名目录及 journal 已在 COS/GitHub 发布；两端目录 200/304、40 个 Range/If-Range 全部 206。原始签名、公证、序号和有效期不变，没有删除任何旧对象；目录到期为北京时间 2026-09-16 08:25，后续维护仍需正常审批。MK-2007 已完成；宿主 App 发布及真实账号验收另行跟踪。

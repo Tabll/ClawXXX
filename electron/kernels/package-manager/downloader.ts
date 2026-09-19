@@ -43,7 +43,7 @@ export class KernelArtifactDownloader {
     await this.layout.ensure();
     const finalPath = this.layout.archivePath(descriptor);
     if (await fileMatches(finalPath, descriptor.archive.compressedSize, descriptor.archive.sha256)) return finalPath;
-    const urls = artifactDownloadUrls(descriptor, options.mirrorBaseUrls ?? []);
+    const urls = artifactDownloadUrls(descriptor, options.mirrorBaseUrls);
     const failures: string[] = [];
     for (const url of urls) {
       try {
@@ -191,11 +191,15 @@ export class KernelArtifactDownloader {
   }
 }
 
-export function artifactDownloadUrls(descriptor: KernelArtifactDescriptorV1, mirrorBaseUrls: string[]): string[] {
+export function artifactDownloadUrls(descriptor: KernelArtifactDescriptorV1, mirrorBaseUrls?: string[]): string[] {
   const primary = checkedHttpsUrl(descriptor.archive.url);
-  const fileName = basename(new URL(primary).pathname);
-  if (!fileName || fileName === '.' || fileName === '..') throw new Error('Artifact URL has no safe filename');
-  const urls = [primary];
+  const fileName = decodeURIComponent(basename(new URL(primary).pathname));
+  if (!/^[A-Za-z0-9][A-Za-z0-9._+-]*$/.test(fileName)) throw new Error('Artifact URL has no safe filename');
+  // An omitted list supports explicit direct-artifact callers. Once a host
+  // configures sources, they are exhaustive: never contact a retired signed URL.
+  if (mirrorBaseUrls === undefined) return [primary];
+  if (!mirrorBaseUrls.length) throw new Error('No runtime artifact download source is configured');
+  const urls: string[] = [];
   for (const baseValue of mirrorBaseUrls) {
     const base = new URL(checkedHttpsUrl(baseValue));
     if (!base.pathname.endsWith('/')) base.pathname = `${base.pathname}/`;

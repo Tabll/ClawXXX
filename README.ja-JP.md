@@ -159,13 +159,13 @@ ClawXは **Main-owned multi-kernel + unified Host API architecture**を採用し
 
 > ClawX 0.6はoptional CI-built OpenClaw/DSHと単一Main-owned SQLite/Blob authorityを実装しています。Protected cross-platform signing、promotion、packaged-test evidenceが不足する場合、public releaseはfail closedです。[設計](docs/zh-CN/multi-kernel-design.md)、[TODO](TODO.md)、[security/support](docs/ja-JP/runtime-security-support.md)、[data policy](docs/ja-JP/data-security-retention.md)を参照してください。
 
-DSH の候補ソースは `0.1.5-rc.2+clawx.14`（プレリリース）です。V3 の system message、Run ごとの persona、append 起点の確定イベントに対応し、モデル文脈の置換による応答・使用量の二重計上を防ぎます。共有 SQLite が唯一の保存先であり、インストール済み runtime の更新には CI artifact の検証・公開が必要です。[今回の互換性設計](harness/reference/kernel-upgrade-2026-09-12.md)。
+DSH の候補ソースは `0.1.5-rc.2+clawx.15`（プレリリース）です。V3 の system message、Run ごとの persona、append 起点の確定イベントに対応し、モデル文脈の置換による応答・使用量の二重計上を防ぎます。共有 SQLite が唯一の保存先であり、インストール済み runtime の更新には CI artifact の検証・公開が必要です。[今回の互換性設計](harness/reference/kernel-upgrade-2026-09-12.md)。
 
-OpenClaw のソースと開発依存関係は `2026.9.4+clawx.14` です。Discord/WhatsApp も同期し、`.mjs` パッチは容量制限付きメモリ ACP、共有履歴、Main 管理の設定、fail-closed な Channel 受付を維持します。Node は 24.20.0 のままです。候補のローカル検証と未完了のプラットフォーム検証は[今回の設計記録](harness/reference/kernel-upgrade-2026-09-12.md)を参照してください。
+OpenClaw のソースと開発依存関係は `2026.9.4+clawx.15` です。Discord/WhatsApp も同期し、`.mjs` パッチは容量制限付きメモリ ACP、共有履歴、Main 管理の設定、fail-closed な Channel 受付を維持します。Node は 24.20.0 のままです。候補のローカル検証と未完了のプラットフォーム検証は[今回の設計記録](harness/reference/kernel-upgrade-2026-09-12.md)を参照してください。
 
 両方の +clawx.13 カーネルは Node 24.20.0 を使用し、5 ターゲットの staging 全 25 ジョブ、macOS 公証 4 件（Accepted）、同一ソースの 3 プラットフォーム Electron E2E に合格しました。[CI 検証記録](harness/reference/windows-runtime-ci-repair.md)を参照してください。Windows は artifact 署名のみで、Authenticode は使用しません。本番 catalog の状態、保護された公開の復旧と実配信検証は[公開記録](harness/reference/kernel-automatic-release.md)で追跡し、実アカウント検証は未完了です。
 
-全カーネルのビルドと同一ソース E2E の成功後、本番公開を保護環境へ自動で要求します。COS/GitHub のバージョン付きパッケージは上書きせず、全ターゲットの両ミラー検証後に最新セットの署名 catalog だけを置換します。旧パッケージは参照した全 catalog の有効期限＋24 時間後に安全に削除し、署名監査記録と中断再開を保持します。毎日の保護された保守は artifact/key の期限内で通常 7 日間の catalog を更新しますが、承認は引き続き必要です。初回 bootstrap と実配信の検証は別途必要です。[公開設計](harness/reference/kernel-automatic-release.md)。
+全カーネルのビルドと同一ソース E2E の成功後、本番公開を保護環境へ自動で要求します。カーネルの配布元は GitHub Releases のみです。バージョン付きパッケージは上書きせず、全ターゲット検証後に署名 catalog だけを置換します。COS への依存はありません。旧パッケージは参照した全 catalog の有効期限＋24 時間後に安全に削除し、署名監査記録と中断再開を保持します。毎日の保護された保守は artifact/key の期限内で通常 7 日間の catalog を更新しますが、承認は引き続き必要です。初回 bootstrap と実配信の検証は別途必要です。catalog 消失時は署名済み journal から復旧し、保留中の公開変更には正確な digest と保護された手動承認が必要です。[GitHub 単一配布元の設計](harness/reference/github-only-kernel-distribution.md)。
 
 catalog 置換後は回数を制限した伝播確認で正確な署名済み版への一致を待ち、最後の厳密な再読込後にのみ削除を許可します。古い版や一時的な欠落を成功とせず、署名 catalog の競合は即座に公開を停止します。
 

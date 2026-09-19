@@ -68,8 +68,8 @@ export function verifyReleaseSet(input) {
 
 export function assertDescriptorDistributionUrl(descriptor, distribution) {
   const bases = distribution?.mirrorBaseUrls;
-  if (!Array.isArray(bases) || bases.length < 2) {
-    throw new Error('Kernel distribution must declare at least two artifact mirrors');
+  if (!Array.isArray(bases) || bases.length < 1) {
+    throw new Error('Kernel distribution must declare at least one artifact mirror');
   }
   let descriptorUrl;
   try {
@@ -85,7 +85,7 @@ export function assertDescriptorDistributionUrl(descriptor, distribution) {
     } catch {
       return false;
     }
-    if (base.protocol !== 'https:') return false;
+    if (base.protocol !== 'https:' || base.username || base.password || base.search || base.hash) return false;
     const normalized = base.href.endsWith('/') ? base.href : `${base.href}/`;
     return descriptorUrl.href === new URL(filename, normalized).href;
   });

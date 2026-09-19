@@ -6,7 +6,7 @@ import { createReleaseRecord, digestJson, HOUR, verifyReleaseRecord } from '../.
 
 describe('protected latest-only runtime release transaction', () => {
   it('requires explicit bootstrap, then journals and uploads before switching both catalogs', async () => {
-    const f = releaseFixture();
+    const f = releaseFixture({ mirrorCount: 2 });
     await expect(publishRuntimeRelease(f.input())).rejects.toThrow(/explicitly approved bootstrap/);
     expect(f.io.events).toEqual([]);
     await expect(publishRuntimeRelease({ ...f.input(), bootstrap: true })).resolves.toMatchObject({ mode: 'published', sequence: 1 });
@@ -17,7 +17,7 @@ describe('protected latest-only runtime release transaction', () => {
   });
 
   it.each(['missing target', 'mixed version', 'source mismatch', 'bad signature'])('fails before all writes for %s', async failure => {
-    const f = releaseFixture();
+    const f = releaseFixture({ mirrorCount: 2 });
     const input = { ...f.input(), bootstrap: true };
     if (failure === 'missing target') input.descriptors.pop();
     if (failure === 'mixed version') input.descriptors[0] = f.descriptors(2)[0];
@@ -28,7 +28,7 @@ describe('protected latest-only runtime release transaction', () => {
   });
 
   it('duplicate completion verifies without minting another sequence or uploading bytes', async () => {
-    const f = releaseFixture();
+    const f = releaseFixture({ mirrorCount: 2 });
     await publishRuntimeRelease({ ...f.input(), bootstrap: true });
     f.io.events = [];
     await expect(publishRuntimeRelease(f.input())).resolves.toMatchObject({ mode: 'already-published', sequence: 1 });
@@ -36,7 +36,7 @@ describe('protected latest-only runtime release transaction', () => {
   });
 
   it('replaces only the latest set and preserves old packages through catalog expiry plus download grace', async () => {
-    const f = releaseFixture();
+    const f = releaseFixture({ mirrorCount: 2 });
     await publishRuntimeRelease({ ...f.input(), bootstrap: true });
     const old = f.io.catalogs[0];
     const later = new Date(f.now.getTime() + 24 * HOUR);
@@ -51,7 +51,7 @@ describe('protected latest-only runtime release transaction', () => {
   });
 
   it('rejects an out-of-order revision or changed bytes under the same published revision', async () => {
-    const f = releaseFixture();
+    const f = releaseFixture({ mirrorCount: 2 });
     await publishRuntimeRelease({ ...f.input(2), bootstrap: true });
     await expect(publishRuntimeRelease(f.input(1, new Date(f.now.getTime() + HOUR)))).rejects.toThrow(/Stale artifact revision/);
     const input = f.input(2, new Date(f.now.getTime() + HOUR));
@@ -61,7 +61,7 @@ describe('protected latest-only runtime release transaction', () => {
   });
 
   it.each(['record', 'upload', 'preflight'])('recovers a crash at %s using exact reserved bytes', async phase => {
-    const f = releaseFixture();
+    const f = releaseFixture({ mirrorCount: 2 });
     const key = phase === 'record' ? 'writeRecord' : phase === 'upload' ? 'uploadAssets' : 'verifyOnline';
     const original = f.io[key].bind(f.io);
     vi.spyOn(f.io, key).mockImplementationOnce(async (...args) => {
@@ -78,7 +78,7 @@ describe('protected latest-only runtime release transaction', () => {
   });
 
   it.each(['N/N-1', 'N/404'])('recovers %s after a non-bootstrap catalog switch', async state => {
-    const f = releaseFixture();
+    const f = releaseFixture({ mirrorCount: 2 });
     await publishRuntimeRelease({ ...f.input(), bootstrap: true });
     vi.spyOn(f.io, 'writeCatalog').mockImplementationOnce(async catalog => {
       f.io.catalogs[0] = structuredClone(catalog);
@@ -96,7 +96,7 @@ describe('protected latest-only runtime release transaction', () => {
   });
 
   it('cannot change a reserved candidate before the first pointer has switched', async () => {
-    const f = releaseFixture();
+    const f = releaseFixture({ mirrorCount: 2 });
     vi.spyOn(f.io, 'uploadAssets').mockRejectedValueOnce(new Error('upload interrupted'));
     await expect(publishRuntimeRelease({ ...f.input(), bootstrap: true })).rejects.toThrow();
     await expect(publishRuntimeRelease({ ...f.input(2), bootstrap: true })).rejects.toThrow(/Retry candidate differs/);
@@ -106,7 +106,7 @@ describe('protected latest-only runtime release transaction', () => {
   });
 
   it('refuses same-sequence forks and unknown legacy catalogs without signed journals', async () => {
-    const f = releaseFixture();
+    const f = releaseFixture({ mirrorCount: 2 });
     await publishRuntimeRelease({ ...f.input(), bootstrap: true });
     const { catalogSignature: _sig, ...unsigned } = f.io.catalogs[1];
     f.io.catalogs[1] = f.signed({ ...unsigned, revokedArtifactIdentities: ['old/version/linux-x64'] }, 'catalogSignature', 'catalog');
@@ -117,7 +117,7 @@ describe('protected latest-only runtime release transaction', () => {
   });
 
   it('aborts before switching when a concurrent publisher changes the observed catalog', async () => {
-    const f = releaseFixture();
+    const f = releaseFixture({ mirrorCount: 2 });
     await publishRuntimeRelease({ ...f.input(), bootstrap: true });
     vi.spyOn(f.io, 'uploadAssets').mockImplementationOnce(async () => {
       const other = createReleaseRecord({ ...f.input(3, new Date(f.now.getTime() + HOUR)), source: f.candidate(3),
@@ -129,7 +129,7 @@ describe('protected latest-only runtime release transaction', () => {
   });
 
   it('does not clean anything if online verification after switching fails', async () => {
-    const f = releaseFixture();
+    const f = releaseFixture({ mirrorCount: 2 });
     await publishRuntimeRelease({ ...f.input(), bootstrap: true });
     vi.spyOn(f.io, 'verifyOnline').mockImplementation(async (_catalog, pointers) => {
       if (pointers) throw new Error('live mirror unavailable');
@@ -139,7 +139,7 @@ describe('protected latest-only runtime release transaction', () => {
   });
 
   it('waits for bounded online verification before asserting newly written catalog visibility', async () => {
-    const f = releaseFixture();
+    const f = releaseFixture({ mirrorCount: 2 });
     vi.spyOn(f.io, 'writeCatalog').mockImplementationOnce(async catalog => {
       f.io.events.push(`catalog:${catalog.sequence}`);
       f.io.catalogs = [structuredClone(catalog), undefined];
@@ -159,7 +159,7 @@ describe('protected latest-only runtime release transaction', () => {
   });
 
   it('still refuses cleanup if catalogs diverge after the bounded online check', async () => {
-    const f = releaseFixture();
+    const f = releaseFixture({ mirrorCount: 2 });
     await publishRuntimeRelease({ ...f.input(), bootstrap: true });
     const original = f.io.verifyOnline.bind(f.io);
     vi.spyOn(f.io, 'verifyOnline').mockImplementation(async (catalog, pointers) => {
@@ -172,7 +172,7 @@ describe('protected latest-only runtime release transaction', () => {
   });
 
   it('renews only metadata and idempotently resumes due cleanup after deletion interruption', async () => {
-    const f = releaseFixture();
+    const f = releaseFixture({ mirrorCount: 2 });
     await publishRuntimeRelease({ ...f.input(), bootstrap: true });
     await publishRuntimeRelease(f.input(2, new Date(f.now.getTime() + HOUR)));
     const due = new Date(f.now.getTime() + 8 * 24 * HOUR);
@@ -197,7 +197,7 @@ describe('protected latest-only runtime release transaction', () => {
   });
 
   it('never cleans current objects even with an otherwise valid signer', async () => {
-    const f = releaseFixture();
+    const f = releaseFixture({ mirrorCount: 2 });
     await publishRuntimeRelease({ ...f.input(), bootstrap: true });
     await publishRuntimeRelease(f.input(2, new Date(f.now.getTime() + HOUR)));
     const { releaseSignature: _sig, ...unsigned } = f.io.records.get(2);
@@ -209,7 +209,7 @@ describe('protected latest-only runtime release transaction', () => {
   });
 
   it('preserves revocations through latest-only replacement and caps metadata by artifact expiry', () => {
-    const f = releaseFixture();
+    const f = releaseFixture({ mirrorCount: 2 });
     const first = createReleaseRecord({ ...f.input(), source: f.candidate() });
     const { catalogSignature: _sig, ...unsigned } = first.catalog;
     const previous = f.signed({ ...unsigned, revokedArtifactIdentities: ['retired/1+clawx.1/linux-x64'] }, 'catalogSignature', 'catalog');
@@ -222,7 +222,7 @@ describe('protected latest-only runtime release transaction', () => {
   });
 
   it('never shortens retention when a later catalog has a shorter validity window', () => {
-    const f = releaseFixture();
+    const f = releaseFixture({ mirrorCount: 2 });
     const first = createReleaseRecord({ ...f.input(), source: f.candidate() });
     const policy = { ...f.policy, catalogLifetimeHours: 48, renewBeforeHours: 24 };
     const renewed = createReleaseRecord({ ...f.input(1, new Date(f.now.getTime() + 24 * HOUR)), policy,
@@ -235,7 +235,7 @@ describe('protected latest-only runtime release transaction', () => {
   });
 
   it('validates historical matrix snapshots when a future release adds a third kernel', async () => {
-    const f = releaseFixture();
+    const f = releaseFixture({ mirrorCount: 2 });
     await publishRuntimeRelease({ ...f.input(), bootstrap: true });
     const policy = { ...f.policy, kernelIds: [...f.policy.kernelIds, 'future-engine'] };
     const input = f.input(2, new Date(f.now.getTime() + HOUR));

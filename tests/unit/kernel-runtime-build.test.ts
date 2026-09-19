@@ -213,7 +213,7 @@ describe('kernel runtime build supply chain', () => {
 
       assertArtifactBytesEqual(readFileSync(first.archivePath), readFileSync(second.archivePath));
       assertArtifactBytesEqual(readFileSync(first.descriptorPath), readFileSync(second.descriptorPath));
-      expect(first.descriptor).toMatchObject({ artifactVersion: '2026.9.4+clawx.14', patchRevision: 14, platform, arch });
+      expect(first.descriptor).toMatchObject({ artifactVersion: '2026.9.4+clawx.15', patchRevision: 15, platform, arch });
       expect(first.descriptor.storage).toMatchObject({ authority: 'clawx-data-service', nativeDurableHistory: false });
       expect(first.descriptor.supplyChain).toEqual(expect.objectContaining({
         sourceSha256: expect.stringMatching(/^[a-f0-9]{64}$/),
@@ -228,7 +228,7 @@ describe('kernel runtime build supply chain', () => {
       writeFileSync(`${esbuildExecutable}.unreviewed`, Buffer.from('4d5a0000', 'hex'));
       const rejected = join(root, 'rejected');
       await expect(assembleKernelArtifact({ ...common, outputDir: rejected })).rejects.toThrow(/not in the audited native allowlist/);
-      expect(existsSync(join(rejected, `openclaw-2026.9.4+clawx.14-${platform}-${arch}.tar.zst`))).toBe(false);
+      expect(existsSync(join(rejected, `openclaw-2026.9.4+clawx.15-${platform}-${arch}.tar.zst`))).toBe(false);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

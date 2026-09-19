@@ -1,5 +1,10 @@
 # 内核运行时供应链与 Catalog v1
 
+> 2026-09-19：签名格式仍为 v1，发布策略升级为 v2；GitHub Releases 是唯一活动分发后端。
+> COS 根地址仅用于验证旧签名日志中的身份，不产生网络访问。版本化包、签名目录、防回滚、
+> 公证、审批和安全清理不变。当前策略见 [GitHub 单源设计](../../../harness/reference/github-only-kernel-distribution.md)，
+> 该设计取代本文中的双镜像数量及 COS 上传要求。
+
 本文记录 M3 的可执行约束。它是 `multi-kernel-design.md` 第 13、14 节的实现说明，而不是客户端安装说明。
 
 ## 1. 冻结输入

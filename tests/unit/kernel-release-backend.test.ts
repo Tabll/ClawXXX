@@ -53,11 +53,11 @@ describe('exact signed runtime upload set', () => {
     await expect(loadReleaseAssets(root, f.input())).rejects.toThrow();
   });
 
-  it('binds both publication destinations to the reviewed policy', () => {
+  it('binds the single publication destination to the reviewed policy', () => {
     const f = releaseFixture();
     expect(() => assertReleaseDistribution(f.policy, f.distribution)).not.toThrow();
     expect(() => assertReleaseDistribution(f.policy, { ...f.distribution,
-      mirrorBaseUrls: ['https://other.invalid/', f.distribution.mirrorBaseUrls[1]] })).toThrow(/differs/);
+      mirrorBaseUrls: ['https://other.invalid/', f.distribution.mirrorBaseUrls[0]] })).toThrow(/differs/);
     expect(() => assertReleaseDistribution({ ...f.policy, githubReleaseTag: 'host-app' }, f.distribution)).toThrow();
   });
 });
@@ -200,7 +200,7 @@ describe('scoped GitHub release mirror', () => {
 });
 
 describe('production backend catalog and cleanup ordering', () => {
-  it('rechecks both live pointers before every retired file and stops on a changed catalog', async () => {
+  it('rechecks configured live pointers before every retired file and stops on a changed catalog', async () => {
     const f = releaseFixture();
     const first = createReleaseRecord({ ...f.input(), source: f.candidate() });
     const second = createReleaseRecord({ ...f.input(2, new Date(f.now.getTime() + HOUR)), source: f.candidate(2),
@@ -208,11 +208,11 @@ describe('production backend catalog and cleanup ordering', () => {
     const cos = { verifyBucket: vi.fn(), deleteKernelArtifact: vi.fn() };
     const github = { deleteImmutable: vi.fn() };
     const io = new ProductionReleaseIO({ ...f.input(), cos, github, evidenceDir: tempRoot() });
-    vi.spyOn(io, 'readCatalogs').mockResolvedValueOnce([second.catalog, second.catalog]).mockResolvedValue([first.catalog, first.catalog]);
+    vi.spyOn(io, 'readCatalogs').mockResolvedValueOnce([second.catalog]).mockResolvedValue([first.catalog]);
     await expect(io.deleteRetirement(second.retirements[0], second.catalog)).rejects.toThrow(/Catalog changed/);
-    expect(cos.deleteKernelArtifact).toHaveBeenCalledTimes(1);
+    expect(cos.deleteKernelArtifact).not.toHaveBeenCalled();
     expect(github.deleteImmutable).toHaveBeenCalledTimes(1);
-    expect(cos.verifyBucket).toHaveBeenCalledWith({ requireUnversioned: true });
+    expect(cos.verifyBucket).not.toHaveBeenCalled();
   });
 
   it('refuses active-object deletion before contacting either storage provider', async () => {

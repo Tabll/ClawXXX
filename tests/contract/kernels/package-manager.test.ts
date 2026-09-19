@@ -99,6 +99,30 @@ afterAll(async () => {
 });
 
 describe('KernelPackageManager catalog and compatibility', () => {
+  it('retries a GitHub pointer replacement window, then fails closed on expiry without contacting old sources', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'clawx-github-catalog-'));
+    const service = new ClawXDataService(join(root, 'state.sqlite'));
+    const state = service.connect({ role: 'main' });
+    const catalog = signedCatalog([artifacts[0].descriptor], 1);
+    const url = 'https://github.com/Tabll/ClawXXX/releases/download/kernel-runtimes/kernel-catalog.production.json';
+    let attempts = 0;
+    const client = new KernelCatalogClient({ state, trustStore, now: () => testNow, fetcher: async input => {
+      expect(input).toBe(url);
+      attempts += 1;
+      return attempts === 1 ? new Response(null, { status: 404 }) : Response.json(catalog);
+    } });
+    try {
+      expect(await client.load({ channel: 'production', urls: [url] })).toMatchObject({ installAllowed: true, source: 'network' });
+      expect(attempts).toBe(2);
+      attempts = 0;
+      const expired = new KernelCatalogClient({ state, trustStore, now: () => new Date('2028-02-01T00:00:00Z'),
+        fetcher: async input => { expect(input).toBe(url); attempts += 1; return new Response(null, { status: 404 }); } });
+      expect(await expired.load({ channel: 'production', urls: [url] })).toMatchObject({ source: 'cache', stale: true, installAllowed: false });
+      expect(attempts).toBe(3);
+      expect((await state.getKernelCatalogState('production'))?.highestSequence).toBe(1);
+    } finally { service.close(); await rm(root, { recursive: true, force: true }); }
+  });
+
   it('verifies and caches a monotonic catalog, falls back offline, and never replaces it with a downgrade', async () => {
     const root = await mkdtemp(join(tmpdir(), 'clawx-catalog-contract-'));
     const service = new ClawXDataService(join(root, 'state.sqlite'));
@@ -247,8 +271,9 @@ describe('KernelPackageManager download transport', () => {
     };
     await expect(mirrorDownloader.download(descriptor, { mirrorBaseUrls: ['https://cn.example.test/kernels/'] }))
       .resolves.toBeTruthy();
-    expect(requested).toHaveLength(2);
-    expect(requested[1]).toContain('cn.example.test/kernels/');
+    expect(requested).toHaveLength(1);
+    expect(requested[0]).toContain('cn.example.test/kernels/');
+    expect(requested.some(url => url.includes('primary.example.test'))).toBe(false);
     await Promise.all([tamperRoot, cancelledRoot, mirrorRoot].map(path => rm(path, { recursive: true, force: true })));
   });
 });

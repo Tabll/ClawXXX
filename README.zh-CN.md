@@ -160,13 +160,13 @@ ClawX 采用 **Main-owned 多内核 + Host API 统一接入架构**：React Rend
 
 > ClawX 0.6 已实现可选 CI 预制 OpenClaw 与 DeepSeek Harness，并以 Main 独占 SQLite/Blob 为统一数据权威；公开发布仍会在受保护的跨平台签名、晋级与 packaged-test 证据不足时 fail closed。参见[多内核设计](docs/zh-CN/multi-kernel-design.md)、[实施清单](TODO.md)、[运行时安全/支持](docs/zh-CN/runtime-security-support.md)和[数据策略](docs/zh-CN/data-security-retention.md)。
 
-DSH 源码候选版本为 `0.1.5-rc.2+clawx.14`（预发布版），已适配 V3 系统消息、按 Run 隔离的 persona 和追加来源的结算事件；模型上下文替换不能重复生成回复或计费。统一 SQLite 仍是唯一数据源，已安装内核须等新版 CI 制品验证并发布后才可更新。详见[本次升级兼容性说明](harness/reference/kernel-upgrade-2026-09-12.md)。
+DSH 源码候选版本为 `0.1.5-rc.2+clawx.15`（预发布版），已适配 V3 系统消息、按 Run 隔离的 persona 和追加来源的结算事件；模型上下文替换不能重复生成回复或计费。统一 SQLite 仍是唯一数据源，已安装内核须等新版 CI 制品验证并发布后才可更新。详见[本次升级兼容性说明](harness/reference/kernel-upgrade-2026-09-12.md)。
 
-OpenClaw 源码和开发依赖已切换为 `2026.9.4+clawx.14`，Discord/WhatsApp 同步更新。重基后的 `.mjs` 补丁保留有界内存 ACP 状态、统一历史、Main 管理的配置和严格的渠道准入；Node 继续固定为 24.20.0。本地候选验证与尚待完成的平台验收见[升级设计与证据](harness/reference/kernel-upgrade-2026-09-12.md)。
+OpenClaw 源码和开发依赖已切换为 `2026.9.4+clawx.15`，Discord/WhatsApp 同步更新。重基后的 `.mjs` 补丁保留有界内存 ACP 状态、统一历史、Main 管理的配置和严格的渠道准入；Node 继续固定为 24.20.0。本地候选验证与尚待完成的平台验收见[升级设计与证据](harness/reference/kernel-upgrade-2026-09-12.md)。
 
 两个 +clawx.13 内核使用 Node 24.20.0，已通过五目标 staging 全部 25 项任务、四份 macOS 公证（Accepted）及同源码三平台 Electron E2E，详见 [CI 验收证据](harness/reference/windows-runtime-ci-repair.md)。Windows 仅使用制品签名，不启用 Authenticode。生产目录状态、受保护发布恢复及真实线上验证见[发布验收记录](harness/reference/kernel-automatic-release.md)；真实账号验收仍待完成。
 
-完整内核构建与同源码 E2E 成功后，现会自动排队进入受保护的生产发布。腾讯 COS 和 GitHub 上的版本化包不可覆盖；全目标双镜像验证通过后只替换 latest-per-target 签名目录。旧包等全部引用目录到期再加 24 小时后安全清理，保留签名审计记录并支持中断重试。每日受保护维护在制品/密钥有效期内续签默认 7 天的目录，仍需正常审批；首次 bootstrap 和真实线上验收不以本地测试代替。参见[自动发布设计](harness/reference/kernel-automatic-release.md)和[操作手册](docs/zh-CN/operations/kernel-runtime-release-runbook.md)。
+完整内核构建与同源码 E2E 成功后，现会自动排队进入受保护的生产发布。内核仅从 GitHub Releases 下载和发布；版本化包不可覆盖，全目标验证通过后只替换 latest-per-target 签名目录，不再依赖 COS。旧包等全部引用目录到期再加 24 小时后安全清理，保留签名审计记录并支持中断重试。每日受保护维护在制品/密钥有效期内续签默认 7 天的目录，仍需正常审批；首次 bootstrap 和真实线上验收不以本地测试代替。单源目录缺失从不可变签名日志恢复；变更待发布记录须使用精确摘要绑定的受保护手动 supersession。参见[GitHub 单源设计](harness/reference/github-only-kernel-distribution.md)和[操作手册](docs/zh-CN/operations/kernel-runtime-release-runbook.md)。
 
 目录切换后先有界等待镜像公开读取到精确已签版本，再严格读回和允许清理。旧目录或暂时缺失绝不算成功，签名目录冲突立即终止发布。
 

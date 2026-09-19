@@ -47,10 +47,8 @@ export async function probeArtifactMirrors(input) {
     const size = descriptor.archive.compressedSize;
     if (!Number.isSafeInteger(size) || size < 1) throw new Error('Range verification requires the signed archive size');
     const filename = basename(new URL(descriptor.archive.url).pathname);
-    const urls = [...new Set([
-      descriptor.archive.url,
-      ...distribution.mirrorBaseUrls.map(base => `${base.replace(/\/$/, '')}/${filename}`),
-    ])];
+    const urls = [...new Set(distribution.mirrorBaseUrls.map(base => `${base.replace(/\/$/, '')}/${filename}`))];
+    if (!urls.length) throw new Error('No configured artifact sources');
     const successes = [];
     for (const url of urls) {
       assertProductionUrl(url, input.allowHttp);
@@ -66,8 +64,7 @@ export async function probeArtifactMirrors(input) {
         successes.push({ url, error: error instanceof Error ? error.message : String(error) });
       }
     }
-    const liveHosts = new Set(successes.filter(item => !item.error).map(item => new URL(item.url).host));
-    if (liveHosts.size < 2) throw new Error(`${kernelId} does not have two live range-capable distribution hosts`);
+    if (successes.some(item => item.error)) throw new Error(`${kernelId} requires every configured source to pass Range verification`);
     artifactResults.push({ kernelId, platform, arch, artifactVersion: descriptor.artifactVersion, probes: successes });
   }
   return artifactResults;

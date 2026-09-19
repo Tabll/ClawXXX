@@ -1,5 +1,11 @@
 # ClawX 多内核统一架构设计
 
+> 2026-09-19 分发层修订：可选内核改为 GitHub Releases 单源，保留版本化包、签名目录、
+> 不可变发布日志及安全清理；统一 SQLite 和业务抽象不变。当前制品身份为 OpenClaw
+> `2026.9.4+clawx.15`、DSH `0.1.5-rc.2+clawx.15`，远端验收另行执行。
+> 本文旧 COS/双镜像章节由 [GitHub 单源设计](../../harness/reference/github-only-kernel-distribution.md)
+> 替代；旧源只保留历史身份验证，不参与下载、发布或清理。
+
 > 状态：实现候选（M19 已修复 OpenClaw 生产桥接、配置和 Channels，并完成本地新版切换；五平台签名制品/真实账号/发布证据仍以 `TODO.md` M19/M16 为准）；实现基线：ClawX 0.6.0、OpenClaw 2026.9.2+clawx.12、DeepSeek Harness 0.1.3-alpha.1+clawx.12；最后更新：2026-09-07
 >
 > 实施清单：[TODO.md](../../TODO.md)

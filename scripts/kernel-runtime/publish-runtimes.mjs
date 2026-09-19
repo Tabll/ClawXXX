@@ -2,14 +2,12 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import CosModule from 'cos-nodejs-sdk-v5';
 import { readJson, canonicalJson } from './lib/canonical.mjs';
 import { readPrivateKeyFromEnvironment, signCanonical } from './lib/signing.mjs';
 import { verifySignedValue } from './verify-release-set.mjs';
 import { verifySourceInputs } from './lib/source-manifest.mjs';
 import { loadReleasePolicy, sourceEvidence } from './lib/release-policy.mjs';
 import { verifyReleaseCandidate, createGitHubReader, candidateDigest } from './lib/release-gate.mjs';
-import { TencentCosPublisher } from './lib/tencent-cos.mjs';
 import { GitHubReleaseMirror, ProductionReleaseIO, loadReleaseAssets, assertReleaseDistribution } from './lib/release-backend.mjs';
 import { publishRuntimeRelease } from './lib/release-publication.mjs';
 
@@ -21,6 +19,10 @@ export function assertPublisherEnvironment(env, policy) {
     || !['publish', 'maintain'].includes(env.RELEASE_MODE)) throw new Error('Untrusted protected publisher execution context');
   if (env.BOOTSTRAP === 'true' && (env.GITHUB_EVENT_NAME !== 'workflow_dispatch' || env.RELEASE_MODE !== 'publish')) {
     throw new Error('Bootstrap is available only through explicit protected manual publication');
+  }
+  if (env.SUPERSEDE_PENDING_SHA256 && (env.GITHUB_EVENT_NAME !== 'workflow_dispatch'
+    || env.RELEASE_MODE !== 'publish' || !/^[a-f0-9]{64}$/.test(env.SUPERSEDE_PENDING_SHA256))) {
+    throw new Error('Pending supersession requires an exact digest and protected manual publish');
   }
 }
 
@@ -52,18 +54,11 @@ async function main() {
       evidence('accepted-candidate.json', candidate);
       ({ descriptors, assets } = await loadReleaseAssets(resolve('temp/approved-artifacts'), { policy, trustStore, distribution, candidate }));
     }
-    const COS = CosModule.default ?? CosModule;
-    const cos = new TencentCosPublisher({
-      client: new COS({ SecretId: required('TENCENTCLOUD_SECRET_ID'), SecretKey: required('TENCENTCLOUD_SECRET_KEY'),
-        Protocol: 'https:', Timeout: 120_000 }),
-      bucket: policy.cos.bucket, region: policy.cos.region, rootPrefix: policy.cos.rootPrefix,
-    });
-    const io = new ProductionReleaseIO({ policy, distribution, trustStore, cos,
+    const io = new ProductionReleaseIO({ policy, distribution, trustStore,
       github: new GitHubReleaseMirror(policy), assets, evidenceDir });
-    // Never mutate bucket policy or create a release before validating the target.
-    evidence('bucket-preflight.json', await io.cosOperation(() => cos.verifyBucket({ requireUnversioned: true })));
     const result = await publishRuntimeRelease({ io, policy, distribution, trustStore, candidate, descriptors,
-      signingKey, signingKeyId, bootstrap: process.env.BOOTSTRAP === 'true', now: new Date() });
+      signingKey, signingKeyId, bootstrap: process.env.BOOTSTRAP === 'true',
+      supersedePendingSha256: process.env.SUPERSEDE_PENDING_SHA256 || undefined, now: new Date() });
     evidence('result.json', { ok: true, publisherSha: required('GITHUB_SHA'), ...result });
     process.stdout.write(`${JSON.stringify({ ok: true, ...result })}\n`);
   } catch (error) {

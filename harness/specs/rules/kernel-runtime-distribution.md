@@ -41,7 +41,7 @@ Upstream migration/default changes must not widen session visibility or
 permissions. A candidate test must explicitly select its package and exact
 version, never silently test the installed old SDK. Failed real-process storage
 probes block promotion even when host mocks and control smoke pass. The source
-pin is now 2026.9.4+clawx.14; actual per-Run incognito/ACP storage probes run before
+pin is now 2026.9.4+clawx.15; actual per-Run incognito/ACP storage probes run before
 sealing and again against extracted artifacts. Verify the sealed file manifest
 again after first launch, and never let upstream postinstall prune patch files.
 See
@@ -316,7 +316,7 @@ Main downloads into staging, verifies before activation, uses atomic version-dir
 
 Install, update, repair, rollback, and uninstall operations are Main-owned and journaled. Renderer must not choose URLs, execute archives, or trust server-provided entrypoints without manifest allowlist validation.
 
-Production host packaging must be blocked on the complete unit/contract/type/lint/chaos/comms/Harness gates, Electron E2E on macOS/Windows/Linux, and a live signed-catalog/two-artifact-host Range drill. Protected signing, notarization, promotion, and legal evidence cannot be replaced by local test results.
+Production host packaging must be blocked on the complete unit/contract/type/lint/chaos/comms/Harness gates, Electron E2E on macOS/Windows/Linux, and a live signed-catalog/all-configured-source Range drill. Protected signing, notarization, promotion, and legal evidence cannot be replaced by local test results.
 
 The Electron host must launch Node kernels using their selected standalone Node,
 never Electron Helper or a PATH fallback. Development uses the same reviewed Node
@@ -329,10 +329,22 @@ must not be TOFU-fetched with an unverified catalog. See
 
 Production catalog promotion must normally extend a cryptographically verified, exact N-1 catalog served identically by every configured HTTPS catalog mirror. Sequence 1 requires an explicit protected bootstrap and every mirror must report the catalog absent. Persist an immutable signed release record before uploads/pointer writes, binding exact catalog bytes, accepted source/run/attempt/artifact evidence and its predecessor digest. A retry may repair N/N-1 or N/absent only through that record; N/absent after sequence 1 additionally requires the verified predecessor record. Changed candidate intent and same-sequence divergence are hard failures. Publisher code uses the reviewed workflow commit, not an arbitrary artifact source checkout. The read-only gate and protected recheck must bind trusted repository/main/workflow path, current frozen sources, all required build/single/dual jobs, same-source three-platform E2E, artifact IDs/digests and expiry; a workflow_run completion alone is not acceptance.
 
-Production catalogs offer exactly one latest immutable artifact per enabled kernel/required target, deriving the matrix from release policy and the shared platform manifest. Ordinary retirement is not security revocation: preserve the revocation ledger, reject downgrades or changed bytes under a published revision, and record every removed descriptor in a signed retirement inventory. Track the maximum expiry of every issued catalog referencing an artifact, even if later catalogs shorten validity. Delete only after this maximum expiry plus the configured download grace and successful exact two-mirror catalog/all-target Range checks. Verify scoped name, signed digest and size before deleting each exact archive/descriptor/checksum; never list-delete a runtime prefix, touch a current reference, host installer, installed runtime or canonical data. Retain small signed journals/receipts, retry missing objects idempotently, and reject Enabled/Suspended COS versioning rather than pretending deletes remove history. Scheduled maintenance keeps the same production environment protection, may renew catalog metadata only within descriptor/key validity, and must not bypass reviewer approval. A catalog/key/descriptor expiry that cannot support valid renewal requires operator intervention, not a verification bypass. See `harness/reference/kernel-automatic-release.md`.
+For GitHub-only publication, missing the sole pointer is not bootstrap: discover
+the bounded immutable journal inventory and authenticate sequence continuity and
+predecessor digests. Require signed sequence/filename agreement and the exact
+candidate when recovering runtime publication. Expired or legacy reservations
+may only be superseded by an explicit protected manual publish bound to the
+pending record's canonical digest. Write a new linked successor and inherit all
+retention history; never rewrite a record, silently replace an automatic intent
+or reuse an artifact revision for a changed descriptor URL. The first migration
+uses +clawx.15 for both kernels. Historical roots validate old records only;
+configured sources are exhaustive for downloads and all-source Range checks.
+See `harness/reference/github-only-kernel-distribution.md`.
+
+Production catalogs offer exactly one latest immutable artifact per enabled kernel/required target, deriving the matrix from release policy and the shared platform manifest. Ordinary retirement is not security revocation: preserve the revocation ledger, reject downgrades or changed bytes under a published revision, and record every removed descriptor in a signed retirement inventory. Track the maximum expiry of every issued catalog referencing an artifact, even if later catalogs shorten validity. Delete only after this maximum expiry plus the configured download grace and successful exact configured-source catalog/all-target Range checks. Verify scoped name, signed digest and size before deleting each exact archive/descriptor/checksum; never list-delete a runtime prefix, touch a current reference, host installer, installed runtime or canonical data. Retain small signed journals/receipts and retry missing objects idempotently; historical COS objects are not deletion targets. Scheduled maintenance keeps the same production environment protection, may renew catalog metadata only within descriptor/key validity, and must not bypass reviewer approval. A catalog/key/descriptor expiry that cannot support valid renewal requires operator intervention, not a verification bypass. See `harness/reference/kernel-automatic-release.md`.
 
 After a catalog pointer write, run bounded exact-release propagation checks
-before the final strict catalog readback. Both mirrors agreeing on an older
+before the final strict catalog readback. All configured sources agreeing on an older
 valid catalog is not acceptance. Temporary absence/staleness may be retried, but
 signed same-sequence conflicts or a newer catalog fail immediately. Exhausted
 retries, final divergence or failed Range checks forbid all cleanup; recovery
@@ -347,4 +359,4 @@ catalog channel. Reject false/missing prerelease flags on existing containers
 instead of silently competing with App releases. Reclassification must preserve
 all immutable assets, tag identity, signatures and fixed download URLs.
 
-The primary object mirror is Tencent COS under one reviewed bucket, region and root prefix. CI must use the repository-pinned official SDK, verify bucket location and versioning before writes, constrain every object key below the root, publish public-readable objects with SHA-256 metadata, refuse overwrite of immutable artifacts, and publish the mutable signed catalog last. Tencent credentials belong only to the protected production environment. Artifact and catalog private keys remain separated by environment; the rollback private key is offline-only. Any local recovery backup must be authenticated encryption under a git-ignored owner-only path, and its passphrase must be stored separately.
+GitHub Releases is the only active kernel publication and download backend. Kernel CI must not initialize COS or read Tencent credentials. Historical COS URL roots validate signed legacy identities only; they are never transport or deletion targets. Publish immutable versioned assets before the mutable signed catalog. Host installer COS publication is outside this policy. Artifact and catalog private keys remain separated by environment; the rollback private key is offline-only. Any local recovery backup must be authenticated encryption under a git-ignored owner-only path, and its passphrase must be stored separately.

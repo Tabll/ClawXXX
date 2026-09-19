@@ -54,6 +54,7 @@ export function loadKernelDistributionConfiguration(input: {
     const trustStore = parseKernelTrustStore(readJson(trustStorePath));
     assertReleaseTrustStore(trustStore, channel, input.now ?? new Date());
     if (catalogUrls.length === 0) throw new Error('No HTTPS kernel catalog URL is configured');
+    if (mirrorBaseUrls.length === 0) throw new Error('No HTTPS kernel artifact source is configured');
     return { channel, catalogUrls, mirrorBaseUrls, trustStore };
   } catch (error) {
     return {

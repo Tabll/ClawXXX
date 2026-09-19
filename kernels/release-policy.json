@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "repository": "Tabll/ClawXXX",
   "branch": "main",
   "buildWorkflow": ".github/workflows/kernel-runtime-build.yml",
@@ -10,10 +10,8 @@
   "renewBeforeHours": 48,
   "downloadGraceHours": 24,
   "githubReleaseTag": "kernel-runtimes",
-  "cos": {
-    "bucket": "aq-pub-1252262977",
-    "region": "ap-shanghai",
-    "rootPrefix": "clawxxx",
-    "kernelPrefix": "kernels"
-  }
+  "publicationBackends": ["github-release"],
+  "historicalArtifactBaseUrls": [
+    "https://aq-pub-1252262977.cos.ap-shanghai.tencentcos.cn/clawxxx/kernels/"
+  ]
 }

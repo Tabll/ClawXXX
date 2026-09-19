@@ -1,7 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { assertExactKeys, sha256Bytes } from './canonical.mjs';
-import { normalizeRelativeKey } from './tencent-cos.mjs';
 
 export function loadReleasePolicy(root = process.cwd()) {
   const policy = JSON.parse(readFileSync(join(root, 'kernels/release-policy.json'), 'utf8'));
@@ -12,8 +11,9 @@ export function loadReleasePolicy(root = process.cwd()) {
 
 export function validateReleasePolicy(policy) {
   assertExactKeys(policy, ['schemaVersion', 'repository', 'branch', 'buildWorkflow', 'e2eWorkflow', 'kernelIds',
-    'e2eJobs', 'catalogLifetimeHours', 'renewBeforeHours', 'downloadGraceHours', 'githubReleaseTag', 'cos', 'targets']);
-  if (policy.schemaVersion !== 1 || !/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(policy.repository)
+    'e2eJobs', 'catalogLifetimeHours', 'renewBeforeHours', 'downloadGraceHours', 'githubReleaseTag',
+    'publicationBackends', 'historicalArtifactBaseUrls', 'targets']);
+  if (policy.schemaVersion !== 2 || !/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(policy.repository)
     || policy.branch !== 'main') throw new Error('Invalid trusted release repository/branch');
   for (const name of [policy.buildWorkflow, policy.e2eWorkflow]) {
     if (!/^\.github\/workflows\/[a-z0-9-]+\.ya?ml$/.test(name)) throw new Error('Invalid release workflow path');
@@ -33,12 +33,28 @@ export function validateReleasePolicy(policy) {
   }
   if (policy.renewBeforeHours >= policy.catalogLifetimeHours) throw new Error('Renewal threshold must precede catalog expiry');
   if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$/.test(policy.githubReleaseTag)) throw new Error('Invalid kernel release tag');
-  assertExactKeys(policy.cos, ['bucket', 'region', 'rootPrefix', 'kernelPrefix']);
-  if (!/^[a-z0-9][a-z0-9-]+-\d+$/.test(policy.cos.bucket) || !/^[a-z]{2}-[a-z0-9-]+$/.test(policy.cos.region)) {
-    throw new Error('Invalid protected COS target');
+  if (JSON.stringify(policy.publicationBackends) !== JSON.stringify(['github-release'])) {
+    throw new Error('Unsupported protected publication backends');
   }
-  for (const key of ['rootPrefix', 'kernelPrefix']) normalizeRelativeKey(policy.cos[key]);
+  if (!Array.isArray(policy.historicalArtifactBaseUrls) || policy.historicalArtifactBaseUrls.length > 16) {
+    throw new Error('Invalid historical artifact roots');
+  }
+  for (const value of policy.historicalArtifactBaseUrls) {
+    const url = new URL(value);
+    if (url.protocol !== 'https:' || url.username || url.password || url.search || url.hash || !url.pathname.endsWith('/')) {
+      throw new Error('Invalid historical artifact root');
+    }
+  }
   return policy;
+}
+
+// Only enabled backends are transport destinations. Historical roots above are
+// identity-validation inputs and must never be used for network I/O or deletion.
+export function releaseDistribution(policy) {
+  validateReleasePolicy(policy);
+  const base = `https://github.com/${policy.repository}/releases/download/${policy.githubReleaseTag}/`;
+  return { schemaVersion: 1, channel: 'production', mirrorBaseUrls: [base],
+    catalogUrls: [`${base}kernel-catalog.production.json`] };
 }
 
 export function targetKey({ platform, arch }) { return `${platform}-${arch}`; }

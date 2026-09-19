@@ -1,5 +1,9 @@
 # Automatic kernel production publication
 
+> Current policy: [GitHub-only distribution](github-only-kernel-distribution.md)
+> supersedes the COS/two-mirror implementation below. Original sections and
+> remote evidence remain historical context, not current deployment steps.
+
 Status: first protected production publication completed on 2026-09-09.
 [Production #4](https://github.com/Tabll/ClawXXX/actions/runs/34296346239)
 finished successfully at 00:47:50 UTC. Sequence 1 serves all ten original

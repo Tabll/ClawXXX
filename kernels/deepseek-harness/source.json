@@ -15,8 +15,8 @@
     "thirdPartyNoticesSha256": "33cef3c1707e1443c8919116b70b5b116519c7117d00b8d05475b31458ac9991"
   },
   "license": "MIT",
-  "artifactVersion": "0.1.5-rc.2+clawx.14",
-  "patchRevision": 14,
+  "artifactVersion": "0.1.5-rc.2+clawx.15",
+  "patchRevision": 15,
   "sourceDateEpoch": 1789171200,
   "lockfile": {
     "descriptor": "kernels/deepseek-harness/lock.json",
@@ -30,7 +30,7 @@
   },
   "runtime": {
     "path": "kernels/deepseek-harness/runtime.json",
-    "sha256": "d033f61f813ce0108fb2ecc37bfca158ba03fcfff7fd4ba74a16350506fffbd7"
+    "sha256": "a5ddaa5416424cb28968e6334e8f065110e7455b4cd03c5d3165f42cf8ad1bd8"
   },
   "nodeRuntime": {
     "path": "kernels/node-runtime.json",

@@ -75,7 +75,7 @@ describe('production kernel distribution drill', () => {
     });
     expect(result).toMatchObject({ ok: true, catalogSequence: 7 });
     expect(result.artifacts).toHaveLength(2);
-    expect(calls.filter(call => call.range === 'bytes=1024-2047')).toHaveLength(4);
+    expect(calls.filter(call => call.range === 'bytes=1024-2047')).toHaveLength(2);
   });
 
   it('retries transient mirror propagation failures before accepting a consistent release', async () => {
@@ -143,7 +143,7 @@ describe('production kernel distribution drill', () => {
   });
 
   it.each(['missing', 'both-stale', 'one-stale'])('waits for exact new catalog propagation when mirrors are %s', async visibility => {
-    const f = releaseFixture();
+    const f = releaseFixture({ mirrorCount: 2 });
     const previous = createReleaseRecord({ ...f.input(), source: f.candidate() }).catalog;
     const { catalogSignature: _sig, ...unsigned } = previous;
     const expected = f.signed({ ...unsigned, sequence: 2 }, 'catalogSignature', 'catalog');
@@ -175,7 +175,7 @@ describe('production kernel distribution drill', () => {
   });
 
   it('exhausts bounded retries without accepting an old catalog or probing its archives', async () => {
-    const f = releaseFixture();
+    const f = releaseFixture({ mirrorCount: 2 });
     const previous = createReleaseRecord({ ...f.input(), source: f.candidate() }).catalog;
     const { catalogSignature: _sig, ...unsigned } = previous;
     const expected = f.signed({ ...unsigned, sequence: 2 }, 'catalogSignature', 'catalog');
@@ -194,7 +194,7 @@ describe('production kernel distribution drill', () => {
   });
 
   it.each(['same-sequence fork', 'newer sequence'])('immediately rejects a signed %s instead of hiding it with retries', async conflict => {
-    const f = releaseFixture();
+    const f = releaseFixture({ mirrorCount: 2 });
     const expected = createReleaseRecord({ ...f.input(), source: f.candidate() }).catalog;
     const { catalogSignature: _sig, ...unsigned } = expected;
     const observed = f.signed({ ...unsigned,

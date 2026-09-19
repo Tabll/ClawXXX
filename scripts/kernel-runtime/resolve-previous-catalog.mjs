@@ -23,8 +23,8 @@ export async function resolvePreviousProductionCatalog(input) {
     throw new Error('Next production catalog sequence must be a positive integer');
   }
   const urls = input.distribution?.catalogUrls;
-  if (!Array.isArray(urls) || urls.length < 2 || new Set(urls).size !== urls.length) {
-    throw new Error('Production catalog continuity requires at least two distinct catalog mirrors');
+  if (!Array.isArray(urls) || urls.length < 1 || new Set(urls).size !== urls.length) {
+    throw new Error('Production catalog continuity requires distinct configured catalog mirrors');
   }
   if (input.expectedGitHubRepository || input.githubReleaseTag) {
     assertGitHubDistributionTarget(input.distribution, input.expectedGitHubRepository, input.githubReleaseTag);

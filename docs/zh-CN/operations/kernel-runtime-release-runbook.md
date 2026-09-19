@@ -1,5 +1,31 @@
 # 可选内核运行时受保护发布 Runbook
 
+## 当前发布路径：GitHub Releases 单源（2026-09-19）
+
+本节与 [GitHub 单源设计及迁移清单](../../../harness/reference/github-only-kernel-distribution.md)
+取代下方 COS/双镜像操作步骤；下方旧流程仅保留历史参考，不应再用于内核发布。
+宿主安装包 `release.yml` 仍使用 COS，相关 Secrets 不要删除。
+
+1. 先明确取消或替代旧代码创建的待审批/排队发布任务，避免旧双源 publisher 在切换后运行。
+2. 提交新代码后，以 `kernel=all` 和默认 GitHub `artifact-base-url` 构建 `.15` 完整集合。
+   等待 10 build、10 single、5 dual 及同源码三平台 Electron E2E 全部成功。
+3. 初次迁移前重新读取 GitHub 当前 catalog 和 `kernel-release-N.json`，使用受信公钥验证。
+   如仍是 catalog=1、pending record=2，不能重跑旧 `.14` 发布或覆盖 record=2。
+4. 在 `Promote kernel catalog` 手动选择 `publish`，输入新的成功 build run ID；将已核验
+   pending record 的 `digestJson(record)` 填入 `supersede-pending-sha256`，正常审批。
+   这是 canonical JSON 的 SHA-256，不是带换行下载文件的 SHA-256。
+5. publisher 写入新的签名 successor（预期 sequence=3），继承旧记录的保留期账本，上传
+   GitHub 版本化文件，再更新签名目录；10 个目标共 20 次 Range/If-Range 必须通过。
+6. 只有精确目录在线验证、最大历史有效期加宽限期、对象身份检查全部通过才清理 GitHub
+   旧包。小型 journal/receipt 永久保留；COS 旧对象完全不在此清理范围。
+
+普通后续发布不填写 supersession 字段。上传/目录替换中断后优先重试同一已接受候选；
+保留字段的同一次迁移重试必须匹配原记录摘要和 successor，不能换候选或重置序号。
+目录续签仍走受保护环境；过期验签不会因 GitHub 单源而放宽。旧版客户端须更新宿主
+分发配置，才能完全停止访问其内置的 COS 优先地址。
+
+## 历史双源流程（已由上节替代）
+
 本文只描述发布操作和证据，不包含任何私钥、证书或密码。架构与信任模型见 [多内核运行时供应链](../architecture/kernel-runtime-supply-chain.md)，公钥轮换/吊销见 [`kernels/trust/README.md`](../../../kernels/trust/README.md)。
 
 ## 1. 发布前硬条件

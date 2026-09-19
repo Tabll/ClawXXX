@@ -16,13 +16,14 @@ function publisher(client: Record<string, ReturnType<typeof vi.fn>>) {
 }
 
 describe('Tencent COS release publisher', () => {
-  it('keeps both publishing workflows on the pinned COS tool and protected production environment', () => {
+  it('keeps COS only for host installers while kernel publication remains protected and GitHub-only', () => {
     const promote = readFileSync(join(process.cwd(), '.github/workflows/kernel-runtime-promote.yml'), 'utf8');
     const release = readFileSync(join(process.cwd(), '.github/workflows/release.yml'), 'utf8');
     const distribution = readFileSync(join(process.cwd(), 'resources/kernels/distribution.json'), 'utf8');
+    expect(release).toContain('TENCENTCLOUD_SECRET_ID');
+    expect(release).toContain('TENCENTCLOUD_SECRET_KEY');
+    expect(promote).not.toMatch(/TENCENTCLOUD_SECRET_ID|TENCENTCLOUD_SECRET_KEY/);
     for (const source of [promote, release]) {
-      expect(source).toContain('TENCENTCLOUD_SECRET_ID');
-      expect(source).toContain('TENCENTCLOUD_SECRET_KEY');
       expect(source).not.toMatch(/ossutil|OSS_ACCESS_KEY|valuecell-clawx|intelli-spectrum/);
     }
     expect(release).toContain('node scripts/tencent-cos.mjs verify-bucket');
@@ -31,7 +32,8 @@ describe('Tencent COS release publisher', () => {
     expect(release).toContain('upload-cos:');
     expect(release).toMatch(/upload-cos:\r?\n\s+needs: release\r?\n\s+environment: kernel-production/);
     expect(release.indexOf('put-directory-immutable')).toBeLessThan(release.indexOf('sync-channel'));
-    expect(distribution).toContain('aq-pub-1252262977.cos.ap-shanghai.tencentcos.cn/clawxxx/kernels/');
+    expect(distribution).not.toMatch(/tencentcos|myqcloud/);
+    expect(distribution).toContain('github.com/Tabll/ClawXXX/releases/download/kernel-runtimes/');
   });
 
   it('rejects traversal, absolute and backslash object keys', () => {

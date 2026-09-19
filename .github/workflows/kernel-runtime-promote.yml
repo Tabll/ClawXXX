@@ -25,6 +25,9 @@ on:
         description: Explicitly authorize first publication only when there is no existing signed catalog
         type: boolean
         default: false
+      supersede-pending-sha256:
+        description: Explicitly supersede the exact pending signed record digest (manual migration/recovery only)
+        required: false
 
 permissions:
   contents: read
@@ -123,8 +126,7 @@ jobs:
           BOOTSTRAP: ${{ github.event_name == 'workflow_dispatch' && inputs.bootstrap && 'true' || 'false' }}
           CLAWX_CATALOG_SIGNING_KEY_ID: ${{ secrets.CLAWX_CATALOG_SIGNING_KEY_ID }}
           CLAWX_CATALOG_SIGNING_PRIVATE_KEY_B64: ${{ secrets.CLAWX_CATALOG_SIGNING_PRIVATE_KEY_B64 }}
-          TENCENTCLOUD_SECRET_ID: ${{ secrets.TENCENTCLOUD_SECRET_ID }}
-          TENCENTCLOUD_SECRET_KEY: ${{ secrets.TENCENTCLOUD_SECRET_KEY }}
+          SUPERSEDE_PENDING_SHA256: ${{ github.event_name == 'workflow_dispatch' && inputs['supersede-pending-sha256'] || '' }}
         run: node scripts/kernel-runtime/publish-runtimes.mjs
       - uses: actions/upload-artifact@v4
         if: always()

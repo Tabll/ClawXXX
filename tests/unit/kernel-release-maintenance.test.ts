@@ -14,8 +14,7 @@ describe('read-only maintenance selection', () => {
     const files = new Map<string, unknown>();
     const install = (record: typeof one) => {
       for (const url of f.distribution.catalogUrls) files.set(url, record.catalog);
-      files.set(`${f.distribution.mirrorBaseUrls[0]}metadata/${recordName(record.sequence)}`, record);
-      files.set(`${f.distribution.mirrorBaseUrls[1]}${recordName(record.sequence)}`, record);
+      files.set(`${f.distribution.mirrorBaseUrls[0]}${recordName(record.sequence)}`, record);
     };
     const fetcher = async (url: string, init?: RequestInit) => {
       expect(init?.method).toBeUndefined();
@@ -24,7 +23,7 @@ describe('read-only maintenance selection', () => {
     return { ...f, one, two, files, install, fetcher };
   }
 
-  it('does not create production automatically when both catalog pointers are absent', async () => {
+  it('does not create production automatically when the GitHub catalog and bootstrap journal are absent', async () => {
     const f = fixture();
     expect(await maintenanceHint(f)).toMatchObject({ eligible: false, reason: expect.stringMatching(/bootstrap/) });
   });
@@ -36,7 +35,7 @@ describe('read-only maintenance selection', () => {
     expect(await maintenanceHint({ ...f, now: new Date(f.now.getTime() + 6 * 24 * HOUR) })).toMatchObject({ eligible: true, reason: 'Catalog renewal due' });
   });
 
-  it('queues due cleanup but skips it after identical receipts exist on both mirrors', async () => {
+  it('queues due cleanup but skips it after receipts exist on GitHub', async () => {
     const f = fixture();
     const now = new Date(f.now.getTime() + 8 * 24 * HOUR);
     const renewed = createReleaseRecord({ ...f.input(2, now), source: f.candidate(2), previousCatalog: f.two.catalog, previousRecord: f.two });
@@ -44,11 +43,10 @@ describe('read-only maintenance selection', () => {
     expect(await maintenanceHint({ ...f, now })).toMatchObject({ eligible: true, reason: 'Safe retirement or receipt repair due' });
     for (const item of renewed.retirements) {
       const receipt = createRetirementReceipt(item, renewed, f.input(2, now));
-      f.files.set(`${f.distribution.mirrorBaseUrls[0]}metadata/${receiptName(item)}`, receipt);
-      f.files.set(`${f.distribution.mirrorBaseUrls[1]}${receiptName(item)}`, receipt);
+      f.files.set(`${f.distribution.mirrorBaseUrls[0]}${receiptName(item)}`, receipt);
     }
     expect(await maintenanceHint({ ...f, now })).toMatchObject({ eligible: false });
-    f.files.delete(`${f.distribution.mirrorBaseUrls[1]}${receiptName(renewed.retirements[0])}`);
+    f.files.delete(`${f.distribution.mirrorBaseUrls[0]}${receiptName(renewed.retirements[0])}`);
     expect(await maintenanceHint({ ...f, now })).toMatchObject({ eligible: true });
   });
 
@@ -61,7 +59,7 @@ describe('read-only maintenance selection', () => {
   });
 });
 
-describe('strict all-target mirrored Range acceptance', () => {
+describe('strict all-target configured-source Range acceptance', () => {
   function probeFixture() {
     const f = releaseFixture();
     const record = createReleaseRecord({ ...f.input(), source: f.candidate() });
@@ -82,14 +80,14 @@ describe('strict all-target mirrored Range acceptance', () => {
     return { f, input, fetcher };
   }
 
-  it('checks every kernel and platform on both hosts, not only Linux x64', async () => {
+  it('checks every kernel and platform on GitHub, not only Linux x64', async () => {
     const { input } = probeFixture();
     const result = await drillKernelDistribution(input);
     expect(result.artifacts).toHaveLength(10);
-    expect(result.artifacts.every(a => a.probes.length === 2 && a.probes.every(p => p.first.status === 206 && p.second.status === 206))).toBe(true);
+    expect(result.artifacts.every(a => a.probes.length === 1 && a.probes.every(p => p.first.status === 206 && p.second.status === 206))).toBe(true);
   });
 
-  it.each(['missing ETag', 'weak ETag', 'unquoted ETag', 'changed ETag', 'wrong total', 'encoded body', 'oversized body', 'ignored Range'])('rejects %s on either mirror', async failure => {
+  it.each(['missing ETag', 'weak ETag', 'unquoted ETag', 'changed ETag', 'wrong total', 'encoded body', 'oversized body', 'ignored Range'])('rejects %s on the configured source', async failure => {
     const { input, fetcher } = probeFixture();
     input.fetcher = async (url: string, init?: RequestInit) => {
       const original = await fetcher(url, init);
@@ -106,10 +104,10 @@ describe('strict all-target mirrored Range acceptance', () => {
         status: failure === 'ignored Range' ? 200 : 206, headers,
       });
     };
-    await expect(probeArtifactMirrors(input)).rejects.toThrow(/two live range-capable/);
+    await expect(probeArtifactMirrors(input)).rejects.toThrow(/every configured source/);
   });
 
-  it('does not accept two matching but wrong live catalogs as release success', async () => {
+  it('does not accept a valid but wrong live catalog as release success', async () => {
     const { input, f } = probeFixture();
     input.expectedCatalog = createReleaseRecord({ ...f.input(2), source: f.candidate(2) }).catalog;
     await expect(drillKernelDistribution(input)).rejects.toThrow(/exact expected release/);
