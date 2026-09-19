@@ -161,6 +161,15 @@ export type ConversationExport = {
   usage: Array<Record<string, unknown>>;
 };
 
+export type CanonicalGeneratedAttachment = {
+  blockId: string;
+  blobHash: string;
+  mimeType: string;
+  name?: string;
+  /** Replaces only the current Run's transient live reference in the Renderer. */
+  sourceUri?: string;
+};
+
 export type KernelContextBlock = CanonicalContentBlock & {
   turnId: TurnId;
   role: 'user' | 'assistant' | 'tool';

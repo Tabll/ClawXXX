@@ -61,6 +61,28 @@ async function fixture() {
 }
 
 describe('ConversationRouter', () => {
+  it.each(['openclaw', 'deepseek-harness'] as const)('commits %s generated attachments before publishing Blob references', async kernelId => {
+    const { main, drivers, router } = await fixture();
+    const driver = drivers.get(kernelId)!;
+    const execute = driver.execute.bind(driver);
+    vi.spyOn(driver, 'execute').mockImplementation(async input => ({
+      ...await execute(input),
+      outputAttachments: [{ blockId: 'output', mimeType: 'image/png', data: Buffer.from('image bytes').toString('base64'), name: 'generated.png', sourceUri: '/workspace/generated.png' }],
+    }));
+    const conversationId = asConversationId(`media-${kernelId}`);
+    const result = await router.prompt({ conversationId, kernelId, agentId: 'main', workspaceUri: 'file:///workspace', message: 'make an image' });
+    const exported = await main.exportConversation(conversationId);
+    expect(result.generatedAttachments).toEqual([expect.objectContaining({ blockId: 'output', name: 'generated.png', mimeType: 'image/png' })]);
+    expect(exported.turns.flatMap(turn => turn.blocks)).toContainEqual(expect.objectContaining({
+      id: 'output', type: 'image', blobHash: result.generatedAttachments![0].blobHash, visibility: 'portable',
+    }));
+    expect(exported.runs[0].status).toBe('completed');
+    const blobHash = result.generatedAttachments![0].blobHash;
+    expect(Buffer.from((await main.readConversationBlob({ conversationId, blobHash })).data).toString()).toBe('image bytes');
+    await expect(main.readConversationBlob({ conversationId: asConversationId('unrelated-conversation'), blobHash }))
+      .rejects.toThrow();
+  });
+
   function stdioEvent(input: {
     conversationId: string;
     turnId: string;

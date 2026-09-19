@@ -16,7 +16,7 @@ range begins after `7f8e50ab`; a wholesale merge is not this implementation.
 | 1 | Provider protocol correctness; zoom; conversation drafts/selection; scroll; small provider/channel copy fixes | Implemented and validated |
 | 2 | Model defaults/metadata, scoped Astra compatibility and Provider cleanup | Implemented and validated |
 | 3 | Main-owned speech-to-text and microphone permission recovery with secure credential input | Implemented and validated |
-| 4 | Canonical diagnostics export, generated media and plan/compaction presentation | Reports/progress implemented; generated-media import in progress |
+| 4 | Canonical diagnostics export, generated media and plan/compaction presentation | Implemented and validated |
 | 5 | Channel validation, WeCom and official DingTalk/DWS migration | Pending |
 | 6 | Canonical subagent lineage/status and opt-in Computer Use; optional TokenDance | Pending |
 
@@ -85,7 +85,7 @@ Batch 3 (2026-09-19, commit `49dd80b0`):
   validation pass. Added the missing macOS audio-input entitlement; the installed
   development Electron is ad-hoc signed, not a signed release artifact.
 
-Batch 4a (2026-09-19):
+Batch 4a (2026-09-19, commit `e4317b2f`):
 
 - Reports export selected Conversations through DataService, plus shared kernel
   diagnostics and redacted log tails. Zero selected Conversations works; deleted
@@ -103,6 +103,26 @@ Batch 4a (2026-09-19):
   Electron: 12 passed (canonical timeline, plan/compaction replay, local ZIP).
   Typecheck, build, lint (same 7 existing warnings), comms replay/compare and task
   validation pass. Event fixtures do not claim a paid-provider compaction run.
+
+Batch 4b (2026-09-19):
+
+- OpenClaw imports explicit live MEDIA directives, ACP resource references and
+  successful internal message-tool delivery evidence before transient cleanup.
+  Imports are limited to workspace/managed-media realpaths, 32 files, 32 MiB per
+  file and 64 MiB per run. Remote fetches, fenced examples, symlink escapes,
+  changed files and nonregular files are rejected.
+- Main commits output Blobs before returning Conversation-scoped references;
+  both kernel output interfaces use this path. The Renderer replaces only the
+  current turn's transient links and cannot project a late result into another
+  Conversation. Existing DSH runtime transport limits remain unchanged.
+- Full unit/contract suite: 288 files / 2,756 tests passed; 2 files / 6 tests skipped.
+  Contract tests verify durable reads and denial from another Conversation.
+  Five Electron checks passed (inline images/preview, existing user images and
+  canonical attachments, Markdown). The initial one-pixel image click was
+  replaced with its accessible preview button; the targeted retry passed.
+- Typecheck, production build, lint (same 7 baseline warnings), task validate/
+  dry-run, harness CI and communication replay/compare passed. Real remote
+  image-generation services and cross-platform native files remain untested.
 
 No native-account, microphone, signed package, Windows lifecycle or remote release
 validation has been claimed.
@@ -151,8 +171,8 @@ this table does not claim completion of later batches.
 | 2026-09-10 | [f40e5dab](https://github.com/ValueCell-ai/ClawX/commit/f40e5dab) / [#1290](https://github.com/ValueCell-ai/ClawX/pull/1290) | fix: allow issue report export without conversations (#1290) | Batch 4a implemented and Electron-tested |
 | 2026-09-11 | [607f33e0](https://github.com/ValueCell-ai/ClawX/commit/607f33e0) / [#1283](https://github.com/ValueCell-ai/ClawX/pull/1283) | feat: supports Computer Use feature experimentally (#1283) | 独立 Computer Use 项目，跨平台制品和权限适配 |
 | 2026-09-11 | [e8ff1184](https://github.com/ValueCell-ai/ClawX/commit/e8ff1184) / [#1291](https://github.com/ValueCell-ai/ClawX/pull/1291) | fix: support WeCom calendar queries in single-account desktop sessions (#1291) | 值得移植；插件 patch 纳入签名内核构建 |
-| 2026-09-11 | [33a1a1a7](https://github.com/ValueCell-ai/ClawX/commit/33a1a1a7) / [#1293](https://github.com/ValueCell-ai/ClawX/pull/1293) |  fix: recover OpenClaw-generated file (#1293) | 从结构化 live 事件导入附件，保留 Blob 权威 |
-| 2026-09-14 | [5a735537](https://github.com/ValueCell-ai/ClawX/commit/5a735537) / [#1294](https://github.com/ValueCell-ai/ClawX/pull/1294) | fix: render generated images inline from MEDIA paths (#1294) | 复用行内图片显示，勿恢复 transcript 补全 |
+| 2026-09-11 | [33a1a1a7](https://github.com/ValueCell-ai/ClawX/commit/33a1a1a7) / [#1293](https://github.com/ValueCell-ai/ClawX/pull/1293) |  fix: recover OpenClaw-generated file (#1293) | Batch 4b implemented from live delivery evidence into canonical Blobs |
+| 2026-09-14 | [5a735537](https://github.com/ValueCell-ai/ClawX/commit/5a735537) / [#1294](https://github.com/ValueCell-ai/ClawX/pull/1294) | fix: render generated images inline from MEDIA paths (#1294) | Batch 4b implemented with scoped import, inline preview and no transcript scans |
 | 2026-09-14 | [a0b2a804](https://github.com/ValueCell-ai/ClawX/commit/a0b2a804) / [#1296](https://github.com/ValueCell-ai/ClawX/pull/1296) | feat: gate voice input behind developer mode (#1296) | Batch 3 implemented; hidden by default and direct voice-tab navigation gated |
 | 2026-09-14 | [f7ff4b4d](https://github.com/ValueCell-ai/ClawX/commit/f7ff4b4d) / [#1297](https://github.com/ValueCell-ai/ClawX/pull/1297) | release  0.5.7 (#1297) | 上游发布号，不覆盖本地 0.6.0 |
 | 2026-09-15 | [170b9899](https://github.com/ValueCell-ai/ClawX/commit/170b9899) / [#1292](https://github.com/ValueCell-ai/ClawX/pull/1292) | feat: upgrade DingTalk to official connector 0.8.25 (#1292) | 官方钉钉/DWS 独立迁移，保留单 owner |

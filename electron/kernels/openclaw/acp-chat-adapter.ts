@@ -18,6 +18,7 @@ import { compileManagedOpenClawSession, managedOpenClawSessionKey, openClawModel
 import type { GatewayManager } from '../../gateway/manager';
 import type { ChatRuntimeEvent } from '@shared/chat-runtime-events';
 import { redactDiagnosticText } from '../log-redaction';
+import { collectGeneratedOutputs, deliveredToolMedia, generatedMediaDirectives, managedMediaRoot } from './generated-output';
 
 function workspacePath(uri: string): string {
   if (uri.startsWith('file:')) return fileURLToPath(uri);
@@ -45,6 +46,7 @@ export class OpenClawAcpChatAdapter implements OpenClawChatAdapter {
   private unsubscribePermissions?: () => void;
   private readonly compactions = new Map<string, { id: string; status: string; count: number; seq?: number }>();
   private readonly runtimeEventTails = new Map<string, Promise<void>>();
+  private readonly generatedMedia = new Map<string, { text: string; references: Set<string> }>();
   private readonly onRuntimeEvent = (event: ChatRuntimeEvent) => {
     if (event.type !== 'compaction.updated' || !event.sessionKey) return;
     const run = this.runsBySession.get(event.sessionKey);
@@ -95,6 +97,7 @@ export class OpenClawAcpChatAdapter implements OpenClawChatAdapter {
       this.terminalRuns.delete(input.runId);
       this.compactions.delete(input.runId);
       this.runtimeEventTails.delete(input.runId);
+      this.generatedMedia.delete(input.runId);
       release();
     }
   }
@@ -115,6 +118,8 @@ export class OpenClawAcpChatAdapter implements OpenClawChatAdapter {
     requireSuccess(loaded, 'session/new');
     this.sessionsByRun.set(input.runId, key);
     this.runsBySession.set(key, input);
+    this.generatedMedia.set(input.runId, { text: '', references: new Set() });
+    let outputAttachments: KernelRunAcceptance['outputAttachments'];
     let outcome: 'completed' | 'cancelled' = 'completed';
     try {
       if (this.cancelledBeforePrompt.has(input.runId)) return this.acceptance(input, key);
@@ -129,6 +134,13 @@ export class OpenClawAcpChatAdapter implements OpenClawChatAdapter {
         });
         requireSuccess(prompted, 'session/prompt');
         if (prompted.stopReason === 'cancelled') outcome = 'cancelled';
+        const media = this.generatedMedia.get(input.runId);
+        if (media && this.runtime) {
+          outputAttachments = await collectGeneratedOutputs({
+            runId: input.runId, workspace: cwd, mediaRoot: managedMediaRoot(this.runtime.stateRoot),
+            references: [...media.references, ...generatedMediaDirectives(media.text)],
+          });
+        }
       } finally { await staged.cleanup(); }
     } finally {
       try {
@@ -143,7 +155,7 @@ export class OpenClawAcpChatAdapter implements OpenClawChatAdapter {
       }
     }
     await this.emit(input, 'run.terminal', { outcome });
-    return this.acceptance(input, key);
+    return { ...this.acceptance(input, key), ...(outputAttachments?.length ? { outputAttachments } : {}) };
   }
 
   async cancel(input: KernelRunIdentity): Promise<{ acknowledged: boolean }> {
@@ -206,6 +218,7 @@ export class OpenClawAcpChatAdapter implements OpenClawChatAdapter {
     this.runtimeEvents?.off('chat:runtime-event', this.onRuntimeEvent);
     this.compactions.clear();
     this.runtimeEventTails.clear();
+    this.generatedMedia.clear();
     this.sessionsByRun.clear();
     this.runsBySession.clear();
     this.eventSeqByRun.clear();
@@ -289,6 +302,19 @@ export class OpenClawAcpChatAdapter implements OpenClawChatAdapter {
     const update = envelope.notification.update as Record<string, unknown>;
     const type = typeof update.sessionUpdate === 'string' ? update.sessionUpdate : 'unknown';
     const projectedContent = sessionContent(update.content);
+    const media = this.generatedMedia.get(run.runId);
+    if (media) {
+      if (type === 'agent_message_chunk' || type === 'agent_message') {
+        media.text = (type === 'agent_message' ? projectedContent.text : media.text + projectedContent.text).slice(0, 4 * 1024 * 1024);
+        for (const resource of [...projectedContent.resources, ...projectedContent.images]) {
+          if (resource.uri && media.references.size < 32) media.references.add(resource.uri);
+        }
+      } else if (type === 'tool_call_update' && update.status === 'completed') {
+        for (const uri of deliveredToolMedia(update.rawOutput)) {
+          if (media.references.size < 32) media.references.add(uri);
+        }
+      }
+    }
     const contentPayload = {
       text: projectedContent.text,
       messageId: update.messageId,

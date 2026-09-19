@@ -5,7 +5,7 @@ import type {
   SessionConfigOption,
   SessionNotification,
 } from '@agentclientprotocol/sdk';
-import type { ConversationId, KernelContextBlock, RunId, TurnId } from '../conversations/contracts';
+import type { CanonicalGeneratedAttachment, ConversationId, KernelContextBlock, RunId, TurnId } from '../conversations/contracts';
 import type { KernelId } from '../kernels/contracts';
 
 export type AcpJsonRecord = Record<string, unknown>;
@@ -72,6 +72,8 @@ export type AcpChatRespondPermissionPayload = AcpSessionKeyPayload & {
 
 export type AcpChatOperationResult = {
   success: boolean;
+  /** Blob references returned only after the terminal canonical commit. */
+  generatedAttachments?: CanonicalGeneratedAttachment[];
   stopReason?: string;
   error?: string;
   generation?: number;

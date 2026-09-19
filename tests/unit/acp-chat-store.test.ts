@@ -183,6 +183,32 @@ async function importStore() {
 }
 
 describe('canonical multi-kernel Chat store', () => {
+  it('resolves committed generated images immediately against their owning Conversation', async () => {
+    const { useAcpChatSessionStore } = await importStore();
+    await useAcpChatSessionStore.getState().loadSession({ sessionKey: 'conversation-one', workspaceRoot: '/repo', kernelId: 'openclaw' });
+    hostApiMock.sendAcpPrompt.mockResolvedValue({ success: true, generation: 1, generatedAttachments: [{ blockId: 'output', blobHash: 'f'.repeat(64), name: 'generated.png', mimeType: 'image/png' }] });
+    await useAcpChatSessionStore.getState().sendPrompt({ sessionKey: 'conversation-one', message: 'generate', messageId: 'prompt-image', runId: asRunId('image-run') });
+    await vi.waitFor(() => expect(hostApiMock.resolveAttachment).toHaveBeenCalledWith(expect.objectContaining({
+      ref: expect.objectContaining({ sessionKey: 'conversation-one', uri: `clawx-blob://${'f'.repeat(64)}` }),
+    })));
+    expect(useAcpChatSessionStore.getState().timeline.itemsById['image-run:generated:0']).toMatchObject({
+      role: 'assistant', parts: [{ kind: 'attachment', reference: { name: 'generated.png' }, access: { status: 'available' } }],
+    });
+  });
+
+  it('does not project late generated images into a different Conversation', async () => {
+    const { useAcpChatSessionStore } = await importStore();
+    await useAcpChatSessionStore.getState().loadSession({ sessionKey: 'conversation-one', workspaceRoot: '/repo', kernelId: 'openclaw' });
+    const pending = deferred<Record<string, unknown>>();
+    hostApiMock.sendAcpPrompt.mockReturnValue(pending.promise);
+    const sending = useAcpChatSessionStore.getState().sendPrompt({ sessionKey: 'conversation-one', message: 'generate' });
+    await useAcpChatSessionStore.getState().loadSession({ sessionKey: 'conversation-two', workspaceRoot: '/repo', kernelId: 'openclaw' });
+    pending.resolve({ success: true, generation: 1, generatedAttachments: [{ blockId: 'output', blobHash: 'f'.repeat(64), name: 'late.png', mimeType: 'image/png' }] });
+    await sending;
+    expect(JSON.stringify(useAcpChatSessionStore.getState().timeline)).not.toContain('late.png');
+    expect(hostApiMock.resolveAttachment.mock.calls.some(([payload]) => payload.ref.uri === `clawx-blob://${'f'.repeat(64)}`)).toBe(false);
+  });
+
   beforeEach(() => {
     vi.resetModules();
     hostApiMock.selectConversationKernel.mockReset().mockResolvedValue({

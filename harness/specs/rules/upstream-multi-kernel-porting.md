@@ -51,3 +51,10 @@ timestamps, including live runs after Renderer reload. Compaction lifecycle
 projects native live events onto the owning canonical run and event ledger;
 ignore foreign sessions/replayed sequence numbers and remove observers on stop.
 Do not copy legacy compaction reserve policy into newer kernel runtimes.
+
+Generated files are imported from explicit current-run live references only.
+Resolve local workspace/media paths, reject remote fetches and realpath escapes,
+bound file counts/bytes, and read before transient-session cleanup. Main commits
+output Blobs and metadata before returning references to the Renderer. Resolve
+previews through Conversation-scoped attachment grants; late completions cannot
+modify a different Conversation. Historical views use canonical Blobs only.

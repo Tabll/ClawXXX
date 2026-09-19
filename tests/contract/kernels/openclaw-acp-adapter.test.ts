@@ -2,7 +2,7 @@
 
 import { EventEmitter } from 'node:events';
 import { normalizeGatewayChatRuntimeEvent } from '@electron/gateway/chat-runtime-events';
-import { existsSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -93,6 +93,31 @@ function runtime() {
 }
 
 describe('OpenClaw ACP execution adapter', () => {
+  it('imports only current live output before closing its transient session', async () => {
+    const location = runtime();
+    const workspace = join(location.installRoot, 'workspace');
+    mkdirSync(workspace);
+    const imagePath = join(workspace, 'generated.png');
+    writeFileSync(imagePath, 'generated image');
+    const f = fixture({
+      sendPrompt: vi.fn(async (payload) => {
+        await f.update({ sessionKey: payload.sessionKey, generation: 1, notification: {
+          sessionId: payload.sessionKey, update: { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'MEDIA: generated.png' } },
+        } } as AcpSessionUpdateEnvelope);
+        return { success: true, generation: 1 };
+      }),
+      closeManagedSession: vi.fn(async () => { rmSync(imagePath); return { success: true, generation: 1 }; }),
+    });
+    const adapter = new OpenClawAcpChatAdapter(f.acp);
+    await adapter.initialize({ host: createFakeHost(), generation: 1, runtime: location });
+    const result = await adapter.execute({ ...request('media'), workspaceUri: pathToFileURL(workspace).href });
+    expect(result.outputAttachments).toEqual([expect.objectContaining({
+      blockId: 'run-media:generated:0', data: Buffer.from('generated image').toString('base64'), mimeType: 'image/png', name: 'generated.png',
+    })]);
+    expect(existsSync(imagePath)).toBe(false);
+    await adapter.stop();
+  });
+
   it('routes current-kernel compaction events through the canonical run and removes its listener on stop', async () => {
     const gateway = new EventEmitter();
     let nativeSessionKey = '';

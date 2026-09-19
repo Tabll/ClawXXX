@@ -98,6 +98,29 @@ async function openChat(app: ElectronApplication): Promise<Page> {
 }
 
 test.describe('ACP media attachments', () => {
+  test('renders an authorized assistant image inline and opens its preview', async ({ launchElectronApp }) => {
+    const app = await launchElectronApp({ skipSetup: true });
+    try {
+      const fixture = await installAttachmentHostFixture(app, { sessions: [{ key: MAIN_SESSION_KEY, title: 'Generated image' }] });
+      const bytes = Uint8Array.from(Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', 'base64'));
+      const uri = await fixture.createWorkspaceFile('outputs/generated.png', bytes);
+      await fixture.setSessionReplay(MAIN_SESSION_KEY, [
+        userUpdate('image-prompt', 'Generate an image'),
+        resourceUpdate({ messageId: 'generated-image', uri, name: 'generated.png', mimeType: 'image/png', text: 'Image ready' }),
+      ]);
+      const page = await openChat(app);
+      const image = page.getByTestId('acp-generated-image-attachment');
+      await expect(image).toBeVisible();
+      await expect(image).toHaveAttribute('alt', 'generated.png');
+      await page.getByRole('button', { name: 'Preview generated.png', exact: true }).click();
+      await expect(page.getByTestId('artifact-panel')).toBeVisible();
+      await expect(page.getByTestId('artifact-panel').getByRole('img').first()).toBeVisible();
+      const calls = await fixture.getHostInvocations();
+      expect(calls.some(call => call.module === 'media' && call.action === 'thumbnails')).toBe(true);
+      expect(calls.some(call => call.action.toLowerCase().includes('transcript'))).toBe(false);
+    } finally { await closeElectronApp(app); }
+  });
+
   test('keeps a user directory attachment available for system open', async ({ launchElectronApp }) => {
     const app = await launchElectronApp({ skipSetup: true });
 

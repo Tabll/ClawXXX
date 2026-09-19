@@ -157,6 +157,16 @@ export type KernelRunRequest = KernelRunIdentity & {
 export type KernelRunAcceptance = KernelRunIdentity & {
   acceptedAt: string;
   nativeSessionId?: string;
+  outputAttachments?: KernelOutputAttachment[];
+};
+
+export type KernelOutputAttachment = {
+  blockId: string;
+  mimeType: string;
+  data: string;
+  name?: string;
+  /** Live native reference replaced by the canonical Blob after import. */
+  sourceUri?: string;
 };
 
 export type KernelPermissionResolution = KernelRunIdentity & {

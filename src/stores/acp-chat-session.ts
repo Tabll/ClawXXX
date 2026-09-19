@@ -44,6 +44,7 @@ import { hostApi } from '@/lib/host-api';
 import { hostEvents } from '@/lib/host-events';
 import { asConversationId, asRunId, asTurnId } from '@shared/conversations/contracts';
 import type { KernelId } from '@shared/kernels/contracts';
+import { appendGeneratedAttachments } from '@/lib/conversations/generated-attachments';
 import {
   kernelEventToAcpUpdate,
   kernelEventToPermission,
@@ -1156,6 +1157,9 @@ export const useAcpChatSessionStore = create<AcpChatSessionState>((set, get) => 
       const failedTimeline = result.success
         ? state.timeline
         : removePendingOptimisticUserSegment(state.timeline, messageId);
+      const completedTimeline = result.success ? appendGeneratedAttachments(state.timeline, {
+        userMessageId: messageId, runId, attachments: result.generatedAttachments ?? [],
+      }) : failedTimeline;
       const { [messageId]: _removedTiming, ...remainingTurnTimings } = state.turnTimingsByUserMessageId;
       set({
         activeRunId: null,
@@ -1172,10 +1176,12 @@ export const useAcpChatSessionStore = create<AcpChatSessionState>((set, get) => 
           }
           : remainingTurnTimings,
         ...(result.success
-          ? applyOperationGeneration(state, result)
+          ? { ...applyOperationGeneration(state, result), timeline: { ...completedTimeline, loadGeneration: result.generation ?? generation } }
           : { error: failedOperationMessage(result, 'ACP prompt failed'), timeline: failedTimeline }),
       });
       if (result.success) {
+        resolvePendingAttachments(sessionKey, result.generation ?? generation,
+          newPendingAttachments(state.timeline, completedTimeline));
         queueMicrotask(() => {
           void get().drainQueuedPrompts(sessionKey, result.generation ?? generation);
         });

@@ -84,7 +84,7 @@ export type MessageSegmentItem = {
   /** Bounded transcript projection for hover-only metadata; never a message-history source. */
   assistantMetadata?: AssistantMessageMetadata;
   /** Renderer-only compatibility projection, not an ACP protocol event. */
-  compat?: { source: 'image-generation' | 'openclaw-media'; evidenceId: string };
+  compat?: { source: 'image-generation' | 'openclaw-media' | 'canonical-output'; evidenceId: string };
 };
 
 export type ThoughtItem = {

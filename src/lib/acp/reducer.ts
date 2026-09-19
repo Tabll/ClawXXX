@@ -323,6 +323,7 @@ export function appendSyntheticAssistantMessage(
     evidenceId: string;
     parts: RenderPart[];
     afterItemId?: string;
+    source?: 'image-generation' | 'canonical-output';
   },
 ): AcpTimelineSnapshot {
   const id = `${input.messageId}:0`;
@@ -334,7 +335,7 @@ export function appendSyntheticAssistantMessage(
     segmentIndex: 0,
     blockCount: 0,
     parts: input.parts,
-    compat: { source: 'image-generation', evidenceId: input.evidenceId },
+    compat: { source: input.source ?? 'image-generation', evidenceId: input.evidenceId },
   };
 
   const closed = closeAllMessageSegments(snapshot);

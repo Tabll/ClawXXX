@@ -31,13 +31,15 @@ function filePathFromUri(uri: string): string {
   return uri;
 }
 
-function AcpUserImageAttachment({
+function AcpImageAttachment({
   part,
+  tone,
   name,
   ariaLabel,
   activate,
 }: {
   part: AttachmentRenderPart & { access: Extract<AttachmentRenderPart['access'], { status: 'available' }> };
+  tone: AttachmentTone;
   name: string;
   ariaLabel: string;
   activate: () => Promise<void>;
@@ -68,6 +70,24 @@ function AcpUserImageAttachment({
       cancelled = true;
     };
   }, [part.access]);
+
+  if (tone === 'assistant') {
+    return (
+      <button
+        type="button"
+        aria-label={ariaLabel}
+        onClick={() => void activate()}
+        className="block max-w-full overflow-hidden rounded-xl border border-border bg-surface-modal text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        {thumbnailUrl && <img data-testid="acp-generated-image-attachment" src={thumbnailUrl} alt={name}
+          className="max-h-80 max-w-full object-contain" />}
+        <span className="flex items-center gap-2 px-3 py-2 text-xs text-muted-foreground">
+          <Paperclip className="h-3 w-3 shrink-0" aria-hidden="true" />
+          <span className="truncate">{name}</span>
+        </span>
+      </button>
+    );
+  }
 
   return (
     <button
@@ -145,13 +165,13 @@ export function AcpAttachmentPart({ part, tone = 'assistant' }: { part: Attachme
   };
 
   if (
-    tone === 'user' &&
     part.access.status === 'available' &&
     part.access.target.kind === 'local' &&
     part.access.mimeType.startsWith('image/')
   ) {
     return (
-      <AcpUserImageAttachment
+      <AcpImageAttachment
+        tone={tone}
         part={
           part as AttachmentRenderPart & { access: Extract<AttachmentRenderPart['access'], { status: 'available' }> }
         }

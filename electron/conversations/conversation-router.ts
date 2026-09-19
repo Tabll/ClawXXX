@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { EventEmitter } from 'node:events';
 import type {
   CanonicalContentBlock,
+  CanonicalGeneratedAttachment,
   CommitTerminalRunInput,
   ConversationId,
   KernelContextSnapshotV1,
@@ -9,7 +10,7 @@ import type {
   TurnId,
 } from '@shared/conversations/contracts';
 import { asConversationId, asRunId, asTurnId } from '@shared/conversations/contracts';
-import { KERNEL_CONTRACT_PROTOCOL, type KernelEventEnvelopeV1, type KernelId } from '@shared/kernels/contracts';
+import { KERNEL_CONTRACT_PROTOCOL, type KernelEventEnvelopeV1, type KernelId, type KernelOutputAttachment } from '@shared/kernels/contracts';
 import type { KernelStdioEvent } from '@shared/kernels/runtime-protocol';
 import type { KernelSupervisorRegistry } from '../kernels/supervisor-registry';
 import type { KernelProviderDefault } from '@shared/domains/providers';
@@ -49,16 +50,12 @@ export type ConversationPromptAcceptance = {
   kernelId: KernelId;
   generation: number;
   acceptedAt: string;
+  generatedAttachments?: CanonicalGeneratedAttachment[];
 };
 
 type KernelPromptResult = {
   checkpoint?: unknown;
-  outputAttachments?: Array<{
-    blockId: string;
-    mimeType: string;
-    data: string;
-    name?: string;
-  }>;
+  outputAttachments?: KernelOutputAttachment[];
 };
 
 const DSH_CHECKPOINT_CODEC = 'deepseek-harness-agent';
@@ -362,7 +359,9 @@ export class ConversationRouter extends EventEmitter {
           createdAt: this.now(),
         });
       }
-      for (const output of promptResult?.outputAttachments ?? []) {
+      await state.eventTail;
+      const generatedAttachments: CanonicalGeneratedAttachment[] = [];
+      for (const output of state.completed ? [] : promptResult?.outputAttachments ?? []) {
         const bytes = Buffer.from(output.data, 'base64');
         if (bytes.toString('base64') !== output.data) throw new Error('Kernel returned non-canonical attachment base64');
         const stored = await this.options.mainData.call<{ hash: string }>('putBlob', {
@@ -370,8 +369,14 @@ export class ConversationRouter extends EventEmitter {
           mimeType: output.mimeType,
           createdAt: this.now(),
         });
+        const blockId = output.blockId || this.id();
+        if (output.sourceUri) {
+          state.assistantBlocks = state.assistantBlocks.filter(block => (
+            !block.json || typeof block.json !== 'object' || (block.json as { uri?: unknown }).uri !== output.sourceUri
+          ));
+        }
         state.assistantBlocks.push({
-          id: output.blockId || this.id(),
+          id: blockId,
           type: output.mimeType.startsWith('image/') ? 'image' : 'resource-link',
           visibility: 'portable',
           mimeType: output.mimeType,
@@ -382,9 +387,14 @@ export class ConversationRouter extends EventEmitter {
             id: this.id(),
             type: 'metadata',
             visibility: 'portable',
-            json: { attachment: { blockId: output.blockId, fileName: output.name } },
+            json: { attachment: { blockId, fileName: output.name } },
           });
         }
+        generatedAttachments.push({
+          blockId, blobHash: stored.hash, mimeType: output.mimeType,
+          ...(output.name ? { name: output.name } : {}),
+          ...(output.sourceUri ? { sourceUri: output.sourceUri } : {}),
+        });
       }
       await state.eventTail;
       await this.commitTerminal(state, state.terminal ?? 'completed');
@@ -395,6 +405,7 @@ export class ConversationRouter extends EventEmitter {
         kernelId: input.kernelId,
         generation: snapshot.generation,
         acceptedAt: createdAt,
+        ...(generatedAttachments.length ? { generatedAttachments } : {}),
       };
     } catch (error) {
       await state.eventTail.catch(() => undefined);
