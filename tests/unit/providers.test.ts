@@ -46,7 +46,7 @@ describe('provider metadata', () => {
     });
   });
 
-  it('includes Z.AI CN and Global with OpenClaw-aligned endpoints and glm-5.2 default', () => {
+  it('includes Z.AI CN and Global with OpenClaw-aligned endpoints and glm-5.3-flash default', () => {
     expect(PROVIDER_TYPES).toEqual(expect.arrayContaining(['zai', 'zai-global']));
     expect(BUILTIN_PROVIDER_TYPES).toEqual(expect.arrayContaining(['zai', 'zai-global']));
 
@@ -56,22 +56,22 @@ describe('provider metadata', () => {
           id: 'zai',
           name: 'Z.AI (CN)',
           defaultBaseUrl: 'https://open.bigmodel.cn/api/paas/v4',
-          defaultModelId: 'glm-5.2',
+          defaultModelId: 'glm-5.3-flash',
           showBaseUrl: true,
           showModelId: true,
           codePlanPresetBaseUrl: 'https://open.bigmodel.cn/api/coding/paas/v4',
-          codePlanPresetModelId: 'glm-5.2',
+          codePlanPresetModelId: 'glm-5.3-flash',
           codePlanDocsUrl: 'https://docs.bigmodel.cn/cn/coding-plan/quick-start',
         }),
         expect.objectContaining({
           id: 'zai-global',
           name: 'Z.AI (Global)',
           defaultBaseUrl: 'https://api.z.ai/api/paas/v4',
-          defaultModelId: 'glm-5.2',
+          defaultModelId: 'glm-5.3-flash',
           showBaseUrl: true,
           showModelId: true,
           codePlanPresetBaseUrl: 'https://api.z.ai/api/coding/paas/v4',
-          codePlanPresetModelId: 'glm-5.2',
+          codePlanPresetModelId: 'glm-5.3-flash',
           codePlanDocsUrl: 'https://docs.z.ai/devpack/quick-start',
         }),
       ]),
@@ -167,30 +167,30 @@ describe('provider metadata', () => {
 
     expect(anthropic).toMatchObject({
       showModelId: true,
-      defaultModelId: 'claude-opus-4-8',
-      modelIdPlaceholder: 'claude-opus-4-8',
+      defaultModelId: 'claude-opus-5',
+      modelIdPlaceholder: 'claude-opus-5',
     });
     expect(openrouter).toMatchObject({
       showModelId: true,
-      defaultModelId: 'openai/gpt-5.6-sol',
+      defaultModelId: '~deepseek/deepseek-flash-latest',
     });
     expect(siliconflow).toMatchObject({
       showModelId: true,
-      defaultModelId: 'deepseek-ai/DeepSeek-V3',
+      defaultModelId: 'zai-org/GLM-5.3',
     });
     expect(deepseek).toMatchObject({
       showModelId: true,
-      defaultModelId: 'deepseek-v4-pro',
+      defaultModelId: 'deepseek-flash',
     });
     expect(moonshot).toMatchObject({
       showModelId: true,
-      defaultModelId: 'kimi-k2.6',
-      modelIdPlaceholder: 'kimi-k2.6',
+      defaultModelId: 'kimi-k3',
+      modelIdPlaceholder: 'kimi-k3',
     });
     expect(moonshotGlobal).toMatchObject({
       showModelId: true,
-      defaultModelId: 'kimi-k2.6',
-      modelIdPlaceholder: 'kimi-k2.6',
+      defaultModelId: 'kimi-k3',
+      modelIdPlaceholder: 'kimi-k3',
     });
 
     for (const provider of [anthropic, openrouter, siliconflow, deepseek, moonshot, moonshotGlobal]) {
@@ -213,7 +213,7 @@ describe('provider metadata', () => {
       supportsApiKey: true,
     });
     expect(openai?.hideOAuthUi).toBeUndefined();
-    expect(google).toMatchObject({ showModelId: true, defaultModelId: 'gemini-3.1-pro-preview' });
+    expect(google).toMatchObject({ showModelId: true, defaultModelId: 'gemini-3.8-flash' });
     expect(minimax).toMatchObject({ showModelId: true, defaultModelId: 'MiniMax-M3' });
     expect(minimaxCn).toMatchObject({ showModelId: true, defaultModelId: 'MiniMax-M3' });
 
@@ -224,7 +224,7 @@ describe('provider metadata', () => {
     }
 
     expect(resolveProviderModelForSave(openai, '   ', false)).toBe('gpt-5.6-sol');
-    expect(resolveProviderModelForSave(google, '   ', false)).toBe('gemini-3.1-pro-preview');
+    expect(resolveProviderModelForSave(google, '   ', false)).toBe('gemini-3.8-flash');
     expect(resolveProviderModelForSave(minimax, '   ', false)).toBe('MiniMax-M3');
     expect(resolveProviderModelForSave(minimaxCn, '   ', false)).toBe('MiniMax-M3');
   });
@@ -253,9 +253,9 @@ describe('provider metadata', () => {
       .toBe('Qwen/Qwen3-Coder-480B-A35B-Instruct');
     expect(resolveProviderModelForSave(anthropic, 'claude-sonnet-4-5', false)).toBe('claude-sonnet-4-5');
 
-    expect(resolveProviderModelForSave(openrouter, '   ', false)).toBe('openai/gpt-5.6-sol');
-    expect(resolveProviderModelForSave(siliconflow, '   ', false)).toBe('deepseek-ai/DeepSeek-V3');
-    expect(resolveProviderModelForSave(anthropic, '   ', false)).toBe('claude-opus-4-8');
+    expect(resolveProviderModelForSave(openrouter, '   ', false)).toBe('~deepseek/deepseek-flash-latest');
+    expect(resolveProviderModelForSave(siliconflow, '   ', false)).toBe('zai-org/GLM-5.3');
+    expect(resolveProviderModelForSave(anthropic, '   ', false)).toBe('claude-opus-5');
     expect(resolveProviderModelForSave(ark, '  ep-custom-model  ', false)).toBe('ep-custom-model');
   });
 

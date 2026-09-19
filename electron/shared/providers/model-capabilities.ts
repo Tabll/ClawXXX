@@ -183,16 +183,42 @@ export function inferCustomModelContextWindow(
   modelId: string,
   context: ModelCapabilityContext = {},
 ): number {
+  return inferKnownModelContextWindow(modelId, context)
+    ?? Math.min(DEFAULT_CUSTOM_MODEL_CONTEXT_WINDOW, resolveContextWindowCeiling(context));
+}
+
+/**
+ * Returns a vendor-backed context window without inventing a fallback for an
+ * unknown model. Config migrations use this to avoid replacing a known value
+ * with a guess.
+ */
+export function inferKnownModelContextWindow(
+  modelId: string,
+  context: ModelCapabilityContext = {},
+): number | undefined {
   const ceiling = resolveContextWindowCeiling(context);
 
   for (const rule of CONTEXT_WINDOW_RULES) {
     if (matchesModelId(rule.pattern, modelId)) return Math.min(rule.contextWindow, ceiling);
   }
 
-  return Math.min(DEFAULT_CUSTOM_MODEL_CONTEXT_WINDOW, ceiling);
+  return undefined;
 }
 
 const VISION_MODEL_PATTERNS: RegExp[] = [
+  // `deepseek-flash` is V4.1-Flash, which understands images natively, and
+  // `deepseek-flash-latest` is OpenRouter's floating alias for it (their ids
+  // carry a `~` prefix that `normalizeModelId` keeps out of the bare form).
+  // The retired `deepseek-v4-flash` / `deepseek-v4-flash-vision-exp` ids are
+  // still accepted and served by it, while `deepseek-v4-pro` is text-only.
+  /^deepseek-flash(?:-latest)?$/,
+  /^deepseek-v4\.1-flash$/,
+  /^deepseek-v4-flash(?:-vision-exp)?$/,
+  // Flash is the only multimodal member of the GLM-5 series; plain `glm-5.3`
+  // shares its 1M window but takes text only.
+  /^glm-5\.3-flash$/,
+  // K3 accepts image and video input; K2.x on this runtime stays text-only.
+  /\bkimi-k3\b/,
   /\b(?:gpt-4o|gpt-4\.1|gpt-[5-9]|o[134])\b/,
   /\bclaude-(?:3|4|fable|sonnet|opus|haiku)\b/,
   /\bgemini\b/,

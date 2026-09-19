@@ -10,6 +10,7 @@ touchedAreas:
   - src/**
   - tests/**
   - harness/**
+  - docs/**
   - resources/**
   - scripts/**
   - kernels/**

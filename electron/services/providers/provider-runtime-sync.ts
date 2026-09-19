@@ -25,7 +25,7 @@ import {
   piAiModelsJsonModelEntry,
   type PiAiModelEntry,
 } from '../../shared/pi-ai-model-cost';
-import { providerModelCapabilitiesToModelMetadata } from '../../shared/providers/model-capabilities';
+import { inferKnownModelContextWindow, providerModelCapabilitiesToModelMetadata } from '../../shared/providers/model-capabilities';
 import { logger } from '../../utils/logger';
 import { listAgentsSnapshot } from '../../utils/agent-config';
 
@@ -423,11 +423,20 @@ function piAiModelEntryForProviderModel(
   runtimeProviderKey: string,
   modelId: string,
 ): PiAiModelEntry {
-  return piAiModelsJsonModelEntry(
-    modelId,
-    modelId,
-    modelCapabilitiesForModel(config, runtimeProviderKey, modelId),
-  );
+  const meta = getProviderConfig(config.type);
+  const registeredModel = meta?.models?.find(model => model.id === modelId);
+  const contextWindow = !isUnregisteredProviderType(config.type)
+    && typeof registeredModel?.contextTokens !== 'number'
+    && typeof registeredModel?.contextWindow !== 'number'
+    ? inferKnownModelContextWindow(modelId, {
+      providerKey: runtimeProviderKey,
+      apiProtocol: config.apiProtocol || meta?.api,
+    }) : undefined;
+  return piAiModelsJsonModelEntry(modelId, registeredModel?.name ?? modelId, {
+    ...registeredModel,
+    ...(contextWindow === undefined ? {} : { contextWindow }),
+    ...modelCapabilitiesForModel(config, runtimeProviderKey, modelId),
+  });
 }
 
 async function buildRuntimeProviderConfigMap(): Promise<Map<string, ProviderConfig>> {

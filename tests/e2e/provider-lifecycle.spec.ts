@@ -147,6 +147,30 @@ test.describe('ClawX provider lifecycle', () => {
     }
   });
 
+  test('seeds upstream defaults for new accounts while preserving an existing model choice', async ({ page }) => {
+    await completeSetup(page);
+    await seedTestProvider(page);
+    await page.getByTestId('sidebar-nav-models').click();
+    await expect(page.getByTestId(`provider-card-${TEST_PROVIDER_ID}`)).toBeVisible();
+    await page.getByTestId(`provider-card-${TEST_PROVIDER_ID}`).hover();
+    await page.getByTestId(`provider-edit-${TEST_PROVIDER_ID}`).click();
+    await expect(page.getByTestId(`provider-edit-model-id-${TEST_PROVIDER_ID}`)).toHaveValue('kimi-k2.6');
+    // Navigate away to close the editor without changing the saved account.
+    await page.getByTestId('sidebar-nav-settings').click();
+    await page.getByTestId('sidebar-nav-models').click();
+    await page.getByTestId('providers-add-button').click();
+    const defaults = [
+      ['anthropic', 'claude-opus-5'], ['google', 'gemini-3.8-flash'],
+      ['openrouter', '~deepseek/deepseek-flash-latest'], ['deepseek', 'deepseek-flash'],
+      ['moonshot', 'kimi-k3'], ['siliconflow', 'zai-org/GLM-5.3'], ['zai', 'glm-5.3-flash'],
+    ];
+    for (const [vendor, model] of defaults) {
+      await page.getByTestId(`add-provider-type-${vendor}`).click();
+      await expect(page.getByTestId('add-provider-model-id-input')).toHaveValue(model);
+      await page.getByTestId('add-provider-change-type').click();
+    }
+  });
+
   test('shows OpenAI OAuth and API key auth mode toggle in add-provider dialog', async ({ page }) => {
     await completeSetup(page);
 
@@ -386,12 +410,12 @@ test.describe('ClawX provider lifecycle', () => {
 
     await page.getByTestId('add-provider-type-zai').click();
     await expect(page.getByTestId('add-provider-base-url-input')).toHaveValue('https://open.bigmodel.cn/api/paas/v4');
-    await expect(page.getByTestId('add-provider-model-id-input')).toHaveValue('glm-5.2');
+    await expect(page.getByTestId('add-provider-model-id-input')).toHaveValue('glm-5.3-flash');
     await expect(page.getByTestId('add-provider-codeplan-mode-tab')).toBeVisible();
 
     await page.getByTestId('add-provider-codeplan-mode-tab').click();
     await expect(page.getByTestId('add-provider-base-url-input')).toHaveValue('https://open.bigmodel.cn/api/coding/paas/v4');
-    await expect(page.getByTestId('add-provider-model-id-input')).toHaveValue('glm-5.2');
+    await expect(page.getByTestId('add-provider-model-id-input')).toHaveValue('glm-5.3-flash');
 
     await page.getByTestId('add-provider-codeplan-apikey-tab').click();
     await expect(page.getByTestId('add-provider-base-url-input')).toHaveValue('https://open.bigmodel.cn/api/paas/v4');

@@ -14,7 +14,7 @@ range begins after `7f8e50ab`; a wholesale merge is not this implementation.
 | Batch | Scope | Status |
 |---|---|---|
 | 1 | Provider protocol correctness; zoom; conversation drafts/selection; scroll; small provider/channel copy fixes | Implemented and validated |
-| 2 | Model defaults/metadata, scoped Astra compatibility and Provider cleanup | Pending |
+| 2 | Model defaults/metadata, scoped Astra compatibility and Provider cleanup | Implemented and validated |
 | 3 | Main-owned speech-to-text and microphone permission recovery with secure credential input | Pending |
 | 4 | Canonical diagnostics export, generated media and plan/compaction presentation | Pending |
 | 5 | Channel validation, WeCom and official DingTalk/DWS migration | Pending |
@@ -28,7 +28,7 @@ patches require reproduction against 2026.9.4 before any semantic backport.
 
 ## Evidence
 
-Batch 1 (2026-09-19):
+Batch 1 (2026-09-19, commit `27d1d1f3`):
 
 - Three regression tests first reproduced missing Anthropic/Google projection and
   the silent missing-protocol return. All now pass with explicit provider protocols
@@ -45,6 +45,22 @@ Batch 1 (2026-09-19):
 - Drafts include text, attachments, target agent, skill and selection. Late staging
   results retain their Conversation owner; canonical deletion invalidates stale
   callbacks, while failed deletion retains drafts. Drafts are memory-only.
+
+Batch 2 (2026-09-19):
+
+- 10 upstream regression tests reproduced Astra/default-model/auth-reference and
+  official model validation gaps before implementation.
+- 220 unit/contract tests pass (7 files), including both kernel Provider projections,
+  explicit capability/context preservation, scoped Astra migration, complete-list
+  availability checks and partial-page/relay non-rejection.
+- 10 Electron provider lifecycle/developer-mode tests pass, including new defaults,
+  preservation of an existing Kimi model, secure credential handles, deletion across
+  restart and explicit model capabilities.
+- Typecheck, build, lint (same 7 existing warnings), task validate/dry-run,
+  comms replay/compare and diff validation pass.
+- Kept current-kernel compaction policy and custom/OAuth context ceilings. No
+  upstream transcript/usage readers were introduced. Third-party account/model
+  availability remains subject to actual credentials and provider service state.
 
 No native-account, microphone, signed package, Windows lifecycle or remote release
 validation has been claimed.
@@ -84,7 +100,7 @@ this table does not claim completion of later batches.
 | 2026-09-03 | [e1b8b0c2](https://github.com/ValueCell-ai/ClawX/commit/e1b8b0c2) / [#1280](https://github.com/ValueCell-ai/ClawX/pull/1280) | refactor: subagent session's live streaming, timing and status (#1280) | 与 canonical 子代理状态/事件一起适配 |
 | 2026-09-03 | [5cf4d111](https://github.com/ValueCell-ai/ClawX/commit/5cf4d111) / [#1281](https://github.com/ValueCell-ai/ClawX/pull/1281) | release 0.5.6 (#1281) | 上游发布号，不覆盖本地 0.6.0 |
 | 2026-09-07 | [d510c221](https://github.com/ValueCell-ai/ClawX/commit/d510c221) / [#1284](https://github.com/ValueCell-ai/ClawX/pull/1284) | fix: stabilize macOS release signing (#1284) | 打包工具单独升级，不覆盖当前签名发布流程 |
-| 2026-09-07 | [1015e0d8](https://github.com/ValueCell-ai/ClawX/commit/1015e0d8) / [#1286](https://github.com/ValueCell-ai/ClawX/pull/1286) |  fix: support Astra custom providers and clean up deleted provider state (#1286) | 只取适用部分；Astra 使用 #1303 的最终 low 逻辑 |
+| 2026-09-07 | [1015e0d8](https://github.com/ValueCell-ai/ClawX/commit/1015e0d8) / [#1286](https://github.com/ValueCell-ai/ClawX/pull/1286) |  fix: support Astra custom providers and clean up deleted provider state (#1286) | Batch 2 implemented with final scoped low behavior and projection cleanup |
 | 2026-09-07 | [a1db9fce](https://github.com/ValueCell-ai/ClawX/commit/a1db9fce) / [#1287](https://github.com/ValueCell-ai/ClawX/pull/1287) | chore: bump bundled channel plugins compatible with OpenClaw 2026.7.1-2 (#1287) | 逐项核对现有插件版本，不降级本地较新内核依赖 |
 | 2026-09-07 | [f5bb8c02](https://github.com/ValueCell-ai/ClawX/commit/f5bb8c02) / [#1288](https://github.com/ValueCell-ai/ClawX/pull/1288) | fix: activate plugin channels after save and reject invalid Feishu credentials (#1288) | 凭据验证有价值；激活需接 Channel owner |
 | 2026-09-08 | [6a938757](https://github.com/ValueCell-ai/ClawX/commit/6a938757) / [#1278](https://github.com/ValueCell-ai/ClawX/pull/1278) | refactor(settings): update developer mode description (#1278) | 低风险文案，但需符合本地开发者模式内容 |
@@ -102,6 +118,6 @@ this table does not claim completion of later batches.
 | 2026-09-15 | [16c543bb](https://github.com/ValueCell-ai/ClawX/commit/16c543bb) / [#1298](https://github.com/ValueCell-ai/ClawX/pull/1298) | fix: preserve window zoom after minimize (#1298) | Batch 1 implemented; Windows native test pending platform |
 | 2026-09-16 | [b67561a3](https://github.com/ValueCell-ai/ClawX/commit/b67561a3) / [#1301](https://github.com/ValueCell-ai/ClawX/pull/1301) | refactor: guide users to microphone permission settings and add missing audio-input declaration in macOS entitlements plist (#1301) | 随 ASR 补权限与签名包录音验收 |
 | 2026-09-16 | [d5473067](https://github.com/ValueCell-ai/ClawX/commit/d5473067) / [#1302](https://github.com/ValueCell-ai/ClawX/pull/1302) | Fix dws install (#1302) | 必须随官方钉钉/DWS 一起吸收 |
-| 2026-09-16 | [01b418ec](https://github.com/ValueCell-ai/ClawX/commit/01b418ec) / [#1300](https://github.com/ValueCell-ai/ClawX/pull/1300) | feat: refresh provider defaults and catalog-free runtime config (#1300) | Protocol fix: Batch 1 done; remaining Provider work: Batch 2; JSONL excluded |
-| 2026-09-16 | [34ad624b](https://github.com/ValueCell-ai/ClawX/commit/34ad624b) / [#1303](https://github.com/ValueCell-ai/ClawX/pull/1303) | fix: migrate Astra reasoning effort from none to low (#1303) | 自定义 completions + Astra 定向迁移 |
+| 2026-09-16 | [01b418ec](https://github.com/ValueCell-ai/ClawX/commit/01b418ec) / [#1300](https://github.com/ValueCell-ai/ClawX/pull/1300) | feat: refresh provider defaults and catalog-free runtime config (#1300) | Batches 1–2 implemented; JSONL excluded |
+| 2026-09-16 | [34ad624b](https://github.com/ValueCell-ai/ClawX/commit/34ad624b) / [#1303](https://github.com/ValueCell-ai/ClawX/pull/1303) | fix: migrate Astra reasoning effort from none to low (#1303) | Batch 2 implemented; other explicit efforts/protocols preserved |
 | 2026-09-18 | [24a24b77](https://github.com/ValueCell-ai/ClawX/commit/24a24b77) / [#1304](https://github.com/ValueCell-ai/ClawX/pull/1304) | release 0.5.8 (#1304) | 发布 0.5.8；仅作为本次审查基准 |

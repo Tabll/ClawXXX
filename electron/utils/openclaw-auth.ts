@@ -46,6 +46,7 @@ import {
 import {
   inferCustomModelContextWindow,
   inferCustomModelInputModalities,
+  inferKnownModelContextWindow,
   providerModelCapabilitiesToModelMetadata,
   type ProviderModelCapabilities,
 } from '../shared/providers/model-capabilities';
@@ -350,39 +351,60 @@ type AuthProfilesStore = PersistedAuthProfilesStore;
 
 function removeProfilesForProvider(store: AuthProfilesStore, provider: string): boolean {
   const removedProfileIds = new Set<string>();
+  const providerProfilePrefix = `${provider}:`;
+  let modified = false;
 
   for (const [profileId, profile] of Object.entries(store.profiles)) {
-    if (profile?.provider !== provider) {
+    if (profile?.provider !== provider && !profileId.startsWith(providerProfilePrefix)) {
       continue;
     }
     delete store.profiles[profileId];
     removedProfileIds.add(profileId);
-  }
-
-  if (removedProfileIds.size === 0) {
-    return false;
+    modified = true;
   }
 
   if (store.order) {
     for (const [orderProvider, profileIds] of Object.entries(store.order)) {
-      const nextProfileIds = profileIds.filter((profileId) => !removedProfileIds.has(profileId));
-      if (nextProfileIds.length > 0) {
-        store.order[orderProvider] = nextProfileIds;
-      } else {
+      if (orderProvider === provider) {
         delete store.order[orderProvider];
+        modified = true;
+        continue;
+      }
+      const nextProfileIds = profileIds.filter((profileId) => (
+        !removedProfileIds.has(profileId) && !profileId.startsWith(providerProfilePrefix)
+      ));
+      if (nextProfileIds.length !== profileIds.length) {
+        modified = true;
+        if (nextProfileIds.length > 0) {
+          store.order[orderProvider] = nextProfileIds;
+        } else {
+          delete store.order[orderProvider];
+        }
       }
     }
   }
 
   if (store.lastGood) {
     for (const [lastGoodProvider, profileId] of Object.entries(store.lastGood)) {
-      if (removedProfileIds.has(profileId)) {
+      if (lastGoodProvider === provider
+        || removedProfileIds.has(profileId)
+        || profileId.startsWith(providerProfilePrefix)) {
         delete store.lastGood[lastGoodProvider];
+        modified = true;
       }
     }
   }
 
-  return true;
+  if (store.usageStats) {
+    for (const profileId of Object.keys(store.usageStats)) {
+      if (removedProfileIds.has(profileId) || profileId.startsWith(providerProfilePrefix)) {
+        delete store.usageStats[profileId];
+        modified = true;
+      }
+    }
+  }
+
+  return modified;
 }
 
 function removeProfileFromStore(
@@ -419,6 +441,11 @@ function removeProfileFromStore(
         changed = true;
       }
     }
+  }
+
+  if (shouldCleanReferences && store.usageStats?.[profileId] !== undefined) {
+    delete store.usageStats[profileId];
+    changed = true;
   }
 
   return changed;
@@ -1115,6 +1142,49 @@ function deleteModelConfigIfEmpty(parent: Record<string, unknown>): void {
   }
 }
 
+function removeProviderEntriesFromModelCatalog(
+  parent: Record<string, unknown>,
+  providerKeys: ReadonlySet<string>,
+): boolean {
+  const configuredModels = parent.models;
+  if (!isPlainRecord(configuredModels)) return false;
+
+  let modified = false;
+  for (const modelRef of Object.keys(configuredModels)) {
+    const providerKey = getModelRefProviderKey(modelRef);
+    if (providerKey && providerKeys.has(providerKey)) {
+      delete configuredModels[modelRef];
+      modified = true;
+    }
+  }
+  // Keep an explicit empty object when the last entry is removed. OpenClaw
+  // treats agents.*.models as a protected map: omitting the field during
+  // config.set preserves the previous map, while `models: {}` clears it.
+  return modified;
+}
+
+function removeProviderEntriesFromAgentModelCatalogs(
+  config: Record<string, unknown>,
+  providerKeys: ReadonlySet<string>,
+): boolean {
+  const agents = config.agents;
+  if (!isPlainRecord(agents)) return false;
+
+  let modified = false;
+  if (isPlainRecord(agents.defaults)
+    && removeProviderEntriesFromModelCatalog(agents.defaults, providerKeys)) {
+    modified = true;
+  }
+  if (Array.isArray(agents.list)) {
+    for (const entry of agents.list) {
+      if (isPlainRecord(entry) && removeProviderEntriesFromModelCatalog(entry, providerKeys)) {
+        modified = true;
+      }
+    }
+  }
+  return modified;
+}
+
 const RUNTIME_GENERATED_PROVIDER_KEY = /^(custom|ollama)-[a-z0-9]+$/i;
 
 function isRuntimeGeneratedProviderKey(providerKey: string): boolean {
@@ -1269,6 +1339,16 @@ export async function removeProviderFromOpenClaw(provider: string): Promise<void
       if (modified) {
         normalizeAgentsDefaultsCompactionMode(config);
       }
+  });
+
+  // Keep model-catalog removal in its own transaction. The running Gateway can
+  // normalize provider deletion independently, so verify the latest snapshot
+  // after that commit instead of relying on both removals landing together.
+  const providerKeySet = new Set(providerKeysToRemove);
+  await mutateOpenClawConfig((config) => {
+    if (removeProviderEntriesFromAgentModelCatalogs(config, providerKeySet)) {
+      normalizeAgentsDefaultsCompactionMode(config);
+    }
   });
 
   // Remove the provider from each per-agent model registry used by pi-ai.
@@ -1547,6 +1627,7 @@ export async function setOpenClawDefaultModel(
         modelIds: [modelId, ...fallbackModelIds],
         includeRegistryModels: true,
         mergeExistingModels: true,
+        inferRuntimeModelInputs: true,
       });
       console.log(`Configured models.providers.${provider} with baseUrl=${providerCfg.baseUrl}, model=${modelId}`);
     } else if (provider === 'openai-codex') {
@@ -1649,14 +1730,30 @@ function mergeProviderModels(
   ...groups: Array<Array<Record<string, unknown>>>
 ): Array<Record<string, unknown>> {
   const merged: Array<Record<string, unknown>> = [];
-  const seen = new Set<string>();
+  const indexes = new Map<string, number>();
 
+  // Groups are ordered from lowest to highest priority. This lets registry and
+  // inferred metadata fill gaps without replacing values explicitly persisted
+  // in the user's existing OpenClaw model row.
   for (const group of groups) {
     for (const item of group) {
       const id = typeof item?.id === 'string' ? item.id : '';
-      if (!id || seen.has(id)) continue;
-      seen.add(id);
-      merged.push(item);
+      if (!id) continue;
+
+      const existingIndex = indexes.get(id);
+      if (existingIndex === undefined) {
+        indexes.set(id, merged.length);
+        merged.push({ ...item });
+        continue;
+      }
+
+      const next = { ...merged[existingIndex], ...item };
+      if (Object.hasOwn(item, 'contextTokens') && !Object.hasOwn(item, 'contextWindow')) {
+        delete next.contextWindow;
+      } else if (Object.hasOwn(item, 'contextWindow') && !Object.hasOwn(item, 'contextTokens')) {
+        delete next.contextTokens;
+      }
+      merged[existingIndex] = next;
     }
   }
   return merged;
@@ -1672,6 +1769,64 @@ function applyModelMetadataOverrides(
     const metadata = id ? metadataById[id] : undefined;
     return metadata ? { ...model, ...metadata } : model;
   });
+}
+
+function hasConfiguredReasoningEffort(params: Record<string, unknown>): boolean {
+  const candidates = [params, params.extra_body, params.extraBody];
+  return candidates.some((candidate) => (
+    isPlainRecord(candidate)
+      && (Object.hasOwn(candidate, 'reasoning_effort') || Object.hasOwn(candidate, 'reasoningEffort'))
+  ));
+}
+
+function ensureCustomAstraCompletionsReasoningEffort(
+  config: Record<string, unknown>,
+  provider: string,
+  api: string | undefined,
+  modelIds: string[],
+): boolean {
+  if (!provider.startsWith('custom-') || api !== 'openai-completions') return false;
+
+  const astraModelIds = modelIds.filter((modelId) => /astra/i.test(modelId));
+  if (astraModelIds.length === 0) return false;
+
+  const agents = isPlainRecord(config.agents) ? config.agents : {};
+  const defaults = isPlainRecord(agents.defaults) ? agents.defaults : {};
+  const defaultParams = isPlainRecord(defaults.params) ? defaults.params : {};
+  const hasDefaultReasoningEffort = hasConfiguredReasoningEffort(defaultParams);
+
+  const configuredModels = isPlainRecord(defaults.models) ? defaults.models : {};
+  let modified = false;
+  for (const modelId of astraModelIds) {
+    const modelRef = `${provider}/${modelId}`;
+    const model = isPlainRecord(configuredModels[modelRef]) ? configuredModels[modelRef] : {};
+    const params = isPlainRecord(model.params) ? model.params : {};
+    const extraBody = isPlainRecord(params.extra_body)
+      ? params.extra_body
+      : (isPlainRecord(params.extraBody) ? params.extraBody : {});
+    const hasLegacyNone = extraBody.reasoning_effort === 'none';
+    if (!hasLegacyNone
+      && (hasDefaultReasoningEffort || hasConfiguredReasoningEffort(params))) continue;
+
+    configuredModels[modelRef] = {
+      ...model,
+      params: {
+        ...params,
+        extra_body: {
+          ...extraBody,
+          reasoning_effort: 'low',
+        },
+      },
+    };
+    modified = true;
+  }
+
+  if (modified) {
+    defaults.models = configuredModels;
+    agents.defaults = defaults;
+    config.agents = agents;
+  }
+  return modified;
 }
 
 /**
@@ -1933,24 +2088,29 @@ function upsertOpenClawProviderEntry(
   const registryModels = options.includeRegistryModels
     ? ((getProviderConfig(provider)?.models ?? []).map((m) => ({ ...m })) as Array<Record<string, unknown>>)
     : [];
-  const runtimeModels = (options.modelIds ?? []).map((id) => ({
-    id,
-    name: id,
-    ...(options.inferRuntimeModelInputs
-      ? {
-        input: inferCustomModelInputModalities(id),
-        // Without an explicit contextWindow OpenClaw cannot budget compaction
-        // for custom providers and long sessions die with context overflow.
-        contextWindow: inferCustomModelContextWindow(id, {
-          providerKey: provider,
-          apiProtocol: options.api,
-        }),
-      }
-      : {}),
-    ...(options.modelMetadataById?.[id] ?? {}),
-  }));
+  const registeredProvider = getProviderConfig(provider);
+  const runtimeModels = (options.modelIds ?? []).map((id) => {
+    const registeredModel = registeredProvider?.models?.find(model => model.id === id);
+    const hasRegisteredContext = typeof registeredModel?.contextTokens === 'number'
+      || typeof registeredModel?.contextWindow === 'number';
+    const inferredContextWindow = hasRegisteredContext ? undefined : registeredProvider
+      ? inferKnownModelContextWindow(id, { providerKey: provider, apiProtocol: options.api })
+      : options.inferRuntimeModelInputs
+        ? inferCustomModelContextWindow(id, { providerKey: provider, apiProtocol: options.api })
+        : undefined;
+    return {
+      ...registeredModel,
+      id,
+      name: registeredModel?.name ?? id,
+      ...(options.inferRuntimeModelInputs && !registeredModel?.input
+        ? { input: inferCustomModelInputModalities(id) } : {}),
+      ...(inferredContextWindow === undefined ? {} : { contextWindow: inferredContextWindow }),
+    };
+  });
+  // Existing model metadata outranks inferred/catalog defaults. Explicit edits
+  // from the canonical account are applied last, including false capability flags.
   let mergedModels = applyModelMetadataOverrides(
-    mergeProviderModels(registryModels, existingModels, runtimeModels),
+    mergeProviderModels(registryModels, existingModels, runtimeModels, existingModels),
     options.modelMetadataById,
   );
   if (options.api === 'anthropic-messages') {
@@ -1991,6 +2151,10 @@ function upsertOpenClawProviderEntry(
   providers[provider] = nextProvider;
   models.providers = providers;
   config.models = models;
+  ensureCustomAstraCompletionsReasoningEffort(
+    config, provider, options.api,
+    mergedModels.flatMap(model => typeof model.id === 'string' ? [model.id] : []),
+  );
 
   if (removedLegacyMoonshot) {
     console.log('Removed legacy models.providers.moonshot alias entry');
@@ -3081,6 +3245,27 @@ export async function sanitizeOpenClawConfig(): Promise<void> {
     // plugins.entries.moonshot.config.webSearch. Migrate the old key and strip
     // any inline apiKey so auth-profiles/env remain the single source of truth.
     const providers = ((config.models as Record<string, unknown> | undefined)?.providers as Record<string, unknown> | undefined) || {};
+    // Older ClawX releases generated reasoning_effort="none" for custom Astra
+    // completions models. Astra no longer accepts that value, so repair those
+    // runtime entries before Gateway launch and seed the supported low default
+    // when an existing provider has no per-model effort yet.
+    for (const [providerKey, rawProvider] of Object.entries(providers)) {
+      if (!isPlainRecord(rawProvider)) continue;
+      const providerModels = Array.isArray(rawProvider.models) ? rawProvider.models : [];
+      const modelIds = providerModels.flatMap((model) => (
+        isPlainRecord(model) && typeof model.id === 'string' ? [model.id] : []
+      ));
+      if (ensureCustomAstraCompletionsReasoningEffort(
+        config,
+        providerKey,
+        typeof rawProvider.api === 'string' ? rawProvider.api : undefined,
+        modelIds,
+      )) {
+        modified = true;
+        console.log(`[sanitize] Set custom Astra reasoning effort to low for "${providerKey}"`);
+      }
+    }
+
     if (providers[OPENCLAW_PROVIDER_KEY_MOONSHOT]) {
       const tools = isPlainRecord(config.tools) ? config.tools : null;
       const web = tools && isPlainRecord(tools.web) ? tools.web : null;

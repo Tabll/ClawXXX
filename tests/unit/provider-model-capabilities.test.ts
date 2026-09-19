@@ -31,6 +31,13 @@ describe('providerModelCapabilitiesToModelMetadata', () => {
 
 describe('inferCustomModelInputModalities', () => {
   it.each([
+    'deepseek-flash',
+    'deepseek-v4.1-flash',
+    '~deepseek/deepseek-flash-latest',
+    'deepseek-v4-flash',
+    'glm-5.3-flash',
+    'zai-org/GLM-5.3-Flash',
+    'kimi-k3',
     'gpt-4o',
     'gpt-5.6-sol',
     'claude-opus-4-6',
@@ -44,6 +51,9 @@ describe('inferCustomModelInputModalities', () => {
   });
 
   it.each([
+    'deepseek-v4-pro',
+    'glm-5.3',
+    'zai-org/GLM-5.3',
     'deepseek-chat',
     'kimi-k2.6',
     'qwen3.6-plus',

@@ -74,7 +74,7 @@ OpenAI互換ゲートウェイで **Custom** プロバイダーを使う場合�
 
 Customプロバイダーのモデル行には、モデルファミリーから推定した明示的な `contextWindow`（例：`gpt-5.x` → 272k）も付与されます。旧バージョンで保存された行は起動時に補完されるため、OpenClawは長いセッションが「Context overflow」エラーになる前に圧縮できます。圧縮設定がない場合、ClawXは `agents.defaults.compaction.mode = "safeguard"` と `reserveTokensFloor = 50000` を初期設定します。ユーザーが作成したモデル行や設定は変更されませんが、`reserveTokensFloor` が欠落している場合だけ補完されることがあります。
 
-Z.AI（CN / Global）はOpenClaw組み込みの `zai` プロバイダー（`ZAI_API_KEY`）に対応し、既定モデルは `glm-5.2` です。Code PlanプリセットではCoding Planエンドポイント（`.../api/coding/paas/v4`）を、通常のAPIでは（`.../api/paas/v4`）を使います。CNとGlobalは同じOpenClawランタイムキーを共有するため相互排他的です。
+Z.AI（CN / Global）はOpenClaw組み込みの `zai` プロバイダー（`ZAI_API_KEY`）に対応し、既定モデルは `glm-5.3-flash` です。Code PlanプリセットではCoding Planエンドポイント（`.../api/coding/paas/v4`）を、通常のAPIでは（`.../api/paas/v4`）を使います。CNとGlobalは同じOpenClawランタイムキーを共有するため相互排他的です。
 
 互換ゲートウェイが認証以外の理由で`/models`を拒否した場合、ClawXはAPIキー検証時に設定済みモデルを使い、軽量な`/chat/completions`または`/responses`プローブへ自動フォールバックします。
 
