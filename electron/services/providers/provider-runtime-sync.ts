@@ -280,12 +280,12 @@ async function syncProviderSecretToRuntime(
   }
 }
 
-async function resolveRuntimeSyncContext(config: ProviderConfig): Promise<RuntimeProviderSyncContext | null> {
+async function resolveRuntimeSyncContext(config: ProviderConfig): Promise<RuntimeProviderSyncContext> {
   const runtimeProviderKey = await resolveRuntimeProviderKey(config);
   const meta = getProviderConfig(config.type);
   const api = config.apiProtocol || (isUnregisteredProviderType(config.type) ? 'openai-completions' : meta?.api);
   if (!api) {
-    return null;
+    throw new Error(`Provider protocol is not configured for ${config.type}`);
   }
 
   return {

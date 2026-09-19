@@ -614,6 +614,7 @@ export function Chat() {
         </div>
 
         <ChatInput
+          draftKey={currentSessionKey}
           kernelId={selectedKernelId}
           onSend={(text: string, attachments?: FileAttachment[], targetAgentId?: string | null) => {
             if (!currentSessionKey || !cwd || !workspaceContextAvailable) return;

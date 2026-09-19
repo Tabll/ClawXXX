@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { GatewayManager } from '@electron/gateway/manager';
 import type { ProviderConfig } from '@electron/utils/secure-storage';
+import { getProviderDefinition } from '@electron/shared/providers/registry';
 
 const mocks = vi.hoisted(() => ({
   getProviderAccount: vi.fn(),
@@ -150,6 +151,29 @@ describe('provider-runtime-sync config delivery', () => {
     await syncSavedProviderToRuntime(createProvider(), undefined, gateway as GatewayManager);
 
     expectNoGatewayLifecycleCalls(gateway);
+  });
+
+  it.each(['anthropic', 'google'] as const)('delivers a %s account without an explicit protocol', async (type) => {
+    mocks.getProviderConfig.mockImplementation((vendor: string) => getProviderDefinition(vendor)?.providerConfig);
+    const definition = getProviderDefinition(type)!;
+    await syncSavedProviderToRuntime(createProvider({
+      id: `${type}-account`, type, model: definition.defaultModelId,
+    }), 'test-provider-key');
+
+    expect(mocks.saveProviderKeyToOpenClaw).toHaveBeenCalled();
+    expect(mocks.syncProviderConfigToOpenClaw).toHaveBeenCalledWith(
+      type,
+      definition.defaultModelId,
+      expect.objectContaining({ api: type === 'anthropic' ? 'anthropic-messages' : 'google-generative-ai' }),
+    );
+  });
+
+  it('fails an unprojectable account instead of silently reporting success', async () => {
+    mocks.getProviderConfig.mockReturnValue(undefined);
+    await expect(syncSavedProviderToRuntime(createProvider({ type: 'google' }), undefined))
+      .rejects.toThrow('Provider protocol is not configured for google');
+    expect(mocks.saveProviderKeyToOpenClaw).not.toHaveBeenCalled();
+    expect(mocks.syncProviderConfigToOpenClaw).not.toHaveBeenCalled();
   });
 
   it('propagates per-agent model registry sync failures after saving provider config', async () => {

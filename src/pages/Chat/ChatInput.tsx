@@ -6,7 +6,9 @@
  * Files are staged through the typed Host API and included as local media
  * references in the ACP session/prompt request.
  */
-import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import { useState, useRef, useEffect, useLayoutEffect, useCallback, useMemo } from 'react';
+import { useComposerDraftField } from '@/hooks/use-composer-draft';
+import type { ComposerAttachment } from '@/stores/composer-drafts';
 import type { SessionConfigOption, UsageUpdate } from '@agentclientprotocol/sdk';
 import { SendHorizontal, Square, X, Paperclip, FileText, Film, Music, FileArchive, File, FolderOpen, Loader2, AtSign, Search, ChevronDown, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -33,16 +35,7 @@ import type { KernelId } from '@shared/kernels/contracts';
 
 // ── Types ────────────────────────────────────────────────────────
 
-export interface FileAttachment {
-  id: string;
-  fileName: string;
-  mimeType: string;
-  fileSize: number;
-  stagedPath: string;        // Host-staged path included in ACP prompt media
-  preview: string | null;    // data URL for images, null for others
-  status: 'staging' | 'ready' | 'error';
-  error?: string;
-}
+export type FileAttachment = ComposerAttachment;
 
 export interface ChatWorkspaceOption {
   path: string;
@@ -50,6 +43,7 @@ export interface ChatWorkspaceOption {
 }
 
 interface ChatInputProps {
+  draftKey?: string;
   kernelId?: KernelId;
   onSend: (text: string, attachments?: FileAttachment[], targetAgentId?: string | null) => void;
   onQueueFollowUp?: (text: string, attachments?: FileAttachment[]) => boolean;
@@ -410,7 +404,12 @@ function readFileAsBase64(file: globalThis.File): Promise<string> {
 
 // ── Component ────────────────────────────────────────────────────
 
-export function ChatInput({
+export function ChatInput(props: ChatInputProps) {
+  return <ConversationChatInput key={props.draftKey ?? 'unbound'} {...props} />;
+}
+
+function ConversationChatInput({
+  draftKey,
   kernelId,
   onSend,
   onQueueFollowUp,
@@ -431,9 +430,12 @@ export function ChatInput({
   onRemoveQueuedFollowUp,
 }: ChatInputProps) {
   const { t } = useTranslation('chat');
-  const [input, setInput] = useState('');
-  const [attachments, setAttachments] = useState<FileAttachment[]>([]);
-  const [targetAgentId, setTargetAgentId] = useState<string | null>(null);
+  const [input, setInput] = useComposerDraftField(draftKey, 'text');
+  const [attachments, setAttachments] = useComposerDraftField(draftKey, 'attachments');
+  const [targetAgentId, setTargetAgentId] = useComposerDraftField(draftKey, 'targetAgentId');
+  const [selection, setSelection] = useComposerDraftField(draftKey, 'selection');
+  const selectionRef = useRef(selection);
+  selectionRef.current = selection;
   const [pickerOpen, setPickerOpen] = useState(false);
   const [skillPickerOpen, setSkillPickerOpen] = useState(false);
   const [modelPickerOpen, setModelPickerOpen] = useState(false);
@@ -442,7 +444,7 @@ export function ChatInput({
   const [quickSkills, setQuickSkills] = useState<QuickAccessSkill[]>([]);
   const [skillsLoading, setSkillsLoading] = useState(false);
   const [skillsError, setSkillsError] = useState<string | null>(null);
-  const [selectedSkill, setSelectedSkill] = useState<QuickAccessSkill | null>(null);
+  const [selectedSkill, setSelectedSkill] = useComposerDraftField(draftKey, 'selectedSkill');
   const [switchingModelRef, setSwitchingModelRef] = useState<string | null>(null);
   const [optimisticModelRef, setOptimisticModelRef] = useState<string | null>(null);
   const [providerSnapshotReady, setProviderSnapshotReady] = useState(false);
@@ -564,11 +566,23 @@ export function ChatInput({
     }
   }, [input]);
 
-  // Focus textarea on mount (avoids Windows focus loss after session delete + native dialog)
-  useEffect(() => {
-    if (!inputDisabled && textareaRef.current) {
-      textareaRef.current.focus();
-    }
+  const rememberDraftSelection = useCallback((textarea = textareaRef.current) => {
+    if (!textarea) return;
+    setSelection({
+      start: textarea.selectionStart,
+      end: textarea.selectionEnd,
+      direction: textarea.selectionDirection ?? 'none',
+    });
+  }, [setSelection]);
+
+  useLayoutEffect(() => {
+    if (inputDisabled || !textareaRef.current) return;
+    const textarea = textareaRef.current;
+    const saved = selectionRef.current;
+    const start = Math.min(saved?.start ?? textarea.value.length, textarea.value.length);
+    const end = Math.max(start, Math.min(saved?.end ?? start, textarea.value.length));
+    textarea.focus();
+    textarea.setSelectionRange(start, end, saved?.direction ?? 'none');
   }, [inputDisabled]);
 
   useEffect(() => {
@@ -582,7 +596,7 @@ export function ChatInput({
       setTargetAgentId(null);
       setPickerOpen(false);
     }
-  }, [agents, currentAgentId, targetAgentId]);
+  }, [agents, currentAgentId, targetAgentId, setTargetAgentId]);
 
   useEffect(() => {
     if (!pickerOpen && !skillPickerOpen && !modelPickerOpen && !workspaceMenuOpen) return;
@@ -620,19 +634,18 @@ export function ChatInput({
     };
   }, [modelPickerOpen, pickerOpen, skillPickerOpen, workspaceMenuOpen]);
 
+  const previousAgentId = useRef(currentAgentId);
   useEffect(() => {
-    setSelectedSkill((prev) => {
-      if (prev) {
-        setInput((currentInput) => removeSkillToken(currentInput, prev.name));
-      }
-      return null;
-    });
+    if (previousAgentId.current === currentAgentId) return;
+    previousAgentId.current = currentAgentId;
+    if (selectedSkill) setInput(currentInput => removeSkillToken(currentInput, selectedSkill.name));
+    setSelectedSkill(null);
     setSkillPickerOpen(false);
     setWorkspaceMenuOpen(false);
     setSkillQuery('');
     setQuickSkills([]);
     setSkillsError(null);
-  }, [currentAgentId]);
+  }, [currentAgentId, selectedSkill, setInput, setSelectedSkill]);
 
   useEffect(() => {
     if (!selectedSkill) return;
@@ -640,33 +653,36 @@ export function ChatInput({
     if (!tokenRange) {
       setSelectedSkill(null);
     }
-  }, [input, selectedSkill]);
+  }, [input, selectedSkill, setSelectedSkill]);
 
   const handleInputChange = useCallback((value: string) => {
     setInput(value);
-  }, []);
+  }, [setInput]);
 
   const moveCaretTo = useCallback((position: number) => {
-    textareaRef.current?.focus();
-    textareaRef.current?.setSelectionRange(position, position);
-    requestAnimationFrame(() => {
+    const move = () => {
       textareaRef.current?.focus();
       textareaRef.current?.setSelectionRange(position, position);
-    });
-  }, []);
+      rememberDraftSelection();
+    };
+    move();
+    requestAnimationFrame(move);
+  }, [rememberDraftSelection]);
 
   const normalizeSelectionAroundSkill = useCallback(() => {
-    if (skillTokenRanges.length === 0) return;
     const textarea = textareaRef.current;
     if (!textarea) return;
     const selectionStart = textarea.selectionStart ?? 0;
     const selectionEnd = textarea.selectionEnd ?? 0;
-    if (selectionStart !== selectionEnd) return;
-    const tokenRange = skillTokenRanges.find((range) => selectionStart > range.start && selectionStart < range.end);
+    const tokenRange = selectionStart === selectionEnd
+      ? skillTokenRanges.find((range) => selectionStart > range.start && selectionStart < range.end)
+      : undefined;
     if (tokenRange) {
       moveCaretTo(tokenRange.end);
+      return;
     }
-  }, [moveCaretTo, skillTokenRanges]);
+    rememberDraftSelection(textarea);
+  }, [moveCaretTo, rememberDraftSelection, skillTokenRanges]);
 
   const loadQuickSkills = useCallback(async (): Promise<QuickAccessSkill[]> => {
     if (!currentAgent) {
@@ -835,12 +851,12 @@ export function ChatInput({
     } catch (err) {
       console.error('[stagePathFiles] Failed to stage files:', err);
       setAttachments(prev => prev.map(a =>
-        a.status === 'staging'
+        tempIds.includes(a.id)
           ? { ...a, status: 'error' as const, error: String(err) }
           : a,
       ));
     }
-  }, []);
+  }, [setAttachments]);
 
   const pickFiles = useCallback(async () => {
     try {
@@ -891,13 +907,13 @@ export function ChatInput({
         ));
       }
     }
-  }, []);
+  }, [setAttachments]);
 
   // ── Attachment management ──────────────────────────────────────
 
   const removeAttachment = useCallback((id: string) => {
     setAttachments(prev => prev.filter(a => a.id !== id));
-  }, []);
+  }, [setAttachments]);
 
   const allReady = attachments.length === 0 || attachments.every(a => a.status === 'ready');
   const hasFailedAttachments = attachments.some((a) => a.status === 'error');
@@ -960,7 +976,7 @@ export function ChatInput({
     setPickerOpen(false);
     setSkillPickerOpen(false);
     setWorkspaceMenuOpen(false);
-  }, [attachments, canQueue, canSend, input, onQueueFollowUp, onSend, sending, t, targetAgentId]);
+  }, [attachments, canQueue, canSend, input, onQueueFollowUp, onSend, sending, t, targetAgentId, setAttachments, setInput, setSelectedSkill, setTargetAgentId]);
 
   const handleStop = useCallback(() => {
     if (!canStop) return;
@@ -1037,7 +1053,7 @@ export function ChatInput({
         handleSend();
       }
     },
-    [handleSend, input, moveCaretTo, selectedSkill, skillTokenRanges],
+    [handleSend, input, moveCaretTo, selectedSkill, skillTokenRanges, setInput, setSelectedSkill, setTargetAgentId],
   );
 
   // Handle paste (Ctrl/Cmd+V with files)
@@ -1231,10 +1247,14 @@ export function ChatInput({
             <Textarea
               ref={textareaRef}
               value={input}
-              onChange={(e) => handleInputChange(e.target.value)}
+              onChange={(e) => {
+                handleInputChange(e.target.value);
+                rememberDraftSelection(e.currentTarget);
+              }}
               onKeyDown={handleKeyDown}
               onSelect={normalizeSelectionAroundSkill}
               onClick={normalizeSelectionAroundSkill}
+              onBlur={(e) => rememberDraftSelection(e.currentTarget)}
               onCompositionStart={() => {
                 isComposingRef.current = true;
               }}

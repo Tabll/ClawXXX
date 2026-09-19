@@ -6,6 +6,7 @@ import {
   type ConversationSummary,
 } from '@shared/conversations/contracts';
 import { useSessionAttentionStore } from './session-attention';
+import { useComposerDraftStore } from './composer-drafts';
 import {
   DEFAULT_SESSION_KEY,
   type ChatSession,
@@ -300,6 +301,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }
     const removed = new Set([key]);
     useSessionAttentionStore.getState().removeSession(key);
+    useComposerDraftStore.getState().removeDraft(key);
     set(state => {
       const sessions = state.sessions.filter(session => session.key !== key);
       const currentSessionKey = chooseSelection(state.currentSessionKey, sessions);
@@ -327,7 +329,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
     const deletedKeys = results.filter(([, ok]) => ok).map(([key]) => key);
     const failedKeys = results.filter(([, ok]) => !ok).map(([key]) => key);
     const removed = new Set(deletedKeys);
-    for (const key of removed) useSessionAttentionStore.getState().removeSession(key);
+    for (const key of removed) {
+      useSessionAttentionStore.getState().removeSession(key);
+      useComposerDraftStore.getState().removeDraft(key);
+    }
     if (removed.size > 0) {
       set(state => {
         const sessions = state.sessions.filter(session => !removed.has(session.key));

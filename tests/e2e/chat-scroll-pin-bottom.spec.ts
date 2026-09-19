@@ -111,6 +111,16 @@ test.describe('canonical chat scroll pin-to-bottom during runs', () => {
       await emitText(14);
       await expectPinned();
 
+      // A small scroll within the old 70px threshold must also pause streaming.
+      const readingPosition = await scrollContainer.evaluate((element) => {
+        element.scrollTop -= 12;
+        element.dispatchEvent(new Event('scroll', { bubbles: true }));
+        return element.scrollTop;
+      });
+      await emitText(17);
+      await expect.poll(() => scrollContainer.evaluate(element => element.scrollTop))
+        .toBe(readingPosition);
+
       await scrollContainer.evaluate((element) => {
         element.scrollTop = 0;
         element.dispatchEvent(new Event('scroll', { bubbles: true }));

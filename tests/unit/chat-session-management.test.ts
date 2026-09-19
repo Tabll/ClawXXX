@@ -121,6 +121,9 @@ describe('canonical Conversation session management', () => {
 
   it('hard-deletes a canonical conversation and removes its local metadata', async () => {
     const { useChatStore } = await import('@/stores/chat');
+    const { useComposerDraftStore } = await import('@/stores/composer-drafts');
+    useComposerDraftStore.getState().setField('conversation-a', 0, 'text', 'A draft');
+    useComposerDraftStore.getState().setField('conversation-b', 0, 'text', 'B draft');
     useChatStore.setState({
       currentSessionKey: 'conversation-a',
       sessions: [{ key: 'conversation-a' }, { key: 'conversation-b' }],
@@ -138,11 +141,16 @@ describe('canonical Conversation session management', () => {
       sessionLabels: { 'conversation-b': 'B' },
       sessionLastActivity: { 'conversation-b': 2 },
     });
+    expect(useComposerDraftStore.getState().drafts['conversation-a']?.text).toBe(undefined);
+    expect(useComposerDraftStore.getState().drafts['conversation-b'].text).toBe('B draft');
   });
 
   it('keeps local state when hard delete fails', async () => {
     conversationsMock.delete.mockResolvedValue({ success: false, error: 'has branches' });
     const { useChatStore } = await import('@/stores/chat');
+    const { useComposerDraftStore } = await import('@/stores/composer-drafts');
+    useComposerDraftStore.getState().setField('conversation-a', 0, 'text', 'A draft');
+    useComposerDraftStore.getState().setField('conversation-b', 0, 'text', 'B draft');
     useChatStore.setState({
       currentSessionKey: 'conversation-a',
       sessions: [{ key: 'conversation-a' }],
@@ -151,6 +159,8 @@ describe('canonical Conversation session management', () => {
     await expect(useChatStore.getState().deleteSession('conversation-a'))
       .resolves.toEqual({ success: false, error: 'has branches' });
     expect(useChatStore.getState().sessions).toEqual([{ key: 'conversation-a' }]);
+    expect(useComposerDraftStore.getState().drafts['conversation-a']?.text).toBe('A draft');
+    expect(useComposerDraftStore.getState().drafts['conversation-b'].text).toBe('B draft');
   });
 
   it('reports partial results for a multi-delete and removes only successful rows', async () => {
@@ -160,6 +170,9 @@ describe('canonical Conversation session management', () => {
         : { success: true }
     ));
     const { useChatStore } = await import('@/stores/chat');
+    const { useComposerDraftStore } = await import('@/stores/composer-drafts');
+    useComposerDraftStore.getState().setField('conversation-a', 0, 'text', 'A draft');
+    useComposerDraftStore.getState().setField('conversation-b', 0, 'text', 'B draft');
     useChatStore.setState({
       currentSessionKey: 'conversation-a',
       sessions: [
@@ -176,6 +189,8 @@ describe('canonical Conversation session management', () => {
       });
     expect(useChatStore.getState().sessions.map((item) => item.key))
       .toEqual(['conversation-b', 'conversation-c']);
+    expect(useComposerDraftStore.getState().drafts['conversation-a']?.text).toBe(undefined);
+    expect(useComposerDraftStore.getState().drafts['conversation-b'].text).toBe('B draft');
   });
 
   it('renames and pins through the canonical API before updating renderer state', async () => {

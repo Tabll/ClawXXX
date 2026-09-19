@@ -247,4 +247,41 @@ test.describe('ClawX sidebar session attention', () => {
       await closeElectronApp(app);
     }
   });
+
+  test('keeps unsent composer text and caret position independent for each conversation', async ({ launchElectronApp }) => {
+    const app = await launchElectronApp({ skipSetup: true });
+
+    try {
+      await installSessionAttentionMocks(app);
+      const page = await reloadStableWindow(app);
+      const composer = page.getByTestId('chat-composer-input');
+      const controlRow = page.getByTestId(`sidebar-session-${CONTROL_SESSION_KEY}`);
+      const targetRow = page.getByTestId(`sidebar-session-${TARGET_SESSION_KEY}`);
+
+      await expect(controlRow).toHaveAttribute('aria-current', 'page');
+      await expect(composer).toBeEnabled({ timeout: 30_000 });
+      const controlDraft = 'Unsent control draft';
+      const controlCaretPosition = controlDraft.length - 1;
+      await composer.fill(controlDraft);
+      await composer.press('ArrowLeft');
+      await expect.poll(() => composer.evaluate((element: HTMLTextAreaElement) => element.selectionStart))
+        .toBe(controlCaretPosition);
+
+      await targetRow.click();
+      await expect(targetRow).toHaveAttribute('aria-current', 'page');
+      await expect(composer).toHaveValue('');
+      await composer.fill('Unsent target draft');
+
+      await controlRow.click();
+      await expect(composer).toHaveValue(controlDraft);
+      await expect(composer).toBeFocused();
+      await expect.poll(() => composer.evaluate((element: HTMLTextAreaElement) => element.selectionStart))
+        .toBe(controlCaretPosition);
+
+      await targetRow.click();
+      await expect(composer).toHaveValue('Unsent target draft');
+    } finally {
+      await closeElectronApp(app);
+    }
+  });
 });

@@ -63,6 +63,9 @@ This scenario governs optional OpenClaw and DeepSeek Harness runtime packages, t
 
 The durable architecture and release gates are defined in `harness/reference/multi-kernel-runtime.md`. Work in this scenario must also use `gateway-backend-communication` when it changes Renderer/Main, Host API, ACP, Gateway, bridge, or runtime message paths.
 
+Upstream feature ports also follow `upstream-multi-kernel-porting`; the pinned
+ClawX 0.5.8 migration ledger is `harness/reference/upstream-clawx-0.5.8-migration.md`.
+
 Both runtimes must satisfy one canonical ClawX UI and storage contract. Upstream-specific models stay inside drivers and bridges. Runtime packages are immutable CI products downloaded on demand, not dependencies installed or patched on the end-user machine. Managed runtimes do not retain a second durable conversation, cron, channel-message, or usage history.
 
 Development uses the same installed-artifact authority as packaged ClawX.

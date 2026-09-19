@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { ChatInput } from '@/pages/Chat/ChatInput';
 import { TooltipProvider } from '@/components/ui/tooltip';
+import { useComposerDraftStore } from '@/stores/composer-drafts';
 const hostApiFetchMock = vi.hoisted(() => vi.fn());
 const hostApiDialogOpenMock = vi.hoisted(() => vi.fn());
 const toastErrorMock = vi.hoisted(() => vi.fn());
@@ -259,6 +260,7 @@ function configureAgentAndModelPickers() {
 
 describe('ChatInput agent targeting', () => {
   beforeEach(() => {
+    useComposerDraftStore.setState({ drafts: {}, generations: {} });
     agentsState.agents = [];
     agentsState.defaultModelRef = null;
     agentsState.updateAgentModel.mockReset();
@@ -275,6 +277,61 @@ describe('ChatInput agent targeting', () => {
     vi.mocked(hostApiDialogOpenMock).mockReset();
     toastErrorMock.mockReset();
     artifactPanelMocks.openPreview.mockReset();
+  });
+
+  it('restores independent Conversation text and selection across switches and remounts', () => {
+    const composer = (draftKey: string) => (
+      <TooltipProvider><ChatInput draftKey={draftKey} onSend={vi.fn()} /></TooltipProvider>
+    );
+    const view = render(composer('conversation-a'));
+    const input = screen.getByTestId('chat-composer-input') as HTMLTextAreaElement;
+    fireEvent.change(input, { target: { value: 'Alpha draft' } });
+    input.setSelectionRange(2, 7, 'backward');
+    fireEvent.select(input);
+
+    view.rerender(composer('conversation-b'));
+    expect(screen.getByTestId('chat-composer-input')).toHaveValue('');
+    fireEvent.change(screen.getByTestId('chat-composer-input'), { target: { value: 'Beta draft' } });
+    view.rerender(composer('conversation-a'));
+    const restored = screen.getByTestId('chat-composer-input') as HTMLTextAreaElement;
+    expect(restored).toHaveValue('Alpha draft');
+    expect([restored.selectionStart, restored.selectionEnd, restored.selectionDirection]).toEqual([2, 7, 'backward']);
+    view.unmount();
+    render(composer('conversation-b'));
+    expect(screen.getByTestId('chat-composer-input')).toHaveValue('Beta draft');
+  });
+
+  it.each([false, true])('keeps late attachment results in their owning draft (deleted: %s)', async (deleted) => {
+    let finishStaging!: (value: unknown) => void;
+    hostApiDialogOpenMock.mockResolvedValue({ canceled: false, filePaths: ['/tmp/alpha.txt'] });
+    hostApiFetchMock.mockImplementation((path: string) => path === '/api/files/stage-paths'
+      ? new Promise(resolve => { finishStaging = resolve; })
+      : Promise.resolve({ success: true, skills: [] }));
+    const onSend = vi.fn();
+    const composer = (draftKey: string) => (
+      <TooltipProvider><ChatInput draftKey={draftKey} onSend={onSend} /></TooltipProvider>
+    );
+    const view = render(composer('conversation-a'));
+    fireEvent.click(screen.getByRole('button', { name: 'Attach files' }));
+    await waitFor(() => expect(finishStaging).toBeTypeOf('function'));
+    view.rerender(composer('conversation-b'));
+    fireEvent.change(screen.getByTestId('chat-composer-input'), { target: { value: 'Beta draft' } });
+    if (deleted) act(() => useComposerDraftStore.getState().removeDraft('conversation-a'));
+    await act(async () => finishStaging([{
+      id: 'attachment-a', fileName: 'alpha.txt', mimeType: 'text/plain', fileSize: 12,
+      stagedPath: '/tmp/staged-alpha.txt', preview: null,
+    }]));
+    expect(screen.getByTestId('chat-composer-input')).toHaveValue('Beta draft');
+    expect(screen.queryByText('alpha.txt')).not.toBeInTheDocument();
+    if (deleted) {
+      expect(useComposerDraftStore.getState().drafts['conversation-a']).toBeUndefined();
+    } else {
+      view.rerender(composer('conversation-a'));
+      expect(screen.getByText('alpha.txt')).toBeInTheDocument();
+      fireEvent.click(screen.getByTestId('chat-composer-send'));
+      expect(onSend).toHaveBeenCalledWith('', [expect.objectContaining({ id: 'attachment-a', status: 'ready' })], null);
+      expect(useComposerDraftStore.getState().drafts['conversation-b'].text).toBe('Beta draft');
+    }
   });
 
   it('renders a dot pulse and visible thinking label while a message is sending', () => {
