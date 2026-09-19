@@ -58,3 +58,10 @@ bound file counts/bytes, and read before transient-session cleanup. Main commits
 output Blobs and metadata before returning references to the Renderer. Resolve
 previews through Conversation-scoped attachment grants; late completions cannot
 modify a different Conversation. Historical views use canonical Blobs only.
+
+Feishu/Lark validation runs in Main before account/credential persistence for
+both kernels. Detect the official API domain, reject invalid/equal credentials,
+require a new secret when App ID changes, and return localized codes rather
+than provider response bodies. Failed validation does not consume staging handles
+or start an owner. Plugin fixes belong to newly versioned signed artifacts;
+WeCom's implicit account fallback is permitted only for exactly one account.

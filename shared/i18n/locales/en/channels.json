@@ -291,5 +291,14 @@
             ]
         }
     },
-    "viewDocs": "View Documentation"
+    "viewDocs": "View Documentation",
+    "credentialErrors": {
+        "feishuAppIdRequired": "Enter an App ID.",
+        "feishuAppSecretRequired": "Enter an App Secret.",
+        "feishuAppSecretEqualsAppId": "App Secret must differ from App ID. Copy the secret from the developer console.",
+        "feishuAppSecretReenter": "Re-enter App Secret after changing App ID.",
+        "feishuInvalidDomain": "Select Feishu or Lark as the API domain.",
+        "feishuRejected": "Feishu / Lark rejected these credentials. Check App ID and App Secret.",
+        "feishuConnectionError": "Could not validate credentials. Check the connection and try again."
+    }
 }

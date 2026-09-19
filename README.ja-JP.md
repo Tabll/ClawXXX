@@ -161,7 +161,7 @@ ClawXは **Main-owned multi-kernel + unified Host API architecture**を採用し
 
 DSH の候補ソースは `0.1.5-rc.2+clawx.15`（プレリリース）です。V3 の system message、Run ごとの persona、append 起点の確定イベントに対応し、モデル文脈の置換による応答・使用量の二重計上を防ぎます。共有 SQLite が唯一の保存先であり、インストール済み runtime の更新には CI artifact の検証・公開が必要です。[今回の互換性設計](harness/reference/kernel-upgrade-2026-09-12.md)。
 
-OpenClaw のソースと開発依存関係は `2026.9.4+clawx.15` です。Discord/WhatsApp も同期し、`.mjs` パッチは容量制限付きメモリ ACP、共有履歴、Main 管理の設定、fail-closed な Channel 受付を維持します。Node は 24.20.0 のままです。候補のローカル検証と未完了のプラットフォーム検証は[今回の設計記録](harness/reference/kernel-upgrade-2026-09-12.md)を参照してください。
+OpenClaw のソースと開発依存関係は `2026.9.4+clawx.16` です。Discord/WhatsApp も同期し、`.mjs` パッチは容量制限付きメモリ ACP、共有履歴、Main 管理の設定、fail-closed な Channel 受付を維持します。Node は 24.20.0 のままです。候補のローカル検証と未完了のプラットフォーム検証は[今回の設計記録](harness/reference/kernel-upgrade-2026-09-12.md)を参照してください。
 
 両方の +clawx.13 カーネルは Node 24.20.0 を使用し、5 ターゲットの staging 全 25 ジョブ、macOS 公証 4 件（Accepted）、同一ソースの 3 プラットフォーム Electron E2E に合格しました。[CI 検証記録](harness/reference/windows-runtime-ci-repair.md)を参照してください。Windows は artifact 署名のみで、Authenticode は使用しません。本番 catalog の状態、保護された公開の復旧と実配信検証は[公開記録](harness/reference/kernel-automatic-release.md)で追跡し、実アカウント検証は未完了です。
 
@@ -177,6 +177,7 @@ catalog 置換後は回数を制限した伝播確認で正確な署名済み版
 - **統合 Provider**：Provider metadata、model 選択、kernel ごとの default、独立した projection 状態は SQLite の canonical record です。secret は OS の安全な保存領域に残り、preload 所有の closed-shadow field から Main へ一回限りの handle として渡されます。認証済み kernel process は、選択された account と許可済み purpose だけを Credential Broker に要求できます。一方の projection failure が他方の ready projection を rollback することはありません。
 - **統合 Skills**：単一の Skills catalog が不変 package metadata、kernel ごとの install/enable intent、互換性、projection diagnostics、retry を管理します。OpenClaw と DeepSeek Harness は相互に独立した物理コピーを使い、root を cross-link しません。Both 操作は partial success を保持して表示します。DSH は隔離された `ctx.skills` adapter だけで互換 instruction body を登録し、未対応の補助ファイルには明確な理由を表示します。
 - **統合 Channels**：単一の SQLite catalog が account、kernel/agent binding、owner lease、Conversation mapping、attachment、retry、delivery history を管理し、credential は OS の安全な保存領域にのみ置かれます。OpenClaw は認証済み native handoff adapter、DeepSeek Harness は Main 所有の8種類の connector Relayを使用します。別 account は同時実行でき、同一 account の二重所有や connector-native history は発生しません。
+- **チャネル認証情報の検証**：両カーネルで Feishu/Lark の認証情報を保存前に検証します。App ID の変更には安全な入力から新しい Secret が必要で、失敗時は元のアカウントを保持します。OpenClaw アーティファクト改訂 16 は WeCom の単一アカウントのカレンダーツールも修正します。複数アカウントでは明示的なアカウント情報が必要です。
 - **統合 Cron**：Main 所有の ClawXScheduler が job、重複しない due admission、run diagnostics、Conversation target、Channel delivery link を SQLite で一元管理します。OpenClaw と DeepSeek Harness の job は同時実行でき、kernel/agent、timezone、misfire、overlap、timeout、Conversation policy を明示します。managed runtime の native scheduler は無効です。OpenClaw の native history 隔離は上記のリリース判定が必要です。
 - **統合 Chat**：Chat 履歴、run event、権限、Usage、添付参照はすべて Main 所有の SQLite Conversation Store から読み取ります。ACP と将来の runtime bridge はリアルタイム実行専用です。各イベントは conversation/run/kernel/generation/sequence の完全な識別子を持つため、画面移動中もバックグラウンド stream を保持でき、同じ Conversation を turn 境界で別 kernel に継続できます。runtime transcript fallback は使用しません。
 - **会話の下書き**：会話の切り替えや画面移動時も、未送信テキスト、添付ファイル、Agent・スキル選択、カーソル選択範囲を同じ Conversation に保持します。下書きはアプリ終了までのメモリ内に保存され、会話の削除時には未完了の添付処理も無効化されます。少し上へスクロールすると自動追従を停止し、末尾へ戻ると再開します。

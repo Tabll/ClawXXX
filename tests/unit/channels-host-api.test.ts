@@ -13,6 +13,9 @@ import { createChannelsApi } from '@electron/services/channels-api';
 import { CredentialStagingVault } from '@electron/security/credential-staging-vault';
 import type { KernelId } from '@shared/kernels/contracts';
 import { SUPPORTED_CHANNEL_TYPES } from '@shared/types/channel';
+import { validateFeishuCredentials } from '@electron/channels/feishu-credentials';
+import { proxyAwareFetch } from '@electron/utils/proxy-fetch';
+vi.mock('@electron/utils/proxy-fetch', () => ({ proxyAwareFetch: vi.fn() }));
 
 const cleanups: Array<() => Promise<void>> = [];
 
@@ -31,6 +34,39 @@ function remote(client: ClawXDataClient) {
 }
 
 describe('canonical Channels Host API', () => {
+  it.each(['openclaw', 'deepseek-harness'] as const)('validates Feishu before persisting or consuming credentials for %s', async kernelId => {
+    const root = mkdtempSync(join(tmpdir(), 'clawx-feishu-api-'));
+    const service = new ClawXDataService(join(root, 'clawx.sqlite'));
+    cleanups.push(() => service.close());
+    const data = remote(service.connect({ role: 'main' }));
+    const secrets = new MemoryChannelSecretStore();
+    const accounts = new CanonicalChannelAccountService(data, secrets);
+    const vault = new CredentialStagingVault();
+    const adapters = new ChannelAdapterRegistry();
+    adapters.register({ kernelId, ownerId: 'test-owner', supportedChannels: ['feishu'], validate: (_type, config) => validateFeishuCredentials(config), activate: vi.fn(), deactivate: vi.fn(), send: vi.fn(), targets: async () => [], status: async () => ({ state: 'disconnected', changedAt: new Date().toISOString() }) });
+    const owner = { activate: vi.fn(), deactivate: vi.fn(), targets: vi.fn() };
+    const api = createChannelsApi({ gatewayManager: {} as never, dataClient: data, accountService: accounts, credentialVault: vault, adapterRegistry: adapters, ownerCoordinator: owner as never, bindingService: {} as never });
+    const handle = vault.stage('secret');
+    const payload = { channelType: 'feishu', accountId: 'team', kernelId, config: { appId: 'cli', appSecret: handle } };
+    vi.mocked(proxyAwareFetch).mockResolvedValue(Response.json({ code: 1, msg: 'private response' }));
+    expect(await api.saveConfig(payload)).toEqual({ success: false, errorCode: 'feishuRejected' });
+    expect(await accounts.list()).toEqual([]);
+    expect(vault.size).toBe(1);
+    expect(owner.activate).not.toHaveBeenCalled();
+    vi.mocked(proxyAwareFetch).mockReset().mockResolvedValueOnce(Response.json({ code: 1 })).mockResolvedValueOnce(Response.json({ code: 0, tenant_access_token: 'private token' }));
+    expect(await api.saveConfig(payload)).toEqual({ success: true });
+    expect(vault.size).toBe(0);
+    const saved = (await accounts.get('feishu', 'team'))!;
+    expect(saved.config).toEqual({ appId: 'cli', domain: 'lark' });
+    expect((await secrets.get(saved.id))?.values).toEqual({ appSecret: 'secret' });
+    vi.mocked(proxyAwareFetch).mockClear();
+    const changed = { ...payload, config: { appId: 'another-app' } };
+    expect(await api.validateCredentials(changed)).toMatchObject({ valid: false, errorCode: 'feishuAppSecretReenter' });
+    expect(await api.saveConfig(changed)).toEqual({ success: false, errorCode: 'feishuAppSecretReenter' });
+    expect(proxyAwareFetch).not.toHaveBeenCalled();
+    expect((await accounts.get('feishu', 'team'))?.config).toEqual(saved.config);
+  });
+
   it('routes secure CRUD and QR login through the explicitly selected kernel adapter', async () => {
     const root = mkdtempSync(join(tmpdir(), 'clawx-channels-api-'));
     const dataService = new ClawXDataService(join(root, 'clawx.sqlite'));

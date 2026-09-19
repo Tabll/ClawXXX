@@ -291,5 +291,14 @@
             ]
         }
     },
-    "viewDocs": "Просмотреть документацию"
+    "viewDocs": "Просмотреть документацию",
+    "credentialErrors": {
+        "feishuAppIdRequired": "Введите App ID.",
+        "feishuAppSecretRequired": "Введите App Secret.",
+        "feishuAppSecretEqualsAppId": "App Secret должен отличаться от App ID. Скопируйте секрет из консоли разработчика.",
+        "feishuAppSecretReenter": "После изменения App ID повторно введите App Secret.",
+        "feishuInvalidDomain": "Выберите Feishu или Lark в качестве домена API.",
+        "feishuRejected": "Feishu / Lark отклонил учётные данные. Проверьте App ID и App Secret.",
+        "feishuConnectionError": "Не удалось проверить учётные данные. Проверьте соединение и повторите попытку."
+    }
 }

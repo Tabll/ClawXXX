@@ -291,5 +291,14 @@
             "docsUrl": "https://icnnp7d0dymg.feishu.cn/wiki/KPIJwlyiGiupMrkiS9ice39Zn2c"
         }
     },
-    "viewDocs": "ドキュメントを表示"
+    "viewDocs": "ドキュメントを表示",
+    "credentialErrors": {
+        "feishuAppIdRequired": "App ID を入力してください。",
+        "feishuAppSecretRequired": "App Secret を入力してください。",
+        "feishuAppSecretEqualsAppId": "App Secret は App ID と異なる必要があります。開発者コンソールからコピーしてください。",
+        "feishuAppSecretReenter": "App ID の変更後は App Secret を再入力してください。",
+        "feishuInvalidDomain": "API ドメインは Feishu または Lark を選択してください。",
+        "feishuRejected": "Feishu / Lark が認証情報を拒否しました。App ID と App Secret を確認してください。",
+        "feishuConnectionError": "認証情報を検証できません。接続を確認して再試行してください。"
+    }
 }

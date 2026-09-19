@@ -292,5 +292,14 @@
             ]
         }
     },
-    "viewDocs": "查看文档"
+    "viewDocs": "查看文档",
+    "credentialErrors": {
+        "feishuAppIdRequired": "请输入 App ID。",
+        "feishuAppSecretRequired": "请输入 App Secret。",
+        "feishuAppSecretEqualsAppId": "App Secret 不能与 App ID 相同，请从开发者后台复制密钥。",
+        "feishuAppSecretReenter": "修改 App ID 后，请重新输入 App Secret。",
+        "feishuInvalidDomain": "API 域请选择飞书或 Lark。",
+        "feishuRejected": "飞书 / Lark 拒绝了这些凭据，请检查 App ID 和 App Secret。",
+        "feishuConnectionError": "无法验证凭据，请检查网络后重试。"
+    }
 }

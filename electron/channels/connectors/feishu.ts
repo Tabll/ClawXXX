@@ -1,4 +1,5 @@
 import { createLarkChannel, type LarkChannel, type NormalizedMessage } from '@larksuiteoapi/node-sdk';
+import { validateFeishuCredentials } from '../feishu-credentials';
 import type { ChannelConnectorFactory, ChannelConnectorSession, ChannelOutboundEnvelope } from '../channel-runtime-contracts';
 import {
   CONNECTOR_ATTACHMENT_BATCH_LIMIT_BYTES,
@@ -7,7 +8,6 @@ import {
   EphemeralTargetDirectory,
   normalizeMimeType,
   optionalText,
-  requiredFields,
   requiredText,
   runConnectorLoop,
   safeConnectorError,
@@ -18,25 +18,7 @@ import {
 export function createFeishuConnectorFactory(): ChannelConnectorFactory {
   return {
     channelType: 'feishu',
-    async validate(config) {
-      const fields = requiredFields(config, ['appId', 'appSecret']);
-      if (!fields.valid) return fields;
-      try {
-        const base = resolveDomain(optionalText(config, 'domain'));
-        const response = await fetch(`${base}/open-apis/auth/v3/tenant_access_token/internal`, {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ app_id: requiredText(config, 'appId'), app_secret: requiredText(config, 'appSecret') }),
-        });
-        const payload = await response.json() as { code?: number; msg?: string; tenant_access_token?: string };
-        if (!response.ok || payload.code !== 0 || !payload.tenant_access_token) {
-          throw new Error(payload.msg || `Feishu validation failed (${response.status})`);
-        }
-        return { valid: true };
-      } catch (error) {
-        return { valid: false, errors: [safeConnectorError(error)] };
-      }
-    },
+    validate: validateFeishuCredentials,
     async connect(context) {
       const channel = createLarkChannel({
         appId: requiredText(context.connectionConfig, 'appId'),

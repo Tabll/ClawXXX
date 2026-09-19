@@ -6,6 +6,8 @@
  */
 import { access, mkdir, readFile, writeFile, readdir, stat, rm } from 'fs/promises';
 import { constants } from 'fs';
+import { validateFeishuCredentials } from '../channels/feishu-credentials';
+import type { ChannelCredentialErrorCode } from '@shared/types/channel';
 import { join } from 'path';
 import { mutateOpenClawConfig, readOpenClawConfigSnapshot } from '../gateway/config-delivery';
 import { getOpenClawConfigDir, getOpenClawResolvedDir, resolveOpenClawConfigPath } from './paths';
@@ -1495,6 +1497,7 @@ export interface CredentialValidationResult {
     errors: string[];
     warnings: string[];
     details?: Record<string, string>;
+    errorCode?: ChannelCredentialErrorCode;
 }
 
 export async function validateChannelCredentials(
@@ -1502,6 +1505,8 @@ export async function validateChannelCredentials(
     config: Record<string, string>
 ): Promise<CredentialValidationResult> {
     switch (resolveStoredChannelType(channelType)) {
+        case 'feishu':
+            return validateFeishuCredentials(config);
         case 'discord':
             return validateDiscordCredentials(config);
         case 'telegram':

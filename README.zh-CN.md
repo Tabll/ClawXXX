@@ -162,7 +162,7 @@ ClawX 采用 **Main-owned 多内核 + Host API 统一接入架构**：React Rend
 
 DSH 源码候选版本为 `0.1.5-rc.2+clawx.15`（预发布版），已适配 V3 系统消息、按 Run 隔离的 persona 和追加来源的结算事件；模型上下文替换不能重复生成回复或计费。统一 SQLite 仍是唯一数据源，已安装内核须等新版 CI 制品验证并发布后才可更新。详见[本次升级兼容性说明](harness/reference/kernel-upgrade-2026-09-12.md)。
 
-OpenClaw 源码和开发依赖已切换为 `2026.9.4+clawx.15`，Discord/WhatsApp 同步更新。重基后的 `.mjs` 补丁保留有界内存 ACP 状态、统一历史、Main 管理的配置和严格的渠道准入；Node 继续固定为 24.20.0。本地候选验证与尚待完成的平台验收见[升级设计与证据](harness/reference/kernel-upgrade-2026-09-12.md)。
+OpenClaw 源码和开发依赖已切换为 `2026.9.4+clawx.16`，Discord/WhatsApp 同步更新。重基后的 `.mjs` 补丁保留有界内存 ACP 状态、统一历史、Main 管理的配置和严格的渠道准入；Node 继续固定为 24.20.0。本地候选验证与尚待完成的平台验收见[升级设计与证据](harness/reference/kernel-upgrade-2026-09-12.md)。
 
 两个 +clawx.13 内核使用 Node 24.20.0，已通过五目标 staging 全部 25 项任务、四份 macOS 公证（Accepted）及同源码三平台 Electron E2E，详见 [CI 验收证据](harness/reference/windows-runtime-ci-repair.md)。Windows 仅使用制品签名，不启用 Authenticode。生产目录状态、受保护发布恢复及真实线上验证见[发布验收记录](harness/reference/kernel-automatic-release.md)；真实账号验收仍待完成。
 
@@ -178,6 +178,7 @@ OpenClaw 源码和开发依赖已切换为 `2026.9.4+clawx.15`，Discord/WhatsAp
 - **统一 Provider**：Provider 元数据、模型选择、每内核默认项和独立 projection 状态都由 SQLite 统一记录。密钥保留在 OS 安全存储，只从 preload 持有的 closed-shadow 输入框以一次性句柄交给 Main；经过身份认证的内核进程只能按已选账号和授权用途向 Credential Broker 请求。单个内核投影失败不会回滚另一个已 ready 的投影。
 - **统一 Skills**：一个 Skills catalog 统一保存不可变 package metadata、逐内核安装/启用意图、兼容性、projection 诊断和重试状态。OpenClaw 与 DeepSeek Harness 使用相互独立的物理副本，禁止交叉软链接；Both 操作保留并展示 partial success。DSH 只通过隔离的 `ctx.skills` adapter 注册兼容 instruction body，含未支持辅助文件的包会显示明确原因。
 - **统一 Channels**：一个 SQLite catalog 统一保存账号、kernel/agent binding、owner lease、消息到 Conversation 的映射、附件、重试及投递历史，凭据只进 OS 安全存储。OpenClaw 使用带认证的 native handoff adapter，DeepSeek Harness 使用 Main-owned 的八类 connector Relay；不同账号可并发运行，同一账号不会被双重消费，也不会生成 connector-native 历史。
+- **渠道凭据检查**：飞书 / Lark 在两个内核下均先校验再保存；修改 App ID 需要重新通过安全输入提交 Secret，失败时保留原账号。OpenClaw 制品修订 16 同时修复企业微信单账号的日历工具调用，多账号仍必须明确账号上下文。
 - **统一 Cron**：Main-owned ClawXScheduler 在 SQLite 统一保存 job、唯一 due admission、run 诊断、Conversation 目标和 Channel delivery 关联。OpenClaw 与 DeepSeek Harness 任务可并行执行，并明确选择 kernel/agent、时区、misfire、overlap、timeout 与 Conversation policy；managed runtime 的原生 scheduler 已禁用，OpenClaw 原生历史隔离仍须完成上述发布验收。
 - **统一 Chat**：Chat 历史、run events、权限、Usage 和附件引用全部读取 Main 独占的 SQLite Conversation Store；ACP 与未来 runtime bridge 只负责实时执行。每个实时事件都携带 conversation/run/kernel/generation/sequence 完整身份，因此页面导航可保留后台流，同一 Conversation 也可在 turn 边界切换内核，不再依赖 runtime transcript fallback。
 - **会话草稿**：切换会话或离开聊天页面时，未发送文字、暂存附件、Agent/技能选择和光标选区随统一 Conversation 保留。草稿仅保存在本次应用运行的内存中；删除会话也会清理草稿，并阻止尚未完成的附件回调恢复已删除数据。轻微向上滚动即可暂停自动跟随，回到底部后恢复。

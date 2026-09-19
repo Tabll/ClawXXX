@@ -1,5 +1,6 @@
 import type { CanonicalChannelAccount, CanonicalChannelTarget } from '@shared/domains/channels';
 import type { KernelId } from '@shared/kernels/contracts';
+import type { ChannelCredentialErrorCode } from '@shared/types/channel';
 
 export type ChannelConnectorStatus = {
   state: CanonicalChannelAccount['status'];
@@ -54,6 +55,7 @@ export type ChannelCredentialValidation = {
   errors?: string[];
   warnings?: string[];
   details?: Record<string, string>;
+  errorCode?: ChannelCredentialErrorCode;
 };
 
 export type ChannelLoginEvent =

@@ -124,7 +124,7 @@ export function ChannelConfigModal({
   } | null>(null);
 
   const meta: ChannelMeta | null = selectedType ? CHANNEL_META[selectedType] : null;
-  const shouldUseCredentialValidation = selectedType !== 'feishu';
+  const shouldUseCredentialValidation = true;
   const usesManagedQrAccounts = usesPluginManagedQrAccounts(selectedType);
   const showAccountIdEditor = allowEditAccountId && !usesManagedQrAccounts;
   const resolvedAccountId = usesManagedQrAccounts
@@ -399,7 +399,7 @@ export function ChannelConfigModal({
 
       setValidationResult({
         valid: result.valid || false,
-        errors: result.errors || [],
+        errors: result.errorCode ? [t(`credentialErrors.${result.errorCode}`)] : result.errors || [],
         warnings,
       });
     } catch (error) {
@@ -467,7 +467,7 @@ export function ChannelConfigModal({
         if (!validationResponse.valid) {
           setValidationResult({
             valid: false,
-            errors: validationResponse.errors || ['Validation failed'],
+            errors: validationResponse.errorCode ? [t(`credentialErrors.${validationResponse.errorCode}`)] : validationResponse.errors || [t('dialog.validationFailed')],
             warnings: validationResponse.warnings || [],
           });
           setConnecting(false);
@@ -497,7 +497,7 @@ export function ChannelConfigModal({
         kernelId: selectedKernelId,
       });
       if (!saveResult?.success) {
-        throw new Error(saveResult?.error || 'Failed to save channel config');
+        throw new Error(saveResult?.errorCode ? t(`credentialErrors.${saveResult.errorCode}`) : saveResult?.error || t('dialog.validationFailed'));
       }
       if (typeof saveResult.warning === 'string' && saveResult.warning) {
         toast.warning(saveResult.warning);

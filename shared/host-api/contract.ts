@@ -297,6 +297,7 @@ export type ChannelCredentialValidationPayload = ChannelTypePayload & {
   kernelId?: string;
 };
 export type ChannelCredentialValidationResult = HostSuccess & {
+  errorCode?: import('../types/channel').ChannelCredentialErrorCode;
   valid: boolean;
   errors?: string[];
   warnings?: string[];
@@ -304,6 +305,7 @@ export type ChannelCredentialValidationResult = HostSuccess & {
     botUsername?: string;
     guildName?: string;
     channelName?: string;
+    domain?: string;
   };
 };
 export type ChannelSaveConfigPayload = ChannelTypePayload & {
@@ -312,6 +314,7 @@ export type ChannelSaveConfigPayload = ChannelTypePayload & {
   kernelId?: string;
 };
 export type ChannelSaveConfigResult = HostSuccess & {
+  errorCode?: import('../types/channel').ChannelCredentialErrorCode;
   noChange?: boolean;
   /** Configuration is committed; a guarded Gateway restart is continuing asynchronously. */
   activationPending?: boolean;

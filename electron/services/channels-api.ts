@@ -1,5 +1,6 @@
 import { readFile, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
+import { feishuCredentialChangeRequiresSecret, feishuValidationFailure, validateFeishuCredentials } from '../channels/feishu-credentials';
 import type { BrowserWindow } from 'electron';
 import type { CompleteHostServiceRegistry } from '../main/ipc/host-contract';
 import { extractSessionRecords } from '../utils/session-util';
@@ -1179,6 +1180,10 @@ function materializeCanonicalConfig(
   const fields = new Map(CHANNEL_META[channelType].configFields.map(field => [field.key, field]));
   const config: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(input)) {
+    if (channelType === 'feishu' && key === 'domain' && (value === 'feishu' || value === 'lark')) {
+      config.domain = value;
+      continue;
+    }
     if (key === 'enabled' && typeof value === 'boolean') {
       config.enabled = value;
       continue;
@@ -1422,6 +1427,9 @@ export function createChannelsApi(ctx: ChannelsApiContext): CompleteHostServiceR
         const account = await ctx.accountService.get(channelType, accountId);
         const incoming = materializeCanonicalConfig(ctx, channelType, raw, 'read');
         const existing = account ? await ctx.accountService.getProjectionConfig(account) : {};
+        if (channelType === 'feishu' && feishuCredentialChangeRequiresSecret(existing, incoming)) {
+          return { success: true, ...feishuValidationFailure('feishuAppSecretReenter') };
+        }
         const kernelId = await resolveCanonicalKernel(ctx, account, payload);
         const adapter = ctx.adapterRegistry.require(kernelId);
         return { success: true, ...(await adapter.validate(channelType, { ...existing, ...incoming })) };
@@ -1439,6 +1447,14 @@ export function createChannelsApi(ctx: ChannelsApiContext): CompleteHostServiceR
         const readConfig = materializeCanonicalConfig(ctx, channelType, config, 'read');
         const existing = previous ? await ctx.accountService.getProjectionConfig(previous) : {};
         const merged = { ...existing, ...readConfig };
+        let validatedDomain: string | undefined;
+        if (channelType === 'feishu') {
+          const validation = feishuCredentialChangeRequiresSecret(existing, readConfig)
+            ? feishuValidationFailure('feishuAppSecretReenter')
+            : await validateFeishuCredentials(merged);
+          if (!validation.valid) return { success: false, errorCode: validation.errorCode };
+          validatedDomain = validation.details?.domain;
+        }
         if (isSupportedChannelType(channelType)) {
           const missing = CHANNEL_META[channelType].configFields
             .filter(field => field.required && !String(merged[field.key] ?? '').trim())
@@ -1446,6 +1462,7 @@ export function createChannelsApi(ctx: ChannelsApiContext): CompleteHostServiceR
           if (missing.length > 0) throw new Error(`Missing required Channel configuration: ${missing.join(', ')}`);
         }
         const consumed = materializeCanonicalConfig(ctx, channelType, config, 'consume');
+        if (validatedDomain) consumed.domain = validatedDomain;
         const enabled = typeof consumed.enabled === 'boolean' ? consumed.enabled : previous?.enabled ?? true;
         delete consumed.enabled;
         const saved = await ctx.accountService.upsert({

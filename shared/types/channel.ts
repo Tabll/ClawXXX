@@ -339,6 +339,10 @@ export const CHANNEL_META: Record<ChannelType, ChannelMeta> = {
 /**
  * Get the channel integrations supported by ClawX.
  */
+export type ChannelCredentialErrorCode = 'feishuAppIdRequired' | 'feishuAppSecretRequired'
+  | 'feishuAppSecretEqualsAppId' | 'feishuAppSecretReenter' | 'feishuInvalidDomain'
+  | 'feishuRejected' | 'feishuConnectionError';
+
 export function getPrimaryChannels(): ChannelType[] {
   return [...SUPPORTED_CHANNEL_TYPES];
 }

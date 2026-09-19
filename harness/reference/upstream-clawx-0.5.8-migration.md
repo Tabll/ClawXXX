@@ -17,7 +17,7 @@ range begins after `7f8e50ab`; a wholesale merge is not this implementation.
 | 2 | Model defaults/metadata, scoped Astra compatibility and Provider cleanup | Implemented and validated |
 | 3 | Main-owned speech-to-text and microphone permission recovery with secure credential input | Implemented and validated |
 | 4 | Canonical diagnostics export, generated media and plan/compaction presentation | Implemented and validated |
-| 5 | Channel validation, WeCom and official DingTalk/DWS migration | Pending |
+| 5 | Channel validation, WeCom and official DingTalk/DWS migration | Feishu/WeCom implemented; official DingTalk/DWS review in progress |
 | 6 | Canonical subagent lineage/status and opt-in Computer Use; optional TokenDance | Pending |
 
 Each batch records actual checks below. Upstream release-number-only changes,
@@ -104,7 +104,7 @@ Batch 4a (2026-09-19, commit `e4317b2f`):
   Typecheck, build, lint (same 7 existing warnings), comms replay/compare and task
   validation pass. Event fixtures do not claim a paid-provider compaction run.
 
-Batch 4b (2026-09-19):
+Batch 4b (2026-09-19, commit `a53b2e2a`):
 
 - OpenClaw imports explicit live MEDIA directives, ACP resource references and
   successful internal message-tool delivery evidence before transient cleanup.
@@ -123,6 +123,28 @@ Batch 4b (2026-09-19):
 - Typecheck, production build, lint (same 7 baseline warnings), task validate/
   dry-run, harness CI and communication replay/compare passed. Real remote
   image-generation services and cross-platform native files remain untested.
+
+Batch 5a (2026-09-19):
+
+- Feishu/Lark validation is shared across OpenClaw and Relay, with official-domain
+  detection, a body-read deadline, redirect refusal and localized error codes.
+  Main validates before consuming secure handles or persisting account state.
+  App ID changes require a new secret; errors cannot echo service bodies.
+- Existing canonical binding/owner activation remains authoritative. No extra
+  connector or unconditional Gateway restart is introduced after saving.
+- WeCom 2026.8.17 single-account fallback is pinned as a pnpm patch, and verified
+  by running the actual plugin against one/multiple/explicit-account fixtures.
+  OpenClaw artifact identity advances to 2026.9.4+clawx.16 with refreshed lock,
+  runtime and overlay hashes; installed signed artifacts are not modified.
+- 290 unit/contract files / 2,765 tests passed, 2 files / 6 tests skipped. Four
+  Electron tests passed for credential refusal/retry and existing kernel routing.
+  Typecheck, build, lint (same 7 baseline warnings), source/build contract tests,
+  task validation/dry-run and comms replay/compare passed.
+- Offline lock regeneration lacked cached registry metadata; the read-only
+  online resolution changed only the expected seven lockfile lines. Frozen
+  installation used one cached package and disabled lifecycle scripts.
+- Actual Feishu accounts, WeCom calendar access and signed cross-platform
+  artifact publication require external/platform validation.
 
 No native-account, microphone, signed package, Windows lifecycle or remote release
 validation has been claimed.
@@ -164,13 +186,13 @@ this table does not claim completion of later batches.
 | 2026-09-07 | [d510c221](https://github.com/ValueCell-ai/ClawX/commit/d510c221) / [#1284](https://github.com/ValueCell-ai/ClawX/pull/1284) | fix: stabilize macOS release signing (#1284) | 打包工具单独升级，不覆盖当前签名发布流程 |
 | 2026-09-07 | [1015e0d8](https://github.com/ValueCell-ai/ClawX/commit/1015e0d8) / [#1286](https://github.com/ValueCell-ai/ClawX/pull/1286) |  fix: support Astra custom providers and clean up deleted provider state (#1286) | Batch 2 implemented with final scoped low behavior and projection cleanup |
 | 2026-09-07 | [a1db9fce](https://github.com/ValueCell-ai/ClawX/commit/a1db9fce) / [#1287](https://github.com/ValueCell-ai/ClawX/pull/1287) | chore: bump bundled channel plugins compatible with OpenClaw 2026.7.1-2 (#1287) | 逐项核对现有插件版本，不降级本地较新内核依赖 |
-| 2026-09-07 | [f5bb8c02](https://github.com/ValueCell-ai/ClawX/commit/f5bb8c02) / [#1288](https://github.com/ValueCell-ai/ClawX/pull/1288) | fix: activate plugin channels after save and reject invalid Feishu credentials (#1288) | 凭据验证有价值；激活需接 Channel owner |
+| 2026-09-07 | [f5bb8c02](https://github.com/ValueCell-ai/ClawX/commit/f5bb8c02) / [#1288](https://github.com/ValueCell-ai/ClawX/pull/1288) | fix: activate plugin channels after save and reject invalid Feishu credentials (#1288) | Batch 5a validation implemented in both adapters; existing canonical owner activation retained |
 | 2026-09-08 | [6a938757](https://github.com/ValueCell-ai/ClawX/commit/6a938757) / [#1278](https://github.com/ValueCell-ai/ClawX/pull/1278) | refactor(settings): update developer mode description (#1278) | 低风险文案，但需符合本地开发者模式内容 |
 | 2026-09-09 | [cc9fb719](https://github.com/ValueCell-ai/ClawX/commit/cc9fb719) / [#1289](https://github.com/ValueCell-ai/ClawX/pull/1289) | feat: support token dance (#1289) | 可选新 Provider，需接统一凭据与双内核投影 |
 | 2026-09-10 | [1f2f50b3](https://github.com/ValueCell-ai/ClawX/commit/1f2f50b3) / [#1282](https://github.com/ValueCell-ai/ClawX/pull/1282) | feat: support speech-to-text (ASR) input and add model icons; fix ACP process management and refactor UI (#1282) | Batch 3 ASR implemented; appearance and ACP lifecycle reviewed separately |
 | 2026-09-10 | [f40e5dab](https://github.com/ValueCell-ai/ClawX/commit/f40e5dab) / [#1290](https://github.com/ValueCell-ai/ClawX/pull/1290) | fix: allow issue report export without conversations (#1290) | Batch 4a implemented and Electron-tested |
 | 2026-09-11 | [607f33e0](https://github.com/ValueCell-ai/ClawX/commit/607f33e0) / [#1283](https://github.com/ValueCell-ai/ClawX/pull/1283) | feat: supports Computer Use feature experimentally (#1283) | 独立 Computer Use 项目，跨平台制品和权限适配 |
-| 2026-09-11 | [e8ff1184](https://github.com/ValueCell-ai/ClawX/commit/e8ff1184) / [#1291](https://github.com/ValueCell-ai/ClawX/pull/1291) | fix: support WeCom calendar queries in single-account desktop sessions (#1291) | 值得移植；插件 patch 纳入签名内核构建 |
+| 2026-09-11 | [e8ff1184](https://github.com/ValueCell-ai/ClawX/commit/e8ff1184) / [#1291](https://github.com/ValueCell-ai/ClawX/pull/1291) | fix: support WeCom calendar queries in single-account desktop sessions (#1291) | Batch 5a patch pinned in the lockfile; OpenClaw artifact revision 16 |
 | 2026-09-11 | [33a1a1a7](https://github.com/ValueCell-ai/ClawX/commit/33a1a1a7) / [#1293](https://github.com/ValueCell-ai/ClawX/pull/1293) |  fix: recover OpenClaw-generated file (#1293) | Batch 4b implemented from live delivery evidence into canonical Blobs |
 | 2026-09-14 | [5a735537](https://github.com/ValueCell-ai/ClawX/commit/5a735537) / [#1294](https://github.com/ValueCell-ai/ClawX/pull/1294) | fix: render generated images inline from MEDIA paths (#1294) | Batch 4b implemented with scoped import, inline preview and no transcript scans |
 | 2026-09-14 | [a0b2a804](https://github.com/ValueCell-ai/ClawX/commit/a0b2a804) / [#1296](https://github.com/ValueCell-ai/ClawX/pull/1296) | feat: gate voice input behind developer mode (#1296) | Batch 3 implemented; hidden by default and direct voice-tab navigation gated |
