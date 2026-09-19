@@ -16,6 +16,8 @@ export function redactDiagnosticText(value: unknown): string {
   const home = homedir();
   if (home) text = text.replace(new RegExp(`${escapeRegExp(home)}(?:[/\\\\][^\\s"']*)?`, 'g'), '[redacted-path]');
   text = text
+    .replace(/(https?:\/\/)[^\s/@:]+:[^\s/@]+@/gi, '$1[redacted]@')
+    .replace(/(\b(?:proxy[-_])?authorization\s*[=:]\s*)[^\r\n]+/gi, '$1[redacted]')
     .replace(/\/(?:Users|home)\/[^/\s"']+(?:\/[^\s"']*)?/g, '[redacted-path]')
     .replace(/[A-Za-z]:\\Users\\[^\\\s"']+(?:\\[^\s"']*)?/g, '[redacted-path]')
     .replace(BEARER, 'Bearer [redacted]')

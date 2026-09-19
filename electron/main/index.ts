@@ -322,6 +322,7 @@ async function registerManagedOpenClawRuntime(window: BrowserWindow): Promise<vo
     const chat = new OpenClawAcpChatAdapter(
       service,
       async () => { await assertNoForbiddenOpenClawHistory(openClawRuntimeLocation!); },
+      gatewayManager,
     );
     const driver = new OpenClawKernelDriver({
       generation,

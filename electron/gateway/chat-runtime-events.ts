@@ -41,6 +41,23 @@ export function normalizeGatewayChatRuntimeEvent(payload: unknown): ChatRuntimeE
   const stream = readString(raw.stream);
   const data = asRecord(raw.data) ?? raw;
 
+  if (stream === 'compaction') {
+    const phase = data.phase;
+    if (phase !== 'start' && phase !== 'end') return null;
+    const status = phase === 'start' ? 'in_progress'
+      : data.outcome === 'aborted' || data.aborted === true ? 'cancelled'
+        : data.outcome === 'skipped' ? 'skipped'
+          : data.completed === true ? 'completed'
+            : data.completed === false || data.outcome === 'failed' ? 'failed' : undefined;
+    const base = withBase('compaction.updated', raw);
+    return base && status ? {
+      ...base, phase, status,
+      compactionId: readString(data.compactionId) ?? readString(data.itemId),
+      willRetry: typeof data.willRetry === 'boolean' ? data.willRetry : undefined,
+      reason: (readString(data.failureReason) ?? readString(data.reason))?.slice(0, 500),
+    } : null;
+  }
+
   if (stream === 'lifecycle') {
     const phase = readString(data.phase);
     if (phase === 'start') {

@@ -494,5 +494,48 @@
       "request": "保存できませんでした。もう一度お試しください。"
     },
     "endpointChanged": "接続先が変更されました。新しい接続先のキーを入力してください。保存済みキーは再利用されません。"
+  },
+  "issueReport": {
+    "actionTitle": "問題調査レポートをエクスポート",
+    "actionDescription": "トラブルシューティングとサポート用の診断 ZIP をデスクトップに作成します。",
+    "open": "内容を確認してエクスポート",
+    "dialogTitle": "問題調査レポートをエクスポート",
+    "dialogDescription": "含まれる内容を確認し、必要に応じて会話を選択してください。ZIP はデスクトップに保存されます。",
+    "contentsTitle": "ZIP に含まれる内容",
+    "contents": {
+      "transcripts": {
+        "title": "会話トランスクリプト",
+        "description": "共有会話ストアから選択したメッセージと実行イベントを出力します。非公開の推論と添付内容は含みません。"
+      },
+      "config": {
+        "title": "カーネルの状態とバージョン",
+        "description": "各カーネルの実行バージョン、機能と健全性。"
+      },
+      "logs": {
+        "title": "診断ログ",
+        "description": "既知の認証フィールドを除去した ClawX と各カーネルの最近のログ。"
+      },
+      "manifest": {
+        "title": "マニフェスト",
+        "description": "含まれるファイルと取得できなかったファイルの一覧。"
+      }
+    },
+    "sessionsTitle": "会話（任意）",
+    "selectAll": "すべて選択（{{count}}）",
+    "selectedCount": "{{count}} 件の会話を選択中",
+    "noSessions": "会話がなくても診断情報とログを出力できます。",
+    "export": "ZIP を作成（{{count}}）",
+    "exportWithoutConversations": "会話なしで ZIP を作成",
+    "exporting": "ZIP を作成中...",
+    "exportSucceeded": "問題調査レポートをエクスポートしました",
+    "skippedSessions": "ローカル記録を利用できない {{count}} 件の会話をスキップし、利用可能な診断情報をエクスポートしました。",
+    "exportFailed": "問題調査レポートをエクスポートできませんでした",
+    "completeTitle": "問題調査レポートの準備ができました",
+    "completeDescription": "ZIP は以下のパスに保存されました。",
+    "showInFolder": "フォルダーに表示",
+    "revealFailed": "問題調査レポートをフォルダーに表示できませんでした",
+    "loading": "会話を読み込み中…",
+    "listFailed": "会話を読み込めませんでした。会話なしで診断情報を出力できます。",
+    "privacyHint": "最近の会話を最大500件表示します。選択したメッセージには個人情報が含まれる場合があります。出力前に選択内容をご確認ください。"
   }
 }

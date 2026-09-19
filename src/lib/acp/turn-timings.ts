@@ -3,8 +3,8 @@ import { acpUserTurns, turnMatchKey } from './openclaw-media-compat';
 import type { AcpTimelineSnapshot } from './timeline-types';
 
 export type AcpTurnTiming =
-  | { source: 'live'; status: 'running'; startedAtMs: number }
-  | { source: 'live' | 'transcript'; status: 'complete'; durationMs: number };
+  | { source: 'live' | 'canonical'; status: 'running'; startedAtMs: number }
+  | { source: 'live' | 'transcript' | 'canonical'; status: 'complete'; durationMs: number };
 
 export function alignHistoricalTurnTimings(
   snapshot: AcpTimelineSnapshot,

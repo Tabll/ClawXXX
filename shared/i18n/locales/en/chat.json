@@ -93,6 +93,15 @@
             "open": "Open {{name}}",
             "preview": "Preview {{name}}",
             "openFailed": "Could not open attachment"
+        },
+        "compaction": {
+            "inProgress": "Compacting context",
+            "completed": "Compacted history",
+            "continuing": "Context compacted and continuing",
+            "failed": "Context compaction failed",
+            "cancelled": "Context compaction cancelled",
+            "reason": "Reason: {{reason}}",
+            "skipped": "Context compaction skipped"
         }
     },
     "artifactPanel": {

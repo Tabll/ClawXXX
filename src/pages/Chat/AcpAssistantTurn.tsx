@@ -1,3 +1,4 @@
+import { AcpCompactionStatus } from './AcpCompactionStatus';
 import { useEffect, useMemo, useState } from 'react';
 import { Sparkles } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
@@ -209,6 +210,8 @@ export function AcpAssistantTurn({
               </div>
             );
           }
+
+          if (item.kind === 'compaction') return <AcpCompactionStatus key={item.id} item={item} />;
 
           if (item.kind === 'plan') {
             return (

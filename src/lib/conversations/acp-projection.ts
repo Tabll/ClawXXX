@@ -218,7 +218,10 @@ function eventNotification(
       update = { sessionUpdate: 'usage_update', ...payload };
       break;
     case 'diagnostic':
-      if (payload.category === 'plan') update = { sessionUpdate: 'plan', ...payload };
+      if (payload.category === 'plan') update = { sessionUpdate: 'plan', ...payload, planId: run.id };
+      if (payload.category === 'compaction') update = {
+        sessionUpdate: 'session_info_update', _meta: { 'clawx/compaction': { version: 1, ...payload } },
+      };
       break;
     default:
       break;
@@ -268,9 +271,13 @@ export function projectConversationHistory(
     const completed = run.completedAt ? Date.parse(run.completedAt) : Number.NaN;
     if (Number.isFinite(started) && Number.isFinite(completed)) {
       turnTimingsByUserMessageId[run.turnId] = {
-        source: 'transcript',
+        source: 'canonical',
         status: 'complete',
         durationMs: Math.max(0, completed - started),
+      };
+    } else if (Number.isFinite(started) && ['queued', 'running', 'cancelling'].includes(run.status)) {
+      turnTimingsByUserMessageId[run.turnId] = {
+        source: 'canonical', status: 'running', startedAtMs: started,
       };
     }
     if (run.assistantTurnId) {

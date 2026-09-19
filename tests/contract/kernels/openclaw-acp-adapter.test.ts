@@ -1,5 +1,7 @@
 // @vitest-environment node
 
+import { EventEmitter } from 'node:events';
+import { normalizeGatewayChatRuntimeEvent } from '@electron/gateway/chat-runtime-events';
 import { existsSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -91,6 +93,37 @@ function runtime() {
 }
 
 describe('OpenClaw ACP execution adapter', () => {
+  it('routes current-kernel compaction events through the canonical run and removes its listener on stop', async () => {
+    const gateway = new EventEmitter();
+    let nativeSessionKey = '';
+    const f = fixture({ sendPrompt: vi.fn(async (payload) => {
+      nativeSessionKey = payload.sessionKey;
+      const emit = (seq: number, data: unknown, sessionKey = payload.sessionKey) => {
+        const event = normalizeGatewayChatRuntimeEvent({ runId: 'native-run', sessionKey, seq, stream: 'compaction', data });
+        if (event) gateway.emit('chat:runtime-event', event);
+      };
+      emit(1, { phase: 'start', itemId: 'c1' }, 'foreign-session');
+      emit(2, { phase: 'start', itemId: 'c1' });
+      emit(3, { phase: 'end', itemId: 'c1', completed: false, outcome: 'skipped', reason: 'below threshold' });
+      emit(2, { phase: 'start', itemId: 'c1' });
+      emit(4, { phase: 'start', itemId: 'c2' });
+      emit(5, { phase: 'end', itemId: 'c2', completed: true, willRetry: true });
+      return { success: true, generation: 1 };
+    }) });
+    const host = createFakeHost();
+    const adapter = new OpenClawAcpChatAdapter(f.acp, undefined, gateway as never);
+    await adapter.initialize({ host, generation: 1, runtime: runtime() });
+    await adapter.execute(request('compact'));
+    expect(host.events.map(event => event.event.kind)).toEqual(['diagnostic', 'diagnostic', 'diagnostic', 'diagnostic', 'run.terminal']);
+    expect(host.events.map(event => event.conversationId)).toEqual(new Array(5).fill('conversation-compact'));
+    const statuses = host.events.slice(0, 4).map(event => (event.event.payload as { status: string }).status);
+    expect(statuses).toEqual(['in_progress', 'skipped', 'in_progress', 'completed']);
+    gateway.emit('chat:runtime-event', { type: 'compaction.updated', sessionKey: nativeSessionKey, status: 'failed' });
+    expect(host.events).toHaveLength(5);
+    await adapter.stop();
+    expect(gateway.listenerCount('chat:runtime-event')).toBe(0);
+  });
+
   it('round-trips a native absolute workspace URI and passes the exact decoded cwd to ACP', async () => {
     // Reproduce the Windows failure even on a POSIX test host. A file URL
     // without a drive is not a native absolute Windows workspace.

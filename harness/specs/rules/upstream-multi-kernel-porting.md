@@ -38,3 +38,16 @@ and provider response bodies must not cross into Renderer errors. Keep deadlines
 active through response-body reads and release capture resources on all failures.
 The UI remains developer-gated. Cancellation/navigation invalidates recording
 and transcription callbacks before they can upload or modify another draft.
+
+Issue-report export reads canonical Conversation IDs through DataService and
+kernel diagnostics through the host. Empty selection is supported; missing
+Conversations are reported explicitly. Never copy runtime configs/transcripts or
+attachment bytes into reports. Redact credential fields, omit private/secret
+blocks and reasoning, bound report memory/strings, and write exclusively to a
+Main-chosen local destination. The UI discloses selected-content privacy limits.
+
+Plan identity is canonical Run-scoped. Restore elapsed time from canonical Run
+timestamps, including live runs after Renderer reload. Compaction lifecycle
+projects native live events onto the owning canonical run and event ledger;
+ignore foreign sessions/replayed sequence numbers and remove observers on stop.
+Do not copy legacy compaction reserve policy into newer kernel runtimes.

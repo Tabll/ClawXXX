@@ -7,6 +7,14 @@ export type ChatRuntimeEventBase = {
 
 export type ChatRuntimeEvent =
   | (ChatRuntimeEventBase & {
+      type: 'compaction.updated';
+      phase: 'start' | 'end';
+      compactionId?: string;
+      status: 'in_progress' | 'completed' | 'failed' | 'cancelled' | 'skipped';
+      willRetry?: boolean;
+      reason?: string;
+    })
+  | (ChatRuntimeEventBase & {
       type: 'run.started';
       startedAt?: number;
     })

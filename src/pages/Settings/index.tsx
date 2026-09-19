@@ -1,3 +1,4 @@
+import { IssueReportExport } from '@/components/settings/IssueReportExport';
 /**
  * Settings Page
  * Application configuration
@@ -497,6 +498,8 @@ export function Settings() {
           <Separator className="bg-black/5 dark:bg-white/5" />
 
           <KernelSettings />
+
+          <IssueReportExport />
 
           <div className="space-y-6">
             <div className="flex items-center justify-between">

@@ -93,6 +93,15 @@
             "open": "{{name}} を開く",
             "preview": "{{name}} をプレビュー",
             "openFailed": "添付ファイルを開けませんでした"
+        },
+        "compaction": {
+            "inProgress": "コンテキストを圧縮中",
+            "completed": "履歴を圧縮しました",
+            "continuing": "コンテキストを圧縮して続行中",
+            "failed": "コンテキストの圧縮に失敗しました",
+            "cancelled": "コンテキストの圧縮をキャンセルしました",
+            "reason": "理由: {{reason}}",
+            "skipped": "コンテキストの圧縮をスキップしました"
         }
     },
     "artifactPanel": {

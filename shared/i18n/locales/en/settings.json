@@ -494,5 +494,48 @@
       "request": "Saving failed. Please try again."
     },
     "endpointChanged": "The endpoint has changed. Enter a key for the new endpoint; the saved key will not be reused."
+  },
+  "issueReport": {
+    "actionTitle": "Export issue report",
+    "actionDescription": "Create a diagnostic ZIP on your desktop for troubleshooting and support.",
+    "open": "Review and export",
+    "dialogTitle": "Export issue report",
+    "dialogDescription": "Review what will be included and optionally choose conversations. The ZIP will be saved to your desktop.",
+    "contentsTitle": "Included in the ZIP",
+    "contents": {
+      "transcripts": {
+        "title": "Conversation transcripts",
+        "description": "Selected messages and run events from the shared Conversation store. Private reasoning and attachment bytes are omitted."
+      },
+      "config": {
+        "title": "Kernel status and versions",
+        "description": "Runtime versions, capabilities and health for all installed kernels."
+      },
+      "logs": {
+        "title": "Diagnostic logs",
+        "description": "Recent ClawX and kernel log tails with known credential fields removed."
+      },
+      "manifest": {
+        "title": "Manifest",
+        "description": "A list of included and unavailable files."
+      }
+    },
+    "sessionsTitle": "Conversations (optional)",
+    "selectAll": "Select all ({{count}})",
+    "selectedCount": "{{count}} conversation(s) selected",
+    "noSessions": "No conversations are available. You can still export diagnostics and logs.",
+    "export": "Create ZIP ({{count}})",
+    "exportWithoutConversations": "Create ZIP without conversations",
+    "exporting": "Creating ZIP...",
+    "exportSucceeded": "Issue report exported",
+    "skippedSessions": "{{count}} unavailable conversation(s) could not be included. The available diagnostics were still exported.",
+    "exportFailed": "Failed to export issue report",
+    "completeTitle": "Issue report ready",
+    "completeDescription": "The ZIP was saved to the path below.",
+    "showInFolder": "Show in Folder",
+    "revealFailed": "Failed to show the issue report in its folder",
+    "loading": "Loading conversations…",
+    "listFailed": "Could not load conversations. You can still export diagnostics without them.",
+    "privacyHint": "Up to 500 recent conversations are listed. Selected messages may contain personal information; review your selection before exporting."
   }
 }

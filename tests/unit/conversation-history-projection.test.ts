@@ -166,7 +166,7 @@ describe('canonical Conversation history projection', () => {
       usage: { inputTokens: 10, outputTokens: 4 },
     });
     expect(projected.turnTimingsByUserMessageId['user-turn']).toEqual({
-      source: 'transcript',
+      source: 'canonical',
       status: 'complete',
       durationMs: 3_000,
     });
@@ -191,6 +191,9 @@ describe('canonical Conversation history projection', () => {
 
   it('restores partial assistant output only for a run without a durable assistant turn', () => {
     const projected = projectConversationHistory(history('running'));
+    expect(projected.turnTimingsByUserMessageId['user-turn']).toEqual({
+      source: 'canonical', status: 'running', startedAtMs: Date.parse('2026-08-24T00:00:01.000Z'),
+    });
     const updates = projected.steps.flatMap(step => (
       step.kind === 'update'
         ? [step.event.notification.update as unknown as Record<string, unknown>]
@@ -201,6 +204,14 @@ describe('canonical Conversation history projection', () => {
       messageId: 'run-one',
       content: { type: 'text', text: 'partial' },
     }));
+  });
+
+  it('does not restart a terminal or interrupted timer without a completion timestamp', () => {
+    for (const status of ['failed', 'cancelled', 'interrupted', 'completed']) {
+      const value = history(status);
+      delete value.runs[0].completedAt;
+      expect(projectConversationHistory(value).turnTimingsByUserMessageId).toEqual({});
+    }
   });
 
   it('keeps full canonical run identity on live event projection', () => {

@@ -40,6 +40,7 @@ import { createCronApi } from '../services/cron-api';
 import { createFilesApi } from '../services/files-api';
 import { createMediaApi } from '../services/media-api';
 import { createAsrApi } from '../services/asr-api';
+import { createIssueReportExporter } from '../services/issue-report-api';
 import { createEmbeddingsApi } from '../services/embeddings-api';
 import { createProvidersApi } from '../services/providers-api';
 import { createSessionsApi } from '../services/sessions-api';
@@ -234,6 +235,20 @@ function registerTypedHostHandlers(
     media: createMediaApi({ attachmentAccess }),
     embeddings: createEmbeddingsApi(),
     asr: createAsrApi({ credentialVault }),
+    diagnostics: {
+      exportIssueReport: createIssueReportExporter({
+        dataClient,
+        diagnostics: async () => {
+          const snapshot = hostApiRegistry.resolve('diagnostics', 'snapshot');
+          if (!snapshot) throw new Error('Kernel diagnostics are unavailable');
+          return snapshot();
+        },
+        kernelLogs: () => kernelSupervisors.snapshots().map(snapshot => ({
+          kernelId: snapshot.kernelId,
+          logs: kernelSupervisors.logs(snapshot.kernelId, { limit: 200 }),
+        })),
+      }),
+    },
     sessions: createSessionsApi({ dataClient }),
     conversations: createConversationsApi(dataClient),
     chat: createChatApi({

@@ -252,7 +252,7 @@ describe('canonical multi-kernel Chat store', () => {
       },
     });
     expect(state.turnTimingsByUserMessageId['turn-user']).toEqual({
-      source: 'transcript',
+      source: 'canonical',
       status: 'complete',
       durationMs: 3_000,
     });

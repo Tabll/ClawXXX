@@ -1040,6 +1040,13 @@ export type ConversationBranchPayload = {
   title?: string;
 };
 export type ConversationGetResult = ConversationExport | null;
+export type IssueReportExportPayload = { conversationIds: string[] };
+export type IssueReportExportResult = {
+  success: boolean;
+  path: string;
+  conversationIds: string[];
+  skippedConversationIds: string[];
+};
 export type ConversationListResult = ConversationPage;
 export type ConversationSearchResult = ConversationSummary[];
 
@@ -1345,6 +1352,7 @@ export type HostApiContract = {
     removeChannel: (payload: AgentChannelPayload) => AgentSnapshotResult;
   };
   diagnostics: {
+    exportIssueReport: (payload: IssueReportExportPayload) => IssueReportExportResult;
     snapshot: () => DiagnosticsSnapshotResult;
     gatewaySnapshot: () => DiagnosticsGatewaySnapshotResult;
     acpTrace: () => AcpTraceSnapshot;

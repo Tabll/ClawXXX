@@ -1126,7 +1126,7 @@ export async function installAttachmentHostFixture(
                   ? (['completed', 'failed'].includes(String(update.status).toLowerCase()) ? 'tool.result' : 'tool.progress')
                   : update.sessionUpdate === 'usage_update'
                     ? 'usage'
-                    : update.sessionUpdate === 'plan'
+                    : (update.sessionUpdate === 'plan' || update.sessionUpdate === 'session_info_update')
                       ? 'diagnostic'
                       : null;
         if (!kind) continue;
@@ -1140,7 +1140,9 @@ export async function installAttachmentHostFixture(
           : kind === 'reasoning.visibility'
             ? { visibility: 'private', text: projected.text }
             : kind === 'diagnostic'
-              ? { category: 'plan', ...update }
+              ? update.sessionUpdate === 'plan'
+                ? { category: 'plan', ...update }
+                : { category: 'compaction', ...((update._meta as Record<string, unknown>)?.['clawx/compaction'] as Record<string, unknown>) }
               : update;
         run.eventSeq += 1;
         const envelope = {
@@ -1260,7 +1262,7 @@ export async function installAttachmentHostFixture(
               ? (['completed', 'failed'].includes(String(update.status).toLowerCase()) ? 'tool.result' : 'tool.progress')
               : update.sessionUpdate === 'usage_update'
                 ? 'usage'
-                : update.sessionUpdate === 'plan'
+                : (update.sessionUpdate === 'plan' || update.sessionUpdate === 'session_info_update')
                   ? 'diagnostic'
                   : null;
         if (eventKind && currentRun) {
@@ -1270,7 +1272,9 @@ export async function installAttachmentHostFixture(
             payload: eventKind === 'reasoning.visibility'
               ? { visibility: 'private', ...textAndResources(update.content) }
               : eventKind === 'diagnostic'
+                ? update.sessionUpdate === 'plan'
                 ? { category: 'plan', ...update }
+                : { category: 'compaction', ...((update._meta as Record<string, unknown>)?.['clawx/compaction'] as Record<string, unknown>) }
                 : update,
             emittedAt: updatedAt,
           });

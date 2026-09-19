@@ -15,6 +15,9 @@ import type { AcpPermissionRequestEnvelope, AcpSessionUpdateEnvelope } from '@sh
 import type { OpenClawChatAdapter } from './openclaw-driver';
 import type { OpenClawRuntimeLocation } from './runtime-location';
 import { compileManagedOpenClawSession, managedOpenClawSessionKey, openClawModelRef, openClawPermissionMode } from './managed-session';
+import type { GatewayManager } from '../../gateway/manager';
+import type { ChatRuntimeEvent } from '@shared/chat-runtime-events';
+import { redactDiagnosticText } from '../log-redaction';
 
 function workspacePath(uri: string): string {
   if (uri.startsWith('file:')) return fileURLToPath(uri);
@@ -40,10 +43,23 @@ export class OpenClawAcpChatAdapter implements OpenClawChatAdapter {
   private runtime?: OpenClawRuntimeLocation;
   private unsubscribeUpdates?: () => void;
   private unsubscribePermissions?: () => void;
+  private readonly compactions = new Map<string, { id: string; status: string; count: number; seq?: number }>();
+  private readonly runtimeEventTails = new Map<string, Promise<void>>();
+  private readonly onRuntimeEvent = (event: ChatRuntimeEvent) => {
+    if (event.type !== 'compaction.updated' || !event.sessionKey) return;
+    const run = this.runsBySession.get(event.sessionKey);
+    if (!run) return;
+    const tail = (this.runtimeEventTails.get(run.runId) ?? Promise.resolve())
+      .then(() => this.forwardCompaction(run, event));
+    // Prompt completion observes errors; prevent premature unhandled rejection.
+    void tail.catch(() => undefined);
+    this.runtimeEventTails.set(run.runId, tail);
+  };
 
   constructor(
     private readonly acp: AcpChatService,
     private readonly afterOperation?: () => Promise<void>,
+    private readonly runtimeEvents?: Pick<GatewayManager, 'on' | 'off'>,
   ) {}
 
   async initialize(input: {
@@ -58,6 +74,8 @@ export class OpenClawAcpChatAdapter implements OpenClawChatAdapter {
     this.unsubscribePermissions?.();
     this.unsubscribeUpdates = this.acp.observeSessionUpdates(event => this.forwardSessionUpdate(event));
     this.unsubscribePermissions = this.acp.observePermissionRequests(event => this.forwardPermission(event));
+    this.runtimeEvents?.off('chat:runtime-event', this.onRuntimeEvent);
+    this.runtimeEvents?.on('chat:runtime-event', this.onRuntimeEvent);
   }
 
   async execute(input: KernelRunRequest): Promise<KernelRunAcceptance> {
@@ -75,6 +93,8 @@ export class OpenClawAcpChatAdapter implements OpenClawChatAdapter {
       this.cancelledBeforePrompt.delete(input.runId);
       this.eventSeqByRun.delete(input.runId);
       this.terminalRuns.delete(input.runId);
+      this.compactions.delete(input.runId);
+      this.runtimeEventTails.delete(input.runId);
       release();
     }
   }
@@ -112,8 +132,11 @@ export class OpenClawAcpChatAdapter implements OpenClawChatAdapter {
       } finally { await staged.cleanup(); }
     } finally {
       try {
-        requireSuccess(await this.acp.closeManagedSession({ sessionKey: key }), 'session/close');
-        await this.afterOperation?.();
+        try { await this.runtimeEventTails.get(input.runId); }
+        finally {
+          requireSuccess(await this.acp.closeManagedSession({ sessionKey: key }), 'session/close');
+          await this.afterOperation?.();
+        }
       } finally {
         this.sessionsByRun.delete(input.runId);
         this.runsBySession.delete(key);
@@ -180,6 +203,9 @@ export class OpenClawAcpChatAdapter implements OpenClawChatAdapter {
     this.unsubscribePermissions?.();
     this.unsubscribeUpdates = undefined;
     this.unsubscribePermissions = undefined;
+    this.runtimeEvents?.off('chat:runtime-event', this.onRuntimeEvent);
+    this.compactions.clear();
+    this.runtimeEventTails.clear();
     this.sessionsByRun.clear();
     this.runsBySession.clear();
     this.eventSeqByRun.clear();
@@ -312,6 +338,21 @@ export class OpenClawAcpChatAdapter implements OpenClawChatAdapter {
       requestId: envelope.requestId,
       toolCall: envelope.request.toolCall,
       options: envelope.request.options,
+    });
+  }
+
+  private async forwardCompaction(run: KernelRunIdentity, event: Extract<ChatRuntimeEvent, { type: 'compaction.updated' }>): Promise<void> {
+    const previous = this.compactions.get(run.runId);
+    if (event.seq !== undefined && previous?.seq !== undefined && event.seq <= previous.seq) return;
+    const startsNew = event.phase === 'start' && previous?.status !== 'in_progress';
+    const count = (previous?.count ?? 0) + (startsNew || !previous ? 1 : 0);
+    const id = event.compactionId ? `${run.runId}:${event.compactionId}`
+      : startsNew || !previous ? `${run.runId}:compact:${count}` : previous.id;
+    this.compactions.set(run.runId, { id, status: event.status, count, seq: event.seq });
+    await this.emit(run, 'diagnostic', {
+      category: 'compaction', compactionId: id, status: event.status, source: 'runtime',
+      runId: run.runId, ...(event.willRetry !== undefined ? { willRetry: event.willRetry } : {}),
+      ...(event.reason ? { reason: redactDiagnosticText(event.reason) } : {}),
     });
   }
 

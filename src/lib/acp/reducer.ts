@@ -12,7 +12,7 @@ import type {
 import { contentBlockToRenderPart, contentBlocksToRenderParts, toolContentToRenderPart, toolContentToRenderParts } from './content-blocks';
 import { dedupeTimelineAttachments } from './attachments';
 import { openClawPromptTextBlocks } from './openclaw-prompt-compat';
-import type { AcpTimelineSnapshot, AttachmentRenderPart, MessageSegmentItem, RenderPart, TimelineItem, ToolCallItem } from './timeline-types';
+import type { AcpTimelineSnapshot, CompactionItem, CompactionStatus, CompactionSource, AttachmentRenderPart, MessageSegmentItem, RenderPart, TimelineItem, ToolCallItem } from './timeline-types';
 
 type UpdateRecord = Record<string, unknown> & {
   sessionUpdate?: unknown;
@@ -519,15 +519,88 @@ function appendThoughtChunk(state: AcpTimelineSnapshot, update: UpdateRecord): A
   });
 }
 
-function updateSessionInfoMetadata(state: AcpTimelineSnapshot, update: UpdateRecord): AcpTimelineSnapshot {
+const COMPACTION_STATUSES: CompactionStatus[] = ['in_progress', 'completed', 'failed', 'cancelled', 'skipped'];
+const COMPACTION_SOURCES: CompactionSource[] = ['threshold', 'overflow', 'preflight', 'manual', 'transcript', 'runtime'];
+const COMPACTION_REASON_CODE_MAX_CHARS = 100;
+const COMPACTION_REASON_MAX_CHARS = 500;
+type CompactionMetadata = Pick<CompactionItem, 'compactionId' | 'status' | 'source' | 'runId' | 'willRetry' | 'timestamp' | 'reasonCode' | 'reason'>;
+function recordValue(value: unknown): Record<string, unknown> | undefined {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : undefined;
+}
+
+function compactionMetadata(update: UpdateRecord): CompactionMetadata | undefined {
+  const meta = recordValue(update._meta);
+  const compaction = recordValue(meta?.['clawx/compaction'] ?? meta?.['openclaw.ai/compaction']);
+  if (!compaction || compaction.version !== 1) return undefined;
+
+  const compactionId = stringValue(compaction.compactionId);
+  if (!compactionId) return undefined;
+  if (!COMPACTION_STATUSES.includes(compaction.status as CompactionStatus)) return undefined;
+  if (!COMPACTION_SOURCES.includes(compaction.source as CompactionSource)) return undefined;
+  if (propertyExists(compaction, 'runId') && typeof compaction.runId !== 'string') return undefined;
+  if (propertyExists(compaction, 'willRetry') && typeof compaction.willRetry !== 'boolean') return undefined;
+  if (propertyExists(compaction, 'timestamp') && typeof compaction.timestamp !== 'string') return undefined;
+  if (propertyExists(compaction, 'reasonCode') && typeof compaction.reasonCode !== 'string') return undefined;
+  if (propertyExists(compaction, 'reason') && typeof compaction.reason !== 'string') return undefined;
+  if (typeof compaction.reasonCode === 'string' && compaction.reasonCode.length > COMPACTION_REASON_CODE_MAX_CHARS) return undefined;
+  if (typeof compaction.reason === 'string' && compaction.reason.length > COMPACTION_REASON_MAX_CHARS) return undefined;
+
   return {
-    ...state,
-    metadata: {
-      ...state.metadata,
-      ...(propertyExists(update, 'title') ? { title: update.title as string | null | undefined } : {}),
-      ...(propertyExists(update, 'updatedAt') ? { updatedAt: update.updatedAt as string | null | undefined } : {}),
-    },
+    compactionId,
+    status: compaction.status as CompactionStatus,
+    source: compaction.source as CompactionSource,
+    ...(typeof compaction.runId === 'string' ? { runId: compaction.runId } : {}),
+    ...(typeof compaction.willRetry === 'boolean' ? { willRetry: compaction.willRetry } : {}),
+    ...(typeof compaction.timestamp === 'string' ? { timestamp: compaction.timestamp } : {}),
+    ...(typeof compaction.reasonCode === 'string' ? { reasonCode: compaction.reasonCode } : {}),
+    ...(typeof compaction.reason === 'string' ? { reason: compaction.reason } : {}),
   };
+}
+
+function updateSessionInfoMetadata(
+  state: AcpTimelineSnapshot,
+  update: UpdateRecord,
+  options: ApplyUpdateOptions,
+): AcpTimelineSnapshot {
+  const hasTitle = propertyExists(update, 'title');
+  const hasUpdatedAt = propertyExists(update, 'updatedAt');
+  const metadata = hasTitle || hasUpdatedAt
+    ? {
+        ...state.metadata,
+        ...(hasTitle ? { title: update.title as string | null | undefined } : {}),
+        ...(hasUpdatedAt ? { updatedAt: update.updatedAt as string | null | undefined } : {}),
+      }
+    : state.metadata;
+  const withMetadata = metadata === state.metadata ? state : { ...state, metadata };
+  const compaction = compactionMetadata(update);
+  if (!compaction) return withMetadata;
+
+  const id = `compaction:${compaction.compactionId}`;
+  const existing = withMetadata.itemsById[id];
+  const previous = existing?.kind === 'compaction' ? existing : undefined;
+  return appendItem(previous ? withMetadata : closeAllMessageSegments(withMetadata), {
+    kind: 'compaction',
+    id,
+    compactionId: compaction.compactionId,
+    status: compaction.status,
+    source: compaction.source,
+    ...(previous?.runId !== undefined
+      ? { runId: previous.runId }
+      : compaction.runId !== undefined ? { runId: compaction.runId } : {}),
+    ...(compaction.willRetry !== undefined
+      ? { willRetry: compaction.willRetry }
+      : previous?.willRetry !== undefined ? { willRetry: previous.willRetry } : {}),
+    ...(previous?.timestamp !== undefined
+      ? { timestamp: previous.timestamp }
+      : compaction.timestamp !== undefined ? { timestamp: compaction.timestamp } : {}),
+    ...(compaction.reasonCode !== undefined
+      ? { reasonCode: compaction.reasonCode }
+      : previous?.reasonCode !== undefined ? { reasonCode: previous.reasonCode } : {}),
+    ...(compaction.reason !== undefined
+      ? { reason: compaction.reason }
+      : previous?.reason !== undefined ? { reason: previous.reason } : {}),
+    historical: !!previous?.historical || !!options.historical,
+  });
 }
 
 function usageMetadata(update: UpdateRecord): UsageUpdate {
@@ -566,7 +639,7 @@ export function applyAcpSessionUpdate(
     case 'plan':
       return appendItem(closeAllMessageSegments(snapshot), {
         kind: 'plan',
-        id: 'plan:current',
+        id: `plan:${stringValue(update.planId) ?? 'current'}`,
         entries: Array.isArray(update.entries) ? update.entries as PlanEntry[] : [],
       });
     case 'available_commands_update':
@@ -576,7 +649,7 @@ export function applyAcpSessionUpdate(
     case 'current_mode_update':
       return { ...snapshot, metadata: { ...snapshot.metadata, currentModeId: stringValue(update.currentModeId) } };
     case 'session_info_update':
-      return updateSessionInfoMetadata(snapshot, update);
+      return updateSessionInfoMetadata(snapshot, update, options);
     case 'usage_update':
       return { ...snapshot, metadata: { ...snapshot.metadata, usage: usageMetadata(update) } };
     default:

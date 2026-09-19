@@ -148,7 +148,7 @@ async function buildKernelDiagnostics(
   return { capturedAt, platform: process.platform, arch: process.arch, kernels: results };
 }
 
-export function createDiagnosticsApi(ctx: DiagnosticsApiContext): CompleteHostServiceRegistry['diagnostics'] {
+export function createDiagnosticsApi(ctx: DiagnosticsApiContext): Omit<CompleteHostServiceRegistry['diagnostics'], 'exportIssueReport'> {
   return {
     snapshot: async () => buildKernelDiagnostics(ctx.kernels),
     gatewaySnapshot: async () => {

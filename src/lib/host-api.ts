@@ -308,6 +308,7 @@ export const hostApi = {
     ),
   },
   diagnostics: {
+    exportIssueReport: (payload: { conversationIds: string[] }) => invokeHost('diagnostics', 'exportIssueReport', payload),
     snapshot: () => invokeHost('diagnostics', 'snapshot'),
     gatewaySnapshot: () => invokeHost('diagnostics', 'gatewaySnapshot'),
     acpTrace: () => invokeHost('diagnostics', 'acpTrace'),

@@ -182,6 +182,7 @@ OpenClaw 源码和开发依赖已切换为 `2026.9.4+clawx.15`，Discord/WhatsAp
 - **统一 Chat**：Chat 历史、run events、权限、Usage 和附件引用全部读取 Main 独占的 SQLite Conversation Store；ACP 与未来 runtime bridge 只负责实时执行。每个实时事件都携带 conversation/run/kernel/generation/sequence 完整身份，因此页面导航可保留后台流，同一 Conversation 也可在 turn 边界切换内核，不再依赖 runtime transcript fallback。
 - **会话草稿**：切换会话或离开聊天页面时，未发送文字、暂存附件、Agent/技能选择和光标选区随统一 Conversation 保留。草稿仅保存在本次应用运行的内存中；删除会话也会清理草稿，并阻止尚未完成的附件回调恢复已删除数据。轻微向上滚动即可暂停自动跟随，回到底部后恢复。
 - **语音输入（开发者模式）**：开启开发者模式后，在「模型 → 语音」配置转写服务和安全输入的 API Key，即可从输入框录制最长三分钟的语音。转写结果插入光标处，不会自动发送；按 Escape 或离开当前会话会取消输入，延迟结果不会写入其他会话。ASR 由 Main 独立处理，不绑定某个 AI 内核。更换服务地址需重新输入密钥；麦克风权限被拒绝时，可主动打开系统设置。正式签名安装包的真实录音仍需发布验收。
+- **问题报告与运行状态**：设置页可导出本地 ZIP，包含各内核诊断、近期脱敏日志，以及按需选择的统一会话记录。报告不包含私有推理和附件内容，没有会话也可导出。聊天计时从统一 Run 的时间戳恢复，计划列表按 Run 隔离。OpenClaw 压缩进度由实时运行事件写入同一事件记录，区分完成、跳过和取消。
 - **Provider 兼容性**：新建账号使用已审查的上游 0.5.8 默认模型，保留已有模型选择及显式图片/推理能力。Anthropic/Google 明确下发协议；自定义 Astra Chat Completions 定向设置兼容的 low 推理参数；删除 Provider 时同步清理其运行时模型与认证引用。
 - **统一 Usage 与诊断**：OpenClaw provider response 和 DeepSeek Harness SessionEvent 以逐调用、幂等记录写入同一 SQLite；Dashboard 可比较全部/OpenClaw/DSH，缺失 Token 或费用保持未知而不是伪装成 0。逐内核诊断可定位精确 artifact、补丁修订、协议、进程 generation、健康与能力；持久化和导出日志使用隔离目录及统一的密钥/路径脱敏。
 - **Dreams**：开发者专用的原生 Dreams 页只通过类型化 Host API 调用 OpenClaw `doctor.memory.*` 和受保护的 `config.patch`；带认证的 Control UI URL 由 Electron Main 构造并将 Dreams 视图映射到 `/dreaming`，渲染层不直连 Gateway。
