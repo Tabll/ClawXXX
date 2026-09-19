@@ -46,6 +46,8 @@ ClawX comes pre-configured with best-practice model providers and natively suppo
 
 DingTalk uses the official connector while preserving existing account IDs and bindings. Authorize DingTalk Workspace separately on each account in Channels; credentials remain encrypted in ClawX and CLI processes receive disposable account projections. DWS is supplied by the selected runtime artifact (OpenClaw revision 17 / DeepSeek Harness revision 16); older artifacts display the capability as unavailable.
 
+TokenDance is available in the Chinese provider picker with browser sign-in or a secure API-key input. Browser callbacks, key exchange and cancellation stay in Main. Its OpenAI-compatible models use OpenClaw; unsupported kernels retain an explicit unsupported projection.
+
 ## Screenshots
 
 <table>

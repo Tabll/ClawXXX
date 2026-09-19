@@ -1364,6 +1364,7 @@ function AddProviderDialog({
     }
 
     const handleCode = (payload: OAuthCodeEvent) => {
+      if (payload.provider !== latestRef.current.selectedType) return;
       if ('mode' in payload && payload.mode === 'manual') {
         setOauthData({
           mode: 'manual',
@@ -1382,6 +1383,7 @@ function AddProviderDialog({
     };
 
     const handleSuccess = async (payload: OAuthSuccessEvent) => {
+      if (payload.provider !== latestRef.current.selectedType || payload.accountId !== pendingOAuthRef.current?.accountId) return;
       setOauthFlowing(false);
       setOauthData(null);
       setManualCodeInput('');
@@ -1413,7 +1415,7 @@ function AddProviderDialog({
     };
 
     const handleError = (data: OAuthErrorEvent) => {
-      setOauthError(data.message);
+      setOauthError(data.message.startsWith('tokendanceOAuth.') ? latestRef.current.t(data.message) : data.message);
       setOauthData(null);
       pendingOAuthRef.current = null;
     };
@@ -1426,6 +1428,10 @@ function AddProviderDialog({
       offCode();
       offSuccess();
       offError();
+      if (pendingOAuthRef.current) {
+        pendingOAuthRef.current = null;
+        void hostApi.providers.cancelOAuth();
+      }
     };
   }, [open]);
 
@@ -1454,11 +1460,12 @@ function AddProviderDialog({
       const accountId = supportsMultipleAccounts ? `${selectedType}-${crypto.randomUUID()}` : selectedType;
       const label = name || (typeInfo?.id === 'custom' ? t('aiProviders.custom') : typeInfo?.name) || selectedType;
       pendingOAuthRef.current = { accountId, label };
-      await hostApi.providers.requestOAuth({
+      const result = await hostApi.providers.requestOAuth({
         ['provider']: selectedType,
         accountId,
         label,
       });
+      if (!result.success) throw new Error(result.error || t('tokendanceOAuth.failed'));
     } catch (e) {
       setOauthError(String(e));
       setOauthFlowing(false);
@@ -1489,6 +1496,7 @@ function AddProviderDialog({
   const availableTypes = PROVIDER_TYPE_INFO.filter((type) => {
     // Skip providers that are temporarily hidden from the UI.
     if (type.hidden) return false;
+    if (type.availableInLanguages && !type.availableInLanguages.some(language => i18n.language.toLowerCase().startsWith(language))) return false;
 
     // MiniMax portal variants are mutually exclusive — hide BOTH variants
     // when either one already exists (account may have vendorId of either variant).

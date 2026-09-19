@@ -537,5 +537,19 @@
     "loading": "正在加载会话…",
     "listFailed": "会话加载失败，仍可导出不含会话的诊断信息。",
     "privacyHint": "最多列出最近 500 个会话。所选消息可能包含个人信息，请确认选择后再导出。"
+  },
+  "tokendanceOAuth": {
+    "callback": {
+      "title": "已收到授权",
+      "description": "请返回 ClawX 查看 TokenDance 连接结果。",
+      "closeHint": "可以关闭此页面。"
+    },
+    "failed": "TokenDance 授权失败，请重试。",
+    "timedOut": "TokenDance 授权超时，请重试。",
+    "exchangeFailed": "TokenDance 授权失败，请重试。",
+    "missingKey": "TokenDance 授权失败，请重试。",
+    "callbackUnavailable": "TokenDance 授权失败，请重试。",
+    "cancelled": "TokenDance 授权失败，请重试。"
   }
+
 }

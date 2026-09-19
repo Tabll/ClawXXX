@@ -208,7 +208,7 @@ this table does not claim completion of later batches.
 | 2026-09-07 | [a1db9fce](https://github.com/ValueCell-ai/ClawX/commit/a1db9fce) / [#1287](https://github.com/ValueCell-ai/ClawX/pull/1287) | chore: bump bundled channel plugins compatible with OpenClaw 2026.7.1-2 (#1287) | Current newer runtime/plugin pins retained; WeCom patch implemented, official DingTalk migration separate |
 | 2026-09-07 | [f5bb8c02](https://github.com/ValueCell-ai/ClawX/commit/f5bb8c02) / [#1288](https://github.com/ValueCell-ai/ClawX/pull/1288) | fix: activate plugin channels after save and reject invalid Feishu credentials (#1288) | Batch 5a validation implemented in both adapters; existing canonical owner activation retained |
 | 2026-09-08 | [6a938757](https://github.com/ValueCell-ai/ClawX/commit/6a938757) / [#1278](https://github.com/ValueCell-ai/ClawX/pull/1278) | refactor(settings): update developer mode description (#1278) | Local developer-mode contract retained; ASR description/gating updated in batch 3 |
-| 2026-09-09 | [cc9fb719](https://github.com/ValueCell-ai/ClawX/commit/cc9fb719) / [#1289](https://github.com/ValueCell-ai/ClawX/pull/1289) | feat: support token dance (#1289) | Optional future Provider batch; browser authorization must feed the canonical credential broker and both projections |
+| 2026-09-09 | [cc9fb719](https://github.com/ValueCell-ai/ClawX/commit/cc9fb719) / [#1289](https://github.com/ValueCell-ai/ClawX/pull/1289) | feat: support token dance (#1289) | Continuation batch 6a implemented: Main-owned PKCE and canonical credentials, supported-kernel projections, Chinese picker |
 | 2026-09-10 | [1f2f50b3](https://github.com/ValueCell-ai/ClawX/commit/1f2f50b3) / [#1282](https://github.com/ValueCell-ai/ClawX/pull/1282) | feat: support speech-to-text (ASR) input and add model icons; fix ACP process management and refactor UI (#1282) | Batch 3 ASR implemented; appearance and ACP lifecycle reviewed separately |
 | 2026-09-10 | [f40e5dab](https://github.com/ValueCell-ai/ClawX/commit/f40e5dab) / [#1290](https://github.com/ValueCell-ai/ClawX/pull/1290) | fix: allow issue report export without conversations (#1290) | Batch 4a implemented and Electron-tested |
 | 2026-09-11 | [607f33e0](https://github.com/ValueCell-ai/ClawX/commit/607f33e0) / [#1283](https://github.com/ValueCell-ai/ClawX/pull/1283) | feat: supports Computer Use feature experimentally (#1283) | Separate opt-in batch; current OpenClaw 2026.9.4 already includes cua-computer, so no parallel legacy daemon was added |
@@ -249,3 +249,18 @@ exclusive prerequisites pass (3 tests). Typecheck, build, lint (only the existin
 7 Fast Refresh warnings), task validate/dry-run, harness CI (19 tests), comms
 replay/compare and diff whitespace validation pass. No live account or signed
 cross-platform release is claimed.
+
+## Continuation batch 6a — TokenDance
+
+Ported the reviewed TokenDance endpoints, headers, model default and Chinese
+provider picker. Main uses random callback flow identity and S256 PKCE, bounded
+exchange responses, deadlines through response bodies and cancellation cleanup.
+Canonical Provider and SecretStore remain the only durable authority; account
+projections use the existing reconciler. DeepSeek Harness's DeepSeek-only support
+is retained, so TokenDance is explicitly unsupported there rather than falsely
+marked ready. Old OAuth completion events cannot finish a different dialog.
+
+Six protocol/persistence tests cover real local loopback callbacks, replay,
+method/state validation, cancellation, stalled exchange bodies and rollback;
+161 focused Provider/unit tests pass. Electron Chinese-picker/start/cancel/stale
+success regression passes. No real TokenDance credentials or browser login used.

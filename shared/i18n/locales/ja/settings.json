@@ -537,5 +537,19 @@
     "loading": "会話を読み込み中…",
     "listFailed": "会話を読み込めませんでした。会話なしで診断情報を出力できます。",
     "privacyHint": "最近の会話を最大500件表示します。選択したメッセージには個人情報が含まれる場合があります。出力前に選択内容をご確認ください。"
+  },
+  "tokendanceOAuth": {
+    "callback": {
+      "title": "認証を受け取りました",
+      "description": "ClawX に戻って TokenDance の接続結果を確認してください。",
+      "closeHint": "このページを閉じることができます。"
+    },
+    "failed": "TokenDance の認証に失敗しました。再試行してください。",
+    "timedOut": "TokenDance の認証がタイムアウトしました。再試行してください。",
+    "exchangeFailed": "TokenDance の認証に失敗しました。再試行してください。",
+    "missingKey": "TokenDance の認証に失敗しました。再試行してください。",
+    "callbackUnavailable": "TokenDance の認証に失敗しました。再試行してください。",
+    "cancelled": "TokenDance の認証に失敗しました。再試行してください。"
   }
+
 }

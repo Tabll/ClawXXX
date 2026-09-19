@@ -1,3 +1,4 @@
+import tokendance from './tokendance.svg';
 import anthropic from './anthropic.svg';
 import openai from './openai.svg';
 import google from './google.svg';
@@ -14,6 +15,7 @@ import zai from './zai.svg';
 
 export const providerIcons: Record<string, string> = {
     anthropic,
+    tokendance,
     openai,
     google,
     openrouter,

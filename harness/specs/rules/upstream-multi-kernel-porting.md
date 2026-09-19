@@ -74,3 +74,10 @@ credential replacement, owner switch and shutdown. Cancellation from stale UI
 must match its authorization nonce. Only official HTTPS authorization URLs and
 fixed error codes cross the host boundary. Provision the pinned CLI archives in
 runtime CI with digests, platform validation and existing signing gates.
+
+Browser Provider authorization binds a one-use loopback callback to random flow
+identity and S256 PKCE. Enforce cancellation and expiry through exchange/body
+reads. Never send the exchanged key through Renderer events or logs. Persist via
+canonical Provider/SecretStore, reconcile existing kernel projections, and retain
+unsupported-kernel state. Cancelled persistence rolls back before replacement or
+account deletion. A stale success event cannot complete a newer Provider dialog.

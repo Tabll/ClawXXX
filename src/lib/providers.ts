@@ -11,6 +11,7 @@ export const PROVIDER_TYPES = [
   'openai',
   'google',
   'openrouter',
+  'tokendance',
   'ark',
   'moonshot',
   'moonshot-global',
@@ -42,6 +43,7 @@ export const BUILTIN_PROVIDER_TYPES = [
   'openai',
   'google',
   'openrouter',
+  'tokendance',
   'ark',
   'moonshot',
   'moonshot-global',
@@ -101,6 +103,7 @@ export interface ProviderTypeInfo {
   codePlanDocsUrl?: string;
   /** If true, this provider is not shown in the "Add Provider" dialog. */
   hidden?: boolean;
+  availableInLanguages?: string[];
   /** If true, hide OAuth sign-in controls in the add-provider UI (logic remains enabled). */
   hideOAuthUi?: boolean;
 }
@@ -218,6 +221,23 @@ export const PROVIDER_TYPE_INFO: ProviderTypeInfo[] = [
     apiKeyUrl: 'https://aistudio.google.com/app/apikey',
   },
   { id: 'openrouter', name: 'OpenRouter', icon: '🌐', placeholder: 'sk-or-v1-...', model: 'Multi-Model', requiresApiKey: true, showModelId: true, modelIdPlaceholder: '~deepseek/deepseek-flash-latest', defaultModelId: '~deepseek/deepseek-flash-latest', docsUrl: 'https://openrouter.ai/models' },
+  {
+    id: 'tokendance',
+    name: 'TokenDance',
+    icon: 'TD',
+    placeholder: 'your-tokendance-api-key',
+    model: 'Multi-Model',
+    requiresApiKey: true,
+    isOAuth: true,
+    supportsApiKey: true,
+    defaultBaseUrl: 'https://tokendance.space/gateway/v1',
+    defaultModelId: 'qwen3.8-max',
+    showModelId: true,
+    modelIdPlaceholder: 'qwen3.8-max',
+    apiKeyUrl: 'https://tokendance.space/keys',
+    docsUrl: 'https://tokendance.space/docs/ai-integration',
+    availableInLanguages: ['zh'],
+  },
   { id: 'minimax-portal-cn', name: 'MiniMax (CN)', icon: '☁️', placeholder: 'sk-...', model: 'MiniMax', requiresApiKey: false, isOAuth: true, supportsApiKey: true, defaultModelId: 'MiniMax-M3', showModelId: true, modelIdPlaceholder: 'MiniMax-M3', apiKeyUrl: 'https://platform.minimaxi.com/' },
   { id: 'moonshot', name: 'Moonshot (CN)', icon: '🌙', placeholder: 'sk-...', model: 'Kimi', requiresApiKey: true, defaultBaseUrl: 'https://api.moonshot.cn/v1', showModelId: true, defaultModelId: 'kimi-k3', modelIdPlaceholder: 'kimi-k3', docsUrl: 'https://platform.moonshot.cn/' },
   { id: 'moonshot-global', name: 'Moonshot (Global)', icon: '🌙', placeholder: 'sk-...', model: 'Kimi', requiresApiKey: true, defaultBaseUrl: 'https://api.moonshot.ai/v1', showModelId: true, defaultModelId: 'kimi-k3', modelIdPlaceholder: 'kimi-k3', docsUrl: 'https://platform.moonshot.ai/' },

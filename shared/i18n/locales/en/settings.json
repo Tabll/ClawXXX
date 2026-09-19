@@ -537,5 +537,19 @@
     "loading": "Loading conversations…",
     "listFailed": "Could not load conversations. You can still export diagnostics without them.",
     "privacyHint": "Up to 500 recent conversations are listed. Selected messages may contain personal information; review your selection before exporting."
+  },
+  "tokendanceOAuth": {
+    "callback": {
+      "title": "Authorization received",
+      "description": "Return to ClawX to finish connecting TokenDance.",
+      "closeHint": "You can close this page."
+    },
+    "failed": "TokenDance authorization failed. Please try again.",
+    "timedOut": "TokenDance authorization timed out. Please try again.",
+    "exchangeFailed": "TokenDance authorization failed. Please try again.",
+    "missingKey": "TokenDance authorization failed. Please try again.",
+    "callbackUnavailable": "TokenDance authorization failed. Please try again.",
+    "cancelled": "TokenDance authorization failed. Please try again."
   }
+
 }

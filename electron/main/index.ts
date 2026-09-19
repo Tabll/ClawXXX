@@ -55,6 +55,7 @@ import { acquireProcessInstanceFileLock } from './process-instance-lock';
 import { ensureBuiltinSkillsInstalled, ensurePreinstalledSkillsInstalled, trimBundledOpenClawSkillsAndConfigs } from '../utils/skill-config';
 
 import { deviceOAuthManager } from '../utils/device-oauth';
+import { tokenDanceOAuthManager } from '../utils/tokendance-oauth-manager';
 import { browserOAuthManager } from '../utils/browser-oauth';
 import { whatsAppLoginManager } from '../utils/whatsapp-login';
 import { syncAllProviderAuthToRuntime } from '../services/providers/provider-runtime-sync';
@@ -1146,6 +1147,10 @@ async function initialize(): Promise<void> {
   deviceOAuthManager.on('oauth:error', (error) => {
     sendMainWindowEvent('oauth:error', error);
   });
+
+  tokenDanceOAuthManager.on('oauth:success', payload => sendMainWindowEvent('oauth:success', payload));
+  tokenDanceOAuthManager.on('oauth:error', payload => sendMainWindowEvent('oauth:error', payload));
+  app.on('before-quit', () => { void tokenDanceOAuthManager.stop(); });
 
   browserOAuthManager.on('oauth:code', (payload) => {
     sendMainWindowEvent('oauth:code', payload);

@@ -8,6 +8,7 @@ import type { KernelId } from '@shared/kernels/contracts';
 import type { CompleteHostServiceRegistry } from '../main/ipc/host-contract';
 import type { GatewayManager } from '../gateway/manager';
 import type { ProviderConfig } from '../utils/secure-storage';
+import { tokenDanceOAuthManager } from '../utils/tokendance-oauth-manager';
 import { browserOAuthManager, type BrowserOAuthProviderType } from '../utils/browser-oauth';
 import { deviceOAuthManager, type OAuthProviderType } from '../utils/device-oauth';
 import { getProviderConfig } from '../utils/provider-registry';
@@ -256,6 +257,7 @@ async function updateAccount(ctx: ProvidersApiContext, payload: ProviderPayload<
 }
 
 async function deleteAccount(ctx: ProvidersApiContext, accountId: string, apiKeyOnly = false) {
+  await tokenDanceOAuthManager.stop(accountId);
   const providerService = getProviderService();
   try {
     const existing = await providerService.getAccount(accountId);
@@ -328,9 +330,15 @@ async function requestOAuth(payload: ProviderPayload<'requestOAuth'>) {
     label: payloadString(body, 'label'),
   };
   try {
-    if (provider === 'openai') {
+    if (provider === 'tokendance') {
+      await browserOAuthManager.stopFlow();
+      await deviceOAuthManager.stopFlow();
+      await tokenDanceOAuthManager.start(options);
+    } else if (provider === 'openai') {
+      await tokenDanceOAuthManager.stop();
       await browserOAuthManager.startFlow(provider as BrowserOAuthProviderType, options);
     } else {
+      await tokenDanceOAuthManager.stop();
       await deviceOAuthManager.startFlow(provider as OAuthProviderType, region, options);
     }
     return { success: true };
@@ -342,6 +350,7 @@ async function requestOAuth(payload: ProviderPayload<'requestOAuth'>) {
 
 async function cancelOAuth() {
   try {
+    await tokenDanceOAuthManager.stop();
     await deviceOAuthManager.stopFlow();
     await browserOAuthManager.stopFlow();
     return { success: true };
@@ -369,6 +378,7 @@ export function createProvidersApi(ctx: ProvidersApiContext): CompleteHostServic
   const providerService = getProviderService();
   deviceOAuthManager.setWindow(ctx.mainWindow);
   browserOAuthManager.setWindow(ctx.mainWindow);
+  tokenDanceOAuthManager.configure(id => reconcileAccount(ctx, id), async id => { await ctx.projectionReconciler?.removeAccount(id); });
 
   return {
     list: () => providerService._listProvidersWithKeyInfoInternal(),
