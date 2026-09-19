@@ -271,7 +271,30 @@
         "folderDropUnsupported": "Couldn't attach this folder. Drag it again, or paste the folder path into your message.",
         "folderAttachment": "Folder",
         "skillPreviewTooltip": "Preview SKILL.md",
-        "skillPreviewNotFound": "Could not find this skill. Open the skill picker to refresh the list."
+        "skillPreviewNotFound": "Could not find this skill. Open the skill picker to refresh the list.",
+        "voiceInput": "Voice input",
+        "voiceStop": "Stop recording",
+        "voiceNotConfigured": "Voice transcription is not configured. Open Models to set it up.",
+        "microphonePermission": {
+            "title": "Microphone access needed",
+            "denied": "Microphone access was denied. Allow access in system privacy settings to use voice input.",
+            "restricted": "Microphone access is restricted by administrator or device policy. Contact your administrator; changing privacy settings alone may not enable access.",
+            "openSettings": "Open system settings",
+            "close": "Close",
+            "openFailed": "Could not open system settings. Please open microphone privacy settings manually."
+        },
+        "voiceError": {
+            "MIC_UNAVAILABLE": "Microphone unavailable. Check system permissions.",
+            "TOO_SHORT": "No speech captured.",
+            "NOT_CONFIGURED": "Voice transcription is not configured.",
+            "AUTH": "Invalid API key or insufficient permission.",
+            "RATE_LIMITED": "Too many requests. Try again shortly.",
+            "SERVER": "Speech service is temporarily unavailable.",
+            "REQUEST": "Voice request failed.",
+            "NETWORK": "Cannot reach the speech service. Check network or Base URL.",
+            "EMPTY_RESULT": "No speech recognized.",
+            "INVALID_INPUT": "Invalid audio recording."
+        }
     },
     "sessionList": {
         "title": "Sessions",

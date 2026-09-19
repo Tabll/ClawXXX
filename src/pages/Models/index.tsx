@@ -1,3 +1,7 @@
+import { useSearchParams } from 'react-router-dom';
+import { useSettingsStore } from '@/stores/settings';
+import { AsrSettings } from '@/components/settings/AsrSettings';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { EmbeddingSettings } from '@/components/settings/EmbeddingSettings';
@@ -7,6 +11,9 @@ import { trackUiEvent } from '@/lib/telemetry';
 
 export function Models() {
   const { t } = useTranslation(['dashboard', 'settings']);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const devModeUnlocked = useSettingsStore(state => state.devModeUnlocked);
+  const tab = devModeUnlocked && searchParams.get('tab') === 'voice' ? 'voice' : 'chat';
 
   useEffect(() => {
     trackUiEvent('models.page_viewed');
@@ -33,9 +40,22 @@ export function Models() {
         </div>
 
         <div className="flex-1 overflow-y-auto pr-2 pb-10 min-h-0 -mr-2 space-y-12">
-          <ProvidersSettings />
-          <EmbeddingSettings />
-          <TokenUsageSettings />
+          <Tabs value={tab} onValueChange={value => {
+            const next = new URLSearchParams(searchParams);
+            if (value === 'chat') next.delete('tab'); else next.set('tab', value);
+            setSearchParams(next, { replace: true });
+          }}>
+            {devModeUnlocked && <TabsList className="mb-6">
+              <TabsTrigger value="chat" data-testid="models-tab-chat">{t('dashboard:models.tabs.chat')}</TabsTrigger>
+              <TabsTrigger value="voice" data-testid="models-tab-voice">{t('dashboard:models.tabs.voice')}</TabsTrigger>
+            </TabsList>}
+            <TabsContent value="chat" className="space-y-12">
+              <ProvidersSettings />
+              <EmbeddingSettings />
+              <TokenUsageSettings />
+            </TabsContent>
+            {devModeUnlocked && <TabsContent value="voice"><AsrSettings /></TabsContent>}
+          </Tabs>
         </div>
       </div>
     </div>

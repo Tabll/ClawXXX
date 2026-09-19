@@ -7,6 +7,12 @@
  * references in the ACP session/prompt request.
  */
 import { useState, useRef, useEffect, useLayoutEffect, useCallback, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useSettingsStore } from '@/stores/settings';
+import { useVoiceDictation } from '@/hooks/useVoiceDictation';
+import { VoiceDictationButton } from '@/components/voice/VoiceDictationButton';
+import { MicrophonePermissionDialog } from '@/components/voice/MicrophonePermissionDialog';
+import type { AsrMicrophoneAccessResult } from '@shared/host-api/contract';
 import { useComposerDraftField } from '@/hooks/use-composer-draft';
 import type { ComposerAttachment } from '@/stores/composer-drafts';
 import type { SessionConfigOption, UsageUpdate } from '@agentclientprotocol/sdk';
@@ -523,7 +529,36 @@ function ConversationChatInput({
   const chatComposerStatusComponents = rendererExtensionRegistry.getChatComposerStatusComponents();
   const selectedKernel = kernelId ? kernelRuntimes[kernelId] : undefined;
   const isKernelReady = selectedKernel?.state === 'ready';
-  const inputDisabled = disabled;
+  const navigate = useNavigate();
+  const devModeUnlocked = useSettingsStore(state => state.devModeUnlocked);
+  const [microphoneAccess, setMicrophoneAccess] = useState<AsrMicrophoneAccessResult | null>(null);
+  const voice = useVoiceDictation({
+    disabled: !devModeUnlocked || disabled || sending || microphoneAccess !== null,
+    onPermissionBlocked: setMicrophoneAccess,
+    onUnconfigured: () => { toast.info(t('composer.voiceNotConfigured')); navigate('/models?tab=voice'); },
+    onError: code => toast.error(t(`composer.voiceError.${code}`)),
+    onTranscribed: text => {
+      const textarea = textareaRef.current;
+      const start = textarea?.selectionStart ?? selectionRef.current?.start ?? input.length;
+      const end = textarea?.selectionEnd ?? selectionRef.current?.end ?? start;
+      setInput(input.slice(0, start) + text + input.slice(end));
+      const caret = start + text.length;
+      setSelection({ start: caret, end: caret, direction: 'none' });
+      requestAnimationFrame(() => {
+        if (textarea !== textareaRef.current) return;
+        textarea?.focus();
+        textarea?.setSelectionRange(caret, caret);
+      });
+    },
+  });
+  const { status: voiceStatus, cancel: cancelVoiceDictation } = voice;
+  useEffect(() => {
+    if (voiceStatus === 'idle') return;
+    const cancelOnEscape = (event: KeyboardEvent) => { if (event.key === 'Escape') cancelVoiceDictation(); };
+    window.addEventListener('keydown', cancelOnEscape);
+    return () => window.removeEventListener('keydown', cancelOnEscape);
+  }, [voiceStatus, cancelVoiceDictation]);
+  const inputDisabled = disabled || voice.status !== 'idle';
   const workspaceSelectorDisabled = workspaceReadOnly || inputDisabled || sending || !onSelectWorkspace;
   const skillTokenRanges = useMemo(() => findSkillTokenRanges(input), [input]);
   const openArtifactPreview = useArtifactPanel((s) => s.openPreview);
@@ -1499,6 +1534,11 @@ function ConversationChatInput({
               />
             )}
 
+            {devModeUnlocked && <VoiceDictationButton
+              status={voice.status} elapsedSeconds={voice.elapsedSeconds}
+              disabled={disabled || sending} onToggle={() => void voice.toggle()}
+              onCancel={voice.cancel} getLevels={voice.getLevels}
+            />}
             {/* Send Button — pushed to the right */}
             {sending && onQueueFollowUp && (
               <Button
@@ -1663,6 +1703,7 @@ function ConversationChatInput({
           </div>
         </div>
       </div>
+      {microphoneAccess && <MicrophonePermissionDialog access={microphoneAccess} onClose={() => setMicrophoneAccess(null)} />}
     </div>
   );
 }

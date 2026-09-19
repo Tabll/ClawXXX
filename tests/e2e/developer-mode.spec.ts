@@ -3,6 +3,7 @@ import { completeSetup, expect, test } from './fixtures/electron';
 test.describe('ClawX developer-mode gated UI', () => {
   test('keeps developer-only configuration hidden until dev mode is enabled', async ({ page }) => {
     await completeSetup(page);
+    await expect(page.getByTestId('chat-composer-voice')).toHaveCount(0);
 
     await page.getByTestId('sidebar-nav-settings').click();
     await expect(page.getByTestId('settings-page')).toBeVisible();
@@ -21,6 +22,10 @@ test.describe('ClawX developer-mode gated UI', () => {
     await expect(page.getByTestId('chat-composer-input')).toBeVisible();
 
     await page.getByTestId('sidebar-nav-models').click();
+    await expect(page.getByTestId('models-tab-voice')).toHaveCount(0);
+    await page.evaluate(() => { window.location.hash = '#/models?tab=voice'; });
+    await expect(page.getByTestId('asr-settings')).toHaveCount(0);
+    await expect(page.getByTestId('providers-settings')).toBeVisible();
     await page.getByTestId('providers-add-button').click();
     await expect(page.getByTestId('add-provider-dialog')).toBeVisible();
     await page.getByTestId('add-provider-type-siliconflow').click();
@@ -44,6 +49,8 @@ test.describe('ClawX developer-mode gated UI', () => {
     await expect(page.getByTestId('dreams-page')).toBeVisible();
 
     await page.getByTestId('sidebar-nav-models').click();
+    await expect(page.getByTestId('models-tab-voice')).toBeVisible();
+    await page.getByTestId('models-tab-chat').click();
     await page.getByTestId('providers-add-button').click();
     await expect(page.getByTestId('add-provider-dialog')).toBeVisible();
     await page.getByTestId('add-provider-type-siliconflow').click();

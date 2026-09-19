@@ -15,7 +15,7 @@ range begins after `7f8e50ab`; a wholesale merge is not this implementation.
 |---|---|---|
 | 1 | Provider protocol correctness; zoom; conversation drafts/selection; scroll; small provider/channel copy fixes | Implemented and validated |
 | 2 | Model defaults/metadata, scoped Astra compatibility and Provider cleanup | Implemented and validated |
-| 3 | Main-owned speech-to-text and microphone permission recovery with secure credential input | Pending |
+| 3 | Main-owned speech-to-text and microphone permission recovery with secure credential input | Implemented and validated |
 | 4 | Canonical diagnostics export, generated media and plan/compaction presentation | Pending |
 | 5 | Channel validation, WeCom and official DingTalk/DWS migration | Pending |
 | 6 | Canonical subagent lineage/status and opt-in Computer Use; optional TokenDance | Pending |
@@ -46,7 +46,7 @@ Batch 1 (2026-09-19, commit `27d1d1f3`):
   results retain their Conversation owner; canonical deletion invalidates stale
   callbacks, while failed deletion retains drafts. Drafts are memory-only.
 
-Batch 2 (2026-09-19):
+Batch 2 (2026-09-19, commit `423c8d17`):
 
 - 10 upstream regression tests reproduced Astra/default-model/auth-reference and
   official model validation gaps before implementation.
@@ -61,6 +61,29 @@ Batch 2 (2026-09-19):
 - Kept current-kernel compaction policy and custom/OAuth context ceilings. No
   upstream transcript/usage readers were introduced. Third-party account/model
   availability remains subject to actual credentials and provider service state.
+
+Batch 3 (2026-09-19):
+
+- Developer-gated ASR uses the common composer and Main Host API independently of
+  kernel choice. Speech is inserted at the cursor, with permission recovery and
+  cancellation/navigation guards; no retired Realtime Talk was restored.
+- Config uses nonsecret electron-store fields and the existing encrypted secret
+  store with one-use preload handles. Endpoint changes cannot reuse old keys,
+  failed config writes restore keys, WAV size/format is validated, and provider
+  error bodies never reach the Renderer. Timeouts cover body reads, and failed
+  audio-graph initialization releases capture resources.
+- Full unit/contract suite: 284 files / 2,738 tests passed, 2 files / 6 tests skipped.
+- Electron: 5 voice tests passed, including the production staging vault, secret
+  envelope persistence and Main ASR request to an isolated local HTTP fixture;
+  developer gating and 2 canonical chat/draft tests also passed.
+- The first upstream E2E fixture lacked ready canonical kernel/workspace state;
+  it was adapted to the multi-kernel fixture. A native keychain call stalled the
+  real-service test; its OS cipher was replaced by a process-local AES test cipher.
+  Native keychain behavior and microphone capture are not claimed by that test.
+- Typecheck, production build, lint (0 errors, same 7 baseline warnings), task
+  validation/dry-run, harness CI (19 tests), comms replay/compare and plist syntax
+  validation pass. Added the missing macOS audio-input entitlement; the installed
+  development Electron is ad-hoc signed, not a signed release artifact.
 
 No native-account, microphone, signed package, Windows lifecycle or remote release
 validation has been claimed.
@@ -105,18 +128,18 @@ this table does not claim completion of later batches.
 | 2026-09-07 | [f5bb8c02](https://github.com/ValueCell-ai/ClawX/commit/f5bb8c02) / [#1288](https://github.com/ValueCell-ai/ClawX/pull/1288) | fix: activate plugin channels after save and reject invalid Feishu credentials (#1288) | 凭据验证有价值；激活需接 Channel owner |
 | 2026-09-08 | [6a938757](https://github.com/ValueCell-ai/ClawX/commit/6a938757) / [#1278](https://github.com/ValueCell-ai/ClawX/pull/1278) | refactor(settings): update developer mode description (#1278) | 低风险文案，但需符合本地开发者模式内容 |
 | 2026-09-09 | [cc9fb719](https://github.com/ValueCell-ai/ClawX/commit/cc9fb719) / [#1289](https://github.com/ValueCell-ai/ClawX/pull/1289) | feat: support token dance (#1289) | 可选新 Provider，需接统一凭据与双内核投影 |
-| 2026-09-10 | [1f2f50b3](https://github.com/ValueCell-ai/ClawX/commit/1f2f50b3) / [#1282](https://github.com/ValueCell-ai/ClawX/pull/1282) | feat: support speech-to-text (ASR) input and add model icons; fix ACP process management and refactor UI (#1282) | 拆分 ASR、图标/主题、ACP 退出三类改动 |
+| 2026-09-10 | [1f2f50b3](https://github.com/ValueCell-ai/ClawX/commit/1f2f50b3) / [#1282](https://github.com/ValueCell-ai/ClawX/pull/1282) | feat: support speech-to-text (ASR) input and add model icons; fix ACP process management and refactor UI (#1282) | Batch 3 ASR implemented; appearance and ACP lifecycle reviewed separately |
 | 2026-09-10 | [f40e5dab](https://github.com/ValueCell-ai/ClawX/commit/f40e5dab) / [#1290](https://github.com/ValueCell-ai/ClawX/pull/1290) | fix: allow issue report export without conversations (#1290) | 随统一报告功能保留无会话导出能力 |
 | 2026-09-11 | [607f33e0](https://github.com/ValueCell-ai/ClawX/commit/607f33e0) / [#1283](https://github.com/ValueCell-ai/ClawX/pull/1283) | feat: supports Computer Use feature experimentally (#1283) | 独立 Computer Use 项目，跨平台制品和权限适配 |
 | 2026-09-11 | [e8ff1184](https://github.com/ValueCell-ai/ClawX/commit/e8ff1184) / [#1291](https://github.com/ValueCell-ai/ClawX/pull/1291) | fix: support WeCom calendar queries in single-account desktop sessions (#1291) | 值得移植；插件 patch 纳入签名内核构建 |
 | 2026-09-11 | [33a1a1a7](https://github.com/ValueCell-ai/ClawX/commit/33a1a1a7) / [#1293](https://github.com/ValueCell-ai/ClawX/pull/1293) |  fix: recover OpenClaw-generated file (#1293) | 从结构化 live 事件导入附件，保留 Blob 权威 |
 | 2026-09-14 | [5a735537](https://github.com/ValueCell-ai/ClawX/commit/5a735537) / [#1294](https://github.com/ValueCell-ai/ClawX/pull/1294) | fix: render generated images inline from MEDIA paths (#1294) | 复用行内图片显示，勿恢复 transcript 补全 |
-| 2026-09-14 | [a0b2a804](https://github.com/ValueCell-ai/ClawX/commit/a0b2a804) / [#1296](https://github.com/ValueCell-ai/ClawX/pull/1296) | feat: gate voice input behind developer mode (#1296) | 随 ASR 移植开发者模式 gate |
+| 2026-09-14 | [a0b2a804](https://github.com/ValueCell-ai/ClawX/commit/a0b2a804) / [#1296](https://github.com/ValueCell-ai/ClawX/pull/1296) | feat: gate voice input behind developer mode (#1296) | Batch 3 implemented; hidden by default and direct voice-tab navigation gated |
 | 2026-09-14 | [f7ff4b4d](https://github.com/ValueCell-ai/ClawX/commit/f7ff4b4d) / [#1297](https://github.com/ValueCell-ai/ClawX/pull/1297) | release  0.5.7 (#1297) | 上游发布号，不覆盖本地 0.6.0 |
 | 2026-09-15 | [170b9899](https://github.com/ValueCell-ai/ClawX/commit/170b9899) / [#1292](https://github.com/ValueCell-ai/ClawX/pull/1292) | feat: upgrade DingTalk to official connector 0.8.25 (#1292) | 官方钉钉/DWS 独立迁移，保留单 owner |
 | 2026-09-15 | [9445f018](https://github.com/ValueCell-ai/ClawX/commit/9445f018) / [#1299](https://github.com/ValueCell-ai/ClawX/pull/1299) | chore(i18n): drop OpenClaw 3.31 note from QQ Bot channel description (#1299) | Batch 1 implemented |
 | 2026-09-15 | [16c543bb](https://github.com/ValueCell-ai/ClawX/commit/16c543bb) / [#1298](https://github.com/ValueCell-ai/ClawX/pull/1298) | fix: preserve window zoom after minimize (#1298) | Batch 1 implemented; Windows native test pending platform |
-| 2026-09-16 | [b67561a3](https://github.com/ValueCell-ai/ClawX/commit/b67561a3) / [#1301](https://github.com/ValueCell-ai/ClawX/pull/1301) | refactor: guide users to microphone permission settings and add missing audio-input declaration in macOS entitlements plist (#1301) | 随 ASR 补权限与签名包录音验收 |
+| 2026-09-16 | [b67561a3](https://github.com/ValueCell-ai/ClawX/commit/b67561a3) / [#1301](https://github.com/ValueCell-ai/ClawX/pull/1301) | refactor: guide users to microphone permission settings and add missing audio-input declaration in macOS entitlements plist (#1301) | Batch 3 permission recovery and entitlement implemented; signed-package capture pending |
 | 2026-09-16 | [d5473067](https://github.com/ValueCell-ai/ClawX/commit/d5473067) / [#1302](https://github.com/ValueCell-ai/ClawX/pull/1302) | Fix dws install (#1302) | 必须随官方钉钉/DWS 一起吸收 |
 | 2026-09-16 | [01b418ec](https://github.com/ValueCell-ai/ClawX/commit/01b418ec) / [#1300](https://github.com/ValueCell-ai/ClawX/pull/1300) | feat: refresh provider defaults and catalog-free runtime config (#1300) | Batches 1–2 implemented; JSONL excluded |
 | 2026-09-16 | [34ad624b](https://github.com/ValueCell-ai/ClawX/commit/34ad624b) / [#1303](https://github.com/ValueCell-ai/ClawX/pull/1303) | fix: migrate Astra reasoning effort from none to low (#1303) | Batch 2 implemented; other explicit efforts/protocols preserved |

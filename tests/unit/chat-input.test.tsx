@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render as renderTestingLibrary, screen, waitFor } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
+const render: typeof renderTestingLibrary = (ui, options) => renderTestingLibrary(ui, { wrapper: MemoryRouter, ...options });
 import { ChatInput } from '@/pages/Chat/ChatInput';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { useComposerDraftStore } from '@/stores/composer-drafts';
@@ -38,6 +40,10 @@ vi.mock('@/stores/agents', () => ({
 
 vi.mock('@/stores/chat', () => ({
   useChatStore: (selector: (state: typeof chatState) => unknown) => selector(chatState),
+}));
+
+vi.mock('@/stores/settings', () => ({
+  useSettingsStore: (selector: (state: { devModeUnlocked: boolean }) => unknown) => selector({ devModeUnlocked: false }),
 }));
 
 vi.mock('@/stores/kernels', () => ({

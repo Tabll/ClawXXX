@@ -1,3 +1,4 @@
+import type { AsrConfigPayload, AsrTranscribePayload } from '@shared/host-api/contract';
 import type {
   AgentCreatePayload,
   AgentUpdatePayload,
@@ -425,6 +426,13 @@ export const hostApi = {
     testImageGeneration: (input: { agentId?: string; prompt?: string; model?: string }) => (
       invokeHost('media', 'testImageGeneration', input)
     ),
+  },
+  asr: {
+    getMicrophoneAccess: () => invokeHost('asr', 'getMicrophoneAccess'),
+    openMicrophoneSettings: () => invokeHost('asr', 'openMicrophoneSettings'),
+    getConfig: () => invokeHost('asr', 'getConfig'),
+    saveConfig: (payload: AsrConfigPayload) => invokeHost('asr', 'saveConfig', payload),
+    transcribe: (wav: Uint8Array) => invokeHost('asr', 'transcribe', { wav } satisfies AsrTranscribePayload),
   },
   embeddings: {
     settings: () => invokeHost('embeddings', 'settings'),

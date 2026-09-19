@@ -217,3 +217,12 @@ OpenClaw native Agent auth synchronization delegates schema admission and writes
 to its selected kernel SDK; it never downgrades schema metadata. Test existing
 Agent state through auth sync and real Electron restart, as documented in
 `harness/reference/openclaw-agent-schema-ownership.md`.
+
+### Optional host speech input
+
+Developer-mode speech-to-text uses the host ASR service and secure credential
+staging, then inserts text into the active canonical draft. It does not switch
+kernels or create runtime-owned history. Cover denied-permission recovery,
+cancellation across navigation, unavailable service configuration, and a real
+Main request against an isolated local fixture. See the upstream migration
+reference for signed-package and native microphone validation gaps.

@@ -29,3 +29,12 @@ selected Conversation. Visible flows need four locales and Electron coverage.
 Record focused verification per batch and validate the selected communication
 and harness profiles before review. A clean patch application, mocked E2E or
 local platform pass is not evidence of a signed cross-platform installation.
+
+Speech-to-text is a host service, independent of the selected execution kernel.
+Accept only bounded mono PCM WAV input in Main; use the configured endpoint and
+Main-owned secret snapshot. Credential handles are single-use, configuration
+failures restore the previous key, endpoint changes cannot silently reuse it,
+and provider response bodies must not cross into Renderer errors. Keep deadlines
+active through response-body reads and release capture resources on all failures.
+The UI remains developer-gated. Cancellation/navigation invalidates recording
+and transcription callbacks before they can upload or modify another draft.

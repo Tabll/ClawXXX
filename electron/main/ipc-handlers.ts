@@ -39,6 +39,7 @@ import { createAttachmentOpenWithService } from '../services/attachment-open-wit
 import { createCronApi } from '../services/cron-api';
 import { createFilesApi } from '../services/files-api';
 import { createMediaApi } from '../services/media-api';
+import { createAsrApi } from '../services/asr-api';
 import { createEmbeddingsApi } from '../services/embeddings-api';
 import { createProvidersApi } from '../services/providers-api';
 import { createSessionsApi } from '../services/sessions-api';
@@ -232,6 +233,7 @@ function registerTypedHostHandlers(
     }),
     media: createMediaApi({ attachmentAccess }),
     embeddings: createEmbeddingsApi(),
+    asr: createAsrApi({ credentialVault }),
     sessions: createSessionsApi({ dataClient }),
     conversations: createConversationsApi(dataClient),
     chat: createChatApi({

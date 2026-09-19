@@ -1223,6 +1223,25 @@ export type DeliveryChannelGroup = {
 };
 export type DeliveryTargetsResult = HostSuccess & { targets: DeliveryChannelGroup[] };
 
+export type AsrPreset = 'openai' | 'groq' | 'siliconflow' | 'bailian' | 'custom';
+export type AsrProtocol = 'transcriptions' | 'chat';
+export type AsrConfig = {
+  preset: AsrPreset;
+  protocol?: AsrProtocol;
+  baseUrl: string;
+  model: string;
+  language?: string;
+};
+export type AsrConfigPayload = { config: AsrConfig; credentialHandle?: string; clearApiKey?: boolean };
+export type AsrMicrophoneAccessResult = {
+  platform: 'darwin' | 'win32' | 'other';
+  status: 'not-determined' | 'granted' | 'denied' | 'restricted' | 'unknown';
+  canOpenSettings: boolean;
+};
+export type AsrConfigResult = { configured: boolean; config: AsrConfig | null; hasApiKey: boolean };
+export type AsrTranscribePayload = { wav: Uint8Array };
+export type AsrTranscribeResult = { text: string };
+
 export type HostApiContract = {
   app: {
     openClawDoctor: (payload: OpenClawDoctorPayload) => Omit<OpenClawDoctorResult, 'mode'>;
@@ -1397,6 +1416,13 @@ export type HostApiContract = {
     saveImageGenerationSettings: (payload: ImageGenerationSettingsPayload) => ImageGenerationSettingsResult;
     imageGenerationProviders: () => ImageGenerationProvidersResult;
     testImageGeneration: (payload: ImageGenerationTestPayload) => ImageGenerationTestResult;
+  };
+  asr: {
+    getMicrophoneAccess: () => AsrMicrophoneAccessResult;
+    openMicrophoneSettings: () => { opened: boolean };
+    getConfig: () => AsrConfigResult;
+    saveConfig: (payload: AsrConfigPayload) => AsrConfigResult;
+    transcribe: (payload: AsrTranscribePayload) => AsrTranscribeResult;
   };
   embeddings: {
     settings: () => EmbeddingSettingsResult;

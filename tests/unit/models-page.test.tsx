@@ -1,6 +1,7 @@
 import { act, render } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Models } from '@/pages/Models/index';
+import { MemoryRouter } from 'react-router-dom';
 
 const hostApiFetchMock = vi.fn();
 const trackUiEventMock = vi.fn();
@@ -76,7 +77,7 @@ describe('Models page auto refresh', () => {
   });
 
   it('refreshes token usage while the page stays open', async () => {
-    render(<Models />);
+    render(<MemoryRouter><Models /></MemoryRouter>);
 
     await act(async () => {
       await Promise.resolve();
