@@ -181,7 +181,7 @@ OpenClaw 源码和开发依赖已切换为 `2026.9.4+clawx.16`，Discord/WhatsAp
 - **渠道凭据检查**：飞书 / Lark 在两个内核下均先校验再保存；修改 App ID 需要重新通过安全输入提交 Secret，失败时保留原账号。OpenClaw 制品修订 16 同时修复企业微信单账号的日历工具调用，多账号仍必须明确账号上下文。
 - **统一 Cron**：Main-owned ClawXScheduler 在 SQLite 统一保存 job、唯一 due admission、run 诊断、Conversation 目标和 Channel delivery 关联。OpenClaw 与 DeepSeek Harness 任务可并行执行，并明确选择 kernel/agent、时区、misfire、overlap、timeout 与 Conversation policy；managed runtime 的原生 scheduler 已禁用，OpenClaw 原生历史隔离仍须完成上述发布验收。
 - **统一 Chat**：Chat 历史、run events、权限、Usage 和附件引用全部读取 Main 独占的 SQLite Conversation Store；ACP 与未来 runtime bridge 只负责实时执行。每个实时事件都携带 conversation/run/kernel/generation/sequence 完整身份，因此页面导航可保留后台流，同一 Conversation 也可在 turn 边界切换内核，不再依赖 runtime transcript fallback。
-- **会话草稿**：切换会话或离开聊天页面时，未发送文字、暂存附件、Agent/技能选择和光标选区随统一 Conversation 保留。草稿仅保存在本次应用运行的内存中；删除会话也会清理草稿，并阻止尚未完成的附件回调恢复已删除数据。轻微向上滚动即可暂停自动跟随，回到底部后恢复。
+- **会话草稿**：切换会话或离开聊天页面时，未发送文字、暂存附件、Agent/技能选择和光标选区随统一 Conversation 保留。草稿仅保存在本次应用运行的内存中；删除会话也会清理草稿，并阻止尚未完成的附件回调恢复已删除数据。轻微向上滚动即可暂停自动跟随，回到底部后恢复。 新建另一条未发送会话时，会清理被替换的本地草稿并使其异步回调失效。自动回退标题会去掉运行时工作目录前缀，用户明确设置的标题保持原样。
 - **语音输入（开发者模式）**：开启开发者模式后，在「模型 → 语音」配置转写服务和安全输入的 API Key，即可从输入框录制最长三分钟的语音。转写结果插入光标处，不会自动发送；按 Escape 或离开当前会话会取消输入，延迟结果不会写入其他会话。ASR 由 Main 独立处理，不绑定某个 AI 内核。更换服务地址需重新输入密钥；麦克风权限被拒绝时，可主动打开系统设置。正式签名安装包的真实录音仍需发布验收。
 - **问题报告与运行状态**：设置页可导出本地 ZIP，包含各内核诊断、近期脱敏日志，以及按需选择的统一会话记录。报告不包含私有推理和附件内容，没有会话也可导出。聊天计时从统一 Run 的时间戳恢复，计划列表按 Run 隔离。OpenClaw 压缩进度由实时运行事件写入同一事件记录，区分完成、跳过和取消。
 - **生成附件**：OpenClaw 本轮实时输出中的 MEDIA 指令和已交付 message-tool 文件，从工作区或托管媒体目录导入统一 Blob 存储；DeepSeek Harness 输出使用同一存储。生成图片可行内查看，临时会话清理后仍可预览；导入有数量和大小限制，不扫描内核历史，也不自动下载远程 URL。

@@ -272,6 +272,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   newSession: () => {
     const key = newConversationKey(get().currentAgentId);
+    for (const session of get().sessions) {
+      if (session.createdLocally) useComposerDraftStore.getState().removeDraft(session.key);
+    }
     set(state => ({
       sessions: ensureSession(state.sessions.filter(session => !session.createdLocally), key),
       currentSessionKey: key,

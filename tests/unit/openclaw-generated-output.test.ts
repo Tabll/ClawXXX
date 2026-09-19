@@ -3,6 +3,7 @@ import { mkdtemp, mkdir, writeFile, symlink, truncate, rm } from 'node:fs/promis
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { execFileSync } from 'node:child_process';
 import { afterEach, describe, expect, it } from 'vitest';
 import { collectGeneratedOutputs, deliveredToolMedia, generatedMediaDirectives } from '@electron/kernels/openclaw/generated-output';
 
@@ -38,9 +39,10 @@ describe('live generated output import', () => {
     await Promise.all([writeFile(report, 'report'), writeFile(image, 'image'), writeFile(outside, 'secret'), writeFile(large, '')]);
     await truncate(large, 32 * 1024 * 1024 + 1);
     await symlink(outside, join(workspace, 'escape.txt'));
+    if (process.platform !== 'win32') execFileSync('mkfifo', [join(workspace, 'named-pipe')]);
     const result = await collectGeneratedOutputs({ runId: 'run', workspace, mediaRoot, references: [
       'report 中文.txt', pathToFileURL(report).href, image, outside, '../secret.txt', 'escape.txt',
-      workspace, large, 'missing.png', 'https://example.test/image.png', 'data:image/png;base64,aW1hZ2U=',
+      workspace, large, 'named-pipe', 'missing.png', 'https://example.test/image.png', 'data:image/png;base64,aW1hZ2U=',
     ] });
     expect(result.map(item => ({ name: item.name, data: Buffer.from(item.data, 'base64').toString(), mimeType: item.mimeType })))
       .toEqual([{ name: 'report 中文.txt', data: 'report', mimeType: 'text/plain' }, { name: 'image.png', data: 'image', mimeType: 'image/png' }]);

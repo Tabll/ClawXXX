@@ -92,6 +92,17 @@ describe('getSessionDisplayTitle', () => {
   it('falls back safely when session labels are unavailable', () => {
     expect(getSessionDisplayTitle(session)).toBe('Generated title')
   })
+
+  it('cleans automatic Windows titles while preserving an explicit user title', () => {
+    const automatic = '[Working directory: C:\\Users\\alex\\project]\r\n\r\nFix the tests'
+    expect(getSessionDisplayTitle({ ...session, label: undefined, derivedTitle: automatic })).toBe('Fix the tests')
+    expect(getSessionDisplayTitle({ ...session, label: automatic })).toBe(automatic)
+  })
+
+  it('skips truncated or empty cwd markers and uses the next title', () => {
+    expect(getSessionDisplayTitle({ ...session, label: undefined, derivedTitle: '[Working directory: /project]…' })).toBe('Display name')
+    expect(getSessionDisplayTitle({ ...session, label: undefined, derivedTitle: '[Working directory: /project]\n', displayName: '' })).toBe(session.key)
+  })
 })
 
 describe('isAcpWorkingDirectoryTruncatedTitle', () => {

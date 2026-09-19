@@ -36,6 +36,9 @@ describe('canonical Conversation session management', () => {
 
   it('creates only one unsent local draft at a time', async () => {
     const { useChatStore } = await import('@/stores/chat');
+    const { useComposerDraftStore } = await import('@/stores/composer-drafts');
+    useComposerDraftStore.getState().setField('conversation-old-draft', 0, 'text', 'Abandoned draft');
+    useComposerDraftStore.getState().setField('conversation-persisted', 0, 'text', 'Keep this draft');
     useChatStore.setState({
       currentAgentId: 'research',
       sessions: [
@@ -50,6 +53,9 @@ describe('canonical Conversation session management', () => {
     expect(state.sessions.filter((item) => item.createdLocally)).toHaveLength(1);
     expect(state.sessions).toContainEqual(expect.objectContaining({ key: 'conversation-persisted' }));
     expect(state.currentSessionKey).toMatch(/^agent:research:conversation-/);
+    useComposerDraftStore.getState().setField('conversation-old-draft', 0, 'text', 'Late callback');
+    expect(useComposerDraftStore.getState().drafts['conversation-old-draft']).toBeUndefined();
+    expect(useComposerDraftStore.getState().drafts['conversation-persisted'].text).toBe('Keep this draft');
   });
 
   it('acknowledges a Router-created conversation with workspace and initial title', async () => {

@@ -1,4 +1,5 @@
 import type { ElectronApplication } from '@playwright/test';
+import { stripAcpWorkingDirectoryPrefix } from '../../shared/chat/session-title';
 import {
   canonicalConversationHostApi,
   canonicalConversationSummary,
@@ -125,7 +126,7 @@ async function installWorkspaceMocks(app: ElectronApplication, options: Workspac
     ?? 'Workspace chat';
   const conversation = canonicalConversationSummary({
     id: SESSION_KEY,
-    title: canonicalTitle.replace(/^\[Working directory: .*?\]\n\n/s, ''),
+    title: stripAcpWorkingDirectoryPrefix(canonicalTitle),
     createdAt: nowMs,
     updatedAt: nowMs,
     workspaceUri: SESSION_WORKSPACE,
@@ -504,13 +505,13 @@ test.describe('ClawX chat workspace context', () => {
     }
   });
 
-  test('canonical title stays clean without consulting runtime transcript summaries', async ({ launchElectronApp }) => {
+  test('canonical title stays clean with Windows cwd input and without runtime transcript summaries', async ({ launchElectronApp }) => {
     const app = await launchElectronApp({ skipSetup: true });
 
     try {
       await installWorkspaceMocks(app, {
         sessionDerivedTitle: null,
-        sessionSummaryFirstUserText: AUTO_TITLE_WITH_CWD,
+        sessionSummaryFirstUserText: '[Working directory: C:\\Users\\tester\\project]\r\n\r\nWorkspace chat',
       });
 
       const page = await getStableWindow(app);

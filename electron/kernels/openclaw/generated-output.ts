@@ -87,7 +87,9 @@ export async function collectGeneratedOutputs(input: {
       if (!rawPath) continue; // Remote URLs are never fetched by an import.
       const path = await realpath(rawPath);
       if (!roots.some(root => inside(root, path)) || seenPaths.has(path)) continue;
-      handle = await open(path, constants.O_RDONLY | (process.platform === 'win32' ? 0 : constants.O_NOFOLLOW));
+      if (!(await stat(path)).isFile()) continue;
+      // NONBLOCK also prevents a file-to-FIFO race from hanging run completion.
+      handle = await open(path, constants.O_RDONLY | (process.platform === 'win32' ? 0 : constants.O_NOFOLLOW | constants.O_NONBLOCK));
       const opened = await handle.stat();
       const currentPath = await realpath(rawPath);
       const pathStat = await stat(currentPath);
