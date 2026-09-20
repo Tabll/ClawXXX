@@ -308,3 +308,36 @@ The native tool license audit covers seven prepared packages and preserves both
 CUA/UniFFI MPL obligations. Full MIT and MPL texts and upstream native-runtime
 notices are retained. Actual account, OS permission, Windows and protected-release
 acceptance remains as stated above.
+
+## Signed release acceptance repair — 2026-09-20
+
+Source `9f34ecbc48f1d4f374e7bb1ef7ae95b3f4549a7a` passed all 25 jobs in
+[signed runtime build #30](https://github.com/Tabll/ClawXXX/actions/runs/35438115129):
+ten runtime builds, ten single-runtime clean-machine checks and five dual-runtime
+checks. The four macOS builds also passed signing and notarization. Windows used
+the configured artifact-signature-only policy. This is staging acceptance, not
+production publication.
+
+The same-source [Electron E2E run](https://github.com/Tabll/ClawXXX/actions/runs/35438046366)
+passed on macOS but failed synthetic voice fixtures on Linux and Windows. Linux
+correctly refused to save a key because the test's AES replacement still reported
+the native `basic_text` backend. Windows happy-path capture still consulted the
+runner's native microphone privacy setting. The corrected fixtures control both
+native permission status and cipher backend metadata within their isolated
+Electron process. The real Main test now first proves that `basic_text` refuses
+credential persistence, then exercises encrypted persistence and real loopback
+transcription. Existing permission-denial and explicit-retry cases remain.
+
+Local verification passed all seven selected Electron tests (five voice cases and
+two exclusive prerequisites), 53 related unit tests, typecheck and lint (zero
+errors, seven existing Fast Refresh warnings), comms replay/compare, harness CI
+(19 tests), task validation/dry-run, source lock verification, version-tag
+consistency and whitespace checks. The three READMEs were reviewed:
+the fixture correction changes no application behavior or documented user flow.
+The lockfile has no root application-version field and dependencies are unchanged.
+
+The pushed `v0.6.0` tag remains immutable. Host version `0.6.1` is the corrected
+candidate and requires a new full runtime build and same-source three-OS Electron
+E2E before protected publication. The earlier runtime evidence cannot substitute
+for acceptance of the new source. Task spec:
+`harness/specs/tasks/repair-voice-e2e-release-gates.md`.

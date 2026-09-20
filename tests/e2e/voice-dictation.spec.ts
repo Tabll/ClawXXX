@@ -12,7 +12,12 @@ function stableStringify(value: unknown): string {
   return `{${entries.join(',')}}`;
 }
 
-async function stubMicrophoneCapture(page: Page, denyFirst = false): Promise<void> {
+async function stubMicrophoneCapture(app: ElectronApplication, page: Page, denyFirst = false): Promise<void> {
+  // Synthetic audio must not depend on the CI runner's microphone privacy
+  // setting. Permission-denial scenarios override the Host API separately.
+  await app.evaluate(({ systemPreferences }) => {
+    systemPreferences.getMediaAccessStatus = () => 'granted';
+  });
   await page.addInitScript((deny) => {
     let first = deny;
     Object.defineProperty(navigator, 'mediaDevices', {
@@ -123,7 +128,7 @@ test.describe('ClawX voice dictation', () => {
           });
         }, firstUse);
         const page = await getStableWindow(app);
-        await stubMicrophoneCapture(page, firstUse);
+        await stubMicrophoneCapture(app, page, firstUse);
         await reloadRenderer(page);
         await enableDeveloperMode(page);
         const composer = page.getByTestId('chat-composer-input');
@@ -188,7 +193,7 @@ test.describe('ClawX voice dictation', () => {
       await installAsrTranscribeMock(app, TRANSCRIBED_TEXT);
 
       const page = await getStableWindow(app);
-      await stubMicrophoneCapture(page);
+      await stubMicrophoneCapture(app, page);
       await reloadRenderer(page);
       await enableDeveloperMode(page);
 
@@ -221,6 +226,9 @@ test.describe('ClawX voice dictation', () => {
         const crypto = process.mainModule!.require('node:crypto') as typeof import('node:crypto');
         const key = crypto.randomBytes(32);
         safeStorage.isEncryptionAvailable = () => true;
+        // Exercise the fail-closed branch first on every OS, including hosts
+        // that otherwise have a working native keychain.
+        safeStorage.getSelectedStorageBackend = () => 'basic_text';
         safeStorage.encryptString = value => {
           const iv = crypto.randomBytes(12);
           const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
@@ -249,7 +257,7 @@ test.describe('ClawX voice dictation', () => {
         return `http://127.0.0.1:${address.port}/transcribe`;
       });
       const page = await getStableWindow(app);
-      await stubMicrophoneCapture(page);
+      await stubMicrophoneCapture(app, page);
       await reloadRenderer(page);
       await enableDeveloperMode(page);
       await page.getByTestId('sidebar-nav-models').click();
@@ -263,7 +271,17 @@ test.describe('ClawX voice dictation', () => {
         window.clawxSecureSecrets.setValueForTesting(id, 'fake-asr-e2e-key');
       });
       await page.getByTestId('asr-save-button').click();
-      await expect(page.locator('[data-sonner-toast]')).toContainText('saved');
+      await expect(page.locator('[data-sonner-toast][data-type="error"]')).toContainText('Saving failed');
+      expect(await page.evaluate(async () => window.clawx!.hostInvoke({
+        id: crypto.randomUUID(), module: 'asr', action: 'getConfig',
+      }))).toMatchObject({ ok: true, data: { configured: false, hasApiKey: false, config: null } });
+      await app.evaluate(({ safeStorage }) => {
+        // The per-process AES cipher has no native backend. Do not accidentally
+        // consult Linux's real basic_text fallback after replacing encryption.
+        safeStorage.getSelectedStorageBackend = () => 'unknown';
+      });
+      await page.getByTestId('asr-save-button').click();
+      await expect(page.locator('[data-sonner-toast][data-type="success"]')).toContainText('saved');
       const readiness = await page.evaluate(async () => window.clawx!.hostInvoke({
         id: crypto.randomUUID(), module: 'asr', action: 'getConfig',
       }));
