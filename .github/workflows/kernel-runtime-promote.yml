@@ -6,8 +6,6 @@ on:
     workflows: [Build signed kernel runtimes, Electron E2E]
     types: [completed]
     branches: [main]
-  schedule:
-    - cron: '35 3 * * *'
   workflow_dispatch:
     inputs:
       mode:

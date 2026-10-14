@@ -173,7 +173,7 @@ OpenClaw のソースと開発依存関係は `2026.9.4+clawx.18` です。Disco
 
 両方の +clawx.13 カーネルは Node 24.20.0 を使用し、5 ターゲットの staging 全 25 ジョブ、macOS 公証 4 件（Accepted）、同一ソースの 3 プラットフォーム Electron E2E に合格しました。[CI 検証記録](harness/reference/windows-runtime-ci-repair.md)を参照してください。Windows は artifact 署名のみで、Authenticode は使用しません。本番 catalog の状態、保護された公開の復旧と実配信検証は[公開記録](harness/reference/kernel-automatic-release.md)で追跡し、実アカウント検証は未完了です。
 
-全カーネルのビルドと同一ソース E2E の成功後、本番公開を保護環境へ自動で要求します。カーネルの配布元は GitHub Releases のみです。バージョン付きパッケージは上書きせず、全ターゲット検証後に署名 catalog だけを置換します。COS への依存はありません。旧パッケージは参照した全 catalog の有効期限＋24 時間後に安全に削除し、署名監査記録と中断再開を保持します。毎日の保護された保守は artifact/key の期限内で通常 7 日間の catalog を更新しますが、承認は引き続き必要です。初回 bootstrap と実配信の検証は別途必要です。catalog 消失時は署名済み journal から復旧し、保留中の公開変更には正確な digest と保護された手動承認が必要です。[GitHub 単一配布元の設計](harness/reference/github-only-kernel-distribution.md)。
+全カーネルのビルドと同一ソース E2E の成功後、本番公開を保護環境へ自動で要求します。カーネルの配布元は GitHub Releases のみです。バージョン付きパッケージは上書きせず、全ターゲット検証後に署名 catalog だけを置換します。COS への依存はありません。旧パッケージは参照した全 catalog の有効期限＋24 時間後に安全に削除し、署名監査記録と中断再開を保持します。GitHub Actions の定期実行は無効です。手動で要求した保守は artifact/key の期限内で通常 7 日間の catalog を更新しますが、承認は引き続き必要です。初回 bootstrap と実配信の検証は別途必要です。catalog 消失時は署名済み journal から復旧し、保留中の公開変更には正確な digest と保護された手動承認が必要です。[GitHub 単一配布元の設計](harness/reference/github-only-kernel-distribution.md)。
 
 catalog 置換後は回数を制限した伝播確認で正確な署名済み版への一致を待ち、最後の厳密な再読込後にのみ削除を許可します。古い版や一時的な欠落を成功とせず、署名 catalog の競合は即座に公開を停止します。
 

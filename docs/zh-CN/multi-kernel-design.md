@@ -976,7 +976,7 @@ not-installed
 - 包名固定为 `<kernel>-<artifactVersion>-<platform>-<arch>.tar.zst`，对应 `.descriptor.json` 与 `.tar.zst.sha256` 均不可覆盖；仅覆盖 COS `kernels/catalog.production.json` 与 GitHub `kernel-catalog.production.json`。目录每槽位只提供最新版，撤销账本不丢失，普通退役不等于安全撤销。
 - 发布过程为“签名意图记录 → 双镜像不可变上传 → 十槽位双镜像 Range/If-Range/强 ETag/大小验证 → 切换双目录 → 精确读回及再次验证 → 到期清理”。单一 concurrency group 覆盖发布和维护，失败不以人工覆盖数据绕过。
 - 每份签名记录保存仍活跃制品在所有历史目录中的最大到期时间。旧包只在该时间加 24 小时后按精确名称/hash/size 删除，不列举删除整个 prefix，不碰其他 COS 对象、宿主包、当前包或本地已安装内核/SQLite。完成后写签名清理收据；部分删除可幂等重试。
-- 默认 catalog 7 天有效，剩余 48 小时进入续期；每日维护仍需原 `kernel-production` 审批。只重签目录元数据，不延长 descriptor 或密钥有效期。审批拖延或可用有效期不足会阻断更新，需要人工介入。bucket 必须从未启用版本控制，否则拒绝以普通 DELETE 假装清除历史版本。
+- GitHub Actions 已关闭定时触发。默认 catalog 7 天有效，剩余 48 小时时可手动请求维护，仍需原 `kernel-production` 审批。只重签目录元数据，不延长 descriptor 或密钥有效期。审批拖延或可用有效期不足会阻断更新，需要人工介入。bucket 必须从未启用版本控制，否则拒绝以普通 DELETE 假装清除历史版本。
 - 云端旧包清理后不能再从镜像下载该版本；本地已验证 last-known-good 与修复缓存不被此作业清理。小体积签名发布记录/收据持续留存。实现、故障测试和真实上线证据见 [自动发布参考](../../harness/reference/kernel-automatic-release.md) 与 [操作手册](operations/kernel-runtime-release-runbook.md)。
 
 ## 15. 文件与数据布局

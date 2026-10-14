@@ -62,7 +62,7 @@ latest-only 目录每内核/目标仅保留最新版，普通退役不写安全 
 
 当一次 staging run 同时构建两个内核时，第三个五目标 job 会在同一干净环境安装两份真实签名 artifact，并发启动两个控制桥，验证进程身份互不相同；再向 OpenClaw 安装注入完整性故障、从不可变缓存 repair，同时确认 DSH 继续健康，最后逐个卸载并证明同一 SQLite Conversation 仍存在。这是实际制品的并发/故障隔离证据；无模型密钥的 CI 控制面 smoke 不冒充真实付费模型对话，Chat 语义仍由共享 contract/E2E 证明。
 
-`kernel-runtime-promote.yml` 在完整可信 runtime build 与同 SHA 三平台 E2E 成功后自动排队受保护审批；只消费已批准的 staging bytes，发布器 checkout 与 artifact source SHA 分开验证，审批后复验 run/attempt/artifact digest 与当前冻结输入。不重新构建或修改已公证 payload。策略读取启用内核和共用 required matrix，未知/缺失目标失败关闭。腾讯 COS `aq-pub-1252262977/clawxxx/kernels` 和 GitHub `kernel-runtimes` 保存相同版本化文件，后者不占用宿主 latest release。所有槽位的双镜像 Range/If-Range、强稳定 ETag 和签名大小验证后才替换 catalog，并在删除旧包前复验两个精确目录。默认目录 7 天有效，剩余 48 小时由每日受保护维护续期；审批不会被自动绕过，descriptor/key 到期仍需新审核版本或换钥。
+`kernel-runtime-promote.yml` 在完整可信 runtime build 与同 SHA 三平台 E2E 成功后自动排队受保护审批；只消费已批准的 staging bytes，发布器 checkout 与 artifact source SHA 分开验证，审批后复验 run/attempt/artifact digest 与当前冻结输入。不重新构建或修改已公证 payload。策略读取启用内核和共用 required matrix，未知/缺失目标失败关闭。腾讯 COS `aq-pub-1252262977/clawxxx/kernels` 和 GitHub `kernel-runtimes` 保存相同版本化文件，后者不占用宿主 latest release。所有槽位的双镜像 Range/If-Range、强稳定 ETag 和签名大小验证后才替换 catalog，并在删除旧包前复验两个精确目录。GitHub Actions 已关闭定时触发。默认目录 7 天有效，剩余 48 小时时可手动请求受保护维护续期；审批不会被自动绕过，descriptor/key 到期仍需新审核版本或换钥。
 
 仓库使用固定腾讯官方 Node SDK；上传器验证 bucket/region/versioning、限定 object key、public-read、SHA-256 metadata 与不可覆盖策略。`release.yml` 在宿主打包前仍重跑完整 unit/contract/type/lint/chaos/comms/Harness、三平台 Electron E2E 与线上双镜像 Range。远端实际证据与本地测试分开记录，不以自动触发代替成功验收。
 

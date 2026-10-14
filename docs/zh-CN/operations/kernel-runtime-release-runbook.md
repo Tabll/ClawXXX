@@ -145,7 +145,7 @@ gh workflow run kernel-runtime-promote.yml \
 
 ## 6. 目录续期与安全清理
 
-`kernels/release-policy.json` 当前规定 catalog 默认 7 天、剩余 48 小时续期、旧引用到期后 24 小时下载缓冲。每天 UTC 03:35（北京时间 11:35）的只读作业只在续期、退役到期或镜像修复需要时请求原生产审批；GitHub 定时任务可能延迟，审批拖延也可能导致 catalog 过期。维护不会自动绕过审核，也不延长 artifact/key 自身有效期；不足 1 小时可用有效期时失败，需要审核新 revision 或轮换密钥。
+`kernels/release-policy.json` 当前规定 catalog 默认 7 天、剩余 48 小时续期、旧引用到期后 24 小时下载缓冲。GitHub Actions 的定时触发已于 2026-10-15 按用户要求关闭。续期、退役到期或分发修复需手动触发维护，并经过原生产审批；未手动维护或审批拖延可能导致 catalog 过期。维护不会自动绕过审核，也不延长 artifact/key 自身有效期；不足 1 小时可用有效期时失败，需要审核新 revision 或轮换密钥。
 
 手动触发维护：
 

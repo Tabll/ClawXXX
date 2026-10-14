@@ -132,7 +132,8 @@ describe('production workflow trust boundaries', () => {
     const raw = readFileSync('.github/workflows/kernel-runtime-promote.yml', 'utf8').replace(/\r\n/g, '\n');
     const workflow = (newline === 'CRLF' ? raw.replace(/\n/g, '\r\n') : raw).replace(/\r\n/g, '\n');
     expect(workflow).toMatch(/workflow_run:\n\s+workflows: \[Build signed kernel runtimes, Electron E2E\]/);
-    expect(workflow).toMatch(/schedule:\n\s+- cron:/);
+    expect(workflow).not.toMatch(/^\s*schedule:/m);
+    expect(workflow).toMatch(/^\s*workflow_dispatch:/m);
     expect(workflow).toContain('group: kernel-runtime-production-catalog');
     expect(workflow).toContain('cancel-in-progress: false');
     const gate = workflow.split('  acceptance:')[1].split('  promote:')[0];

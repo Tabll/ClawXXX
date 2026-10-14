@@ -174,7 +174,7 @@ OpenClaw 源码和开发依赖已切换为 `2026.9.4+clawx.18`，Discord/WhatsAp
 
 两个 +clawx.13 内核使用 Node 24.20.0，已通过五目标 staging 全部 25 项任务、四份 macOS 公证（Accepted）及同源码三平台 Electron E2E，详见 [CI 验收证据](harness/reference/windows-runtime-ci-repair.md)。Windows 仅使用制品签名，不启用 Authenticode。生产目录状态、受保护发布恢复及真实线上验证见[发布验收记录](harness/reference/kernel-automatic-release.md)；真实账号验收仍待完成。
 
-完整内核构建与同源码 E2E 成功后，现会自动排队进入受保护的生产发布。内核仅从 GitHub Releases 下载和发布；版本化包不可覆盖，全目标验证通过后只替换 latest-per-target 签名目录，不再依赖 COS。旧包等全部引用目录到期再加 24 小时后安全清理，保留签名审计记录并支持中断重试。每日受保护维护在制品/密钥有效期内续签默认 7 天的目录，仍需正常审批；首次 bootstrap 和真实线上验收不以本地测试代替。单源目录缺失从不可变签名日志恢复；变更待发布记录须使用精确摘要绑定的受保护手动 supersession。参见[GitHub 单源设计](harness/reference/github-only-kernel-distribution.md)和[操作手册](docs/zh-CN/operations/kernel-runtime-release-runbook.md)。
+完整内核构建与同源码 E2E 成功后，现会自动排队进入受保护的生产发布。内核仅从 GitHub Releases 下载和发布；版本化包不可覆盖，全目标验证通过后只替换 latest-per-target 签名目录，不再依赖 COS。旧包等全部引用目录到期再加 24 小时后安全清理，保留签名审计记录并支持中断重试。GitHub Actions 已关闭定时触发；维护需手动请求，在制品/密钥有效期内续签默认 7 天的目录，仍需正常审批；首次 bootstrap 和真实线上验收不以本地测试代替。单源目录缺失从不可变签名日志恢复；变更待发布记录须使用精确摘要绑定的受保护手动 supersession。参见[GitHub 单源设计](harness/reference/github-only-kernel-distribution.md)和[操作手册](docs/zh-CN/operations/kernel-runtime-release-runbook.md)。
 
 目录切换后先有界等待镜像公开读取到精确已签版本，再严格读回和允许清理。旧目录或暂时缺失绝不算成功，签名目录冲突立即终止发布。
 

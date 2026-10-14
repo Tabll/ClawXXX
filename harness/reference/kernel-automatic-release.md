@@ -69,8 +69,9 @@ retain old bytes for cached catalogs and in-progress downloads. Cloud rollback
 or reinstall of retired versions is unavailable after cleanup; verified local
 last-known-good runtimes and local archive repair are unaffected.
 
-Daily maintenance or manual maintenance dispatch checks for due retirement or
-catalog renewal and uses the same protected environment. Approval delays may
+Scheduled GitHub Actions were disabled at the user's request on 2026-10-15.
+Manually dispatched maintenance checks for due retirement or catalog renewal
+and uses the same protected environment. Approval delays may
 delay maintenance and catalog renewal; no bot bypasses reviewer rules. Signed
 records/receipts are small and retained for audit even after archive deletion.
 Partially completed cleanup resumes exact missing-object operations and never

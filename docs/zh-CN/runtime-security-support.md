@@ -67,7 +67,7 @@ Rollback key 不参与日常发布，只离线保存并具有 `rollback` purpose
 - 安全撤销可立即 EOL；普通 EOL 在未来 catalog 移除前通过发行说明预告。Catalog 移除不会删除已安装字节或 canonical 用户数据。
 - DSH 上游仍为 prerelease；ClawX 只支持 descriptor 指定的精确补丁版，不支持任意上游 build。
 
-每日受保护维护在目录剩余 48 小时时续签默认 7 天的元数据，不延长 artifact/key 自身有效期，也不绕过审批。清理只接受精确 signed inventory 与当前全镜像验证，保留审计 journals/receipts，拒绝版本控制 Enabled/Suspended 的 COS bucket。见 [自动发布设计](../../harness/reference/kernel-automatic-release.md) 和 [操作手册](operations/kernel-runtime-release-runbook.md)。
+GitHub Actions 已关闭定时触发；手动请求的受保护维护在目录剩余 48 小时时续签默认 7 天的元数据，不延长 artifact/key 自身有效期，也不绕过审批。清理只接受精确 signed inventory 与当前全镜像验证，保留审计 journals/receipts，拒绝版本控制 Enabled/Suspended 的 COS bucket。见 [自动发布设计](../../harness/reference/kernel-automatic-release.md) 和 [操作手册](operations/kernel-runtime-release-runbook.md)。
 
 ## 许可证发布批准
 

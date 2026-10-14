@@ -101,8 +101,9 @@ unsafe. Old COS objects and host-installer secrets are not deleted by this chang
 - Update the host application/configuration too: existing old binaries retain
   COS-first settings until updated; changing the server alone cannot prevent
   old clients trying COS.
-- Continue protected daily maintenance. Approval delays can still expire the
-  seven-day catalog; switching storage does not remove this operational duty.
+- Scheduled GitHub Actions were disabled at the user's request on 2026-10-15.
+  Request protected maintenance manually when due. Missing maintenance or delayed
+  approval can still expire the seven-day catalog.
 
 ## Verification boundaries
 
